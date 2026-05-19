@@ -53,6 +53,13 @@ export type ChatMessage = {
   /** verses attached to this message — drives playback */
   verses?: VerseSummary[];
   toolCalls?: ToolCallSummary[];
+  /**
+   * Internal record of what the assistant actually did, used as the
+   * assistant turn's content when rebuilding chat history for the model.
+   * Never rendered in the UI. Lets the model keep context across turns
+   * even when the visible `text` is suppressed (e.g. after read actions).
+   */
+  historyNote?: string;
   createdAt: number;
 };
 

@@ -34,12 +34,16 @@ export function useCommandPipeline() {
       { role: 'system', content: systemPrompt(locale, translation) },
       ...useChatStore
         .getState()
-        .messages.filter((m) => m.role === 'user' || (m.role === 'assistant' && m.text))
+        .messages.filter(
+          (m) =>
+            m.role === 'user' ||
+            (m.role === 'assistant' && (m.text || m.historyNote)),
+        )
         .slice(-12)
         .map<ChatRequestMessage>((m) =>
           m.role === 'user'
             ? { role: 'user', content: m.text }
-            : { role: 'assistant', content: m.text },
+            : { role: 'assistant', content: m.historyNote || m.text },
         ),
     ];
 
@@ -55,6 +59,7 @@ export function useCommandPipeline() {
     try {
       let loops = 0;
       let didReadAction = false;
+      const readReferences: string[] = [];
       while (loops < MAX_TOOL_LOOPS) {
         loops++;
         const resp = await postChat({
@@ -79,6 +84,16 @@ export function useCommandPipeline() {
             const result = await dispatchTool(name, tc.function.arguments, {
               messageId: assistantMsg.id,
             });
+            if (
+              (name === 'read_verses' || name === 'random_verse') &&
+              result.ok &&
+              result.data &&
+              typeof result.data === 'object' &&
+              'reference' in result.data &&
+              typeof (result.data as { reference: unknown }).reference === 'string'
+            ) {
+              readReferences.push((result.data as { reference: string }).reference);
+            }
             summaries.push({
               id: tc.id,
               name: tc.function.name,
@@ -103,8 +118,14 @@ export function useCommandPipeline() {
         // The user wants no confirmation (written or spoken) when the resolved
         // action was a Bible read — the verse playback itself is the response.
         const finalText = didReadAction ? '' : (choice.content ?? '');
+        const historyNote = didReadAction
+          ? readReferences.length > 0
+            ? `(Played aloud: ${readReferences.join('; ')}.)`
+            : '(Played the requested passage.)'
+          : undefined;
         useChatStore.getState().updateMessage(assistantMsg.id, {
           text: finalText,
+          historyNote,
         });
         if (!didReadAction) {
           void speakAssistantReply(finalText, assistantMsg.id);

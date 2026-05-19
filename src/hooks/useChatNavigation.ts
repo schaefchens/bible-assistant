@@ -15,6 +15,12 @@ function bibleMessages(messages: ChatMessage[]): ChatMessage[] {
   return messages.filter((m) => (m.verses?.length ?? 0) > 0);
 }
 
+function selectMessageById(id: string) {
+  const { messages, setSelected } = useChatStore.getState();
+  const idx = messages.findIndex((m) => m.id === id);
+  if (idx !== -1) setSelected(idx);
+}
+
 function navigateVerse(dir: 1 | -1) {
   const bibles = bibleMessages(useChatStore.getState().messages);
   if (bibles.length === 0) return;
@@ -23,6 +29,7 @@ function navigateVerse(dir: 1 | -1) {
   // No active bible playback yet — start from the most recent (down) or oldest (up).
   if (!current) {
     const target = dir === 1 ? bibles[bibles.length - 1] : bibles[0];
+    selectMessageById(target.id);
     void startPlaybackForVerses(target.id, target.verses!, 0);
     return;
   }
@@ -32,6 +39,7 @@ function navigateVerse(dir: 1 | -1) {
     // Currently playing something not in chat (e.g. assistant reply TTS).
     // Treat as "no bible context" and start at the latest bible message.
     const target = bibles[bibles.length - 1];
+    selectMessageById(target.id);
     void startPlaybackForVerses(target.id, target.verses!, 0);
     return;
   }
@@ -47,6 +55,7 @@ function navigateVerse(dir: 1 | -1) {
     }
     if (curMsgIdx < bibles.length - 1) {
       const nextMsg = bibles[curMsgIdx + 1];
+      selectMessageById(nextMsg.id);
       void startPlaybackForVerses(nextMsg.id, nextMsg.verses!, 0);
     }
   } else {
@@ -57,6 +66,7 @@ function navigateVerse(dir: 1 | -1) {
     if (curMsgIdx > 0) {
       const prevMsg = bibles[curMsgIdx - 1];
       const lastIdx = (prevMsg.verses!.length ?? 1) - 1;
+      selectMessageById(prevMsg.id);
       void startPlaybackForVerses(prevMsg.id, prevMsg.verses!, lastIdx);
     }
   }
@@ -86,6 +96,7 @@ export function useChatNavigation() {
         const target = bibles[bibles.length - 1];
         if (target) {
           e.preventDefault();
+          selectMessageById(target.id);
           void startPlaybackForVerses(target.id, target.verses!, 0);
         }
         return;

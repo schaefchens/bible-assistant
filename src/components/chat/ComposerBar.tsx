@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCommandPipeline } from '@/hooks/useCommandPipeline';
 import { useChatStore } from '@/store/chatStore';
+import { usePushToTalk } from '@/hooks/usePushToTalk';
 import { VoiceCaptureButton } from './VoiceCaptureButton';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 
@@ -18,6 +19,8 @@ export function ComposerBar() {
     setText('');
   };
 
+  const { recording: pttRecording, hotkey: pttKey } = usePushToTalk((spoken) => submit(spoken));
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     audioPlayback.ensureContext();
@@ -27,9 +30,18 @@ export function ComposerBar() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex items-end gap-2 p-3 pb-safe border-t border-navy-soft bg-navy"
+      className="relative flex items-end gap-2 p-3 pb-safe border-t border-navy-soft bg-navy"
     >
-      <VoiceCaptureButton onTranscript={(t) => submit(t)} />
+      {pttRecording && (
+        <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-xs text-gold bg-navy-deep px-2 py-1 rounded-full shadow flex items-center gap-1.5 animate-pulse-soft">
+          <span className="inline-block w-2 h-2 rounded-full bg-gold" />
+          {t('chat.pushToTalk')}
+        </div>
+      )}
+      <VoiceCaptureButton
+        onTranscript={(t) => submit(t)}
+        pushToTalkHotkey={pttKey}
+      />
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}

@@ -5,9 +5,10 @@ import { audioPlayback } from '@/lib/audioPlaybackManager';
 
 type Props = {
   onTranscript: (text: string) => void;
+  pushToTalkHotkey?: string;
 };
 
-export function VoiceCaptureButton({ onTranscript }: Props) {
+export function VoiceCaptureButton({ onTranscript, pushToTalkHotkey }: Props) {
   const { t } = useTranslation();
   const { start, stop, listening, available, error } = useSpeechRecognition(onTranscript);
 
@@ -28,7 +29,12 @@ export function VoiceCaptureButton({ onTranscript }: Props) {
       <button
         type="button"
         onClick={onClick}
-        title={error ?? undefined}
+        title={
+          error ??
+          (pushToTalkHotkey
+            ? (t('chat.pushToTalkHint', { key: pushToTalkHotkey }) as string)
+            : undefined)
+        }
         aria-label={listening ? t('chat.listening') : t('chat.holdToSpeak')}
         className={clsx(
           'h-12 w-12 rounded-full flex items-center justify-center transition-colors',

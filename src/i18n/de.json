@@ -16,7 +16,9 @@
     "holdToSpeak": "Tippen zum Sprechen",
     "listening": "Höre zu — tippen zum Beenden",
     "empty": "Probier: \"Lies Galater 5,22\" oder \"Erzähl mir die Geschichte vom verlorenen Sohn\"",
-    "errorGeneric": "Etwas ist schiefgelaufen."
+    "errorGeneric": "Etwas ist schiefgelaufen.",
+    "pushToTalk": "Aufnahme…",
+    "pushToTalkHint": "{{key}} gedrückt halten für Push-to-Talk"
   },
   "playback": {
     "play": "Abspielen",

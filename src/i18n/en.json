@@ -16,7 +16,9 @@
     "holdToSpeak": "Tap to speak",
     "listening": "Listening — tap to stop",
     "empty": "Try: \"Read Galatians 5:22\" or \"Tell me the story of the lost son\"",
-    "errorGeneric": "Something went wrong."
+    "errorGeneric": "Something went wrong.",
+    "pushToTalk": "Recording…",
+    "pushToTalkHint": "Hold {{key}} to push-to-talk"
   },
   "playback": {
     "play": "Play",
