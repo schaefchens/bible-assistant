@@ -7,9 +7,10 @@ type Props = {
   messageId: string;
   verseIndex: number;
   verse: VerseSummary;
+  onWordTap?: (verseIndex: number, wordIndex: number) => void;
 };
 
-export function WordHighlighter({ messageId, verseIndex, verse }: Props) {
+export function WordHighlighter({ messageId, verseIndex, verse, onWordTap }: Props) {
   const current = usePlaybackStore((s) => s.current);
   const isCurrent =
     current?.messageId === messageId && current.verseIndex === verseIndex;
@@ -26,9 +27,26 @@ export function WordHighlighter({ messageId, verseIndex, verse }: Props) {
       {words.map((token, i) => {
         if (/^\s+$/.test(token)) return <span key={i}>{token}</span>;
         wordCounter++;
-        const active = activeWordIndex === wordCounter;
+        const idx = wordCounter;
+        const active = activeWordIndex === idx;
+        const handler = onWordTap
+          ? (e: React.MouseEvent) => {
+              e.stopPropagation();
+              onWordTap(verseIndex, idx);
+            }
+          : undefined;
         return (
-          <span key={i} className={clsx('word', active && 'word-active')}>
+          <span
+            key={i}
+            role={handler ? 'button' : undefined}
+            tabIndex={handler ? -1 : undefined}
+            onClick={handler}
+            className={clsx(
+              'word',
+              active && 'word-active',
+              handler && 'cursor-pointer',
+            )}
+          >
             {token}
           </span>
         );

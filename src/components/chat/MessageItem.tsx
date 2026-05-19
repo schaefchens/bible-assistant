@@ -27,6 +27,23 @@ export function MessageItem({ message, selected, onSelect }: Props) {
     }
   };
 
+  const handleWordTap = (verseIdx: number, wordIdx: number) => {
+    if (!message.verses?.length) return;
+    const playbackCurrent = usePlaybackStore.getState().current;
+    if (
+      playbackCurrent?.messageId === message.id &&
+      playbackCurrent.verseIndex === verseIdx
+    ) {
+      audioPlayback.seekToWord(wordIdx);
+      return;
+    }
+    if (playbackCurrent?.messageId === message.id) {
+      audioPlayback.goToVerseIndex(verseIdx, wordIdx);
+      return;
+    }
+    void startPlaybackForVerses(message.id, message.verses, verseIdx, wordIdx);
+  };
+
   return (
     <div
       onClick={onSelect}
@@ -51,16 +68,31 @@ export function MessageItem({ message, selected, onSelect }: Props) {
 
       {message.verses && message.verses.length > 0 && (
         <div className="mt-3 space-y-3">
-          {message.verses.map((v, i) => (
-            <div key={`${v.bookId}-${v.chapter}-${v.verse}-${i}`}>
-              {i === 0 && (
-                <div className="text-xs font-sans text-gold mb-1">
-                  {v.display.split(':')[0]}
-                </div>
-              )}
-              <WordHighlighter messageId={message.id} verseIndex={i} verse={v} />
-            </div>
-          ))}
+          {message.verses.map((v, i) => {
+            const prev = i > 0 ? message.verses![i - 1] : null;
+            const showHeading =
+              !prev || prev.bookId !== v.bookId || prev.chapter !== v.chapter;
+            return (
+              <div key={`${v.bookId}-${v.chapter}-${v.verse}-${i}`}>
+                {showHeading && (
+                  <div
+                    className={clsx(
+                      'text-xs font-sans text-gold mb-1',
+                      i > 0 && 'mt-3 pt-3 border-t border-gold/20',
+                    )}
+                  >
+                    {v.display.split(':')[0]}
+                  </div>
+                )}
+                <WordHighlighter
+                  messageId={message.id}
+                  verseIndex={i}
+                  verse={v}
+                  onWordTap={handleWordTap}
+                />
+              </div>
+            );
+          })}
           <div className="pt-2">
             <button
               type="button"

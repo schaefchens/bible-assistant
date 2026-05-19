@@ -7,6 +7,7 @@ export async function startPlaybackForVerses(
   messageId: string,
   verses: VerseSummary[],
   startIndex = 0,
+  startWordIndex?: number,
 ): Promise<void> {
   if (verses.length === 0) return;
   const { voice, voiceStyle } = useSettingsStore.getState();
@@ -35,6 +36,6 @@ export async function startPlaybackForVerses(
     }
   }
   if (tracks.length > 0) {
-    void audioPlayback.playQueue(tracks, startIndex);
+    void audioPlayback.playQueue(tracks, startIndex, startWordIndex);
   }
 }

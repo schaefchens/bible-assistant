@@ -25,6 +25,9 @@ class AudioPlaybackManager {
   private tickHandle: number | null = null;
   private decodeCache = new Map<string, AudioBuffer>();
   private alignmentCache = new Map<string, Alignment>();
+  // When set, the next track to finish loading will start at the given word
+  // index instead of from the beginning. Consumed (cleared) on use.
+  private pendingSeekWord: number | null = null;
 
   /** Must be called inside a user gesture handler on iOS. */
   ensureContext(): AudioContext {
@@ -44,12 +47,25 @@ class AudioPlaybackManager {
     return this.ctx;
   }
 
-  async playQueue(tracks: PlaybackTrack[], startIndex = 0): Promise<void> {
+  async playQueue(
+    tracks: PlaybackTrack[],
+    startIndex = 0,
+    startWordIndex?: number,
+  ): Promise<void> {
     this.stop();
     this.queue = tracks;
     this.currentIndex = Math.max(0, Math.min(tracks.length - 1, startIndex));
+    if (startWordIndex !== undefined) this.pendingSeekWord = startWordIndex;
     if (tracks.length === 0) return;
     await this.playCurrent();
+  }
+
+  /** Jump to a specific verse in the current queue, optionally at a word. */
+  goToVerseIndex(verseIdx: number, wordIdx?: number): void {
+    if (verseIdx < 0 || verseIdx >= this.queue.length) return;
+    this.currentIndex = verseIdx;
+    if (wordIdx !== undefined) this.pendingSeekWord = wordIdx;
+    void this.playCurrent();
   }
 
   /**
@@ -84,8 +100,21 @@ class AudioPlaybackManager {
     ]);
 
     this.currentLoaded = { ...track, buffer, alignment };
-    this.currentOffset = 0;
-    this.startSource(buffer, 0);
+
+    // Apply any pending word-seek (e.g. from tap-on-word before the track was loaded).
+    let startOffset = 0;
+    let startWordIdx = -1;
+    if (this.pendingSeekWord != null) {
+      const w = alignment.words[this.pendingSeekWord];
+      if (w) {
+        startOffset = w.start;
+        startWordIdx = this.pendingSeekWord;
+      }
+      this.pendingSeekWord = null;
+    }
+
+    this.currentOffset = startOffset;
+    this.startSource(buffer, startOffset);
 
     usePlaybackStore.getState().setCurrent({
       messageId: track.messageId,
@@ -93,9 +122,9 @@ class AudioPlaybackManager {
       totalVerses: this.queue.length,
       audioUrl: track.audioUrl,
       alignmentUrl: track.alignmentUrl,
-      position: 0,
+      position: startOffset,
       duration: buffer.duration,
-      currentWordIndex: -1,
+      currentWordIndex: startWordIdx,
     });
     usePlaybackStore.getState().setStatus('playing');
   }
@@ -203,6 +232,7 @@ class AudioPlaybackManager {
     this.currentIndex = 0;
     this.currentLoaded = null;
     this.currentOffset = 0;
+    this.pendingSeekWord = null;
     usePlaybackStore.getState().setStatus('idle');
     usePlaybackStore.getState().setCurrent(null);
   }
@@ -217,6 +247,33 @@ class AudioPlaybackManager {
     if (this.currentIndex <= 0) return;
     this.currentIndex--;
     void this.playCurrent();
+  }
+
+  /** Jump to an absolute word index within the currently-loaded verse. */
+  seekToWord(wordIndex: number): void {
+    if (!this.currentLoaded || !this.ctx) return;
+    const { alignment, buffer } = this.currentLoaded;
+    if (wordIndex < 0 || wordIndex >= alignment.words.length) return;
+    const targetTime = alignment.words[wordIndex].start;
+    const wasPlaying = usePlaybackStore.getState().status === 'playing';
+    if (this.source) {
+      try {
+        this.source.onended = null;
+        this.source.stop();
+      } catch {
+        /* ignore */
+      }
+      this.source = null;
+    }
+    if (wasPlaying) {
+      this.startSource(buffer, targetTime);
+    } else {
+      this.currentOffset = targetTime;
+      usePlaybackStore.getState().patchCurrent({
+        position: targetTime,
+        currentWordIndex: wordIndex,
+      });
+    }
   }
 
   /** Jump backward/forward by `delta` words within the current verse. */
