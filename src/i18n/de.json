@@ -1,0 +1,75 @@
+{
+  "app": {
+    "title": "Bibel-Assistent",
+    "tagline": "Sprechen. Lesen. Merken."
+  },
+  "nav": {
+    "chat": "Chat",
+    "cards": "Karten",
+    "boards": "Tafeln",
+    "settings": "Einstellungen"
+  },
+  "chat": {
+    "placeholder": "Frag nach einem Vers, einer Geschichte oder einer Karte…",
+    "send": "Senden",
+    "thinking": "Denke nach…",
+    "holdToSpeak": "Tippen zum Sprechen",
+    "listening": "Höre zu — tippen zum Beenden",
+    "empty": "Probier: \"Lies Galater 5,22\" oder \"Erzähl mir die Geschichte vom verlorenen Sohn\"",
+    "errorGeneric": "Etwas ist schiefgelaufen."
+  },
+  "playback": {
+    "play": "Abspielen",
+    "pause": "Pause",
+    "stop": "Stopp",
+    "previous": "Zurück",
+    "next": "Weiter",
+    "loading": "Lade Audio…"
+  },
+  "cards": {
+    "title": "Karten",
+    "new": "Neue Karte",
+    "empty": "Noch keine Karten. Speichere einen Vers, um zu beginnen.",
+    "cardTitle": "Titel",
+    "verses": "Verse",
+    "addVerse": "Vers hinzufügen",
+    "notes": "Notizen",
+    "save": "Speichern",
+    "delete": "Löschen",
+    "confirmDelete": "Diese Karte löschen?",
+    "boards": "Tafeln"
+  },
+  "boards": {
+    "title": "Tafeln",
+    "new": "Neue Tafel",
+    "empty": "Noch keine Tafeln. Tafeln gruppieren Karten zum Auswendiglernen.",
+    "boardName": "Tafel-Name",
+    "cardCount": "{{count}} Karten",
+    "addCards": "Karten hinzufügen",
+    "save": "Speichern",
+    "delete": "Löschen"
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "language": "Sprache",
+    "translation": "Bibel-Übersetzung",
+    "voice": "Stimme",
+    "voiceStyle": "Stimmstil (optional)",
+    "voiceStyleHint": "z.B. \"ruhig, ehrfürchtig\" oder \"warmer Erzähler\"",
+    "whisperFallback": "Whisper nutzen, wenn Spracherkennung nicht verfügbar",
+    "identity": "Identität",
+    "identityHint": "Wird zum Synchronisieren deiner Bibliothek genutzt. Privat halten.",
+    "copy": "Kopieren",
+    "import": "Importieren",
+    "importPlaceholder": "userId:secret hier einfügen",
+    "save": "Speichern",
+    "version": "Version"
+  },
+  "common": {
+    "back": "Zurück",
+    "cancel": "Abbrechen",
+    "online": "Online",
+    "offline": "Offline",
+    "pending": "{{count}} ausstehend"
+  }
+}

@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    @apply bg-navy text-cream font-sans antialiased;
+    overscroll-behavior: none;
+  }
+
+  /* iOS safe-area helpers */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors active:scale-[0.98];
+  }
+  .btn-primary {
+    @apply btn bg-gold text-navy hover:bg-gold-glow;
+  }
+  .btn-ghost {
+    @apply btn bg-navy-soft text-cream hover:bg-navy-soft/80;
+  }
+
+  .word {
+    @apply transition-colors duration-75;
+  }
+  .word-active {
+    @apply text-gold-glow font-semibold;
+  }
+
+  .message-selected {
+    @apply ring-2 ring-gold/60;
+  }
+}

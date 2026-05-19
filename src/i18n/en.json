@@ -1,0 +1,75 @@
+{
+  "app": {
+    "title": "Bible Assistant",
+    "tagline": "Speak. Read. Memorize."
+  },
+  "nav": {
+    "chat": "Chat",
+    "cards": "Cards",
+    "boards": "Boards",
+    "settings": "Settings"
+  },
+  "chat": {
+    "placeholder": "Ask for a verse, a story, or a card…",
+    "send": "Send",
+    "thinking": "Thinking…",
+    "holdToSpeak": "Tap to speak",
+    "listening": "Listening — tap to stop",
+    "empty": "Try: \"Read Galatians 5:22\" or \"Tell me the story of the lost son\"",
+    "errorGeneric": "Something went wrong."
+  },
+  "playback": {
+    "play": "Play",
+    "pause": "Pause",
+    "stop": "Stop",
+    "previous": "Previous",
+    "next": "Next",
+    "loading": "Loading audio…"
+  },
+  "cards": {
+    "title": "Cards",
+    "new": "New card",
+    "empty": "No cards yet. Save a verse to start your library.",
+    "cardTitle": "Title",
+    "verses": "Verses",
+    "addVerse": "Add verse",
+    "notes": "Notes",
+    "save": "Save",
+    "delete": "Delete",
+    "confirmDelete": "Delete this card?",
+    "boards": "Boards"
+  },
+  "boards": {
+    "title": "Boards",
+    "new": "New board",
+    "empty": "No boards yet. Boards group cards for memorization.",
+    "boardName": "Board name",
+    "cardCount": "{{count}} cards",
+    "addCards": "Add cards",
+    "save": "Save",
+    "delete": "Delete"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "translation": "Bible translation",
+    "voice": "Voice",
+    "voiceStyle": "Voice style (optional)",
+    "voiceStyleHint": "e.g. \"calm, reverent\" or \"warm storyteller\"",
+    "whisperFallback": "Use Whisper when speech recognition unavailable",
+    "identity": "Identity",
+    "identityHint": "Used to sync your library across devices. Keep this private.",
+    "copy": "Copy",
+    "import": "Import",
+    "importPlaceholder": "Paste userId:secret here",
+    "save": "Save",
+    "version": "Version"
+  },
+  "common": {
+    "back": "Back",
+    "cancel": "Cancel",
+    "online": "Online",
+    "offline": "Offline",
+    "pending": "{{count}} pending"
+  }
+}
