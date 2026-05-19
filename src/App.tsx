@@ -6,9 +6,11 @@ import { BoardsPage } from '@/routes/BoardsPage';
 import { BoardDetailPage } from '@/routes/BoardDetailPage';
 import { SettingsPage } from '@/routes/SettingsPage';
 
+const ROUTER_BASE = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
+
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={ROUTER_BASE}>
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<ChatPage />} />

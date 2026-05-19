@@ -3,7 +3,10 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'node:path';
 
+const BASE = '/assistant/';
+
 export default defineConfig({
+  base: BASE,
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -12,13 +15,20 @@ export default defineConfig({
   server: {
     host: true,
     proxy: {
-      '/api.php': {
+      // The PHP dev server (php -S 0.0.0.0:8000 -t public) serves api.php /
+      // storage at root, so strip the /assistant prefix when forwarding. The
+      // X-Base-Path header tells PHP what prefix the SPA expects in returned
+      // URLs (e.g. cached-audio URLs) so they round-trip correctly.
+      '/assistant/api.php': {
         target: 'http://localhost:8000',
         changeOrigin: false,
+        rewrite: (p) => p.replace(/^\/assistant/, ''),
+        headers: { 'X-Base-Path': '/assistant' },
       },
-      '/storage': {
+      '/assistant/storage': {
         target: 'http://localhost:8000',
         changeOrigin: false,
+        rewrite: (p) => p.replace(/^\/assistant/, ''),
       },
     },
   },
@@ -35,7 +45,8 @@ export default defineConfig({
         background_color: '#1a1a2e',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
+        start_url: BASE,
+        scope: BASE,
         icons: [
           {
             src: 'icons/icon-192.png',
@@ -57,7 +68,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        navigateFallbackDenylist: [/^\/api\.php/, /^\/storage\//],
+        navigateFallbackDenylist: [/\/api\.php/, /\/storage\//],
         runtimeCaching: [
           {
             urlPattern: /\/storage\/audio\/.*\.(?:mp3|json)$/i,

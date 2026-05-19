@@ -1,6 +1,8 @@
 import { getOrCreateIdentity } from '@/lib/identity';
 
-const API_BASE = '/api.php';
+// import.meta.env.BASE_URL is the value of `base` in vite.config.ts ('/assistant/' here),
+// so the SPA can be served from any subpath without code changes.
+const API_BASE = `${import.meta.env.BASE_URL}api.php`;
 
 export class ApiError extends Error {
   status: number;

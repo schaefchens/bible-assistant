@@ -42,7 +42,30 @@ if (!defined('OPENAI_API_KEY')) {
 const STORAGE_DIR = __DIR__ . '/storage';
 const USERS_DIR = STORAGE_DIR . '/users';
 const AUDIO_DIR = STORAGE_DIR . '/audio';
-const AUDIO_BASE_URL = '/storage/audio';
+
+/**
+ * URL prefix under which the SPA + this api.php are served.
+ * Production: '/assistant'. Resolution order:
+ *   1) define('BASE_PATH', ...) in secrets.php
+ *   2) BIBLE_ASSISTANT_BASE_PATH env var
+ *   3) X-Base-Path request header (Vite dev proxy sets this)
+ *   4) Auto-detect from REQUEST_URI
+ */
+if (!defined('BASE_PATH')) {
+    $resolved = '';
+    $envBase = getenv('BIBLE_ASSISTANT_BASE_PATH');
+    $headerBase = $_SERVER['HTTP_X_BASE_PATH'] ?? '';
+    $req = $_SERVER['REQUEST_URI'] ?? '';
+    if ($envBase !== false && $envBase !== '') {
+        $resolved = $envBase;
+    } elseif ($headerBase !== '') {
+        $resolved = $headerBase;
+    } elseif (preg_match('#^(/[^/?]+)/(api\.php|storage)#', $req, $m)) {
+        $resolved = $m[1];
+    }
+    define('BASE_PATH', rtrim($resolved, '/'));
+}
+const AUDIO_BASE_URL = '/storage/audio'; // joined with BASE_PATH below
 
 const CHAT_MODEL_DEFAULT = 'gpt-4o-mini';
 const TTS_MODEL = 'gpt-4o-mini-tts';
@@ -367,8 +390,8 @@ function handleTts(): void {
     }
 
     respond(200, [
-        'audioUrl' => AUDIO_BASE_URL . "/{$voice}/{$translation}/{$bookId}/{$chapter}/{$verse}.mp3",
-        'alignmentUrl' => AUDIO_BASE_URL . "/{$voice}/{$translation}/{$bookId}/{$chapter}/{$verse}.json",
+        'audioUrl' => BASE_PATH . AUDIO_BASE_URL . "/{$voice}/{$translation}/{$bookId}/{$chapter}/{$verse}.mp3",
+        'alignmentUrl' => BASE_PATH . AUDIO_BASE_URL . "/{$voice}/{$translation}/{$bookId}/{$chapter}/{$verse}.json",
         'cached' => $cached,
     ]);
 }
@@ -496,7 +519,7 @@ function handleRecordingUpload(array $ctx): void {
     }
 
     respond(200, [
-        'audioUrl' => "/storage/audio/recordings/{$userId}/{$translation}/{$bookId}/{$chapter}/{$verse}.mp3",
-        'alignmentUrl' => "/storage/audio/recordings/{$userId}/{$translation}/{$bookId}/{$chapter}/{$verse}.json",
+        'audioUrl' => BASE_PATH . "/storage/audio/recordings/{$userId}/{$translation}/{$bookId}/{$chapter}/{$verse}.mp3",
+        'alignmentUrl' => BASE_PATH . "/storage/audio/recordings/{$userId}/{$translation}/{$bookId}/{$chapter}/{$verse}.json",
     ]);
 }

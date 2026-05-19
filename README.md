@@ -9,26 +9,37 @@ A mobile-first PWA that retrieves Bible verses by voice or text and reads them a
 - **AI**: OpenAI `gpt-4o-mini` (tool calling), `gpt-4o-mini-tts` (TTS), `gpt-4o-transcribe` (Whisper, word-level timestamps), all proxied through PHP — the key never leaves the server.
 - **Bible source**: [bolls.life](https://bolls.life) — `ESV` (English Standard Version) and `S00` (Schlachter 2000 German).
 
+The SPA is served under the `/assistant/` path in both dev and production. Change the `base` value in `vite.config.ts` to move it.
+
 ## Local dev
 
 ```
 npm install
 # In one terminal: SPA dev server (port 5173)
 npm run dev
-# In another terminal: PHP backend (port 8000) — Vite proxies /api.php and /storage to it
+# In another terminal: PHP backend (port 8000)
 cp public/secrets.php.example public/secrets.php   # add OPENAI_API_KEY
 php -S 0.0.0.0:8000 -t public
 ```
 
-Open http://localhost:5173 — for PWA / Web Speech features on iOS you need HTTPS (use mkcert or a tunnel).
+Open **http://localhost:5173/assistant/**. Vite strips the `/assistant` prefix when forwarding `/assistant/api.php` and `/assistant/storage/*` to the PHP server, and adds an `X-Base-Path: /assistant` header so PHP knows what prefix to put back into returned audio URLs.
 
-## Deploy (Hetzner webspace)
+For PWA / Web Speech features on iOS you need HTTPS (use mkcert or a tunnel).
+
+## Deploy (Hetzner webspace, e.g. `/assistant/`)
 
 ```
 npm run build
-# Upload dist/* + public/api.php + a server-side public/secrets.php (DO NOT commit secrets.php)
-# Ensure ./storage/ is writable.
 ```
+
+Upload to the server's `assistant/` directory:
+
+- `dist/*` (the built SPA, includes manifest, service worker, icons)
+- `public/api.php`
+- A server-side `secrets.php` next to `api.php` containing `define('OPENAI_API_KEY', 'sk-...')`. **Never commit this file.**
+- Ensure `assistant/storage/` is writable by PHP.
+
+PHP auto-detects the base path from `REQUEST_URI` (matches the leading segment before `/api.php` or `/storage/`). To override, set the `BIBLE_ASSISTANT_BASE_PATH` env var, or `define('BASE_PATH', '/whatever')` in `secrets.php`.
 
 ## Identity
 
