@@ -17,6 +17,7 @@ export default function App() {
           <Route element={<AppShell />}>
             <Route index element={<ChatPage />} />
             <Route path="cards" element={<CardsPage />} />
+            <Route path="cards/:id" element={<CardsPage />} />
             <Route path="boards" element={<BoardsPage />} />
             <Route path="boards/:id" element={<BoardDetailPage />} />
             <Route path="settings" element={<SettingsPage />} />

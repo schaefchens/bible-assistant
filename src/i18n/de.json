@@ -34,10 +34,30 @@
     "verses": "Verse",
     "addVerse": "Vers hinzufügen",
     "notes": "Notizen",
+    "noNotes": "Noch keine Notizen.",
     "save": "Speichern",
     "delete": "Löschen",
+    "edit": "Bearbeiten",
     "confirmDelete": "Diese Karte löschen?",
-    "boards": "Tafeln"
+    "boards": "Tafeln",
+    "tags": "Hashtags",
+    "tagPlaceholder": "Tag eintippen, Leertaste zum Bestätigen",
+    "filterByTags": "Nach Hashtag filtern",
+    "noTagsYet": "Füge im Karten-Editor Hashtags hinzu, um hier zu filtern.",
+    "noTagsMatch": "Keine Karten passen zu den gewählten Hashtags.",
+    "color": "Farbe",
+    "colors": {
+      "none": "Keine Farbe",
+      "yellow": "Gelb",
+      "amber": "Bernstein",
+      "coral": "Koralle",
+      "rose": "Rosé",
+      "lavender": "Lavendel",
+      "sage": "Salbei",
+      "sky": "Himmel"
+    },
+    "flip": "Umdrehen",
+    "front": "Vorderseite"
   },
   "boards": {
     "title": "Tafeln",
@@ -46,6 +66,10 @@
     "boardName": "Tafel-Name",
     "cardCount": "{{count}} Karten",
     "addCards": "Karten hinzufügen",
+    "reorder": "Umsortieren",
+    "doneReordering": "Fertig",
+    "movePrev": "Nach vorne",
+    "moveNext": "Nach hinten",
     "save": "Speichern",
     "delete": "Löschen"
   },

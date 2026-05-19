@@ -34,10 +34,30 @@
     "verses": "Verses",
     "addVerse": "Add verse",
     "notes": "Notes",
+    "noNotes": "No notes yet.",
     "save": "Save",
     "delete": "Delete",
+    "edit": "Edit",
     "confirmDelete": "Delete this card?",
-    "boards": "Boards"
+    "boards": "Boards",
+    "tags": "Tags",
+    "tagPlaceholder": "Type a tag and press space",
+    "filterByTags": "Filter by hashtag",
+    "noTagsYet": "Add hashtags in the card editor to filter here.",
+    "noTagsMatch": "No cards match the selected tags.",
+    "color": "Color",
+    "colors": {
+      "none": "No color",
+      "yellow": "Yellow",
+      "amber": "Amber",
+      "coral": "Coral",
+      "rose": "Rose",
+      "lavender": "Lavender",
+      "sage": "Sage",
+      "sky": "Sky"
+    },
+    "flip": "Flip",
+    "front": "Front"
   },
   "boards": {
     "title": "Boards",
@@ -46,6 +66,10 @@
     "boardName": "Board name",
     "cardCount": "{{count}} cards",
     "addCards": "Add cards",
+    "reorder": "Reorder",
+    "doneReordering": "Done",
+    "movePrev": "Move backward",
+    "moveNext": "Move forward",
     "save": "Save",
     "delete": "Delete"
   },

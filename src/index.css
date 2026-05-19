@@ -51,4 +51,40 @@
   .message-selected {
     @apply ring-2 ring-gold/60;
   }
+
+  .perspective {
+    perspective: 1200px;
+  }
+  .flip-card-inner {
+    @apply relative w-full h-full transition-transform duration-500;
+    transform-style: preserve-3d;
+  }
+  .flip-card-inner.is-flipped {
+    transform: rotateY(180deg);
+  }
+  .flip-card-face,
+  .flip-card-back {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  .flip-card-back {
+    transform: rotateY(180deg);
+  }
+
+  .card-paper {
+    background-image:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, transparent 35%),
+      linear-gradient(0deg, rgba(0, 0, 0, 0.08) 0%, transparent 30%);
+  }
+  .card-back-ruled {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0 22px,
+      rgba(0, 0, 0, 0.1) 22px 23px
+    );
+  }
 }

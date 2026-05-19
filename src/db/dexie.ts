@@ -31,6 +31,14 @@ class BibleAssistantDb extends Dexie {
       boards: 'id, name, updatedAt, dirty',
       syncQueue: '++id, op, createdAt',
     });
+    // v2 adds optional `tags` and `color` fields on Card. Schema string is
+    // unchanged (we don't need them indexed); the bump exists so Dexie
+    // recognizes the entity shape change.
+    this.version(2).stores({
+      cards: 'id, title, updatedAt, dirty',
+      boards: 'id, name, updatedAt, dirty',
+      syncQueue: '++id, op, createdAt',
+    });
   }
 }
 

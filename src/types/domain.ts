@@ -67,11 +67,34 @@ export type Alignment = {
   duration?: number;
 };
 
+export type CardColor =
+  | 'none'
+  | 'yellow'
+  | 'amber'
+  | 'coral'
+  | 'rose'
+  | 'lavender'
+  | 'sage'
+  | 'sky';
+
+export const CARD_COLORS: CardColor[] = [
+  'none',
+  'yellow',
+  'amber',
+  'coral',
+  'rose',
+  'lavender',
+  'sage',
+  'sky',
+];
+
 export type Card = {
   id: string;
   title: string;
   references: string[];
   notes?: string;
+  tags?: string[];
+  color?: CardColor;
   createdAt: number;
   updatedAt: number;
 };

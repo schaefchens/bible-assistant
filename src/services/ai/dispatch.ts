@@ -144,6 +144,7 @@ async function handleCreateCard(args: ToolArgs['create_card']): Promise<ToolDisp
     title: args.title,
     references: args.references,
     notes: args.notes,
+    color: 'yellow',
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };

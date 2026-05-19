@@ -1,16 +1,52 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
 import { CardEditor } from '@/components/cards/CardEditor';
+import { CardStack } from '@/components/cards/CardStack';
+import { TagFilterBar } from '@/components/cards/TagFilterBar';
 import type { Card } from '@/types/domain';
 
 export function CardsPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { id: routeId } = useParams<{ id?: string }>();
   const cards = useLibraryStore((s) => s.cards);
-  const [editing, setEditing] = useState<Card | null>(null);
+  const [draftCard, setDraftCard] = useState<Card | null>(null);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+  const editing = useMemo<Card | null>(() => {
+    if (draftCard) return draftCard;
+    if (routeId) return cards.find((c) => c.id === routeId) ?? null;
+    return null;
+  }, [draftCard, routeId, cards]);
+
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of cards) for (const tag of c.tags ?? []) set.add(tag);
+    return Array.from(set).sort();
+  }, [cards]);
+
+  const visibleCards = useMemo(() => {
+    const filtered = selectedTags.length
+      ? cards.filter((c) => {
+          const cardTags = c.tags ?? [];
+          return selectedTags.every((t) => cardTags.includes(t));
+        })
+      : cards;
+    return filtered.slice().sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [cards, selectedTags]);
+
+  const closeEditor = () => {
+    if (draftCard) {
+      setDraftCard(null);
+      return;
+    }
+    if (routeId) navigate(-1);
+  };
 
   if (editing) {
-    return <CardEditor card={editing} onClose={() => setEditing(null)} />;
+    return <CardEditor card={editing} onClose={closeEditor} />;
   }
 
   const newCard = () => {
@@ -19,11 +55,22 @@ export function CardsPage() {
       title: '',
       references: [],
       notes: '',
+      tags: [],
+      color: 'yellow',
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
-    setEditing(card);
+    setDraftCard(card);
   };
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+    );
+  };
+
+  const emptyLabel =
+    selectedTags.length > 0 ? t('cards.noTagsMatch') : t('cards.empty');
 
   return (
     <div className="flex-1 overflow-y-auto pb-3">
@@ -33,27 +80,17 @@ export function CardsPage() {
           {t('cards.new')}
         </button>
       </div>
-      {cards.length === 0 && (
-        <p className="text-cream-dim italic px-4 py-6">{t('cards.empty')}</p>
-      )}
-      <div className="px-3 space-y-2">
-        {cards
-          .slice()
-          .sort((a, b) => b.updatedAt - a.updatedAt)
-          .map((c) => (
-            <button
-              key={c.id}
-              onClick={() => setEditing(c)}
-              className="w-full text-left bg-navy-soft/50 rounded-xl p-3 hover:bg-navy-soft transition-colors"
-            >
-              <div className="font-serif text-cream">{c.title || '—'}</div>
-              <div className="text-xs text-gold-dim mt-1">{c.references.join(' · ')}</div>
-              {c.notes && (
-                <div className="text-xs text-cream-dim mt-1 line-clamp-2">{c.notes}</div>
-              )}
-            </button>
-          ))}
-      </div>
+      <TagFilterBar
+        allTags={allTags}
+        selected={selectedTags}
+        onToggle={toggleTag}
+        onClear={() => setSelectedTags([])}
+      />
+      <CardStack
+        cards={visibleCards}
+        onEdit={(c) => navigate(`/cards/${c.id}`)}
+        emptyLabel={emptyLabel}
+      />
     </div>
   );
 }

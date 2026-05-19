@@ -4,7 +4,10 @@ import { useLibraryStore } from '@/store/libraryStore';
 import { parseReference } from '@/services/bible/referenceParser';
 import { formatReference } from '@/services/bible/bookCatalog';
 import { useSettingsStore } from '@/store/settingsStore';
-import type { Card } from '@/types/domain';
+import type { Card, CardColor } from '@/types/domain';
+import { CARD_COLORS } from '@/types/domain';
+import { colorClasses } from './cardColors';
+import { TagInput } from './TagInput';
 
 type Props = {
   card: Card;
@@ -22,6 +25,8 @@ export function CardEditor({ card, onClose }: Props) {
   const [title, setTitle] = useState(card.title);
   const [referencesText, setReferencesText] = useState(card.references.join('\n'));
   const [notes, setNotes] = useState(card.notes ?? '');
+  const [tags, setTags] = useState<string[]>(card.tags ?? []);
+  const [color, setColor] = useState<CardColor>(card.color ?? 'none');
   const [boardIds, setBoardIds] = useState<string[]>(
     boards.filter((b) => b.cardIds.includes(card.id)).map((b) => b.id),
   );
@@ -37,7 +42,14 @@ export function CardEditor({ card, onClose }: Props) {
         return formatReference(parsed.bookId, parsed.chapter, parsed.verseStart, parsed.verseEnd, locale);
       });
 
-    await upsertCard({ ...card, title: title.trim(), references: refs, notes: notes.trim() });
+    await upsertCard({
+      ...card,
+      title: title.trim(),
+      references: refs,
+      notes: notes.trim(),
+      tags,
+      color,
+    });
 
     for (const b of boards) {
       const should = boardIds.includes(b.id);
@@ -98,6 +110,36 @@ export function CardEditor({ card, onClose }: Props) {
           rows={4}
           className="w-full bg-navy-soft rounded-xl px-3 py-2 text-cream outline-none focus:ring-2 focus:ring-gold/60"
         />
+      </Field>
+
+      <Field label={t('cards.color')}>
+        <div className="flex flex-wrap gap-2">
+          {CARD_COLORS.map((c) => {
+            const cls = colorClasses(c);
+            const selected = color === c;
+            return (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setColor(c)}
+                aria-label={t(`cards.colors.${c}`) as string}
+                aria-pressed={selected}
+                className={[
+                  'w-8 h-8 rounded-full border transition-all',
+                  cls.swatch,
+                  selected
+                    ? 'border-gold ring-2 ring-gold/60 scale-110'
+                    : 'border-black/20 hover:scale-105',
+                  c === 'none' ? 'border-cream-dim/40' : '',
+                ].join(' ')}
+              />
+            );
+          })}
+        </div>
+      </Field>
+
+      <Field label={t('cards.tags')}>
+        <TagInput value={tags} onChange={setTags} placeholder={t('cards.tagPlaceholder') as string} />
       </Field>
 
       {boards.length > 0 && (
