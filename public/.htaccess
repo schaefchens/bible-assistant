@@ -1,0 +1,30 @@
+# SPA fallback for Apache shared hosting (Hetzner).
+# Any path under /assistant/ that doesn't resolve to a real file or to
+# api.php / storage/ is rewritten to index.html so React Router can take over.
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /assistant/
+
+  # Don't rewrite real files or directories
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Pass through PHP and storage paths
+  RewriteRule ^api\.php$ - [L]
+  RewriteRule ^storage/ - [L]
+
+  # Everything else → index.html
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+# Reasonable caching for hashed assets
+<IfModule mod_headers.c>
+  <FilesMatch "\.(?:js|css|woff2|svg|png|webp|mp3)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  <FilesMatch "^(index\.html|sw\.js|registerSW\.js|manifest\.webmanifest)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>

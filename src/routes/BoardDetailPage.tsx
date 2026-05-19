@@ -1,19 +1,25 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLibraryStore } from '@/store/libraryStore';
 
 export function BoardDetailPage() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const board = useLibraryStore((s) => s.boards.find((b) => b.id === id));
-  const cards = useLibraryStore((s) =>
-    s.cards.filter((c) => board?.cardIds.includes(c.id)),
-  );
+  // Zustand selectors must return stable references — `.find` and `.filter`
+  // inside a selector produce a fresh array each call, which trips
+  // useSyncExternalStore's getSnapshot stability check (React error #185).
+  // Read raw arrays from the store, then derive with useMemo.
+  const allBoards = useLibraryStore((s) => s.boards);
+  const allCards = useLibraryStore((s) => s.cards);
   const upsertBoard = useLibraryStore((s) => s.upsertBoard);
   const deleteBoard = useLibraryStore((s) => s.deleteBoard);
-  const allCards = useLibraryStore((s) => s.cards);
+  const board = useMemo(() => allBoards.find((b) => b.id === id), [allBoards, id]);
+  const cards = useMemo(
+    () => (board ? allCards.filter((c) => board.cardIds.includes(c.id)) : []),
+    [allCards, board],
+  );
   const [picking, setPicking] = useState(false);
 
   if (!board) {

@@ -16,6 +16,9 @@ dist-ssr
 public/secrets.php
 public/storage/
 
+# Local scratch (audio samples, reference Bibles, etc.)
+files/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
