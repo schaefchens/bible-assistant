@@ -6,6 +6,7 @@ import type { VerseSummary } from '@/types/domain';
 export async function startPlaybackForVerses(
   messageId: string,
   verses: VerseSummary[],
+  startIndex = 0,
 ): Promise<void> {
   if (verses.length === 0) return;
   const { voice, voiceStyle } = useSettingsStore.getState();
@@ -34,6 +35,6 @@ export async function startPlaybackForVerses(
     }
   }
   if (tracks.length > 0) {
-    void audioPlayback.playQueue(tracks);
+    void audioPlayback.playQueue(tracks, startIndex);
   }
 }

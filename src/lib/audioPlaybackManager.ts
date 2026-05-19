@@ -44,10 +44,10 @@ class AudioPlaybackManager {
     return this.ctx;
   }
 
-  async playQueue(tracks: PlaybackTrack[]): Promise<void> {
+  async playQueue(tracks: PlaybackTrack[], startIndex = 0): Promise<void> {
     this.stop();
     this.queue = tracks;
-    this.currentIndex = 0;
+    this.currentIndex = Math.max(0, Math.min(tracks.length - 1, startIndex));
     if (tracks.length === 0) return;
     await this.playCurrent();
   }
