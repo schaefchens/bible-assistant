@@ -45,7 +45,7 @@
     @apply transition-colors duration-75;
   }
   .word-active {
-    @apply text-gold-glow font-semibold;
+    @apply text-gold-glow;
   }
 
   .message-selected {
