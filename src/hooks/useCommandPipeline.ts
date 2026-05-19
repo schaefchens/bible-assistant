@@ -1,9 +1,11 @@
 import { useCallback } from 'react';
 import { postChat, type ChatRequestMessage } from '@/services/api/chat';
+import { postTtsSpeak } from '@/services/api/tts';
 import { TOOL_DEFINITIONS, systemPrompt, type ToolName } from '@/services/ai/tools';
 import { dispatchTool } from '@/services/ai/dispatch';
 import { useChatStore } from '@/store/chatStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { audioPlayback } from '@/lib/audioPlaybackManager';
 import type { ChatMessage, ToolCallSummary } from '@/types/domain';
 
 const MAX_TOOL_LOOPS = 6;
@@ -52,6 +54,7 @@ export function useCommandPipeline() {
 
     try {
       let loops = 0;
+      let didReadAction = false;
       while (loops < MAX_TOOL_LOOPS) {
         loops++;
         const resp = await postChat({
@@ -69,7 +72,11 @@ export function useCommandPipeline() {
 
           const summaries: ToolCallSummary[] = [];
           for (const tc of choice.tool_calls) {
-            const result = await dispatchTool(tc.function.name as ToolName, tc.function.arguments, {
+            const name = tc.function.name as ToolName;
+            if (name === 'read_verses' || name === 'random_verse') {
+              didReadAction = true;
+            }
+            const result = await dispatchTool(name, tc.function.arguments, {
               messageId: assistantMsg.id,
             });
             summaries.push({
@@ -88,14 +95,20 @@ export function useCommandPipeline() {
           useChatStore.getState().updateMessage(assistantMsg.id, {
             toolCalls: [...(useChatStore.getState().messages.find((m) => m.id === assistantMsg.id)?.toolCalls ?? []), ...summaries],
           });
-          if (choice.content) {
+          if (choice.content && !didReadAction) {
             useChatStore.getState().updateMessage(assistantMsg.id, { text: choice.content });
           }
           continue;
         }
+        // The user wants no confirmation (written or spoken) when the resolved
+        // action was a Bible read — the verse playback itself is the response.
+        const finalText = didReadAction ? '' : (choice.content ?? '');
         useChatStore.getState().updateMessage(assistantMsg.id, {
-          text: choice.content ?? '',
+          text: finalText,
         });
+        if (!didReadAction) {
+          void speakAssistantReply(finalText, assistantMsg.id);
+        }
         break;
       }
     } catch (e) {
@@ -115,5 +128,30 @@ function safeJson(s: string): Record<string, unknown> {
     return JSON.parse(s);
   } catch {
     return { raw: s };
+  }
+}
+
+async function speakAssistantReply(text: string, messageId: string): Promise<void> {
+  const trimmed = text.trim();
+  if (!trimmed) return;
+  const { speakAssistant, assistantVoice, voiceStyle } = useSettingsStore.getState();
+  if (!speakAssistant) return;
+  try {
+    const tts = await postTtsSpeak({
+      text: trimmed,
+      voice: assistantVoice,
+      voiceStyle: voiceStyle || undefined,
+    });
+    audioPlayback.ensureContext();
+    void audioPlayback.enqueue([
+      {
+        messageId,
+        verseIndex: 0,
+        audioUrl: tts.audioUrl,
+        alignmentUrl: tts.alignmentUrl,
+      },
+    ]);
+  } catch (e) {
+    console.warn('assistant TTS failed', e);
   }
 }

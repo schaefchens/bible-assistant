@@ -5,6 +5,7 @@ import type { VoiceId } from '@/types/domain';
 export type ToolName =
   | 'read_verses'
   | 'lookup_verses'
+  | 'random_verse'
   | 'create_card'
   | 'update_card'
   | 'delete_card'
@@ -21,6 +22,11 @@ export type ToolName =
 export type ToolArgs = {
   read_verses: { reference: string; translation?: Translation };
   lookup_verses: { reference: string; translation?: Translation };
+  random_verse: {
+    book?: string;
+    chapter?: number;
+    translation?: Translation;
+  };
   create_card: { title: string; references: string[]; notes?: string; boardIds?: string[] };
   update_card: {
     id: string;
@@ -77,6 +83,34 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
           translation: { type: 'string', enum: ['S00', 'ESV'] },
         },
         required: ['reference'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'random_verse',
+      description:
+        'Pick a single random verse from the Bible and read it aloud. Use this when the user asks for a random verse, surprise verse, or wants you to choose for them. Optionally constrain to one book (e.g. "a random Psalm") or one chapter (e.g. "a random verse from John 3").',
+      parameters: {
+        type: 'object',
+        properties: {
+          book: {
+            type: 'string',
+            description:
+              'Optional English book name (e.g. "Psalms", "John") to constrain the random pick. Omit for a verse from anywhere in the Bible.',
+          },
+          chapter: {
+            type: 'number',
+            description:
+              'Optional chapter number, only used when "book" is provided.',
+          },
+          translation: {
+            type: 'string',
+            enum: ['S00', 'ESV'],
+            description: 'Optional override. Defaults to user-selected translation.',
+          },
+        },
       },
     },
   },
@@ -257,8 +291,10 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
       `Du bist ein Bibel-Assistent. Heute ist ${today}.`,
       `Standard-Übersetzung: ${translation} (S00 = Schlachter 2000, ESV = English Standard Version).`,
       `Wenn der Benutzer einen Vers, eine Geschichte oder ein Kapitel hören möchte, rufe IMMER das Tool "read_verses" auf.`,
+      `Für zufällige Verse ("ein zufälliger Vers", "ein zufälliger Psalm", "irgendein Vers aus Johannes 3") nutze "random_verse".`,
       `Du kennst die Bibel: wenn der Benutzer eine Geschichte beim Namen nennt (z.B. "der verlorene Sohn"), löse die Stelle selbst auf (Lukas 15,11-32) und übergib sie als Referenz im Format "Buch K:V-V" (englische Buchnamen).`,
-      `Antworte kurz und freundlich auf Deutsch. Nenne nach einem read_verses-Aufruf nur die gefundene Stelle, nicht den Text — der Text wird in der UI angezeigt und vorgelesen.`,
+      `Antworte kurz und freundlich auf Deutsch.`,
+      `Nach einem read_verses- oder random_verse-Aufruf GIB KEINE Textantwort zurück (leerer content). Die Bibelstelle selbst ist die Antwort — sie wird angezeigt und vorgelesen, eine Bestätigung wäre überflüssig.`,
       `Cards = Lernkarten mit Titel, Versen und Notizen. Boards = thematische Sammlungen von Cards. Nutze die passenden Tools.`,
     ].join(' ');
   }
@@ -266,8 +302,10 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
     `You are a Bible assistant. Today is ${today}.`,
     `Default translation: ${translation} (S00 = Schlachter 2000 German, ESV = English Standard Version).`,
     `When the user wants to hear, read, or be told a verse, chapter, or story, ALWAYS call the "read_verses" tool.`,
+    `For random picks ("a random verse", "a random Psalm", "any verse from John 3"), use "random_verse".`,
     `You know the Bible: if the user names a story (e.g. "the lost son"), resolve the reference yourself (Luke 15:11-32) and pass it in "Book C:V-V" form (English book name).`,
-    `Reply briefly and warmly. After a read_verses call, just confirm the reference — do NOT repeat the verse text; it is shown and played in the UI.`,
+    `Reply briefly and warmly.`,
+    `After a read_verses or random_verse call, return NO text content (empty content). The Bible passage itself is the response — it is shown and played; a confirmation would be redundant.`,
     `Cards = memorization cards with title, verses, notes. Boards = thematic groups of cards. Use the appropriate tools.`,
   ].join(' ');
 }

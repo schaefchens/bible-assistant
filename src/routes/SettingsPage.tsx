@@ -89,6 +89,31 @@ export function SettingsPage() {
         />
       </Section>
 
+      <Section title={t('settings.assistantVoice')}>
+        <p className="text-xs text-cream-dim mb-2">{t('settings.assistantVoiceHint')}</p>
+        <select
+          value={settings.assistantVoice}
+          onChange={(e) =>
+            settings.setAssistantVoice(e.target.value as (typeof VOICE_OPTIONS)[number])
+          }
+          className="w-full bg-navy-soft text-cream rounded-xl px-3 py-2"
+        >
+          {VOICE_OPTIONS.map((v) => (
+            <option key={v} value={v}>
+              {v}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-2 mt-3">
+          <input
+            type="checkbox"
+            checked={settings.speakAssistant}
+            onChange={(e) => settings.setSpeakAssistant(e.target.checked)}
+          />
+          <span className="text-sm">{t('settings.speakAssistant')}</span>
+        </label>
+      </Section>
+
       <Section title="Whisper">
         <label className="flex items-center gap-2">
           <input

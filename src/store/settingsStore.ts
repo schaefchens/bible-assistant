@@ -8,12 +8,16 @@ type SettingsState = {
   translation: Translation;
   voice: VoiceId;
   voiceStyle: string;
+  assistantVoice: VoiceId;
+  speakAssistant: boolean;
   useWhisperFallback: boolean;
   translationOverridden: boolean;
   setLocale: (locale: Locale) => void;
   setTranslation: (translation: Translation, fromUser?: boolean) => void;
   setVoice: (voice: VoiceId) => void;
   setVoiceStyle: (style: string) => void;
+  setAssistantVoice: (voice: VoiceId) => void;
+  setSpeakAssistant: (value: boolean) => void;
   setUseWhisperFallback: (value: boolean) => void;
 };
 
@@ -38,6 +42,8 @@ export const useSettingsStore = create<SettingsState>()(
         translation: defaultTranslationFor(initialLocale),
         voice: 'alloy',
         voiceStyle: '',
+        assistantVoice: 'sage',
+        speakAssistant: true,
         useWhisperFallback: true,
         translationOverridden: false,
         setLocale: (locale) =>
@@ -52,6 +58,8 @@ export const useSettingsStore = create<SettingsState>()(
           })),
         setVoice: (voice) => set({ voice }),
         setVoiceStyle: (voiceStyle) => set({ voiceStyle }),
+        setAssistantVoice: (assistantVoice) => set({ assistantVoice }),
+        setSpeakAssistant: (speakAssistant) => set({ speakAssistant }),
         setUseWhisperFallback: (useWhisperFallback) => set({ useWhisperFallback }),
       };
     },

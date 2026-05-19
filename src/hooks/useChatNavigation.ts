@@ -42,7 +42,7 @@ export function useChatNavigation() {
         const current = usePlaybackStore.getState().current;
         if (!current || (status !== 'playing' && status !== 'paused')) return;
         e.preventDefault();
-        audioPlayback.seekByWord(e.key === 'ArrowLeft' ? -1 : 1);
+        audioPlayback.seekByWord(e.key === 'ArrowLeft' ? -5 : 5);
       }
     }
     window.addEventListener('keydown', onKey);

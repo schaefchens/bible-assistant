@@ -1,8 +1,8 @@
 import type { ToolName, ToolArgs } from './tools';
 import { parseReference } from '@/services/bible/referenceParser';
-import { getVerses, stripHtml } from '@/services/bible/bibleApi';
+import { getVerses, getChapter, stripHtml } from '@/services/bible/bibleApi';
 import type { Translation } from '@/services/bible/bibleApi';
-import { formatReference } from '@/services/bible/bookCatalog';
+import { BOOKS, findBookByName, formatReference, getBookById } from '@/services/bible/bookCatalog';
 import { postTts } from '@/services/api/tts';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useChatStore } from '@/store/chatStore';
@@ -37,6 +37,8 @@ export async function dispatchTool(
         return await handleReadVerses(args as ToolArgs['read_verses'], ctx, true);
       case 'lookup_verses':
         return await handleReadVerses(args as ToolArgs['lookup_verses'], ctx, false);
+      case 'random_verse':
+        return await handleRandomVerse(args as ToolArgs['random_verse'], ctx);
       case 'create_card':
         return await handleCreateCard(args as ToolArgs['create_card']);
       case 'update_card':
@@ -125,7 +127,7 @@ async function handleReadVerses(
     }
     if (tracks.length > 0) {
       audioPlayback.ensureContext();
-      void audioPlayback.playQueue(tracks);
+      void audioPlayback.enqueue(tracks);
     }
   }
 
@@ -136,6 +138,68 @@ async function handleReadVerses(
       count: summaries.length,
     },
   };
+}
+
+function cryptoRandomInt(n: number): number {
+  if (n <= 0) return 0;
+  if (n === 1) return 0;
+  const buf = new Uint32Array(1);
+  // rejection sampling — drop values that would bias the modulo
+  const limit = Math.floor(0xffffffff / n) * n;
+  for (let i = 0; i < 16; i++) {
+    crypto.getRandomValues(buf);
+    if (buf[0] < limit) return buf[0] % n;
+  }
+  // pathological fallback (should never trigger for sane n)
+  crypto.getRandomValues(buf);
+  return buf[0] % n;
+}
+
+async function handleRandomVerse(
+  args: ToolArgs['random_verse'],
+  ctx: DispatchContext,
+): Promise<ToolDispatchResult> {
+  const { translation: defaultTrans } = useSettingsStore.getState();
+  const translation = args.translation ?? defaultTrans;
+
+  // Resolve book scope
+  let bookId: number | undefined;
+  if (args.book) {
+    const found = findBookByName(args.book);
+    if (!found) return { ok: false, error: `unknown book "${args.book}"` };
+    bookId = found.id;
+  }
+
+  // Pick a random book if not specified
+  if (bookId === undefined) {
+    bookId = BOOKS[cryptoRandomInt(BOOKS.length)].id;
+  }
+  const book = getBookById(bookId);
+  if (!book) return { ok: false, error: `unknown book id ${bookId}` };
+
+  // Resolve / pick chapter
+  let chapter = args.chapter;
+  if (chapter !== undefined) {
+    if (chapter < 1 || chapter > book.chapters) {
+      return { ok: false, error: `chapter ${chapter} out of range for ${book.nameEn}` };
+    }
+  } else {
+    chapter = cryptoRandomInt(book.chapters) + 1;
+  }
+
+  // Fetch the chapter to learn verse count, then pick a verse
+  const verses = await getChapter(translation, bookId, chapter);
+  if (verses.length === 0) {
+    return { ok: false, error: `no verses returned for ${book.nameEn} ${chapter}` };
+  }
+  const picked = verses[cryptoRandomInt(verses.length)];
+
+  // Delegate to the standard read flow so the user hears it and sees it.
+  return handleReadVerses(
+    { reference: `${book.nameEn} ${chapter}:${picked.verse}`, translation },
+    ctx,
+    true,
+  );
 }
 
 async function handleCreateCard(args: ToolArgs['create_card']): Promise<ToolDispatchResult> {

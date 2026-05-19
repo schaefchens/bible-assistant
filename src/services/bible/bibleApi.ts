@@ -1,4 +1,5 @@
 import type { ParsedReference } from './referenceParser';
+import { apiPostJson } from '@/services/api/client';
 
 export type Translation = 'S00' | 'ESV';
 
@@ -46,6 +47,16 @@ export async function getBooks(translation: Translation): Promise<BollsBook[]> {
 
 const chapterCache = new Map<string, BollsVerse[]>();
 
+async function fetchChapterDirect(
+  translation: Translation,
+  bookId: number,
+  chapter: number,
+): Promise<BollsVerse[]> {
+  const res = await fetch(`${BASE}/get-text/${translation}/${bookId}/${chapter}/`);
+  if (!res.ok) throw new Error(`bolls.life chapter fetch failed: ${res.status}`);
+  return (await res.json()) as BollsVerse[];
+}
+
 export async function getChapter(
   translation: Translation,
   bookId: number,
@@ -54,9 +65,20 @@ export async function getChapter(
   const key = `${translation}:${bookId}:${chapter}`;
   const cached = chapterCache.get(key);
   if (cached) return cached;
-  const res = await fetch(`${BASE}/get-text/${translation}/${bookId}/${chapter}/`);
-  if (!res.ok) throw new Error(`bolls.life chapter fetch failed: ${res.status}`);
-  const verses = (await res.json()) as BollsVerse[];
+
+  let verses: BollsVerse[];
+  try {
+    // Go through the server proxy first — it caches on disk alongside the
+    // audio, so repeat fetches don't hit bolls.life across sessions/devices.
+    const resp = await apiPostJson<{ verses: BollsVerse[]; cached: boolean }>(
+      'bible.chapter',
+      { translation, bookId, chapter },
+    );
+    verses = resp.verses;
+  } catch {
+    // Fallback to direct fetch (e.g., server unreachable / dev mode).
+    verses = await fetchChapterDirect(translation, bookId, chapter);
+  }
   chapterCache.set(key, verses);
   return verses;
 }

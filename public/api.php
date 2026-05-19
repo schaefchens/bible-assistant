@@ -244,6 +244,12 @@ switch ($action) {
     case 'tts':
         handleTts();
         break;
+    case 'tts.speak':
+        handleTtsSpeak();
+        break;
+    case 'bible.chapter':
+        handleBibleChapter();
+        break;
     case 'transcribe':
         handleTranscribe();
         break;
@@ -394,6 +400,123 @@ function handleTts(): void {
         'alignmentUrl' => BASE_PATH . AUDIO_BASE_URL . "/{$voice}/{$translation}/{$bookId}/{$chapter}/{$verse}.json",
         'cached' => $cached,
     ]);
+}
+
+/**
+ * Free-form TTS for assistant chat replies (no bible coords). Cached by a
+ * sha-256 hash of voice+style+text so identical lines reuse audio.
+ */
+function handleTtsSpeak(): void {
+    $body = readJsonBody();
+    $text = safeString($body['text'] ?? '', 4000);
+    $voice = safeSlug(safeString($body['voice'] ?? 'alloy', 32));
+    $voiceStyle = isset($body['voiceStyle']) ? safeString($body['voiceStyle'], 1000) : '';
+
+    if (!$text) fail(400, 'missing tts.speak params');
+
+    $key = hash('sha256', $voice . ':' . $voiceStyle . ':' . $text);
+    $dir = AUDIO_DIR . "/speak/{$voice}";
+    @mkdir($dir, 0775, true);
+    $audioFile = "{$dir}/{$key}.mp3";
+    $alignmentFile = "{$dir}/{$key}.json";
+
+    $cached = file_exists($audioFile) && file_exists($alignmentFile);
+    if (!$cached) {
+        $ttsPayload = [
+            'model' => TTS_MODEL,
+            'voice' => $voice,
+            'input' => $text,
+            'response_format' => 'mp3',
+        ];
+        if ($voiceStyle !== '') {
+            $ttsPayload['instructions'] = $voiceStyle;
+        }
+        $tts = curlBinary('https://api.openai.com/v1/audio/speech', $ttsPayload);
+        if (($tts['_status'] ?? 0) !== 200 || empty($tts['audio'])) {
+            fail(502, 'tts failed', ['detail' => $tts['_error'] ?? '']);
+        }
+        if (file_put_contents($audioFile, $tts['audio']) === false) {
+            fail(500, 'could not write audio file');
+        }
+        $align = curlMultipart(
+            'https://api.openai.com/v1/audio/transcriptions',
+            [
+                'model' => ALIGNMENT_MODEL,
+                'response_format' => 'verbose_json',
+                'timestamp_granularities[]' => 'word',
+            ],
+            'file',
+            $audioFile,
+            $key . '.mp3',
+        );
+        if (($align['_status'] ?? 0) !== 200) {
+            file_put_contents($alignmentFile, json_encode(['words' => []]));
+        } else {
+            $alignmentBody = [
+                'words' => $align['words'] ?? [],
+                'duration' => $align['duration'] ?? null,
+                'text' => $align['text'] ?? null,
+            ];
+            file_put_contents($alignmentFile, json_encode($alignmentBody, JSON_UNESCAPED_UNICODE));
+        }
+    }
+
+    respond(200, [
+        'audioUrl' => BASE_PATH . AUDIO_BASE_URL . "/speak/{$voice}/{$key}.mp3",
+        'alignmentUrl' => BASE_PATH . AUDIO_BASE_URL . "/speak/{$voice}/{$key}.json",
+        'cached' => $cached,
+    ]);
+}
+
+/**
+ * Fetch a Bible chapter from bolls.life with persistent server-side cache.
+ * Stored alongside the audio in storage/bible/{translation}/{bookId}/{chapter}.json
+ * so repeat reads don't hit bolls.life again.
+ */
+function handleBibleChapter(): void {
+    $body = readJsonBody();
+    $translation = safeSlug(safeString($body['translation'] ?? '', 16));
+    $bookId = safeInt($body['bookId'] ?? null);
+    $chapter = safeInt($body['chapter'] ?? null);
+    if (!$translation || $bookId <= 0 || $chapter <= 0) {
+        fail(400, 'missing bible.chapter params');
+    }
+
+    $dir = STORAGE_DIR . "/bible/{$translation}/{$bookId}";
+    @mkdir($dir, 0775, true);
+    $file = "{$dir}/{$chapter}.json";
+
+    $cached = file_exists($file);
+    if ($cached) {
+        $raw = file_get_contents($file);
+        if ($raw !== false && $raw !== '') {
+            $verses = json_decode($raw, true);
+            if (is_array($verses)) {
+                respond(200, ['verses' => $verses, 'cached' => true]);
+                return;
+            }
+        }
+    }
+
+    $url = "https://bolls.life/get-text/{$translation}/{$bookId}/{$chapter}/";
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_HTTPHEADER => ['Accept: application/json'],
+    ]);
+    $payload = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($payload === false || $status !== 200) {
+        fail(502, 'bolls.life fetch failed', ['status' => $status]);
+    }
+    $verses = json_decode($payload, true);
+    if (!is_array($verses)) {
+        fail(502, 'bolls.life returned invalid JSON');
+    }
+    file_put_contents($file, $payload);
+    respond(200, ['verses' => $verses, 'cached' => false]);
 }
 
 function handleTranscribe(): void {

@@ -19,3 +19,11 @@ export function postTts(body: {
 }): Promise<TtsResponse> {
   return apiPostJson<TtsResponse>('tts', body);
 }
+
+export function postTtsSpeak(body: {
+  text: string;
+  voice: VoiceId;
+  voiceStyle?: string;
+}): Promise<TtsResponse> {
+  return apiPostJson<TtsResponse>('tts.speak', body);
+}

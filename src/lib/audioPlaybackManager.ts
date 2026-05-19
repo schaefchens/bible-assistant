@@ -52,6 +52,22 @@ class AudioPlaybackManager {
     await this.playCurrent();
   }
 
+  /**
+   * Append to the active queue; if nothing is playing/queued, start fresh.
+   * Lets multiple back-to-back read_verses tool calls within a single AI
+   * response play in order instead of stomping on each other.
+   */
+  async enqueue(tracks: PlaybackTrack[]): Promise<void> {
+    if (tracks.length === 0) return;
+    const hasActiveQueue =
+      this.queue.length > 0 && this.currentIndex < this.queue.length;
+    if (hasActiveQueue) {
+      this.queue = [...this.queue, ...tracks];
+      return;
+    }
+    await this.playQueue(tracks);
+  }
+
   private async playCurrent(): Promise<void> {
     if (this.currentIndex >= this.queue.length) {
       this.stop();
