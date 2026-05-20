@@ -23,6 +23,7 @@ export function CardEditor({ card, onClose }: Props) {
   const upsertBoard = useLibraryStore((s) => s.upsertBoard);
 
   const [title, setTitle] = useState(card.title);
+  const [emoji, setEmoji] = useState(card.emoji ?? '');
   const [referencesText, setReferencesText] = useState(card.references.join('\n'));
   const [notes, setNotes] = useState(card.notes ?? '');
   const [tags, setTags] = useState<string[]>(card.tags ?? []);
@@ -45,6 +46,7 @@ export function CardEditor({ card, onClose }: Props) {
     await upsertCard({
       ...card,
       title: title.trim(),
+      emoji: emoji.trim() || undefined,
       references: refs,
       notes: notes.trim(),
       tags,
@@ -85,13 +87,26 @@ export function CardEditor({ card, onClose }: Props) {
         </button>
       </div>
 
-      <Field label={t('cards.cardTitle')}>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          className="w-full bg-navy-soft rounded-xl px-3 py-2 text-cream outline-none focus:ring-2 focus:ring-gold/60"
-        />
-      </Field>
+      <div className="flex gap-2">
+        <Field label={t('cards.emoji')}>
+          <input
+            value={emoji}
+            onChange={(e) => setEmoji(e.target.value)}
+            maxLength={4}
+            placeholder="✨"
+            className="w-16 bg-navy-soft rounded-xl px-3 py-2 text-cream text-center text-xl outline-none focus:ring-2 focus:ring-gold/60"
+          />
+        </Field>
+        <div className="flex-1">
+          <Field label={t('cards.cardTitle')}>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full bg-navy-soft rounded-xl px-3 py-2 text-cream outline-none focus:ring-2 focus:ring-gold/60"
+            />
+          </Field>
+        </div>
+      </div>
 
       <Field label={t('cards.verses')}>
         <textarea

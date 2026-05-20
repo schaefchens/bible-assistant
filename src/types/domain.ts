@@ -102,6 +102,7 @@ export type Card = {
   notes?: string;
   tags?: string[];
   color?: CardColor;
+  emoji?: string;
   createdAt: number;
   updatedAt: number;
 };
