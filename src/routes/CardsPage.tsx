@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
@@ -103,9 +103,9 @@ export function CardsPage() {
     <div className="flex-1 overflow-y-auto pb-3">
       <div className="p-3 flex items-center justify-between">
         <h2 className="text-xl font-serif text-gold">{t('cards.title')}</h2>
-        <button className="btn-primary text-sm" onClick={newCard}>
-          {t('cards.new')}
-        </button>
+        <KebabMenu menuLabel={t('boards.menu')}>
+          <MenuItem onClick={newCard}>+ {t('cards.new')}</MenuItem>
+        </KebabMenu>
       </div>
       <TagFilterBar
         allTags={allTags}
@@ -123,5 +123,83 @@ export function CardsPage() {
         emptyLabel={emptyLabel}
       />
     </div>
+  );
+}
+
+function KebabMenu({
+  menuLabel,
+  children,
+}: {
+  menuLabel: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocPointer = (e: PointerEvent) => {
+      if (!wrapperRef.current) return;
+      if (e.target instanceof Node && wrapperRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    const t = setTimeout(() => {
+      document.addEventListener('pointerdown', onDocPointer);
+      document.addEventListener('keydown', onKey);
+    }, 0);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener('pointerdown', onDocPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" ref={wrapperRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="btn-ghost text-lg leading-none w-9 h-9 inline-flex items-center justify-center"
+        aria-label={menuLabel}
+        aria-expanded={open}
+      >
+        ⋮
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 top-full mt-1 z-30 bg-navy-soft rounded-xl shadow-lg border border-navy-soft/70 py-1 w-52"
+          role="menu"
+          onClick={(e) => {
+            if (e.target instanceof HTMLElement && e.target.closest('[role="menuitem"]')) {
+              setOpen(false);
+            }
+          }}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuItem({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      className="w-full text-left px-3 py-2 text-sm text-cream hover:bg-navy"
+    >
+      {children}
+    </button>
   );
 }
