@@ -8,6 +8,7 @@ type LibraryState = {
   boards: Board[];
   cardOrder: string[];
   cardOrderUpdatedAt: number;
+  activeBoardId: string | null;
   online: boolean;
   pendingOps: number;
   initialized: boolean;
@@ -18,12 +19,14 @@ type LibraryState = {
   setCardOrder: (order: string[]) => Promise<void>;
   upsertBoard: (board: Board) => Promise<void>;
   deleteBoard: (id: string) => Promise<void>;
+  setActiveBoardId: (id: string | null) => Promise<void>;
   setOnline: (value: boolean) => void;
   flushQueue: () => Promise<void>;
   pullFromServer: () => Promise<void>;
 };
 
 const CARD_ORDER_KEY = 'cardOrder';
+const ACTIVE_BOARD_KEY = 'activeBoardId';
 
 type StoredCardOrder = { order: string[]; updatedAt: number };
 
@@ -95,29 +98,39 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   boards: [],
   cardOrder: [],
   cardOrderUpdatedAt: 0,
+  activeBoardId: null,
   online: typeof navigator !== 'undefined' ? navigator.onLine : true,
   pendingOps: 0,
   initialized: false,
 
   init: async () => {
     if (get().initialized) return;
-    const [cards, boards, pending, savedOrderRow] = await Promise.all([
+    const [cards, boards, pending, savedOrderRow, activeRow] = await Promise.all([
       db.cards.filter((c) => c.deleted !== 1).toArray(),
       db.boards.filter((b) => b.deleted !== 1).toArray(),
       db.syncQueue.count(),
       db.preferences.get(CARD_ORDER_KEY),
+      db.preferences.get(ACTIVE_BOARD_KEY),
     ]);
     const liveCards = cards.map(stripLocal);
+    const liveBoards = boards.map(stripLocal);
     const stored = readStoredCardOrder(savedOrderRow?.value);
     const reconciled = reconcileOrder(stored.order, liveCards);
     if (reconciled.join('|') !== stored.order.join('|')) {
       void persistCardOrder(reconciled, stored.updatedAt);
     }
+    const storedActiveId =
+      typeof activeRow?.value === 'string' ? activeRow.value : null;
+    const activeBoardId =
+      storedActiveId && liveBoards.some((b) => b.id === storedActiveId)
+        ? storedActiveId
+        : null;
     set({
       cards: liveCards,
-      boards: boards.map(stripLocal),
+      boards: liveBoards,
       cardOrder: reconciled,
       cardOrderUpdatedAt: stored.updatedAt,
+      activeBoardId,
       pendingOps: pending,
       initialized: true,
     });
@@ -233,11 +246,26 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       createdAt: Date.now(),
       attempts: 0,
     });
+    const wasActive = get().activeBoardId === id;
+    if (wasActive) {
+      await db.preferences.delete(ACTIVE_BOARD_KEY);
+    }
     set((s) => ({
       boards: s.boards.filter((b) => b.id !== id),
+      activeBoardId: wasActive ? null : s.activeBoardId,
       pendingOps: s.pendingOps + 1,
     }));
     if (get().online) void get().flushQueue();
+  },
+
+  setActiveBoardId: async (id) => {
+    if (get().activeBoardId === id) return;
+    if (id === null) {
+      await db.preferences.delete(ACTIVE_BOARD_KEY);
+    } else {
+      await db.preferences.put({ key: ACTIVE_BOARD_KEY, value: id });
+    }
+    set({ activeBoardId: id });
   },
 
   setOnline: (value) => {
@@ -334,11 +362,21 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     if (orderChanged) {
       void persistCardOrder(reconciled, nextOrderUpdatedAt);
     }
+    const liveBoards = boards.map(stripLocal);
+    const currentActive = get().activeBoardId;
+    const nextActive =
+      currentActive && liveBoards.some((b) => b.id === currentActive)
+        ? currentActive
+        : null;
+    if (nextActive !== currentActive) {
+      await db.preferences.delete(ACTIVE_BOARD_KEY);
+    }
     set({
       cards: liveCards,
-      boards: boards.map(stripLocal),
+      boards: liveBoards,
       cardOrder: reconciled,
       cardOrderUpdatedAt: nextOrderUpdatedAt,
+      activeBoardId: nextActive,
     });
   },
 }));

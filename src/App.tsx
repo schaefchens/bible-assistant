@@ -4,7 +4,6 @@ import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { ChatPage } from '@/routes/ChatPage';
 import { CardsPage } from '@/routes/CardsPage';
 import { BoardsPage } from '@/routes/BoardsPage';
-import { BoardDetailPage } from '@/routes/BoardDetailPage';
 import { SettingsPage } from '@/routes/SettingsPage';
 
 const ROUTER_BASE = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
@@ -19,7 +18,7 @@ export default function App() {
             <Route path="cards" element={<CardsPage />} />
             <Route path="cards/:id" element={<CardsPage />} />
             <Route path="boards" element={<BoardsPage />} />
-            <Route path="boards/:id" element={<BoardDetailPage />} />
+            <Route path="boards/:id" element={<BoardsPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

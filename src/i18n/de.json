@@ -74,7 +74,15 @@
     "movePrev": "Nach vorne",
     "moveNext": "Nach hinten",
     "save": "Speichern",
-    "delete": "Löschen"
+    "delete": "Löschen",
+    "rename": "Umbenennen",
+    "deleteConfirm": "Tafel löschen?",
+    "removeFromBoard": "Von Tafel entfernen",
+    "noBoards": "Noch keine Tafeln. Erstelle deine erste.",
+    "createFirst": "Erste Tafel erstellen",
+    "menu": "Menü",
+    "noCardsLeft": "Keine Karten mehr zum Hinzufügen.",
+    "done": "Fertig"
   },
   "settings": {
     "title": "Einstellungen",

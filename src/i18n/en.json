@@ -74,7 +74,15 @@
     "movePrev": "Move backward",
     "moveNext": "Move forward",
     "save": "Save",
-    "delete": "Delete"
+    "delete": "Delete",
+    "rename": "Rename",
+    "deleteConfirm": "Delete board?",
+    "removeFromBoard": "Remove from board",
+    "noBoards": "No boards yet. Create your first one.",
+    "createFirst": "Create first board",
+    "menu": "Menu",
+    "noCardsLeft": "No cards left to add.",
+    "done": "Done"
   },
   "settings": {
     "title": "Settings",
