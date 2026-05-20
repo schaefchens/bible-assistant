@@ -101,11 +101,27 @@ export function CardsPage() {
 
   return (
     <div className="flex-1 overflow-y-auto pb-3">
-      <div className="p-3 flex items-center justify-between">
-        <h2 className="text-xl font-serif text-gold">{t('cards.title')}</h2>
-        <KebabMenu menuLabel={t('boards.menu')}>
-          <MenuItem onClick={newCard}>+ {t('cards.new')}</MenuItem>
-        </KebabMenu>
+      <div className="relative border-b border-navy-soft">
+        <div className="flex items-stretch">
+          <div className="flex-1 flex items-end gap-1 px-2 pt-2">
+            <div className="shrink-0 -mb-px px-3 py-2 text-sm font-serif border border-transparent text-cream-dim">
+              {t('boards.cardCount', { count: cards.length })}
+            </div>
+            <button
+              type="button"
+              onClick={newCard}
+              aria-label={t('cards.new') as string}
+              className="shrink-0 -mb-px px-3 py-2 text-base leading-none rounded-t-xl border border-transparent text-cream-dim hover:text-gold hover:bg-navy/40 transition-colors"
+            >
+              +
+            </button>
+          </div>
+          <div className="flex items-center px-2">
+            <KebabMenu menuLabel={t('boards.menu')}>
+              <MenuItem onClick={newCard}>+ {t('cards.new')}</MenuItem>
+            </KebabMenu>
+          </div>
+        </div>
       </div>
       <TagFilterBar
         allTags={allTags}
