@@ -6,7 +6,7 @@ import { BoardGrid } from '@/components/cards/BoardGrid';
 import { TagFilterBar } from '@/components/cards/TagFilterBar';
 import type { Board, Card } from '@/types/domain';
 
-type MenuMode = null | 'root' | 'new' | 'rename' | 'add';
+type MenuMode = null | 'root' | 'new' | 'rename';
 
 export function BoardsPage() {
   const { t } = useTranslation();
@@ -153,11 +153,14 @@ export function BoardsPage() {
     await deleteBoard(activeBoard.id);
   };
 
+  const [addPickerOpen, setAddPickerOpen] = useState(false);
+  const boardHasNoCards = Boolean(activeBoard) && boardCards.length === 0;
+  const showBoardEmptyCta = boardHasNoCards && selectedTags.length === 0;
   const emptyGridLabel =
     selectedTags.length > 0 ? t('cards.noTagsMatch') : '—';
 
   return (
-    <div className="flex-1 overflow-y-auto pb-3">
+    <div className="flex-1 overflow-y-auto pb-3 flex flex-col">
       <TabRow
         boards={boards}
         activeBoardId={activeBoard?.id ?? null}
@@ -165,30 +168,45 @@ export function BoardsPage() {
         onCreate={createBoard}
         onRename={renameBoard}
         onDelete={removeBoard}
-        candidates={candidates}
-        onAddCard={addCardToBoard}
-        emptyAddLabel={t('boards.noCardsLeft')}
+        onRequestAddCards={() => setAddPickerOpen(true)}
       />
 
       {boards.length === 0 ? (
         <EmptyState onCreate={createBoard} />
       ) : activeBoard ? (
-        <>
-          <TagFilterBar
-            allTags={allTags}
-            selected={selectedTags}
-            onToggle={toggleTag}
-            onClear={() => setSelectedTags([])}
+        showBoardEmptyCta ? (
+          <CenteredEmpty
+            text={t('boards.emptyBoard')}
+            ctaLabel={t('boards.addCards')}
+            onCta={() => setAddPickerOpen(true)}
           />
-          <BoardGrid
-            cards={visibleCards}
-            onOpen={(c) => navigate(`/cards/${c.id}`)}
-            onReorder={reorderInBoard}
-            onRemove={removeFromBoard}
-            emptyLabel={emptyGridLabel}
-          />
-        </>
+        ) : (
+          <>
+            <TagFilterBar
+              allTags={allTags}
+              selected={selectedTags}
+              onToggle={toggleTag}
+              onClear={() => setSelectedTags([])}
+            />
+            <BoardGrid
+              cards={visibleCards}
+              onOpen={(c) => navigate(`/cards/${c.id}`)}
+              onReorder={reorderInBoard}
+              onRemove={removeFromBoard}
+              emptyLabel={emptyGridLabel}
+            />
+          </>
+        )
       ) : null}
+
+      {addPickerOpen && (
+        <AddCardsModal
+          candidates={candidates}
+          emptyLabel={t('boards.noCardsLeft')}
+          onAdd={addCardToBoard}
+          onClose={() => setAddPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -200,9 +218,7 @@ function TabRow({
   onCreate,
   onRename,
   onDelete,
-  candidates,
-  onAddCard,
-  emptyAddLabel,
+  onRequestAddCards,
 }: {
   boards: Board[];
   activeBoardId: string | null;
@@ -210,9 +226,7 @@ function TabRow({
   onCreate: (name: string) => Promise<void>;
   onRename: (name: string) => Promise<void>;
   onDelete: () => Promise<void>;
-  candidates: Card[];
-  onAddCard: (card: Card) => Promise<void>;
-  emptyAddLabel: string;
+  onRequestAddCards: () => void;
 }) {
   const { t } = useTranslation();
   const [menu, setMenu] = useState<MenuMode>(null);
@@ -300,7 +314,13 @@ function TabRow({
           <MenuItem disabled={!hasActive} onClick={() => setMenu('rename')}>
             ✎ {t('boards.rename')}
           </MenuItem>
-          <MenuItem disabled={!hasActive} onClick={() => setMenu('add')}>
+          <MenuItem
+            disabled={!hasActive}
+            onClick={() => {
+              setMenu(null);
+              onRequestAddCards();
+            }}
+          >
             + {t('boards.addCards')}
           </MenuItem>
           <MenuItem
@@ -336,15 +356,6 @@ function TabRow({
             await onRename(value);
             setMenu(null);
           }}
-        />
-      )}
-
-      {menu === 'add' && (
-        <AddCardsPicker
-          candidates={candidates}
-          emptyLabel={emptyAddLabel}
-          onAdd={onAddCard}
-          onClose={() => setMenu(null)}
         />
       )}
     </div>
@@ -417,7 +428,7 @@ function InlineInput({
   );
 }
 
-function AddCardsPicker({
+function AddCardsModal({
   candidates,
   emptyLabel,
   onAdd,
@@ -429,62 +440,143 @@ function AddCardsPicker({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of candidates) for (const tag of c.tags ?? []) set.add(tag);
+    return Array.from(set).sort();
+  }, [candidates]);
+  const visible = useMemo(() => {
+    if (selectedTags.length === 0) return candidates;
+    return candidates.filter((c) => {
+      const ct = c.tags ?? [];
+      return selectedTags.some((t) => ct.includes(t));
+    });
+  }, [candidates, selectedTags]);
+  const toggleTag = (tag: string) =>
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((x) => x !== tag) : [...prev, tag],
+    );
   return (
-    <div className="absolute right-2 top-full mt-1 z-30 bg-navy-soft rounded-xl shadow-lg border border-navy-soft/70 p-2 min-w-[18rem] max-w-[calc(100vw-1rem)] w-[20rem] max-h-[70vh] overflow-y-auto">
-      <div className="flex items-center justify-between px-1 pb-2">
-        <span className="text-sm text-gold font-serif">{t('boards.addCards')}</span>
-        <button className="btn-ghost text-xs" onClick={onClose}>
-          {t('boards.done')}
-        </button>
-      </div>
-      {candidates.length === 0 ? (
-        <p className="text-cream-dim italic px-2 py-3 text-sm">{emptyLabel}</p>
-      ) : (
-        <div className="space-y-1.5">
-          {candidates.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => void onAdd(c)}
-              className="w-full text-left bg-navy/50 rounded-lg p-2 hover:bg-navy"
-            >
-              <div className="font-serif text-cream text-sm truncate">{c.title || '—'}</div>
-              {c.references.length > 0 && (
-                <div className="text-xs text-gold-dim mt-0.5 truncate">
-                  {c.references.join(' · ')}
-                </div>
-              )}
-            </button>
-          ))}
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/60"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="bg-navy-soft rounded-2xl shadow-2xl border border-navy-soft/70 p-3 w-full max-w-md max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-1 pb-2">
+          <span className="text-base text-gold font-serif">{t('boards.addCards')}</span>
+          <button className="btn-ghost text-sm" onClick={onClose}>
+            {t('boards.done')}
+          </button>
         </div>
-      )}
+        {allTags.length > 0 && (
+          <div className="-mx-3">
+            <TagFilterBar
+              allTags={allTags}
+              selected={selectedTags}
+              onToggle={toggleTag}
+              onClear={() => setSelectedTags([])}
+            />
+          </div>
+        )}
+        {candidates.length === 0 ? (
+          <p className="text-cream-dim italic px-2 py-6 text-sm text-center">{emptyLabel}</p>
+        ) : visible.length === 0 ? (
+          <p className="text-cream-dim italic px-2 py-6 text-sm text-center">
+            {t('cards.noTagsMatch')}
+          </p>
+        ) : (
+          <div className="space-y-1.5 overflow-y-auto">
+            {visible.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => void onAdd(c)}
+                className="w-full text-left bg-navy/50 rounded-lg p-2 hover:bg-navy"
+              >
+                <div className="font-serif text-cream text-sm truncate">{c.title || '—'}</div>
+                {c.references.length > 0 && (
+                  <div className="text-xs text-gold-dim mt-0.5 truncate">
+                    {c.references.join(' · ')}
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CenteredEmpty({
+  text,
+  ctaLabel,
+  onCta,
+}: {
+  text: string;
+  ctaLabel: string;
+  onCta: () => void;
+}) {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6 py-16 text-center">
+      <p className="text-cream-dim max-w-xs">{text}</p>
+      <button
+        onClick={onCta}
+        className="btn-primary text-base px-6 py-3 rounded-xl"
+      >
+        + {ctaLabel}
+      </button>
     </div>
   );
 }
 
 function EmptyState({ onCreate }: { onCreate: (name: string) => Promise<void> }) {
   const { t } = useTranslation();
+  const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   return (
-    <div className="px-4 py-10 flex flex-col items-center gap-4">
-      <p className="text-cream-dim text-center">{t('boards.noBoards')}</p>
-      <div className="flex gap-2 w-full max-w-sm">
-        <input
-          autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') void onCreate(name).then(() => setName(''));
-          }}
-          placeholder={t('boards.boardName') as string}
-          className="flex-1 bg-navy-soft rounded-xl px-3 py-2 text-cream outline-none focus:ring-2 focus:ring-gold/60"
-        />
+    <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6 py-16 text-center">
+      <p className="text-cream-dim max-w-xs">{t('boards.noBoards')}</p>
+      {creating ? (
+        <div className="flex gap-2 w-full max-w-sm">
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void onCreate(name).then(() => setName(''));
+              else if (e.key === 'Escape') setCreating(false);
+            }}
+            placeholder={t('boards.boardName') as string}
+            className="flex-1 bg-navy rounded-xl px-3 py-2 text-cream outline-none focus:ring-2 focus:ring-gold/60"
+          />
+          <button
+            className="btn-primary text-sm"
+            onClick={() => void onCreate(name).then(() => setName(''))}
+          >
+            {t('boards.save')}
+          </button>
+        </div>
+      ) : (
         <button
-          className="btn-primary text-sm"
-          onClick={() => void onCreate(name).then(() => setName(''))}
+          className="btn-primary text-base px-6 py-3 rounded-xl"
+          onClick={() => setCreating(true)}
         >
-          {t('boards.createFirst')}
+          + {t('boards.createFirst')}
         </button>
-      </div>
+      )}
     </div>
   );
 }

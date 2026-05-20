@@ -80,6 +80,7 @@
     "removeFromBoard": "Remove from board",
     "noBoards": "No boards yet. Create your first one.",
     "createFirst": "Create first board",
+    "emptyBoard": "This board has no cards yet.",
     "menu": "Menu",
     "noCardsLeft": "No cards left to add.",
     "done": "Done"

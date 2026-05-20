@@ -100,7 +100,7 @@ export function CardsPage() {
     selectedTags.length > 0 ? t('cards.noTagsMatch') : t('cards.empty');
 
   return (
-    <div className="flex-1 overflow-y-auto pb-3">
+    <div className="flex-1 overflow-y-auto pb-3 flex flex-col">
       <div className="relative border-b border-navy-soft">
         <div className="flex items-stretch">
           <div className="flex-1 flex items-end gap-1 px-2 pt-2">
@@ -123,21 +123,35 @@ export function CardsPage() {
           </div>
         </div>
       </div>
-      <TagFilterBar
-        allTags={allTags}
-        selected={selectedTags}
-        onToggle={toggleTag}
-        onClear={() => setSelectedTags([])}
-      />
-      <CardStack
-        cards={visibleCards}
-        raisedId={raisedId}
-        onRaisedIdChange={setRaisedId}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        onReorder={reorderCards}
-        emptyLabel={emptyLabel}
-      />
+      {cards.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6 py-16 text-center">
+          <p className="text-cream-dim max-w-xs">{t('cards.empty')}</p>
+          <button
+            onClick={newCard}
+            className="btn-primary text-base px-6 py-3 rounded-xl"
+          >
+            + {t('cards.new')}
+          </button>
+        </div>
+      ) : (
+        <>
+          <TagFilterBar
+            allTags={allTags}
+            selected={selectedTags}
+            onToggle={toggleTag}
+            onClear={() => setSelectedTags([])}
+          />
+          <CardStack
+            cards={visibleCards}
+            raisedId={raisedId}
+            onRaisedIdChange={setRaisedId}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onReorder={reorderCards}
+            emptyLabel={emptyLabel}
+          />
+        </>
+      )}
     </div>
   );
 }
