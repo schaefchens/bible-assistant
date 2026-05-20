@@ -27,23 +27,20 @@ export function AppShell() {
   }, [init, setOnline]);
 
   return (
-    <div className="flex flex-col h-full">
-      <header className="pt-safe px-4 py-2 flex items-center justify-between border-b border-navy-soft bg-navy/90 backdrop-blur">
-        <h1 className="font-serif text-lg tracking-wide text-gold">
-          {t('app.title')}
-        </h1>
-        <div className="text-xs text-cream-dim flex items-center gap-2">
+    <div className="flex flex-col h-full pt-safe">
+      <main className="flex-1 min-h-0 flex flex-col">
+        <Outlet />
+      </main>
+
+      {(!online || pendingOps > 0) && (
+        <div className="px-4 py-1 text-xs text-cream-dim flex items-center gap-2 border-t border-navy-soft bg-navy/90">
           <span className={clsx('h-2 w-2 rounded-full', online ? 'bg-emerald-500' : 'bg-amber-500')} />
           {online ? t('common.online') : t('common.offline')}
           {pendingOps > 0 && (
             <span className="ml-1 text-amber-400">{t('common.pending', { count: pendingOps })}</span>
           )}
         </div>
-      </header>
-
-      <main className="flex-1 min-h-0 flex flex-col">
-        <Outlet />
-      </main>
+      )}
 
       <nav className="pb-safe border-t border-navy-soft bg-navy grid grid-cols-4">
         <NavTab to="/" label={t('nav.chat')} />
