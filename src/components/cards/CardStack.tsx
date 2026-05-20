@@ -164,10 +164,7 @@ export function CardStack({
             zIndex={z}
             translateX={isRaised ? 0 : dx}
             raisedRef={isRaised ? raisedRef : null}
-            wrapperRef={(el) => {
-              if (el) itemRefs.current.set(card.id, el);
-              else itemRefs.current.delete(card.id);
-            }}
+            refsMap={itemRefs}
             onTap={() => toggleRaise(card.id)}
             onLongPress={() => onEdit(card)}
             onFlip={() => toggleFlip(card.id)}
@@ -192,7 +189,7 @@ function CardStackItem({
   zIndex,
   translateX,
   raisedRef,
-  wrapperRef,
+  refsMap,
   onTap,
   onLongPress,
   onFlip,
@@ -210,7 +207,7 @@ function CardStackItem({
   zIndex: number;
   translateX: number;
   raisedRef: React.RefObject<HTMLDivElement> | null;
-  wrapperRef: (el: HTMLDivElement | null) => void;
+  refsMap: React.RefObject<Map<string, HTMLDivElement>>;
   onTap: () => void;
   onLongPress: () => void;
   onFlip: () => void;
@@ -222,6 +219,17 @@ function CardStackItem({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startRef = useRef<{ x: number; y: number } | null>(null);
   const didLongPress = useRef(false);
+  const wrapperEl = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const map = refsMap.current;
+    const el = wrapperEl.current;
+    if (!map || !el) return;
+    map.set(card.id, el);
+    return () => {
+      map.delete(card.id);
+    };
+  }, [card.id, refsMap]);
 
   const clearTimer = () => {
     if (timerRef.current !== null) {
@@ -234,7 +242,7 @@ function CardStackItem({
 
   return (
     <div
-      ref={wrapperRef}
+      ref={wrapperEl}
       className={[
         'relative w-full',
         clip ? 'overflow-hidden rounded-2xl' : '',
@@ -287,22 +295,21 @@ function CardStackItem({
             }
           }}
         >
-          <div className="grid">
-            <div
-              className="row-start-1 col-start-1"
-              style={{ visibility: isFlipped ? 'hidden' : 'visible' }}
-              aria-hidden={isFlipped}
-            >
-              <CardFace card={card} size="full" />
+          {isFlipped ? (
+            <div className="grid">
+              <div
+                className="row-start-1 col-start-1 invisible"
+                aria-hidden
+              >
+                <CardFace card={card} size="full" />
+              </div>
+              <div className="row-start-1 col-start-1">
+                <CardBack card={card} emptyLabel={noNotesLabel} />
+              </div>
             </div>
-            <div
-              className="row-start-1 col-start-1"
-              style={{ visibility: isFlipped ? 'visible' : 'hidden' }}
-              aria-hidden={!isFlipped}
-            >
-              <CardBack card={card} emptyLabel={noNotesLabel} />
-            </div>
-          </div>
+          ) : (
+            <CardFace card={card} size="full" />
+          )}
         </div>
 
         <div
@@ -316,7 +323,7 @@ function CardStackItem({
               e.stopPropagation();
               onFlip();
             }}
-            className="rounded-full bg-black/30 hover:bg-black/50 text-cream text-xs px-2.5 py-1 backdrop-blur-sm"
+            className="rounded-full bg-black/50 hover:bg-black/70 text-cream text-xs px-2.5 py-1"
           >
             {flipLabel}
           </button>
@@ -327,7 +334,7 @@ function CardStackItem({
               e.stopPropagation();
               onEditClick();
             }}
-            className="rounded-full bg-black/30 hover:bg-black/50 text-cream text-xs px-2.5 py-1 backdrop-blur-sm"
+            className="rounded-full bg-black/50 hover:bg-black/70 text-cream text-xs px-2.5 py-1"
             aria-label={editLabel}
           >
             ✎

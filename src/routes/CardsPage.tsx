@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
@@ -71,6 +71,22 @@ export function CardsPage() {
     );
   };
 
+  const handleEdit = useCallback(
+    (c: Card) => {
+      setRaisedId(c.id);
+      navigate(`/cards/${c.id}`);
+    },
+    [navigate],
+  );
+
+  const handleDelete = useCallback(
+    (c: Card) => {
+      if (!confirm(t('cards.confirmDelete'))) return;
+      void deleteCard(c.id);
+    },
+    [deleteCard, t],
+  );
+
   const emptyLabel =
     selectedTags.length > 0 ? t('cards.noTagsMatch') : t('cards.empty');
 
@@ -92,14 +108,8 @@ export function CardsPage() {
         cards={visibleCards}
         raisedId={raisedId}
         onRaisedIdChange={setRaisedId}
-        onEdit={(c) => {
-          setRaisedId(c.id);
-          navigate(`/cards/${c.id}`);
-        }}
-        onDelete={(c) => {
-          if (!confirm(t('cards.confirmDelete'))) return;
-          void deleteCard(c.id);
-        }}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
         emptyLabel={emptyLabel}
       />
     </div>
