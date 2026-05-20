@@ -7,6 +7,7 @@ import { CardBack } from './CardBack';
 type Props = {
   cards: Card[];
   onEdit: (card: Card) => void;
+  onDelete: (card: Card) => void;
   emptyLabel?: string;
 };
 
@@ -16,7 +17,7 @@ const X_JITTER_PX = 10;
 const LONG_PRESS_MS = 500;
 const MOVE_TOLERANCE_PX = 6;
 
-export function CardStack({ cards, onEdit, emptyLabel }: Props) {
+export function CardStack({ cards, onEdit, onDelete, emptyLabel }: Props) {
   const { t } = useTranslation();
   const [raisedId, setRaisedId] = useState<string | null>(null);
   const [flippedId, setFlippedId] = useState<string | null>(null);
@@ -51,11 +52,10 @@ export function CardStack({ cards, onEdit, emptyLabel }: Props) {
     return () => ro.disconnect();
   }, [raisedId, flippedId, cards]);
 
-  // Arrow up/down moves the active card through the stack.
+  // Keyboard control over the active card.
   useEffect(() => {
     if (cards.length === 0) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
       const ae = document.activeElement;
       if (
         ae instanceof HTMLInputElement ||
@@ -64,23 +64,47 @@ export function CardStack({ cards, onEdit, emptyLabel }: Props) {
       ) {
         return;
       }
-      e.preventDefault();
       const lastIdx = cards.length - 1;
-      const curIdx = raisedId
+      const activeIdx = raisedId
         ? cards.findIndex((c) => c.id === raisedId)
         : lastIdx;
-      const delta = e.key === 'ArrowUp' ? -1 : 1;
-      const nextIdx = Math.max(0, Math.min(lastIdx, curIdx + delta));
-      if (nextIdx === curIdx) return;
-      const nextCard = cards[nextIdx];
-      setFlippedId(null);
-      setRaisedId(nextIdx === lastIdx ? null : nextCard.id);
-      const el = itemRefs.current.get(nextCard.id);
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      const activeCard = cards[activeIdx];
+      if (!activeCard) return;
+
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        const delta = e.key === 'ArrowUp' ? -1 : 1;
+        const nextIdx = Math.max(0, Math.min(lastIdx, activeIdx + delta));
+        if (nextIdx === activeIdx) return;
+        const nextCard = cards[nextIdx];
+        setFlippedId(null);
+        setRaisedId(nextIdx === lastIdx ? null : nextCard.id);
+        const el = itemRefs.current.get(nextCard.id);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+      }
+
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        setFlippedId((f) => (f === activeCard.id ? null : activeCard.id));
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        onEdit(activeCard);
+        return;
+      }
+
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        e.preventDefault();
+        onDelete(activeCard);
+        return;
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cards, raisedId]);
+  }, [cards, raisedId, onEdit, onDelete]);
 
   if (cards.length === 0) {
     return <p className="text-cream-dim italic px-4 py-6">{emptyLabel ?? '—'}</p>;

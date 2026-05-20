@@ -12,6 +12,7 @@ export function CardsPage() {
   const navigate = useNavigate();
   const { id: routeId } = useParams<{ id?: string }>();
   const cards = useLibraryStore((s) => s.cards);
+  const deleteCard = useLibraryStore((s) => s.deleteCard);
   const [draftCard, setDraftCard] = useState<Card | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
@@ -89,6 +90,10 @@ export function CardsPage() {
       <CardStack
         cards={visibleCards}
         onEdit={(c) => navigate(`/cards/${c.id}`)}
+        onDelete={(c) => {
+          if (!confirm(t('cards.confirmDelete'))) return;
+          void deleteCard(c.id);
+        }}
         emptyLabel={emptyLabel}
       />
     </div>
