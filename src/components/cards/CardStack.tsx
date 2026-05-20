@@ -21,6 +21,7 @@ export function CardStack({ cards, onEdit, emptyLabel }: Props) {
   const [raisedId, setRaisedId] = useState<string | null>(null);
   const [flippedId, setFlippedId] = useState<string | null>(null);
   const raisedRef = useRef<HTMLDivElement | null>(null);
+  const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [raisedHeight, setRaisedHeight] = useState<number>(0);
 
   // Deterministic per-card jitter so positions are stable across renders.
@@ -46,8 +47,40 @@ export function CardStack({ cards, onEdit, emptyLabel }: Props) {
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     return () => ro.disconnect();
   }, [raisedId, flippedId, cards]);
+
+  // Arrow up/down moves the active card through the stack.
+  useEffect(() => {
+    if (cards.length === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      const ae = document.activeElement;
+      if (
+        ae instanceof HTMLInputElement ||
+        ae instanceof HTMLTextAreaElement ||
+        (ae instanceof HTMLElement && ae.isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      const lastIdx = cards.length - 1;
+      const curIdx = raisedId
+        ? cards.findIndex((c) => c.id === raisedId)
+        : lastIdx;
+      const delta = e.key === 'ArrowUp' ? -1 : 1;
+      const nextIdx = Math.max(0, Math.min(lastIdx, curIdx + delta));
+      if (nextIdx === curIdx) return;
+      const nextCard = cards[nextIdx];
+      setFlippedId(null);
+      setRaisedId(nextIdx === lastIdx ? null : nextCard.id);
+      const el = itemRefs.current.get(nextCard.id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [cards, raisedId]);
 
   if (cards.length === 0) {
     return <p className="text-cream-dim italic px-4 py-6">{emptyLabel ?? '—'}</p>;
@@ -92,6 +125,10 @@ export function CardStack({ cards, onEdit, emptyLabel }: Props) {
             zIndex={z}
             translateX={isRaised ? 0 : dx}
             raisedRef={isRaised ? raisedRef : null}
+            wrapperRef={(el) => {
+              if (el) itemRefs.current.set(card.id, el);
+              else itemRefs.current.delete(card.id);
+            }}
             onTap={() => toggleRaise(card.id)}
             onLongPress={() => onEdit(card)}
             onFlip={() => toggleFlip(card.id)}
@@ -116,6 +153,7 @@ function CardStackItem({
   zIndex,
   translateX,
   raisedRef,
+  wrapperRef,
   onTap,
   onLongPress,
   onFlip,
@@ -133,6 +171,7 @@ function CardStackItem({
   zIndex: number;
   translateX: number;
   raisedRef: React.RefObject<HTMLDivElement> | null;
+  wrapperRef: (el: HTMLDivElement | null) => void;
   onTap: () => void;
   onLongPress: () => void;
   onFlip: () => void;
@@ -156,6 +195,7 @@ function CardStackItem({
 
   return (
     <div
+      ref={wrapperRef}
       className={[
         'relative w-full',
         clip ? 'overflow-hidden rounded-2xl' : '',
@@ -167,7 +207,7 @@ function CardStackItem({
         className={[
           isLast ? 'relative' : 'absolute top-0 left-0 right-0',
           'transition-opacity duration-200',
-          isActive ? 'opacity-100' : 'opacity-60',
+          isActive ? 'opacity-100' : 'opacity-80',
         ].join(' ')}
         style={{ transform: `translateX(${translateX}px)` }}
       >
