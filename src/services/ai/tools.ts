@@ -10,6 +10,7 @@ export type ToolName =
   | 'update_card'
   | 'delete_card'
   | 'list_cards'
+  | 'reorder_cards'
   | 'create_board'
   | 'delete_board'
   | 'add_card_to_board'
@@ -27,19 +28,20 @@ export type ToolArgs = {
     chapter?: number;
     translation?: Translation;
   };
-  create_card: { title: string; references: string[]; notes?: string; boardIds?: string[] };
+  create_card: { title: string; references: string[]; notes?: string; boards?: string[] };
   update_card: {
-    id: string;
+    card: string;
     title?: string;
     references?: string[];
     notes?: string;
   };
-  delete_card: { id: string };
+  delete_card: { card: string };
   list_cards: Record<string, never>;
+  reorder_cards: { order: string[] };
   create_board: { name: string; cardIds?: string[] };
   delete_board: { id: string };
-  add_card_to_board: { cardId: string; boardId: string };
-  remove_card_from_board: { cardId: string; boardId: string };
+  add_card_to_board: { card: string; board: string };
+  remove_card_from_board: { card: string; board: string };
   list_boards: Record<string, never>;
   set_language: { language: 'en' | 'de' };
   set_translation: { translation: Translation };
@@ -129,10 +131,11 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
             description: 'Array of canonical references like ["Galatians 5:22"].',
           },
           notes: { type: 'string' },
-          boardIds: {
+          boards: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Optional board IDs to attach the new card to.',
+            description:
+              'Optional boards to attach the new card to. Each entry may be a board id OR a board name (case-insensitive). Returns an error if any entry cannot be resolved.',
           },
         },
         required: ['title', 'references'],
@@ -143,16 +146,20 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     type: 'function',
     function: {
       name: 'update_card',
-      description: 'Update fields of an existing card.',
+      description:
+        'Update fields of an existing card. The "card" field accepts a card id OR an exact card title (case-insensitive). Errors if the card cannot be resolved unambiguously.',
       parameters: {
         type: 'object',
         properties: {
-          id: { type: 'string' },
+          card: {
+            type: 'string',
+            description: 'Card id or exact card title (case-insensitive).',
+          },
           title: { type: 'string' },
           references: { type: 'array', items: { type: 'string' } },
           notes: { type: 'string' },
         },
-        required: ['id'],
+        required: ['card'],
       },
     },
   },
@@ -160,11 +167,17 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     type: 'function',
     function: {
       name: 'delete_card',
-      description: 'Delete a card by ID.',
+      description:
+        'Delete a card. The "card" field accepts a card id OR an exact card title (case-insensitive). Errors if the card cannot be resolved unambiguously.',
       parameters: {
         type: 'object',
-        properties: { id: { type: 'string' } },
-        required: ['id'],
+        properties: {
+          card: {
+            type: 'string',
+            description: 'Card id or exact card title (case-insensitive).',
+          },
+        },
+        required: ['card'],
       },
     },
   },
@@ -172,8 +185,28 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     type: 'function',
     function: {
       name: 'list_cards',
-      description: 'List all cards. Returns array of {id, title, references, notes}.',
+      description:
+        'List all cards in the order the user sees them on the /cards screen. Returns array of {id, title, references, notes, tags}. Call this first whenever you need to reason about card identity, order, or position.',
       parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'reorder_cards',
+      description:
+        'Set the user-visible order of cards on the /cards screen. Pass the full ordered array of card ids (top of the stack first, bottom last). Cards not included keep their relative order at the end. Call list_cards first to learn the current ids.',
+      parameters: {
+        type: 'object',
+        properties: {
+          order: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Full ordered array of card ids, top first.',
+          },
+        },
+        required: ['order'],
+      },
     },
   },
   {
@@ -207,14 +240,21 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     type: 'function',
     function: {
       name: 'add_card_to_board',
-      description: 'Associate a card with a board.',
+      description:
+        'Associate a card with a board. Both "card" and "board" accept either an id OR a name/title (case-insensitive). Errors if either cannot be resolved unambiguously.',
       parameters: {
         type: 'object',
         properties: {
-          cardId: { type: 'string' },
-          boardId: { type: 'string' },
+          card: {
+            type: 'string',
+            description: 'Card id or exact card title (case-insensitive).',
+          },
+          board: {
+            type: 'string',
+            description: 'Board id or board name (case-insensitive).',
+          },
         },
-        required: ['cardId', 'boardId'],
+        required: ['card', 'board'],
       },
     },
   },
@@ -222,14 +262,21 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     type: 'function',
     function: {
       name: 'remove_card_from_board',
-      description: 'Remove a card from a board.',
+      description:
+        'Remove a card from a board. Both "card" and "board" accept either an id OR a name/title (case-insensitive). Errors if either cannot be resolved unambiguously.',
       parameters: {
         type: 'object',
         properties: {
-          cardId: { type: 'string' },
-          boardId: { type: 'string' },
+          card: {
+            type: 'string',
+            description: 'Card id or exact card title (case-insensitive).',
+          },
+          board: {
+            type: 'string',
+            description: 'Board id or board name (case-insensitive).',
+          },
         },
-        required: ['cardId', 'boardId'],
+        required: ['card', 'board'],
       },
     },
   },

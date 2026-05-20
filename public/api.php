@@ -17,6 +17,8 @@ declare(strict_types=1);
  *   cards.list (GET)      Per-user card array.
  *   cards.upsert          { card }
  *   cards.delete          { id }
+ *   cards.order.get (GET) Per-user card order: { order: string[], updatedAt: number }.
+ *   cards.order.set       { order: string[], updatedAt: number }
  *   boards.list (GET)
  *   boards.upsert         { board }
  *   boards.delete         { id }
@@ -261,6 +263,12 @@ switch ($action) {
         break;
     case 'cards.delete':
         handleDeleteItem($ctx['userDir'] . '/cards.json', 'cards');
+        break;
+    case 'cards.order.get':
+        handleCardOrderGet($ctx['userDir'] . '/cardOrder.json');
+        break;
+    case 'cards.order.set':
+        handleCardOrderSet($ctx['userDir'] . '/cardOrder.json');
         break;
     case 'boards.list':
         handleListJson($ctx['userDir'] . '/boards.json', 'boards');
@@ -584,6 +592,50 @@ function handleDeleteItem(string $path, string $listKey): void {
 
     writeJsonFile($path, $items);
     respond(200, [$listKey => $items]);
+}
+
+function handleCardOrderGet(string $path): void {
+    $payload = ['order' => [], 'updatedAt' => 0];
+    if (file_exists($path)) {
+        $raw = @file_get_contents($path);
+        $decoded = $raw ? json_decode($raw, true) : null;
+        if (is_array($decoded)) {
+            $order = isset($decoded['order']) && is_array($decoded['order'])
+                ? array_values(array_filter($decoded['order'], 'is_string'))
+                : [];
+            $updatedAt = isset($decoded['updatedAt']) && is_numeric($decoded['updatedAt'])
+                ? (int)$decoded['updatedAt']
+                : 0;
+            $payload = ['order' => $order, 'updatedAt' => $updatedAt];
+        }
+    }
+    respond(200, $payload);
+}
+
+function handleCardOrderSet(string $path): void {
+    $body = readJsonBody();
+    $order = $body['order'] ?? null;
+    $updatedAt = $body['updatedAt'] ?? null;
+    if (!is_array($order)) fail(400, 'order array required');
+    if (!is_numeric($updatedAt)) fail(400, 'updatedAt required');
+    $clean = array_values(array_filter($order, 'is_string'));
+    // Last-write-wins by client timestamp: ignore stale writes so an older
+    // device coming back online cannot clobber a newer order from another device.
+    $existingUpdatedAt = 0;
+    if (file_exists($path)) {
+        $raw = @file_get_contents($path);
+        $decoded = $raw ? json_decode($raw, true) : null;
+        if (is_array($decoded) && isset($decoded['updatedAt']) && is_numeric($decoded['updatedAt'])) {
+            $existingUpdatedAt = (int)$decoded['updatedAt'];
+        }
+    }
+    $incoming = (int)$updatedAt;
+    if ($incoming < $existingUpdatedAt) {
+        respond(200, ['order' => [], 'updatedAt' => $existingUpdatedAt, 'ignored' => true]);
+        return;
+    }
+    writeJsonFile($path, ['order' => $clean, 'updatedAt' => $incoming]);
+    respond(200, ['order' => $clean, 'updatedAt' => $incoming]);
 }
 
 function writeJsonFile(string $path, array $data): void {

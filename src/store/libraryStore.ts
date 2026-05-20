@@ -6,12 +6,16 @@ import { apiGetJson, apiPostJson, ApiError } from '@/services/api/client';
 type LibraryState = {
   cards: Card[];
   boards: Board[];
+  cardOrder: string[];
+  cardOrderUpdatedAt: number;
   online: boolean;
   pendingOps: number;
   initialized: boolean;
   init: () => Promise<void>;
   upsertCard: (card: Card) => Promise<void>;
   deleteCard: (id: string) => Promise<void>;
+  reorderCards: (fromId: string, toId: string) => Promise<void>;
+  setCardOrder: (order: string[]) => Promise<void>;
   upsertBoard: (board: Board) => Promise<void>;
   deleteBoard: (id: string) => Promise<void>;
   setOnline: (value: boolean) => void;
@@ -19,27 +23,101 @@ type LibraryState = {
   pullFromServer: () => Promise<void>;
 };
 
+const CARD_ORDER_KEY = 'cardOrder';
+
+type StoredCardOrder = { order: string[]; updatedAt: number };
+
 function nowId(): string {
   return crypto.randomUUID();
+}
+
+async function persistCardOrder(order: string[], updatedAt: number): Promise<void> {
+  await db.preferences.put({
+    key: CARD_ORDER_KEY,
+    value: { order, updatedAt } satisfies StoredCardOrder,
+  });
+}
+
+// Card-order syncs as a whole-array set. Multiple pending sets collapse to
+// the latest one — only the most recent order matters.
+async function enqueueCardOrderSync(order: string[], updatedAt: number): Promise<void> {
+  const pending = await db.syncQueue
+    .where('op')
+    .equals('cardOrder.set')
+    .primaryKeys();
+  if (pending.length > 0) {
+    await db.syncQueue.bulkDelete(pending);
+  }
+  await db.syncQueue.add({
+    op: 'cardOrder.set',
+    payload: { order, updatedAt },
+    createdAt: Date.now(),
+    attempts: 0,
+  });
+}
+
+function reconcileOrder(order: string[], cards: Card[]): string[] {
+  const known = new Set(cards.map((c) => c.id));
+  const seen = new Set<string>();
+  const kept = order.filter((id) => {
+    if (!known.has(id) || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+  for (const c of cards) {
+    if (!seen.has(c.id)) {
+      kept.push(c.id);
+      seen.add(c.id);
+    }
+  }
+  return kept;
+}
+
+function readStoredCardOrder(raw: unknown): StoredCardOrder {
+  if (Array.isArray(raw)) {
+    // Legacy shape (pre-sync): bare string[]. Adopt with a low timestamp so
+    // the first remote pull on another device can override.
+    return { order: raw.filter((v): v is string => typeof v === 'string'), updatedAt: 0 };
+  }
+  if (raw && typeof raw === 'object') {
+    const obj = raw as Partial<StoredCardOrder>;
+    const order = Array.isArray(obj.order)
+      ? obj.order.filter((v): v is string => typeof v === 'string')
+      : [];
+    const updatedAt = typeof obj.updatedAt === 'number' ? obj.updatedAt : 0;
+    return { order, updatedAt };
+  }
+  return { order: [], updatedAt: 0 };
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   cards: [],
   boards: [],
+  cardOrder: [],
+  cardOrderUpdatedAt: 0,
   online: typeof navigator !== 'undefined' ? navigator.onLine : true,
   pendingOps: 0,
   initialized: false,
 
   init: async () => {
     if (get().initialized) return;
-    const [cards, boards, pending] = await Promise.all([
+    const [cards, boards, pending, savedOrderRow] = await Promise.all([
       db.cards.filter((c) => c.deleted !== 1).toArray(),
       db.boards.filter((b) => b.deleted !== 1).toArray(),
       db.syncQueue.count(),
+      db.preferences.get(CARD_ORDER_KEY),
     ]);
+    const liveCards = cards.map(stripLocal);
+    const stored = readStoredCardOrder(savedOrderRow?.value);
+    const reconciled = reconcileOrder(stored.order, liveCards);
+    if (reconciled.join('|') !== stored.order.join('|')) {
+      void persistCardOrder(reconciled, stored.updatedAt);
+    }
     set({
-      cards: cards.map(stripLocal),
+      cards: liveCards,
       boards: boards.map(stripLocal),
+      cardOrder: reconciled,
+      cardOrderUpdatedAt: stored.updatedAt,
       pendingOps: pending,
       initialized: true,
     });
@@ -58,9 +136,20 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       createdAt: Date.now(),
       attempts: 0,
     });
+    const isNew = !get().cards.some((c) => c.id === updated.id);
+    let nextOrder = get().cardOrder;
+    let nextOrderUpdatedAt = get().cardOrderUpdatedAt;
+    if (isNew) {
+      nextOrder = [updated.id, ...nextOrder.filter((id) => id !== updated.id)];
+      nextOrderUpdatedAt = Date.now();
+      await persistCardOrder(nextOrder, nextOrderUpdatedAt);
+      await enqueueCardOrderSync(nextOrder, nextOrderUpdatedAt);
+    }
     set((s) => ({
       cards: replaceOrAdd(s.cards, updated),
-      pendingOps: s.pendingOps + 1,
+      cardOrder: nextOrder,
+      cardOrderUpdatedAt: nextOrderUpdatedAt,
+      pendingOps: isNew ? s.pendingOps + 2 : s.pendingOps + 1,
     }));
     if (get().online) void get().flushQueue();
   },
@@ -73,10 +162,50 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       createdAt: Date.now(),
       attempts: 0,
     });
+    const prevOrder = get().cardOrder;
+    const nextOrder = prevOrder.filter((cid) => cid !== id);
+    const orderChanged = nextOrder.length !== prevOrder.length;
+    let nextOrderUpdatedAt = get().cardOrderUpdatedAt;
+    if (orderChanged) {
+      nextOrderUpdatedAt = Date.now();
+      await persistCardOrder(nextOrder, nextOrderUpdatedAt);
+      await enqueueCardOrderSync(nextOrder, nextOrderUpdatedAt);
+    }
     set((s) => ({
       cards: s.cards.filter((c) => c.id !== id),
-      pendingOps: s.pendingOps + 1,
+      cardOrder: nextOrder,
+      cardOrderUpdatedAt: nextOrderUpdatedAt,
+      pendingOps: orderChanged ? s.pendingOps + 2 : s.pendingOps + 1,
     }));
+    if (get().online) void get().flushQueue();
+  },
+
+  reorderCards: async (fromId, toId) => {
+    if (fromId === toId) return;
+    const order = get().cardOrder;
+    const fromIdx = order.indexOf(fromId);
+    const toIdx = order.indexOf(toId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const next = order.slice();
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    await get().setCardOrder(next);
+  },
+
+  setCardOrder: async (order) => {
+    const reconciled = reconcileOrder(order, get().cards);
+    if (reconciled.join('|') === get().cardOrder.join('|')) return;
+    const updatedAt = Date.now();
+    set({ cardOrder: reconciled, cardOrderUpdatedAt: updatedAt });
+    await persistCardOrder(reconciled, updatedAt);
+    const hadPending = (await db.syncQueue
+      .where('op')
+      .equals('cardOrder.set')
+      .count()) > 0;
+    await enqueueCardOrderSync(reconciled, updatedAt);
+    if (!hadPending) {
+      set((s) => ({ pendingOps: s.pendingOps + 1 }));
+    }
     if (get().online) void get().flushQueue();
   },
 
@@ -127,6 +256,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           case 'card.delete':
             await apiPostJson('cards.delete', op.payload);
             break;
+          case 'cardOrder.set':
+            await apiPostJson('cards.order.set', op.payload);
+            break;
           case 'board.upsert':
             await apiPostJson('boards.upsert', { board: op.payload });
             break;
@@ -150,9 +282,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   pullFromServer: async () => {
-    const [cardsResp, boardsResp] = await Promise.all([
+    const [cardsResp, boardsResp, orderResp] = await Promise.all([
       apiGetJson<{ cards: Card[] }>('cards.list'),
       apiGetJson<{ boards: Board[] }>('boards.list'),
+      apiGetJson<{ order: string[]; updatedAt: number }>('cards.order.get').catch(
+        () => ({ order: [], updatedAt: 0 }),
+      ),
     ]);
     const remoteCards = cardsResp.cards ?? [];
     const remoteBoards = boardsResp.boards ?? [];
@@ -176,9 +311,34 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       db.cards.filter((c) => c.deleted !== 1).toArray(),
       db.boards.filter((b) => b.deleted !== 1).toArray(),
     ]);
+    const liveCards = cards.map(stripLocal);
+
+    // Adopt remote cardOrder only if it's newer AND no local change is still
+    // pending — otherwise an in-flight reorder could be clobbered.
+    const remoteOrder = Array.isArray(orderResp?.order) ? orderResp.order : [];
+    const remoteOrderUpdatedAt = typeof orderResp?.updatedAt === 'number' ? orderResp.updatedAt : 0;
+    const pendingOrderCount = await db.syncQueue
+      .where('op')
+      .equals('cardOrder.set')
+      .count();
+    let nextOrder = get().cardOrder;
+    let nextOrderUpdatedAt = get().cardOrderUpdatedAt;
+    if (pendingOrderCount === 0 && remoteOrderUpdatedAt > nextOrderUpdatedAt) {
+      nextOrder = remoteOrder;
+      nextOrderUpdatedAt = remoteOrderUpdatedAt;
+    }
+    const reconciled = reconcileOrder(nextOrder, liveCards);
+    const orderChanged =
+      reconciled.join('|') !== get().cardOrder.join('|') ||
+      nextOrderUpdatedAt !== get().cardOrderUpdatedAt;
+    if (orderChanged) {
+      void persistCardOrder(reconciled, nextOrderUpdatedAt);
+    }
     set({
-      cards: cards.map(stripLocal),
+      cards: liveCards,
       boards: boards.map(stripLocal),
+      cardOrder: reconciled,
+      cardOrderUpdatedAt: nextOrderUpdatedAt,
     });
   },
 }));

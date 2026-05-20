@@ -13,16 +13,24 @@ export type LocalBoard = Board & {
 
 export type SyncOp = {
   id?: number;
-  op: 'card.upsert' | 'card.delete' | 'board.upsert' | 'board.delete';
+  op:
+    | 'card.upsert'
+    | 'card.delete'
+    | 'cardOrder.set'
+    | 'board.upsert'
+    | 'board.delete';
   payload: unknown;
   createdAt: number;
   attempts: number;
 };
 
+export type Preference = { key: string; value: unknown };
+
 class BibleAssistantDb extends Dexie {
   cards!: Table<LocalCard, string>;
   boards!: Table<LocalBoard, string>;
   syncQueue!: Table<SyncOp, number>;
+  preferences!: Table<Preference, string>;
 
   constructor() {
     super('bible-assistant');
@@ -44,6 +52,14 @@ class BibleAssistantDb extends Dexie {
       cards: 'id, title, updatedAt, dirty',
       boards: 'id, name, updatedAt, dirty',
       syncQueue: '++id, op, createdAt',
+    });
+    // v4 adds a generic key/value preferences table (e.g. user-controlled
+    // card order on the /cards screen).
+    this.version(4).stores({
+      cards: 'id, title, updatedAt, dirty',
+      boards: 'id, name, updatedAt, dirty',
+      syncQueue: '++id, op, createdAt',
+      preferences: '&key',
     });
   }
 }

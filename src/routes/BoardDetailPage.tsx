@@ -40,7 +40,7 @@ export function BoardDetailPage() {
     if (selectedTags.length === 0) return cards;
     return cards.filter((c) => {
       const ct = c.tags ?? [];
-      return selectedTags.every((t) => ct.includes(t));
+      return selectedTags.some((t) => ct.includes(t));
     });
   }, [cards, selectedTags]);
   const [picking, setPicking] = useState(false);

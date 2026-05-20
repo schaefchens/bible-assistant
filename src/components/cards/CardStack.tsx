@@ -1,5 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import {
+  restrictToParentElement,
+  restrictToVerticalAxis,
+} from '@dnd-kit/modifiers';
+import { CSS } from '@dnd-kit/utilities';
 import type { Card } from '@/types/domain';
 import { CardFace } from './CardFace';
 import { CardBack } from './CardBack';
@@ -8,6 +26,7 @@ type Props = {
   cards: Card[];
   onEdit: (card: Card) => void;
   onDelete: (card: Card) => void;
+  onReorder?: (fromId: string, toId: string) => void;
   raisedId?: string | null;
   onRaisedIdChange?: (id: string | null) => void;
   emptyLabel?: string;
@@ -18,11 +37,13 @@ const PEEK_JITTER_PX = 10;
 const X_JITTER_PX = 10;
 const LONG_PRESS_MS = 500;
 const MOVE_TOLERANCE_PX = 6;
+const DRAG_MOVE_THRESHOLD_PX = 8;
 
 export function CardStack({
   cards,
   onEdit,
   onDelete,
+  onReorder,
   raisedId: raisedIdProp,
   onRaisedIdChange,
   emptyLabel,
@@ -40,7 +61,15 @@ export function CardStack({
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [raisedHeight, setRaisedHeight] = useState<number>(0);
 
-  // Deterministic per-card jitter so positions are stable across renders.
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        delay: LONG_PRESS_MS,
+        tolerance: MOVE_TOLERANCE_PX,
+      },
+    }),
+  );
+
   const jitters = useMemo(
     () =>
       cards.map((card) => ({
@@ -50,7 +79,6 @@ export function CardStack({
     [cards],
   );
 
-  // Per-card peek heights (last card consumes its own intrinsic height).
   const peekHeights = cards.map((_, idx) =>
     idx === cards.length - 1 ? 0 : Math.max(40, PEEK_PX + jitters[idx].peek),
   );
@@ -63,11 +91,10 @@ export function CardStack({
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
-    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    el.scrollIntoView({ behavior: 'auto', block: 'nearest' });
     return () => ro.disconnect();
   }, [raisedId, flippedId, cards]);
 
-  // Keyboard control over the active card.
   useEffect(() => {
     if (cards.length === 0) return;
     const onKey = (e: KeyboardEvent) => {
@@ -95,7 +122,7 @@ export function CardStack({
         setFlippedId(null);
         setRaisedId(nextIdx === lastIdx ? null : nextCard.id);
         const el = itemRefs.current.get(nextCard.id);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (el) el.scrollIntoView({ behavior: 'auto', block: 'nearest' });
         return;
       }
 
@@ -142,7 +169,27 @@ export function CardStack({
     setFlippedId((f) => (f === id ? null : id));
   };
 
-  return (
+  const handleDragStart = (_event: DragStartEvent) => {
+    void _event;
+    setRaisedId(null);
+    setFlippedId(null);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over, delta } = event;
+    const moved = Math.hypot(delta.x, delta.y) > DRAG_MOVE_THRESHOLD_PX;
+    const card = cards.find((c) => c.id === active.id);
+    if (!card) return;
+    if (!moved) {
+      onEdit(card);
+      return;
+    }
+    if (onReorder && over && active.id !== over.id) {
+      onReorder(String(active.id), String(over.id));
+    }
+  };
+
+  const items = (
     <div className="px-3 pb-12" style={{ minHeight: minContainerHeight }}>
       {cards.map((card, idx) => {
         const isLast = idx === lastIdx;
@@ -165,8 +212,8 @@ export function CardStack({
             translateX={isRaised ? 0 : dx}
             raisedRef={isRaised ? raisedRef : null}
             refsMap={itemRefs}
+            sortable={Boolean(onReorder)}
             onTap={() => toggleRaise(card.id)}
-            onLongPress={() => onEdit(card)}
             onFlip={() => toggleFlip(card.id)}
             onEditClick={() => onEdit(card)}
             flipLabel={t(isFlipped ? 'cards.front' : 'cards.flip') as string}
@@ -176,6 +223,24 @@ export function CardStack({
         );
       })}
     </div>
+  );
+
+  if (!onReorder) return items;
+
+  return (
+    <DndContext
+      sensors={sensors}
+      modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <SortableContext
+        items={cards.map((c) => c.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        {items}
+      </SortableContext>
+    </DndContext>
   );
 }
 
@@ -190,8 +255,8 @@ function CardStackItem({
   translateX,
   raisedRef,
   refsMap,
+  sortable,
   onTap,
-  onLongPress,
   onFlip,
   onEditClick,
   flipLabel,
@@ -206,20 +271,26 @@ function CardStackItem({
   wrapperHeight: number | undefined;
   zIndex: number;
   translateX: number;
-  raisedRef: React.RefObject<HTMLDivElement> | null;
+  raisedRef: React.RefObject<HTMLDivElement | null> | null;
   refsMap: React.RefObject<Map<string, HTMLDivElement>>;
+  sortable: boolean;
   onTap: () => void;
-  onLongPress: () => void;
   onFlip: () => void;
   onEditClick: () => void;
   flipLabel: string;
   editLabel: string;
   noNotesLabel: string;
 }) {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const startRef = useRef<{ x: number; y: number } | null>(null);
-  const didLongPress = useRef(false);
   const wrapperEl = useRef<HTMLDivElement | null>(null);
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: card.id, disabled: !sortable });
 
   useEffect(() => {
     const map = refsMap.current;
@@ -231,62 +302,49 @@ function CardStackItem({
     };
   }, [card.id, refsMap]);
 
-  const clearTimer = () => {
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
+  const clip = !isLast && !isRaised && !isDragging;
+
+  const wrapperStyle: React.CSSProperties = {
+    height: wrapperHeight,
+    zIndex: isDragging ? 2000 : zIndex,
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.85 : 1,
   };
 
-  const clip = !isLast && !isRaised;
+  const setRefs = (el: HTMLDivElement | null) => {
+    wrapperEl.current = el;
+    setNodeRef(el);
+  };
 
   return (
     <div
-      ref={wrapperEl}
+      ref={setRefs}
       className={[
         'relative w-full',
         clip ? 'overflow-hidden rounded-2xl' : '',
       ].join(' ')}
-      style={{ height: wrapperHeight, zIndex }}
+      style={wrapperStyle}
     >
       <div
         ref={raisedRef}
         className={[
           isLast ? 'relative' : 'absolute top-0 left-0 right-0',
-          'transition-opacity duration-200',
           isActive ? 'opacity-100' : 'opacity-80',
         ].join(' ')}
-        style={{ transform: `translateX(${translateX}px)` }}
+        style={{
+          transform: `translateX(${translateX}px)${isDragging ? ' scale(1.03)' : ''}`,
+          boxShadow: isDragging ? '0 18px 40px rgba(0,0,0,0.55)' : undefined,
+          borderRadius: isDragging ? '1rem' : undefined,
+        }}
       >
         <div
-          role="button"
-          tabIndex={0}
+          {...attributes}
+          {...listeners}
+          role={attributes.role ?? 'button'}
+          tabIndex={attributes.tabIndex ?? 0}
           className="block w-full text-left cursor-pointer rounded-2xl select-none focus:outline-none"
-          onPointerDown={(e) => {
-            if (e.pointerType === 'mouse' && e.button !== 0) return;
-            startRef.current = { x: e.clientX, y: e.clientY };
-            didLongPress.current = false;
-            clearTimer();
-            timerRef.current = setTimeout(() => {
-              didLongPress.current = true;
-              onLongPress();
-            }, LONG_PRESS_MS);
-          }}
-          onPointerMove={(e) => {
-            if (!startRef.current) return;
-            const dx = e.clientX - startRef.current.x;
-            const dy = e.clientY - startRef.current.y;
-            if (Math.hypot(dx, dy) > MOVE_TOLERANCE_PX) clearTimer();
-          }}
-          onPointerUp={() => {
-            clearTimer();
-            if (!didLongPress.current) onTap();
-            startRef.current = null;
-          }}
-          onPointerCancel={() => {
-            clearTimer();
-            startRef.current = null;
-          }}
+          onClick={onTap}
           onContextMenu={(e) => e.preventDefault()}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
@@ -301,14 +359,14 @@ function CardStackItem({
                 className="row-start-1 col-start-1 invisible"
                 aria-hidden
               >
-                <CardFace card={card} size="full" />
+                <CardFace card={card} size="full" isActive={isActive} />
               </div>
               <div className="row-start-1 col-start-1">
-                <CardBack card={card} emptyLabel={noNotesLabel} />
+                <CardBack card={card} emptyLabel={noNotesLabel} isActive={isActive} />
               </div>
             </div>
           ) : (
-            <CardFace card={card} size="full" />
+            <CardFace card={card} size="full" isActive={isActive} />
           )}
         </div>
 

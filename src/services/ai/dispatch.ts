@@ -46,7 +46,9 @@ export async function dispatchTool(
       case 'delete_card':
         return await handleDeleteCard(args as ToolArgs['delete_card']);
       case 'list_cards':
-        return { ok: true, data: useLibraryStore.getState().cards };
+        return { ok: true, data: listCardsInUserOrder() };
+      case 'reorder_cards':
+        return await handleReorderCards(args as ToolArgs['reorder_cards']);
       case 'create_board':
         return await handleCreateBoard(args as ToolArgs['create_board']);
       case 'delete_board':
@@ -202,7 +204,52 @@ async function handleRandomVerse(
   );
 }
 
+function resolveBoard(ref: string): Board | undefined {
+  const boards = useLibraryStore.getState().boards;
+  const byId = boards.find((b) => b.id === ref);
+  if (byId) return byId;
+  const lower = ref.trim().toLowerCase();
+  return boards.find((b) => b.name.trim().toLowerCase() === lower);
+}
+
+type CardLookup =
+  | { ok: true; card: Card }
+  | { ok: false; error: string };
+
+function resolveCard(ref: string): CardLookup {
+  const cards = useLibraryStore.getState().cards;
+  const byId = cards.find((c) => c.id === ref);
+  if (byId) return { ok: true, card: byId };
+  const lower = ref.trim().toLowerCase();
+  const byTitle = cards.filter((c) => c.title.trim().toLowerCase() === lower);
+  if (byTitle.length === 1) return { ok: true, card: byTitle[0] };
+  if (byTitle.length === 0) return { ok: false, error: `card "${ref}" not found` };
+  return {
+    ok: false,
+    error: `multiple cards titled "${ref}" — use card id instead (${byTitle.map((c) => c.id).join(', ')})`,
+  };
+}
+
+function listCardsInUserOrder(): Card[] {
+  const { cards, cardOrder } = useLibraryStore.getState();
+  const rank = new Map(cardOrder.map((id, i) => [id, i]));
+  const fallback = cards.length + 1;
+  return cards.slice().sort((a, b) => {
+    const ra = rank.get(a.id) ?? fallback;
+    const rb = rank.get(b.id) ?? fallback;
+    if (ra !== rb) return ra - rb;
+    return b.updatedAt - a.updatedAt;
+  });
+}
+
 async function handleCreateCard(args: ToolArgs['create_card']): Promise<ToolDispatchResult> {
+  const requestedBoards = args.boards ?? [];
+  const resolvedBoards: Board[] = [];
+  for (const ref of requestedBoards) {
+    const board = resolveBoard(ref);
+    if (!board) return { ok: false, error: `board "${ref}" not found` };
+    resolvedBoards.push(board);
+  }
   const card: Card = {
     id: nowId(),
     title: args.title,
@@ -213,36 +260,55 @@ async function handleCreateCard(args: ToolArgs['create_card']): Promise<ToolDisp
     updatedAt: Date.now(),
   };
   await useLibraryStore.getState().upsertCard(card);
-  if (args.boardIds?.length) {
-    for (const boardId of args.boardIds) {
-      const board = useLibraryStore.getState().boards.find((b) => b.id === boardId);
-      if (board && !board.cardIds.includes(card.id)) {
-        await useLibraryStore
-          .getState()
-          .upsertBoard({ ...board, cardIds: [...board.cardIds, card.id] });
-      }
-    }
+  for (const board of resolvedBoards) {
+    if (board.cardIds.includes(card.id)) continue;
+    const fresh = useLibraryStore.getState().boards.find((b) => b.id === board.id) ?? board;
+    await useLibraryStore
+      .getState()
+      .upsertBoard({ ...fresh, cardIds: [...fresh.cardIds, card.id] });
   }
-  return { ok: true, data: { id: card.id, title: card.title } };
+  return {
+    ok: true,
+    data: {
+      id: card.id,
+      title: card.title,
+      addedToBoards: resolvedBoards.map((b) => ({ id: b.id, name: b.name })),
+    },
+  };
+}
+
+async function handleReorderCards(
+  args: ToolArgs['reorder_cards'],
+): Promise<ToolDispatchResult> {
+  if (!Array.isArray(args.order)) return { ok: false, error: 'order must be an array' };
+  const knownIds = new Set(useLibraryStore.getState().cards.map((c) => c.id));
+  const unknown = args.order.filter((id) => !knownIds.has(id));
+  if (unknown.length > 0) {
+    return { ok: false, error: `unknown card ids: ${unknown.join(', ')}` };
+  }
+  await useLibraryStore.getState().setCardOrder(args.order);
+  return { ok: true, data: { order: useLibraryStore.getState().cardOrder } };
 }
 
 async function handleUpdateCard(args: ToolArgs['update_card']): Promise<ToolDispatchResult> {
-  const existing = useLibraryStore.getState().cards.find((c) => c.id === args.id);
-  if (!existing) return { ok: false, error: `card ${args.id} not found` };
+  const lookup = resolveCard(args.card);
+  if (!lookup.ok) return { ok: false, error: lookup.error };
   const updated: Card = {
-    ...existing,
-    title: args.title ?? existing.title,
-    references: args.references ?? existing.references,
-    notes: args.notes ?? existing.notes,
+    ...lookup.card,
+    title: args.title ?? lookup.card.title,
+    references: args.references ?? lookup.card.references,
+    notes: args.notes ?? lookup.card.notes,
     updatedAt: Date.now(),
   };
   await useLibraryStore.getState().upsertCard(updated);
-  return { ok: true, data: { id: updated.id } };
+  return { ok: true, data: { id: updated.id, title: updated.title } };
 }
 
 async function handleDeleteCard(args: ToolArgs['delete_card']): Promise<ToolDispatchResult> {
-  await useLibraryStore.getState().deleteCard(args.id);
-  return { ok: true };
+  const lookup = resolveCard(args.card);
+  if (!lookup.ok) return { ok: false, error: lookup.error };
+  await useLibraryStore.getState().deleteCard(lookup.card.id);
+  return { ok: true, data: { id: lookup.card.id, title: lookup.card.title } };
 }
 
 async function handleCreateBoard(args: ToolArgs['create_board']): Promise<ToolDispatchResult> {
@@ -265,22 +331,33 @@ async function handleDeleteBoard(args: ToolArgs['delete_board']): Promise<ToolDi
 async function handleAddCardToBoard(
   args: ToolArgs['add_card_to_board'],
 ): Promise<ToolDispatchResult> {
-  const board = useLibraryStore.getState().boards.find((b) => b.id === args.boardId);
-  if (!board) return { ok: false, error: `board ${args.boardId} not found` };
-  if (board.cardIds.includes(args.cardId)) return { ok: true, data: { unchanged: true } };
+  const board = resolveBoard(args.board);
+  if (!board) return { ok: false, error: `board "${args.board}" not found` };
+  const cardLookup = resolveCard(args.card);
+  if (!cardLookup.ok) return { ok: false, error: cardLookup.error };
+  const cardId = cardLookup.card.id;
+  if (board.cardIds.includes(cardId)) {
+    return { ok: true, data: { boardId: board.id, boardName: board.name, cardId, unchanged: true } };
+  }
   await useLibraryStore
     .getState()
-    .upsertBoard({ ...board, cardIds: [...board.cardIds, args.cardId] });
-  return { ok: true };
+    .upsertBoard({ ...board, cardIds: [...board.cardIds, cardId] });
+  return { ok: true, data: { boardId: board.id, boardName: board.name, cardId, cardTitle: cardLookup.card.title } };
 }
 
 async function handleRemoveCardFromBoard(
   args: ToolArgs['remove_card_from_board'],
 ): Promise<ToolDispatchResult> {
-  const board = useLibraryStore.getState().boards.find((b) => b.id === args.boardId);
-  if (!board) return { ok: false, error: `board ${args.boardId} not found` };
+  const board = resolveBoard(args.board);
+  if (!board) return { ok: false, error: `board "${args.board}" not found` };
+  const cardLookup = resolveCard(args.card);
+  if (!cardLookup.ok) return { ok: false, error: cardLookup.error };
+  const cardId = cardLookup.card.id;
+  if (!board.cardIds.includes(cardId)) {
+    return { ok: true, data: { boardId: board.id, boardName: board.name, cardId, unchanged: true } };
+  }
   await useLibraryStore
     .getState()
-    .upsertBoard({ ...board, cardIds: board.cardIds.filter((id) => id !== args.cardId) });
-  return { ok: true };
+    .upsertBoard({ ...board, cardIds: board.cardIds.filter((id) => id !== cardId) });
+  return { ok: true, data: { boardId: board.id, boardName: board.name, cardId, cardTitle: cardLookup.card.title } };
 }

@@ -12,7 +12,9 @@ export function CardsPage() {
   const navigate = useNavigate();
   const { id: routeId } = useParams<{ id?: string }>();
   const cards = useLibraryStore((s) => s.cards);
+  const cardOrder = useLibraryStore((s) => s.cardOrder);
   const deleteCard = useLibraryStore((s) => s.deleteCard);
+  const reorderCards = useLibraryStore((s) => s.reorderCards);
   const [draftCard, setDraftCard] = useState<Card | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [raisedId, setRaisedId] = useState<string | null>(null);
@@ -33,11 +35,18 @@ export function CardsPage() {
     const filtered = selectedTags.length
       ? cards.filter((c) => {
           const cardTags = c.tags ?? [];
-          return selectedTags.every((t) => cardTags.includes(t));
+          return selectedTags.some((t) => cardTags.includes(t));
         })
       : cards;
-    return filtered.slice().sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [cards, selectedTags]);
+    const rank = new Map(cardOrder.map((id, i) => [id, i]));
+    const unknownFallback = filtered.length + 1;
+    return filtered.slice().sort((a, b) => {
+      const ra = rank.get(a.id) ?? unknownFallback;
+      const rb = rank.get(b.id) ?? unknownFallback;
+      if (ra !== rb) return ra - rb;
+      return b.updatedAt - a.updatedAt;
+    });
+  }, [cards, cardOrder, selectedTags]);
 
   const closeEditor = () => {
     if (draftCard) {
@@ -110,6 +119,7 @@ export function CardsPage() {
         onRaisedIdChange={setRaisedId}
         onEdit={handleEdit}
         onDelete={handleDelete}
+        onReorder={reorderCards}
         emptyLabel={emptyLabel}
       />
     </div>

@@ -4,11 +4,13 @@ import { colorClasses } from './cardColors';
 type Props = {
   card: Card;
   emptyLabel?: string;
+  isActive?: boolean;
 };
 
-export function CardBack({ card, emptyLabel }: Props) {
+export function CardBack({ card, emptyLabel, isActive = false }: Props) {
   const c = colorClasses(card.color);
   const notes = card.notes?.trim();
+  const notesSize = isActive ? 'text-base' : 'text-sm';
 
   return (
     <div
@@ -21,7 +23,7 @@ export function CardBack({ card, emptyLabel }: Props) {
       <div className={['text-[10px] uppercase tracking-wide', c.fgDim].join(' ')}>
         {card.title || '—'}
       </div>
-      <div className="flex-1 whitespace-pre-wrap break-words text-sm leading-relaxed">
+      <div className={['flex-1 whitespace-pre-wrap break-words leading-relaxed', notesSize].join(' ')}>
         {notes || (
           <span className={['italic', c.fgDim].join(' ')}>{emptyLabel ?? '—'}</span>
         )}

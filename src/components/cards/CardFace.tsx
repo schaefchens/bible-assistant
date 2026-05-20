@@ -7,12 +7,15 @@ type Size = 'grid' | 'full';
 type Props = {
   card: Card;
   size: Size;
+  isActive?: boolean;
 };
 
-export function CardFace({ card, size: _size }: Props) {
+export function CardFace({ card, size: _size, isActive = false }: Props) {
   const c = colorClasses(card.color);
   void _size;
   const showTags = card.tags && card.tags.length > 0;
+  const titleSize = isActive ? 'text-lg sm:text-xl' : 'text-base sm:text-lg';
+  const emojiSize = isActive ? 'text-xl sm:text-2xl' : 'text-lg sm:text-xl';
 
   return (
     <div
@@ -24,18 +27,18 @@ export function CardFace({ card, size: _size }: Props) {
     >
       <div className="shrink-0 flex items-start gap-2">
         {card.emoji && (
-          <span className="text-lg sm:text-xl leading-snug shrink-0" aria-hidden>
+          <span className={[emojiSize, 'leading-snug shrink-0'].join(' ')} aria-hidden>
             {card.emoji}
           </span>
         )}
-        <div className="font-serif font-bold text-base sm:text-lg leading-snug line-clamp-2 break-words">
+        <div className={['font-serif font-bold leading-snug line-clamp-2 break-words', titleSize].join(' ')}>
           {card.title || '—'}
         </div>
       </div>
       {card.references.length > 0 && (
         <div className="flex-1 min-h-0 overflow-hidden space-y-2">
           {card.references.map((r, i) => (
-            <VerseBlock key={i} reference={r} dimClass={c.fgDim} />
+            <VerseBlock key={i} reference={r} dimClass={c.fgDim} isActive={isActive} />
           ))}
         </div>
       )}
@@ -59,14 +62,23 @@ export function CardFace({ card, size: _size }: Props) {
   );
 }
 
-function VerseBlock({ reference, dimClass }: { reference: string; dimClass: string }) {
+function VerseBlock({
+  reference,
+  dimClass,
+  isActive,
+}: {
+  reference: string;
+  dimClass: string;
+  isActive: boolean;
+}) {
   const text = useVerseText(reference);
+  const verseSize = isActive ? 'text-lg sm:text-xl' : 'text-base sm:text-lg';
   return (
     <div>
       <div className={['font-sans text-[11px] uppercase tracking-wide', dimClass].join(' ')}>
         {reference}
       </div>
-      <div className="font-serif text-base sm:text-lg mt-0.5 leading-snug">
+      <div className={['font-serif mt-0.5 leading-snug', verseSize].join(' ')}>
         {text ?? <span className={dimClass}>…</span>}
       </div>
     </div>
