@@ -328,10 +328,7 @@ function CardStackItem({
     >
       <div
         ref={raisedRef}
-        className={[
-          isLast ? 'relative' : 'absolute top-0 left-0 right-0',
-          isActive ? 'opacity-100' : 'opacity-80',
-        ].join(' ')}
+        className={isLast ? 'relative' : 'absolute top-0 left-0 right-0'}
         style={{
           transform: `translateX(${translateX}px)${isDragging ? ' scale(1.03)' : ''}`,
           boxShadow: isDragging ? '0 18px 40px rgba(0,0,0,0.55)' : undefined,
