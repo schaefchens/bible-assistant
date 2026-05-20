@@ -15,6 +15,7 @@ export function CardsPage() {
   const deleteCard = useLibraryStore((s) => s.deleteCard);
   const [draftCard, setDraftCard] = useState<Card | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [raisedId, setRaisedId] = useState<string | null>(null);
 
   const editing = useMemo<Card | null>(() => {
     if (draftCard) return draftCard;
@@ -89,7 +90,12 @@ export function CardsPage() {
       />
       <CardStack
         cards={visibleCards}
-        onEdit={(c) => navigate(`/cards/${c.id}`)}
+        raisedId={raisedId}
+        onRaisedIdChange={setRaisedId}
+        onEdit={(c) => {
+          setRaisedId(c.id);
+          navigate(`/cards/${c.id}`);
+        }}
         onDelete={(c) => {
           if (!confirm(t('cards.confirmDelete'))) return;
           void deleteCard(c.id);

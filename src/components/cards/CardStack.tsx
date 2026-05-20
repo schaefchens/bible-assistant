@@ -8,18 +8,33 @@ type Props = {
   cards: Card[];
   onEdit: (card: Card) => void;
   onDelete: (card: Card) => void;
+  raisedId?: string | null;
+  onRaisedIdChange?: (id: string | null) => void;
   emptyLabel?: string;
 };
 
 const PEEK_PX = 96;
-const PEEK_JITTER_PX = 14;
+const PEEK_JITTER_PX = 10;
 const X_JITTER_PX = 10;
 const LONG_PRESS_MS = 500;
 const MOVE_TOLERANCE_PX = 6;
 
-export function CardStack({ cards, onEdit, onDelete, emptyLabel }: Props) {
+export function CardStack({
+  cards,
+  onEdit,
+  onDelete,
+  raisedId: raisedIdProp,
+  onRaisedIdChange,
+  emptyLabel,
+}: Props) {
   const { t } = useTranslation();
-  const [raisedId, setRaisedId] = useState<string | null>(null);
+  const [raisedIdLocal, setRaisedIdLocal] = useState<string | null>(null);
+  const isControlled = onRaisedIdChange !== undefined;
+  const raisedId = isControlled ? raisedIdProp ?? null : raisedIdLocal;
+  const setRaisedId = (next: string | null) => {
+    if (isControlled) onRaisedIdChange!(next);
+    else setRaisedIdLocal(next);
+  };
   const [flippedId, setFlippedId] = useState<string | null>(null);
   const raisedRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -120,7 +135,7 @@ export function CardStack({ cards, onEdit, onDelete, emptyLabel }: Props) {
 
   const toggleRaise = (id: string) => {
     setFlippedId(null);
-    setRaisedId((cur) => (cur === id ? null : id));
+    setRaisedId(raisedId === id ? null : id);
   };
 
   const toggleFlip = (id: string) => {
@@ -272,11 +287,22 @@ function CardStackItem({
             }
           }}
         >
-          {isFlipped ? (
-            <CardBack card={card} emptyLabel={noNotesLabel} />
-          ) : (
-            <CardFace card={card} size="full" />
-          )}
+          <div className="grid">
+            <div
+              className="row-start-1 col-start-1"
+              style={{ visibility: isFlipped ? 'hidden' : 'visible' }}
+              aria-hidden={isFlipped}
+            >
+              <CardFace card={card} size="full" />
+            </div>
+            <div
+              className="row-start-1 col-start-1"
+              style={{ visibility: isFlipped ? 'visible' : 'hidden' }}
+              aria-hidden={!isFlipped}
+            >
+              <CardBack card={card} emptyLabel={noNotesLabel} />
+            </div>
+          </div>
         </div>
 
         <div

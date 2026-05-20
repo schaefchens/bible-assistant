@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLibraryStore } from '@/store/libraryStore';
 import { parseReference } from '@/services/bible/referenceParser';
@@ -75,6 +75,16 @@ export function CardEditor({ card, onClose }: Props) {
   const toggleBoard = (id: string) => {
     setBoardIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   return (
     <div className="flex-1 overflow-y-auto p-3 space-y-4">
