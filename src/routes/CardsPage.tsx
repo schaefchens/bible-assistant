@@ -47,6 +47,22 @@ export function CardsPage() {
     if (routeId) navigate(-1);
   };
 
+  const handleEdit = useCallback(
+    (c: Card) => {
+      setRaisedId(c.id);
+      navigate(`/cards/${c.id}`);
+    },
+    [navigate],
+  );
+
+  const handleDelete = useCallback(
+    (c: Card) => {
+      if (!confirm(t('cards.confirmDelete'))) return;
+      void deleteCard(c.id);
+    },
+    [deleteCard, t],
+  );
+
   if (editing) {
     return <CardEditor card={editing} onClose={closeEditor} />;
   }
@@ -70,22 +86,6 @@ export function CardsPage() {
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
     );
   };
-
-  const handleEdit = useCallback(
-    (c: Card) => {
-      setRaisedId(c.id);
-      navigate(`/cards/${c.id}`);
-    },
-    [navigate],
-  );
-
-  const handleDelete = useCallback(
-    (c: Card) => {
-      if (!confirm(t('cards.confirmDelete'))) return;
-      void deleteCard(c.id);
-    },
-    [deleteCard, t],
-  );
 
   const emptyLabel =
     selectedTags.length > 0 ? t('cards.noTagsMatch') : t('cards.empty');
