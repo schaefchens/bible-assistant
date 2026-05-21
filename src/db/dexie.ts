@@ -61,6 +61,13 @@ class BibleAssistantDb extends Dexie {
       syncQueue: '++id, op, createdAt',
       preferences: '&key',
     });
+    // v5 adds optional `color` and `emoji` fields on Board.
+    this.version(5).stores({
+      cards: 'id, title, updatedAt, dirty',
+      boards: 'id, name, updatedAt, dirty',
+      syncQueue: '++id, op, createdAt',
+      preferences: '&key',
+    });
   }
 }
 

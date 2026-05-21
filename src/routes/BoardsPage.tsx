@@ -4,9 +4,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
 import { BoardGrid } from '@/components/cards/BoardGrid';
 import { TagFilterBar } from '@/components/cards/TagFilterBar';
-import type { Board, Card } from '@/types/domain';
+import { boardTabClasses, colorClasses } from '@/components/cards/cardColors';
+import type { Board, Card, CardColor } from '@/types/domain';
+import { CARD_COLORS } from '@/types/domain';
 
 type MenuMode = null | 'root' | 'new' | 'rename';
+
+type BoardValues = { name: string; emoji?: string; color?: CardColor };
 
 export function BoardsPage() {
   const { t } = useTranslation();
@@ -126,13 +130,17 @@ export function BoardsPage() {
     });
   };
 
-  const createBoard = async (name: string) => {
-    const trimmed = name.trim();
+  const createBoard = async (values: BoardValues) => {
+    const trimmed = values.name.trim();
     if (!trimmed) return;
+    const emoji = values.emoji?.trim() || undefined;
+    const color = values.color && values.color !== 'none' ? values.color : undefined;
     const board: Board = {
       id: nowId(),
       name: trimmed,
       cardIds: [],
+      color,
+      emoji,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -140,11 +148,13 @@ export function BoardsPage() {
     await setActiveBoardId(board.id);
   };
 
-  const renameBoard = async (name: string) => {
+  const editBoard = async (values: BoardValues) => {
     if (!activeBoard) return;
-    const trimmed = name.trim();
+    const trimmed = values.name.trim();
     if (!trimmed) return;
-    await upsertBoard({ ...activeBoard, name: trimmed });
+    const emoji = values.emoji?.trim() || undefined;
+    const color = values.color && values.color !== 'none' ? values.color : undefined;
+    await upsertBoard({ ...activeBoard, name: trimmed, emoji, color });
   };
 
   const removeBoard = async () => {
@@ -166,7 +176,7 @@ export function BoardsPage() {
         activeBoardId={activeBoard?.id ?? null}
         onSelect={(id) => void setActiveBoardId(id)}
         onCreate={createBoard}
-        onRename={renameBoard}
+        onEdit={editBoard}
         onDelete={removeBoard}
         onRequestAddCards={() => setAddPickerOpen(true)}
       />
@@ -216,15 +226,15 @@ function TabRow({
   activeBoardId,
   onSelect,
   onCreate,
-  onRename,
+  onEdit,
   onDelete,
   onRequestAddCards,
 }: {
   boards: Board[];
   activeBoardId: string | null;
   onSelect: (id: string) => void;
-  onCreate: (name: string) => Promise<void>;
-  onRename: (name: string) => Promise<void>;
+  onCreate: (values: BoardValues) => Promise<void>;
+  onEdit: (values: BoardValues) => Promise<void>;
   onDelete: () => Promise<void>;
   onRequestAddCards: () => void;
 }) {
@@ -257,27 +267,35 @@ function TabRow({
 
   const activeBoard = boards.find((b) => b.id === activeBoardId);
   const hasActive = Boolean(activeBoard);
+  // Tint the baseline rail to the active board's color so the active tab
+  // visually merges into it (file-folder seam disappears).
+  const railBorder = railBorderClass(activeBoard?.color);
 
   return (
-    <div className="relative border-b border-navy-soft" ref={wrapperRef}>
+    <div className={`relative border-b-2 ${railBorder}`} ref={wrapperRef}>
       <div className="flex items-stretch">
         <div className="flex-1 overflow-x-auto whitespace-nowrap flex items-end gap-1 px-2 pt-2">
           {boards.map((b) => {
             const isActive = b.id === activeBoardId;
+            const tabCls = boardTabClasses(b.color);
             return (
               <button
                 key={b.id}
                 onClick={() => onSelect(b.id)}
                 className={[
-                  'shrink-0 max-w-[10rem] truncate px-3 py-2 text-sm font-serif rounded-t-xl border',
-                  '-mb-px transition-colors',
-                  isActive
-                    ? 'bg-navy-soft text-gold border-navy-soft border-b-navy-soft'
-                    : 'bg-navy/40 text-cream-dim hover:text-cream border-transparent',
+                  'shrink-0 max-w-[12rem] px-4 py-2 text-sm font-serif',
+                  'rounded-t-xl border border-b-0 -mb-[2px] transition-colors relative',
+                  'flex items-center gap-1.5',
+                  isActive ? tabCls.active : tabCls.inactive,
                 ].join(' ')}
                 aria-pressed={isActive}
               >
-                {b.name}
+                {b.emoji && (
+                  <span aria-hidden="true" className="shrink-0 text-base leading-none">
+                    {b.emoji}
+                  </span>
+                )}
+                <span className="truncate">{b.name}</span>
               </button>
             );
           })}
@@ -286,7 +304,7 @@ function TabRow({
               type="button"
               onClick={() => setMenu('new')}
               aria-label={t('boards.new') as string}
-              className="shrink-0 -mb-px px-3 py-2 text-base leading-none rounded-t-xl border border-transparent text-cream-dim hover:text-gold hover:bg-navy/40 transition-colors"
+              className="shrink-0 -mb-[2px] px-3 py-2 text-base leading-none rounded-t-xl border border-b-0 border-navy-soft/70 bg-navy-deep/70 text-cream-dim hover:text-gold hover:bg-navy-soft/70 transition-colors"
             >
               +
             </button>
@@ -312,7 +330,7 @@ function TabRow({
         >
           <MenuItem onClick={() => setMenu('new')}>+ {t('boards.new')}</MenuItem>
           <MenuItem disabled={!hasActive} onClick={() => setMenu('rename')}>
-            ✎ {t('boards.rename')}
+            ✎ {t('boards.rename') as string}
           </MenuItem>
           <MenuItem
             disabled={!hasActive}
@@ -337,23 +355,27 @@ function TabRow({
       )}
 
       {menu === 'new' && (
-        <InlineInput
-          placeholder={t('boards.boardName') as string}
+        <BoardEditor
+          title={t('boards.new') as string}
           onCancel={() => setMenu(null)}
-          onSubmit={async (value) => {
-            await onCreate(value);
+          onSubmit={async (values) => {
+            await onCreate(values);
             setMenu(null);
           }}
         />
       )}
 
       {menu === 'rename' && activeBoard && (
-        <InlineInput
-          placeholder={t('boards.boardName') as string}
-          initialValue={activeBoard.name}
+        <BoardEditor
+          title={t('boards.rename') as string}
+          initial={{
+            name: activeBoard.name,
+            emoji: activeBoard.emoji,
+            color: activeBoard.color,
+          }}
           onCancel={() => setMenu(null)}
-          onSubmit={async (value) => {
-            await onRename(value);
+          onSubmit={async (values) => {
+            await onEdit(values);
             setMenu(null);
           }}
         />
@@ -393,39 +415,108 @@ function MenuItem({
   );
 }
 
-function InlineInput({
-  placeholder,
-  initialValue = '',
+function BoardEditor({
+  title,
+  initial,
   onSubmit,
   onCancel,
 }: {
-  placeholder: string;
-  initialValue?: string;
-  onSubmit: (value: string) => Promise<void> | void;
+  title: string;
+  initial?: BoardValues;
+  onSubmit: (values: BoardValues) => Promise<void> | void;
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
-  const [value, setValue] = useState(initialValue);
+  const [name, setName] = useState(initial?.name ?? '');
+  const [emoji, setEmoji] = useState(initial?.emoji ?? '');
+  const [color, setColor] = useState<CardColor>(initial?.color ?? 'none');
+  const submit = () => void onSubmit({ name, emoji, color });
   return (
-    <div className="absolute right-2 top-full mt-1 z-30 bg-navy-soft rounded-xl shadow-lg border border-navy-soft/70 p-2 w-72 max-w-[calc(100vw-1rem)]">
+    <div className="absolute right-2 top-full mt-1 z-30 bg-navy-soft rounded-xl shadow-lg border border-navy-soft/70 p-3 w-80 max-w-[calc(100vw-1rem)] space-y-3">
+      <div className="text-xs uppercase tracking-wider text-cream-dim">{title}</div>
       <div className="flex gap-2">
         <input
-          autoFocus
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
+          value={emoji}
+          onChange={(e) => setEmoji(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') void onSubmit(value);
+            if (e.key === 'Enter') submit();
             else if (e.key === 'Escape') onCancel();
           }}
-          placeholder={placeholder}
+          maxLength={4}
+          placeholder="✨"
+          aria-label={t('boards.emoji') as string}
+          className="w-14 bg-navy rounded-lg px-2 py-1.5 text-cream text-center text-xl outline-none focus:ring-2 focus:ring-gold/60"
+        />
+        <input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit();
+            else if (e.key === 'Escape') onCancel();
+          }}
+          placeholder={t('boards.boardName') as string}
           className="flex-1 bg-navy rounded-lg px-3 py-1.5 text-cream outline-none focus:ring-2 focus:ring-gold/60 text-sm"
         />
-        <button className="btn-primary text-sm" onClick={() => void onSubmit(value)}>
+      </div>
+      <div>
+        <div className="text-xs text-cream-dim mb-1.5">{t('boards.color')}</div>
+        <div className="flex flex-wrap gap-2">
+          {CARD_COLORS.map((c) => {
+            const cls = colorClasses(c);
+            const selected = color === c;
+            return (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setColor(c)}
+                aria-label={t(`boards.colors.${c}`) as string}
+                aria-pressed={selected}
+                className={[
+                  'w-7 h-7 rounded-full border transition-all',
+                  cls.swatch,
+                  selected
+                    ? 'border-gold ring-2 ring-gold/60 scale-110'
+                    : 'border-black/20 hover:scale-105',
+                  c === 'none' ? 'border-cream-dim/40' : '',
+                ].join(' ')}
+              />
+            );
+          })}
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-1">
+        <button className="btn-ghost text-sm" onClick={onCancel}>
+          {t('common.cancel')}
+        </button>
+        <button className="btn-primary text-sm" onClick={submit}>
           {t('boards.save')}
         </button>
       </div>
     </div>
   );
+}
+
+function railBorderClass(color?: CardColor): string {
+  switch (color ?? 'none') {
+    case 'yellow':
+      return 'border-card-yellow-bg';
+    case 'amber':
+      return 'border-card-amber-bg';
+    case 'coral':
+      return 'border-card-coral-bg';
+    case 'rose':
+      return 'border-card-rose-bg';
+    case 'lavender':
+      return 'border-card-lavender-bg';
+    case 'sage':
+      return 'border-card-sage-bg';
+    case 'sky':
+      return 'border-card-sky-bg';
+    case 'none':
+    default:
+      return 'border-gold/60';
+  }
 }
 
 function AddCardsModal({
@@ -542,10 +633,11 @@ function CenteredEmpty({
   );
 }
 
-function EmptyState({ onCreate }: { onCreate: (name: string) => Promise<void> }) {
+function EmptyState({ onCreate }: { onCreate: (values: BoardValues) => Promise<void> }) {
   const { t } = useTranslation();
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
+  const submit = () => void onCreate({ name }).then(() => setName(''));
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6 py-16 text-center">
       <p className="text-cream-dim max-w-xs">{t('boards.noBoards')}</p>
@@ -556,16 +648,13 @@ function EmptyState({ onCreate }: { onCreate: (name: string) => Promise<void> })
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') void onCreate(name).then(() => setName(''));
+              if (e.key === 'Enter') submit();
               else if (e.key === 'Escape') setCreating(false);
             }}
             placeholder={t('boards.boardName') as string}
             className="flex-1 bg-navy rounded-xl px-3 py-2 text-cream outline-none focus:ring-2 focus:ring-gold/60"
           />
-          <button
-            className="btn-primary text-sm"
-            onClick={() => void onCreate(name).then(() => setName(''))}
-          >
+          <button className="btn-primary text-sm" onClick={submit}>
             {t('boards.save')}
           </button>
         </div>

@@ -75,7 +75,7 @@
     "moveNext": "Move forward",
     "save": "Save",
     "delete": "Delete",
-    "rename": "Rename",
+    "rename": "Edit board",
     "deleteConfirm": "Delete board?",
     "removeFromBoard": "Remove from board",
     "noBoards": "No boards yet. Create your first one.",
@@ -83,7 +83,19 @@
     "emptyBoard": "This board has no cards yet.",
     "menu": "Menu",
     "noCardsLeft": "No cards left to add.",
-    "done": "Done"
+    "done": "Done",
+    "emoji": "Emoji",
+    "color": "Color",
+    "colors": {
+      "none": "No color",
+      "yellow": "Yellow",
+      "amber": "Amber",
+      "coral": "Coral",
+      "rose": "Rose",
+      "lavender": "Lavender",
+      "sage": "Sage",
+      "sky": "Sky"
+    }
   },
   "settings": {
     "title": "Settings",

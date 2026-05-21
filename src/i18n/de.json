@@ -75,7 +75,7 @@
     "moveNext": "Nach hinten",
     "save": "Speichern",
     "delete": "Löschen",
-    "rename": "Umbenennen",
+    "rename": "Tafel bearbeiten",
     "deleteConfirm": "Tafel löschen?",
     "removeFromBoard": "Von Tafel entfernen",
     "noBoards": "Noch keine Tafeln. Erstelle deine erste.",
@@ -83,7 +83,19 @@
     "emptyBoard": "Diese Tafel hat noch keine Karten.",
     "menu": "Menü",
     "noCardsLeft": "Keine Karten mehr zum Hinzufügen.",
-    "done": "Fertig"
+    "done": "Fertig",
+    "emoji": "Emoji",
+    "color": "Farbe",
+    "colors": {
+      "none": "Keine Farbe",
+      "yellow": "Gelb",
+      "amber": "Bernstein",
+      "coral": "Koralle",
+      "rose": "Rosé",
+      "lavender": "Lavendel",
+      "sage": "Salbei",
+      "sky": "Himmel"
+    }
   },
   "settings": {
     "title": "Einstellungen",

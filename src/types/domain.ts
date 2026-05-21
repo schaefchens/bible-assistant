@@ -111,6 +111,8 @@ export type Board = {
   id: string;
   name: string;
   cardIds: string[];
+  color?: CardColor;
+  emoji?: string;
   createdAt: number;
   updatedAt: number;
 };
