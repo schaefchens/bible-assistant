@@ -4,6 +4,26 @@ import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { VerseSummary } from '@/types/domain';
 
+/**
+ * Fire-and-forget: if the user has ambient music enabled, load the selected
+ * track (cached after first run) and start it. Safe to call repeatedly —
+ * `_ambientPlay()` no-ops while a source is already running.
+ */
+export function startAmbientIfEnabled(): void {
+  const { ambient } = useSettingsStore.getState();
+  if (!ambient.enabled || !ambient.trackId) return;
+  void getAmbientTrackUrl(ambient.trackId)
+    .then((url) => {
+      if (!url) return;
+      return audioPlayback.ambient.load(url).then(() => {
+        audioPlayback.ambient.play();
+      });
+    })
+    .catch((e) => {
+      console.warn('ambient start failed', e);
+    });
+}
+
 export async function startPlaybackForVerses(
   messageId: string,
   verses: VerseSummary[],
@@ -11,20 +31,9 @@ export async function startPlaybackForVerses(
   startWordIndex?: number,
 ): Promise<void> {
   if (verses.length === 0) return;
-  const { voice, voiceStyle, ambient } = useSettingsStore.getState();
+  const { voice, voiceStyle } = useSettingsStore.getState();
   audioPlayback.ensureContext();
-  if (ambient.enabled && ambient.trackId) {
-    void getAmbientTrackUrl(ambient.trackId)
-      .then((url) => {
-        if (!url) return;
-        return audioPlayback.ambient.load(url).then(() => {
-          audioPlayback.ambient.play();
-        });
-      })
-      .catch((e) => {
-        console.warn('ambient load failed', e);
-      });
-  }
+  startAmbientIfEnabled();
   const tracks: PlaybackTrack[] = [];
   for (let i = 0; i < verses.length; i++) {
     const v = verses[i];

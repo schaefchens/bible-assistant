@@ -2,12 +2,15 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { useLibraryStore } from '@/store/libraryStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { useEffect, useState } from 'react';
 import { useChatNavigation } from '@/hooks/useChatNavigation';
 import { getPassphrase } from '@/lib/passphrase';
 import { PassphraseSetup } from '@/components/onboarding/PassphraseSetup';
 import { GlobalMicButton } from '@/components/voice/GlobalMicButton';
 import { VoiceOverlay } from '@/components/voice/VoiceOverlay';
+import { getAmbientTrackUrl } from '@/services/api/ambient';
+import { audioPlayback } from '@/lib/audioPlaybackManager';
 
 export function AppShell() {
   const { t } = useTranslation();
@@ -18,6 +21,9 @@ export function AppShell() {
   const pendingOps = useLibraryStore((s) => s.pendingOps);
 
   useChatNavigation();
+
+  const ambientEnabled = useSettingsStore((s) => s.ambient.enabled);
+  const ambientTrackId = useSettingsStore((s) => s.ambient.trackId);
 
   useEffect(() => {
     if (!hasPassphrase) return;
@@ -31,6 +37,23 @@ export function AppShell() {
       window.removeEventListener('offline', onDown);
     };
   }, [init, setOnline, hasPassphrase]);
+
+  useEffect(() => {
+    if (!hasPassphrase) return;
+    if (!ambientEnabled || !ambientTrackId) return;
+    let cancelled = false;
+    void getAmbientTrackUrl(ambientTrackId)
+      .then((url) => {
+        if (cancelled || !url) return;
+        return audioPlayback.ambient.load(url);
+      })
+      .catch((e) => {
+        console.warn('ambient prefetch failed', e);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasPassphrase, ambientEnabled, ambientTrackId]);
 
   if (!hasPassphrase) {
     return <PassphraseSetup onDone={() => setHasPassphrase(true)} />;

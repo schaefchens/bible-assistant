@@ -10,6 +10,7 @@ import { useLibraryStore, nowId } from '@/store/libraryStore';
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useRibbonsStore, type RibbonColor, RIBBON_COLORS } from '@/store/ribbonsStore';
 import { audioPlayback, type PlaybackTrack } from '@/lib/audioPlaybackManager';
+import { startAmbientIfEnabled } from '@/lib/startPlayback';
 import type { Card, Board, VerseSummary } from '@/types/domain';
 
 type DispatchContext = {
@@ -138,6 +139,7 @@ async function handleReadVerses(
     }
     if (tracks.length > 0) {
       audioPlayback.ensureContext();
+      startAmbientIfEnabled();
       void audioPlayback.enqueue(tracks);
     }
   }
