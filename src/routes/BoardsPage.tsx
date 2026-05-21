@@ -1,12 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  horizontalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
+import { CSS } from '@dnd-kit/utilities';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
 import { BoardGrid } from '@/components/cards/BoardGrid';
 import { TagFilterBar } from '@/components/cards/TagFilterBar';
 import { boardTabClasses, colorClasses } from '@/components/cards/cardColors';
 import type { Board, Card, CardColor } from '@/types/domain';
 import { CARD_COLORS } from '@/types/domain';
+
+const TAB_LONG_PRESS_MS = 500;
+const TAB_MOVE_TOLERANCE_PX = 6;
+const TAB_DRAG_MOVE_THRESHOLD_PX = 8;
 
 type MenuMode = null | 'root' | 'new' | 'rename';
 
@@ -18,18 +36,33 @@ export function BoardsPage() {
   const { id: routeId } = useParams<{ id?: string }>();
 
   const boardsRaw = useLibraryStore((s) => s.boards);
+  const boardOrder = useLibraryStore((s) => s.boardOrder);
   const cards = useLibraryStore((s) => s.cards);
   const activeBoardId = useLibraryStore((s) => s.activeBoardId);
   const setActiveBoardId = useLibraryStore((s) => s.setActiveBoardId);
   const upsertBoard = useLibraryStore((s) => s.upsertBoard);
   const deleteBoard = useLibraryStore((s) => s.deleteBoard);
+  const reorderBoards = useLibraryStore((s) => s.reorderBoards);
   const initialized = useLibraryStore((s) => s.initialized);
 
-  // Stable createdAt-ascending order for tabs.
-  const boards = useMemo(
-    () => boardsRaw.slice().sort((a, b) => a.createdAt - b.createdAt),
-    [boardsRaw],
-  );
+  // Tab order follows the synced boardOrder; any board not in the order list
+  // (e.g. just created) falls back to createdAt at the tail.
+  const boards = useMemo(() => {
+    const byId = new Map(boardsRaw.map((b) => [b.id, b]));
+    const seen = new Set<string>();
+    const ordered: Board[] = [];
+    for (const id of boardOrder) {
+      const b = byId.get(id);
+      if (b && !seen.has(id)) {
+        ordered.push(b);
+        seen.add(id);
+      }
+    }
+    const rest = boardsRaw
+      .filter((b) => !seen.has(b.id))
+      .sort((a, b) => a.createdAt - b.createdAt);
+    return [...ordered, ...rest];
+  }, [boardsRaw, boardOrder]);
 
   // Deep-link: /boards/:id → set active and rewrite URL to /boards.
   useEffect(() => {
@@ -174,10 +207,11 @@ export function BoardsPage() {
       <TabRow
         boards={boards}
         activeBoardId={activeBoard?.id ?? null}
-        onSelect={(id) => void setActiveBoardId(id)}
+        onSelect={setActiveBoardId}
         onCreate={createBoard}
         onEdit={editBoard}
         onDelete={removeBoard}
+        onReorder={reorderBoards}
         onRequestAddCards={() => setAddPickerOpen(true)}
       />
 
@@ -228,19 +262,45 @@ function TabRow({
   onCreate,
   onEdit,
   onDelete,
+  onReorder,
   onRequestAddCards,
 }: {
   boards: Board[];
   activeBoardId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string) => Promise<void>;
   onCreate: (values: BoardValues) => Promise<void>;
   onEdit: (values: BoardValues) => Promise<void>;
   onDelete: () => Promise<void>;
+  onReorder: (fromId: string, toId: string) => Promise<void>;
   onRequestAddCards: () => void;
 }) {
   const { t } = useTranslation();
   const [menu, setMenu] = useState<MenuMode>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        delay: TAB_LONG_PRESS_MS,
+        tolerance: TAB_MOVE_TOLERANCE_PX,
+      },
+    }),
+  );
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over, delta } = event;
+    const moved = Math.hypot(delta.x, delta.y) > TAB_DRAG_MOVE_THRESHOLD_PX;
+    const id = String(active.id);
+    if (!moved) {
+      // Long-press release without movement → activate then open rename so
+      // the editor sees the long-pressed board as active.
+      await onSelect(id);
+      setMenu('rename');
+      return;
+    }
+    if (over && active.id !== over.id) {
+      void onReorder(id, String(over.id));
+    }
+  };
 
   useEffect(() => {
     if (!menu) return;
@@ -275,30 +335,25 @@ function TabRow({
     <div className={`relative border-b-2 ${railBorder}`} ref={wrapperRef}>
       <div className="flex items-stretch">
         <div className="no-scrollbar flex-1 overflow-x-auto whitespace-nowrap flex items-end gap-1 px-2 pt-2">
-          {boards.map((b) => {
-            const isActive = b.id === activeBoardId;
-            const tabCls = boardTabClasses(b.color);
-            return (
-              <button
-                key={b.id}
-                onClick={() => onSelect(b.id)}
-                className={[
-                  'shrink-0 max-w-[12rem] px-4 py-2 text-sm font-serif',
-                  'rounded-t-xl border border-b-0 -mb-[2px] transition-colors relative',
-                  'flex items-center gap-1.5',
-                  isActive ? tabCls.active : tabCls.inactive,
-                ].join(' ')}
-                aria-pressed={isActive}
-              >
-                {b.emoji && (
-                  <span aria-hidden="true" className="shrink-0 text-base leading-none">
-                    {b.emoji}
-                  </span>
-                )}
-                <span className="truncate">{b.name}</span>
-              </button>
-            );
-          })}
+          <DndContext
+            sensors={sensors}
+            modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={boards.map((b) => b.id)}
+              strategy={horizontalListSortingStrategy}
+            >
+              {boards.map((b) => (
+                <SortableTab
+                  key={b.id}
+                  board={b}
+                  isActive={b.id === activeBoardId}
+                  onSelect={() => onSelect(b.id)}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
           {boards.length > 0 && (
             <button
               type="button"
@@ -380,6 +435,65 @@ function TabRow({
           }}
         />
       )}
+    </div>
+  );
+}
+
+function SortableTab({
+  board,
+  isActive,
+  onSelect,
+}: {
+  board: Board;
+  isActive: boolean;
+  onSelect: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: board.id });
+  const tabCls = boardTabClasses(board.color);
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 2000 : undefined,
+    opacity: isDragging ? 0.9 : 1,
+    boxShadow: isDragging ? '0 12px 28px rgba(0,0,0,0.55)' : undefined,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      role="button"
+      tabIndex={0}
+      aria-pressed={isActive}
+      onClick={onSelect}
+      onContextMenu={(e) => e.preventDefault()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+      className={[
+        'shrink-0 max-w-[12rem] px-4 py-2 text-sm font-serif cursor-pointer touch-none select-none',
+        'rounded-t-xl border border-b-0 -mb-[2px] transition-colors relative',
+        'flex items-center gap-1.5 focus:outline-none',
+        isActive ? tabCls.active : tabCls.inactive,
+      ].join(' ')}
+    >
+      {board.emoji && (
+        <span aria-hidden="true" className="shrink-0 text-base leading-none">
+          {board.emoji}
+        </span>
+      )}
+      <span className="truncate">{board.name}</span>
     </div>
   );
 }

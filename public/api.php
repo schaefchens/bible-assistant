@@ -22,6 +22,8 @@ declare(strict_types=1);
  *   boards.list (GET)
  *   boards.upsert         { board }
  *   boards.delete         { id }
+ *   boards.order.get (GET) Per-user board tab order: { order: string[], updatedAt: number }.
+ *   boards.order.set      { order: string[], updatedAt: number }
  *   recording.upload      multipart: audio + bookId, chapter, verse, translation
  *
  * Auth: X-User-Id (UUID) + X-User-Secret (hex). First sighting registers.
@@ -265,10 +267,10 @@ switch ($action) {
         handleDeleteItem($ctx['userDir'] . '/cards.json', 'cards');
         break;
     case 'cards.order.get':
-        handleCardOrderGet($ctx['userDir'] . '/cardOrder.json');
+        handleOrderGet($ctx['userDir'] . '/cardOrder.json');
         break;
     case 'cards.order.set':
-        handleCardOrderSet($ctx['userDir'] . '/cardOrder.json');
+        handleOrderSet($ctx['userDir'] . '/cardOrder.json');
         break;
     case 'boards.list':
         handleListJson($ctx['userDir'] . '/boards.json', 'boards');
@@ -278,6 +280,12 @@ switch ($action) {
         break;
     case 'boards.delete':
         handleDeleteItem($ctx['userDir'] . '/boards.json', 'boards');
+        break;
+    case 'boards.order.get':
+        handleOrderGet($ctx['userDir'] . '/boardOrder.json');
+        break;
+    case 'boards.order.set':
+        handleOrderSet($ctx['userDir'] . '/boardOrder.json');
         break;
     case 'recording.upload':
         handleRecordingUpload($ctx);
@@ -594,7 +602,7 @@ function handleDeleteItem(string $path, string $listKey): void {
     respond(200, [$listKey => $items]);
 }
 
-function handleCardOrderGet(string $path): void {
+function handleOrderGet(string $path): void {
     $payload = ['order' => [], 'updatedAt' => 0];
     if (file_exists($path)) {
         $raw = @file_get_contents($path);
@@ -612,7 +620,7 @@ function handleCardOrderGet(string $path): void {
     respond(200, $payload);
 }
 
-function handleCardOrderSet(string $path): void {
+function handleOrderSet(string $path): void {
     $body = readJsonBody();
     $order = $body['order'] ?? null;
     $updatedAt = $body['updatedAt'] ?? null;
