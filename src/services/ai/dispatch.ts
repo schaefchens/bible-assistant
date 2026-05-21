@@ -8,7 +8,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useChatStore } from '@/store/chatStore';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
 import { usePlaybackStore } from '@/store/playbackStore';
-import { useRibbonsStore, type RibbonColor } from '@/store/ribbonsStore';
+import { useRibbonsStore, type RibbonColor, RIBBON_COLORS } from '@/store/ribbonsStore';
 import { audioPlayback, type PlaybackTrack } from '@/lib/audioPlaybackManager';
 import type { Card, Board, VerseSummary } from '@/types/domain';
 
@@ -361,26 +361,66 @@ type ResolvedPosition = {
   verse: number;
 };
 
-function resolveCurrentPosition(): ResolvedPosition | null {
+function resolveLastReadVerse(): ResolvedPosition | null {
+  // Prefer the live playback position; fall back to the most recent reading
+  // message in chat history (in case playback ended a few seconds ago).
   const cur = usePlaybackStore.getState().current;
-  if (!cur) return null;
   const messages = useChatStore.getState().messages;
-  const msg = messages.find((m) => m.id === cur.messageId);
-  if (!msg?.verses) return null;
-  const v = msg.verses[cur.verseIndex];
-  if (!v) return null;
-  return {
-    translation: v.translation,
-    bookId: v.bookId,
-    chapter: v.chapter,
-    verse: v.verse,
-  };
+  if (cur) {
+    const msg = messages.find((m) => m.id === cur.messageId);
+    const v = msg?.verses?.[cur.verseIndex];
+    if (v) {
+      return {
+        translation: v.translation,
+        bookId: v.bookId,
+        chapter: v.chapter,
+        verse: v.verse,
+      };
+    }
+  }
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === 'assistant' && m.verses && m.verses.length > 0) {
+      const v = m.verses[m.verses.length - 1];
+      return {
+        translation: v.translation,
+        bookId: v.bookId,
+        chapter: v.chapter,
+        verse: v.verse,
+      };
+    }
+  }
+  return null;
+}
+
+async function advanceOneVerse(p: ResolvedPosition): Promise<ResolvedPosition> {
+  // Advance within the current chapter if a next verse exists.
+  try {
+    const verses = await getChapter(p.translation, p.bookId, p.chapter);
+    if (verses.length > 0) {
+      const endVerse = verses[verses.length - 1].verse;
+      if (p.verse < endVerse) {
+        return { ...p, verse: p.verse + 1 };
+      }
+    }
+  } catch {
+    /* fall through to chapter roll-over */
+  }
+  // Else roll into the start of the next chapter.
+  const book = getBookById(p.bookId);
+  if (book && p.chapter < book.chapters) {
+    return { ...p, chapter: p.chapter + 1, verse: 1 };
+  }
+  // End of book — keep the same verse so save still succeeds.
+  return p;
 }
 
 async function handleSaveRibbon(
   args: ToolArgs['save_ribbon'],
 ): Promise<ToolDispatchResult> {
   const { locale, translation: defaultTrans } = useSettingsStore.getState();
+  // Default to gold when no color is named — single-ribbon UX.
+  const color: RibbonColor = (args.color as RibbonColor | undefined) ?? 'gold';
 
   let pos: ResolvedPosition;
   if (args.position?.reference) {
@@ -398,17 +438,19 @@ async function handleSaveRibbon(
       verse: parsed.verseStart ?? 1,
     };
   } else {
-    const current = resolveCurrentPosition();
-    if (!current) {
+    const lastRead = resolveLastReadVerse();
+    if (!lastRead) {
       return {
         ok: false,
         error: 'no current position — start reading first or specify a passage',
       };
     }
-    pos = current;
+    // A ribbon marks where the user will resume, so save the next-to-read
+    // verse (one past what they just heard).
+    pos = await advanceOneVerse(lastRead);
   }
 
-  useRibbonsStore.getState().setRibbon(args.color as RibbonColor, {
+  useRibbonsStore.getState().setRibbon(color, {
     translation: pos.translation,
     bookId: pos.bookId,
     chapter: pos.chapter,
@@ -424,7 +466,7 @@ async function handleSaveRibbon(
   );
   return {
     ok: true,
-    data: { color: args.color, reference, savedAt: Date.now() },
+    data: { color, reference, savedAt: Date.now() },
   };
 }
 
@@ -432,9 +474,27 @@ async function handleContinueFromRibbon(
   args: ToolArgs['continue_from_ribbon'],
   ctx: DispatchContext,
 ): Promise<ToolDispatchResult> {
-  const slot = useRibbonsStore.getState().slots[args.color as RibbonColor];
+  const slots = useRibbonsStore.getState().slots;
+
+  let color: RibbonColor | undefined = args.color as RibbonColor | undefined;
+  if (!color) {
+    // If exactly one ribbon is set, use it. Otherwise ask the model to clarify.
+    const setColors = RIBBON_COLORS.filter((c) => slots[c]);
+    if (setColors.length === 1) {
+      color = setColors[0];
+    } else if (setColors.length === 0) {
+      return { ok: false, error: 'no ribbon set yet' };
+    } else {
+      return {
+        ok: false,
+        error: `multiple ribbons set (${setColors.join(', ')}) — ask the user which one`,
+      };
+    }
+  }
+
+  const slot = slots[color];
   if (!slot) {
-    return { ok: false, error: `no ${args.color} ribbon set` };
+    return { ok: false, error: `no ${color} ribbon set` };
   }
   const book = getBookById(slot.bookId);
   if (!book) {

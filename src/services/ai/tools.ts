@@ -49,11 +49,11 @@ export type ToolArgs = {
   set_translation: { translation: Translation };
   set_voice: { voice: VoiceId };
   save_ribbon: {
-    color: 'gold' | 'blue' | 'red' | 'green' | 'purple';
+    color?: 'gold' | 'blue' | 'red' | 'green' | 'purple';
     position?: { reference: string; translation?: Translation };
   };
   continue_from_ribbon: {
-    color: 'gold' | 'blue' | 'red' | 'green' | 'purple';
+    color?: 'gold' | 'blue' | 'red' | 'green' | 'purple';
   };
 };
 
@@ -343,13 +343,15 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'save_ribbon',
       description:
-        'Save the current Bible reading position into one of five colored ribbon slots. Use when the user says e.g. "save a gold ribbon here", "speichere goldenes Lesezeichen", "mark this with the red ribbon". If no explicit position is given, defaults to the currently playing or most recently played verse.',
+        'Save a colored ribbon at the user\'s next resume point. ONLY use when the user explicitly mentions a ribbon/bookmark — e.g. "save a gold ribbon here", "speichere ein Lesezeichen", "mark this with the red ribbon". With no explicit position, the ribbon is stored at the verse AFTER the one just read (so continue_from_ribbon resumes with the next verse, not the one already heard). Color is optional: if the user did not name one, omit it and the system defaults to "gold". The tool result includes the actual reference that was stored, which you can confirm to the user.',
       parameters: {
         type: 'object',
         properties: {
           color: {
             type: 'string',
             enum: ['gold', 'blue', 'red', 'green', 'purple'],
+            description:
+              'Optional. Omit if the user did not name a color — defaults to "gold".',
           },
           position: {
             type: 'object',
@@ -364,7 +366,6 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
             },
           },
         },
-        required: ['color'],
       },
     },
   },
@@ -373,16 +374,17 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'continue_from_ribbon',
       description:
-        'Continue reading from a previously saved ribbon, e.g. "continue from gold", "lies weiter ab gold". Resolves to a read_verses call starting from the saved verse to the end of that chapter.',
+        'Resume reading from a previously saved RIBBON / BOOKMARK. ONLY use when the user explicitly names a saved ribbon — e.g. "continue from gold", "lies weiter ab dem Lesezeichen", "resume from my bookmark". DO NOT use for plain "continue reading" / "weiterlesen" — that means continue the passage already being read; use read_verses for that (figure out the next verses from the most recent "(Played aloud: …)" history note). Color is optional: if the user did not name one and only a single ribbon is saved, omit it and that ribbon is used.',
       parameters: {
         type: 'object',
         properties: {
           color: {
             type: 'string',
             enum: ['gold', 'blue', 'red', 'green', 'purple'],
+            description:
+              'Optional. Omit if the user did not name a color — the system will use the only saved ribbon if there is exactly one.',
           },
         },
-        required: ['color'],
       },
     },
   },
@@ -400,7 +402,8 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
       `Antworte kurz und freundlich auf Deutsch.`,
       `Nach einem read_verses- oder random_verse-Aufruf GIB KEINE Textantwort zurück (leerer content). Die Bibelstelle selbst ist die Antwort — sie wird angezeigt und vorgelesen, eine Bestätigung wäre überflüssig.`,
       `Cards = Lernkarten mit Titel, Versen und Notizen. Boards = thematische Sammlungen von Cards. Nutze die passenden Tools.`,
-      `Du kannst die aktuelle Leseposition mit "save_ribbon" auf einem von fünf farbigen Lesezeichen (gold, blue, red, green, purple) speichern und mit "continue_from_ribbon" später dort weiterlesen.`,
+      `Wenn der Benutzer einfach "weiterlesen", "weiter", "lies weiter" oder "die nächsten Verse" sagt OHNE ein Lesezeichen zu nennen: rufe "read_verses" mit dem nächsten Versabschnitt auf. Schau in deinen letzten "(Played aloud: …)"-Verlaufsnotizen, was zuletzt gelesen wurde, und bestimme die folgenden Verse selbst (gleiches Kapitel falls noch Verse übrig, sonst Anfang des nächsten Kapitels).`,
+      `Lesezeichen (Ribbons): Es gibt fünf farbige Lesezeichen (gold, blue, red, green, purple). "save_ribbon" speichert die aktuelle Leseposition; "continue_from_ribbon" liest ab dem gespeicherten Lesezeichen weiter. Rufe diese Tools NUR auf, wenn der Benutzer ausdrücklich "Lesezeichen", "Ribbon" oder eine der Farben erwähnt. "Weiterlesen" ohne Erwähnung eines Lesezeichens ist KEIN Ribbon-Befehl. Wenn keine Farbe genannt wurde, lass das Argument color weg — bei save_ribbon ist gold die Vorgabe, bei continue_from_ribbon wird automatisch das einzige gesetzte Lesezeichen verwendet.`,
     ].join(' ');
   }
   return [
@@ -412,6 +415,7 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
     `Reply briefly and warmly.`,
     `After a read_verses or random_verse call, return NO text content (empty content). The Bible passage itself is the response — it is shown and played; a confirmation would be redundant.`,
     `Cards = memorization cards with title, verses, notes. Boards = thematic groups of cards. Use the appropriate tools.`,
-    `You can save the user's current reading position to one of five colored ribbons (gold, blue, red, green, purple) with "save_ribbon" and resume reading from any saved ribbon later with "continue_from_ribbon".`,
+    `When the user says simply "continue reading", "read on", "next verses", "weiterlesen" or similar WITHOUT mentioning a ribbon/bookmark: call "read_verses" with the next slice. Look at your most recent "(Played aloud: …)" history notes to see what was just read and figure out the next verses yourself (continue in the same chapter if verses remain, otherwise start the next chapter).`,
+    `Ribbons (bookmarks): there are five colored ribbons (gold, blue, red, green, purple). "save_ribbon" stores the current reading position; "continue_from_ribbon" resumes from a saved ribbon. ONLY call these tools when the user explicitly mentions "ribbon", "bookmark", "Lesezeichen", or names a color. Plain "continue reading" / "weiterlesen" is NOT a ribbon command. If no color is given, omit the color argument — save_ribbon defaults to "gold" and continue_from_ribbon automatically uses the single saved ribbon when there's exactly one.`,
   ].join(' ');
 }
