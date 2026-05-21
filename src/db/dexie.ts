@@ -18,7 +18,8 @@ export type SyncOp = {
     | 'card.delete'
     | 'cardOrder.set'
     | 'board.upsert'
-    | 'board.delete';
+    | 'board.delete'
+    | 'boardOrder.set';
   payload: unknown;
   createdAt: number;
   attempts: number;

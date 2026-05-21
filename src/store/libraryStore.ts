@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { db } from '@/db/dexie';
+import { db, type SyncOp } from '@/db/dexie';
 import type { Card, Board } from '@/types/domain';
 import { apiGetJson, apiPostJson, ApiError } from '@/services/api/client';
 
@@ -48,7 +48,11 @@ async function persistOrder(prefKey: string, order: string[], updatedAt: number)
 
 // Order syncs as a whole-array set. Multiple pending sets collapse to the
 // latest one — only the most recent order matters.
-async function enqueueOrderSync(op: string, order: string[], updatedAt: number): Promise<void> {
+async function enqueueOrderSync(
+  op: Extract<SyncOp['op'], 'cardOrder.set' | 'boardOrder.set'>,
+  order: string[],
+  updatedAt: number,
+): Promise<void> {
   const pending = await db.syncQueue
     .where('op')
     .equals(op)
