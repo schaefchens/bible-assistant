@@ -1,12 +1,15 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { postChat, type ChatRequestMessage } from '@/services/api/chat';
 import { postTtsSpeak } from '@/services/api/tts';
 import { TOOL_DEFINITIONS, systemPrompt, type ToolName } from '@/services/ai/tools';
 import { dispatchTool } from '@/services/ai/dispatch';
 import { useChatStore } from '@/store/chatStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useGlobalVoiceStore, type VoiceSource } from '@/store/globalVoiceStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
-import type { ChatMessage, ToolCallSummary } from '@/types/domain';
+import { getChapter, type Translation } from '@/services/bible/bibleApi';
+import { formatReference, getBookById } from '@/services/bible/bookCatalog';
+import type { ChatMessage, ToolCallSummary, VerseSummary } from '@/types/domain';
 
 const MAX_TOOL_LOOPS = 6;
 
@@ -14,10 +17,15 @@ function newId(): string {
   return crypto.randomUUID();
 }
 
+export type SendOpts = { source?: VoiceSource };
+
 export function useCommandPipeline() {
-  const send = useCallback(async (userText: string) => {
+  const send = useCallback(async (userText: string, opts?: SendOpts) => {
     const text = userText.trim();
     if (!text) return;
+    if (useChatStore.getState().isProcessing) return;
+
+    const source: VoiceSource = opts?.source ?? 'chat';
 
     const userMsg: ChatMessage = {
       id: newId(),
@@ -27,6 +35,7 @@ export function useCommandPipeline() {
     };
     useChatStore.getState().appendMessage(userMsg);
     useChatStore.getState().setProcessing(true);
+    useChatStore.getState().setCurrentTool(null);
 
     const { locale, translation } = useSettingsStore.getState();
 
@@ -78,14 +87,21 @@ export function useCommandPipeline() {
           const summaries: ToolCallSummary[] = [];
           for (const tc of choice.tool_calls) {
             const name = tc.function.name as ToolName;
-            if (name === 'read_verses' || name === 'random_verse') {
+            if (
+              name === 'read_verses' ||
+              name === 'random_verse' ||
+              name === 'continue_from_ribbon'
+            ) {
               didReadAction = true;
             }
+            useChatStore.getState().setCurrentTool(name);
             const result = await dispatchTool(name, tc.function.arguments, {
               messageId: assistantMsg.id,
             });
             if (
-              (name === 'read_verses' || name === 'random_verse') &&
+              (name === 'read_verses' ||
+                name === 'random_verse' ||
+                name === 'continue_from_ribbon') &&
               result.ok &&
               result.data &&
               typeof result.data === 'object' &&
@@ -107,6 +123,7 @@ export function useCommandPipeline() {
               content: JSON.stringify(result.ok ? { ok: true, data: result.data } : { ok: false, error: result.error }),
             });
           }
+          useChatStore.getState().setCurrentTool(null);
           useChatStore.getState().updateMessage(assistantMsg.id, {
             toolCalls: [...(useChatStore.getState().messages.find((m) => m.id === assistantMsg.id)?.toolCalls ?? []), ...summaries],
           });
@@ -130,6 +147,17 @@ export function useCommandPipeline() {
         if (!didReadAction) {
           void speakAssistantReply(finalText, assistantMsg.id);
         }
+        if (source === 'global') {
+          useGlobalVoiceStore.getState().setLastResponse(
+            didReadAction
+              ? {
+                  kind: 'reading',
+                  reference: readReferences.join('; ') || '',
+                  messageId: assistantMsg.id,
+                }
+              : { kind: 'reply', text: finalText, messageId: assistantMsg.id },
+          );
+        }
         break;
       }
     } catch (e) {
@@ -138,6 +166,7 @@ export function useCommandPipeline() {
       });
     } finally {
       useChatStore.getState().setProcessing(false);
+      useChatStore.getState().setCurrentTool(null);
     }
   }, []);
 
@@ -175,4 +204,107 @@ async function speakAssistantReply(text: string, messageId: string): Promise<voi
   } catch (e) {
     console.warn('assistant TTS failed', e);
   }
+}
+
+// ─── Continue Reading helper ──────────────────────────────────────────
+
+type ContinueReading = {
+  canContinue: boolean;
+  nextLabel: string;
+  sendNext: () => void;
+};
+
+const CHUNK_SIZE = 5;
+
+function computeNextRange(
+  last: VerseSummary,
+  chapterEndVerse: number | null,
+  nextChapterMax: number | null,
+): { reference: string; translation: Translation; label: string } | null {
+  const book = getBookById(last.bookId);
+  if (!book) return null;
+  if (chapterEndVerse !== null && last.verse < chapterEndVerse) {
+    const start = last.verse + 1;
+    const end = Math.min(start + CHUNK_SIZE - 1, chapterEndVerse);
+    return {
+      reference: `${book.nameEn} ${last.chapter}:${start}-${end}`,
+      translation: last.translation,
+      label: `${book.nameEn} ${last.chapter}:${start}-${end}`,
+    };
+  }
+  if (last.chapter < book.chapters) {
+    const nextChapter = last.chapter + 1;
+    const end =
+      nextChapterMax !== null ? Math.min(CHUNK_SIZE, nextChapterMax) : CHUNK_SIZE;
+    return {
+      reference: `${book.nameEn} ${nextChapter}:1-${end}`,
+      translation: last.translation,
+      label: `${book.nameEn} ${nextChapter}:1-${end}`,
+    };
+  }
+  return null;
+}
+
+export function useContinueReading(
+  message: ChatMessage,
+  send: (text: string, opts?: SendOpts) => void | Promise<void>,
+): ContinueReading {
+  const last = useMemo(() => {
+    const verses = message.verses;
+    if (!verses || verses.length === 0) return null;
+    return verses[verses.length - 1];
+  }, [message.verses]);
+
+  const [chapterEndVerse, setChapterEndVerse] = useState<number | null>(null);
+  const [nextChapterMax, setNextChapterMax] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!last) return;
+    let cancelled = false;
+    void getChapter(last.translation, last.bookId, last.chapter)
+      .then((verses) => {
+        if (cancelled || verses.length === 0) return;
+        setChapterEndVerse(verses[verses.length - 1].verse);
+      })
+      .catch(() => {});
+    const book = getBookById(last.bookId);
+    if (book && last.chapter < book.chapters) {
+      void getChapter(last.translation, last.bookId, last.chapter + 1)
+        .then((verses) => {
+          if (cancelled || verses.length === 0) return;
+          setNextChapterMax(verses[verses.length - 1].verse);
+        })
+        .catch(() => {});
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [last]);
+
+  if (!last) {
+    return { canContinue: false, nextLabel: '', sendNext: () => {} };
+  }
+
+  const next = computeNextRange(last, chapterEndVerse, nextChapterMax);
+  if (!next) {
+    return { canContinue: false, nextLabel: '', sendNext: () => {} };
+  }
+
+  const { locale } = useSettingsStore.getState();
+  // Pretty label honors locale formatting (e.g. "Galater 5:23-27").
+  const startVerse = next.reference.split(':')[1]?.split('-')[0];
+  const endVerse = next.reference.split('-')[1];
+  const startNum = startVerse ? parseInt(startVerse, 10) : last.verse + 1;
+  const endNum = endVerse ? parseInt(endVerse, 10) : startNum;
+  const nextChapter = next.reference.match(/(\d+):/)?.[1];
+  const chapterNum = nextChapter ? parseInt(nextChapter, 10) : last.chapter;
+  const label = formatReference(last.bookId, chapterNum, startNum, endNum, locale);
+
+  return {
+    canContinue: true,
+    nextLabel: label,
+    sendNext: () => {
+      void send(`Read ${next.reference}`);
+    },
+  };
 }

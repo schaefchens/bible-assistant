@@ -7,6 +7,8 @@ import { postTts } from '@/services/api/tts';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useChatStore } from '@/store/chatStore';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
+import { usePlaybackStore } from '@/store/playbackStore';
+import { useRibbonsStore, type RibbonColor } from '@/store/ribbonsStore';
 import { audioPlayback, type PlaybackTrack } from '@/lib/audioPlaybackManager';
 import type { Card, Board, VerseSummary } from '@/types/domain';
 
@@ -72,6 +74,13 @@ export async function dispatchTool(
       case 'set_voice':
         useSettingsStore.getState().setVoice((args as ToolArgs['set_voice']).voice);
         return { ok: true };
+      case 'save_ribbon':
+        return await handleSaveRibbon(args as ToolArgs['save_ribbon']);
+      case 'continue_from_ribbon':
+        return await handleContinueFromRibbon(
+          args as ToolArgs['continue_from_ribbon'],
+          ctx,
+        );
       default:
         return { ok: false, error: `unknown tool: ${name}` };
     }
@@ -343,6 +352,112 @@ async function handleAddCardToBoard(
     .getState()
     .upsertBoard({ ...board, cardIds: [...board.cardIds, cardId] });
   return { ok: true, data: { boardId: board.id, boardName: board.name, cardId, cardTitle: cardLookup.card.title } };
+}
+
+type ResolvedPosition = {
+  translation: Translation;
+  bookId: number;
+  chapter: number;
+  verse: number;
+};
+
+function resolveCurrentPosition(): ResolvedPosition | null {
+  const cur = usePlaybackStore.getState().current;
+  if (!cur) return null;
+  const messages = useChatStore.getState().messages;
+  const msg = messages.find((m) => m.id === cur.messageId);
+  if (!msg?.verses) return null;
+  const v = msg.verses[cur.verseIndex];
+  if (!v) return null;
+  return {
+    translation: v.translation,
+    bookId: v.bookId,
+    chapter: v.chapter,
+    verse: v.verse,
+  };
+}
+
+async function handleSaveRibbon(
+  args: ToolArgs['save_ribbon'],
+): Promise<ToolDispatchResult> {
+  const { locale, translation: defaultTrans } = useSettingsStore.getState();
+
+  let pos: ResolvedPosition;
+  if (args.position?.reference) {
+    const parsed = parseReference(args.position.reference);
+    if (!parsed) {
+      return {
+        ok: false,
+        error: `could not parse reference "${args.position.reference}"`,
+      };
+    }
+    pos = {
+      translation: args.position.translation ?? defaultTrans,
+      bookId: parsed.bookId,
+      chapter: parsed.chapter,
+      verse: parsed.verseStart ?? 1,
+    };
+  } else {
+    const current = resolveCurrentPosition();
+    if (!current) {
+      return {
+        ok: false,
+        error: 'no current position — start reading first or specify a passage',
+      };
+    }
+    pos = current;
+  }
+
+  useRibbonsStore.getState().setRibbon(args.color as RibbonColor, {
+    translation: pos.translation,
+    bookId: pos.bookId,
+    chapter: pos.chapter,
+    verse: pos.verse,
+  });
+
+  const reference = formatReference(
+    pos.bookId,
+    pos.chapter,
+    pos.verse,
+    pos.verse,
+    locale,
+  );
+  return {
+    ok: true,
+    data: { color: args.color, reference, savedAt: Date.now() },
+  };
+}
+
+async function handleContinueFromRibbon(
+  args: ToolArgs['continue_from_ribbon'],
+  ctx: DispatchContext,
+): Promise<ToolDispatchResult> {
+  const slot = useRibbonsStore.getState().slots[args.color as RibbonColor];
+  if (!slot) {
+    return { ok: false, error: `no ${args.color} ribbon set` };
+  }
+  const book = getBookById(slot.bookId);
+  if (!book) {
+    return { ok: false, error: `unknown book id ${slot.bookId}` };
+  }
+  // End-of-chapter verse count requires fetching.
+  const verses = await getChapter(slot.translation, slot.bookId, slot.chapter);
+  if (verses.length === 0) {
+    return {
+      ok: false,
+      error: `no verses returned for ${book.nameEn} ${slot.chapter}`,
+    };
+  }
+  const endVerse = verses[verses.length - 1].verse;
+  const reference =
+    slot.verse >= endVerse
+      ? `${book.nameEn} ${slot.chapter}:${slot.verse}`
+      : `${book.nameEn} ${slot.chapter}:${slot.verse}-${endVerse}`;
+  return handleReadVerses(
+    { reference, translation: slot.translation },
+    ctx,
+    true,
+  );
 }
 
 async function handleRemoveCardFromBoard(

@@ -18,7 +18,34 @@
     "empty": "Probier: \"Lies Galater 5,22\" oder \"Erzähl mir die Geschichte vom verlorenen Sohn\"",
     "errorGeneric": "Etwas ist schiefgelaufen.",
     "pushToTalk": "Aufnahme…",
-    "pushToTalkHint": "{{key}} gedrückt halten für Push-to-Talk"
+    "pushToTalkHint": "{{key}} gedrückt halten für Push-to-Talk",
+    "title": "Bibel-Assistent",
+    "clear": "Chat leeren",
+    "clearConfirm": "Den gesamten Verlauf löschen?",
+    "scrollToBottom": "Zum neuesten Eintrag",
+    "thinkingFetching": "Hole Bibelstelle…",
+    "thinkingCards": "Bearbeite Bibliothek…",
+    "thinkingSettings": "Aktualisiere Einstellungen…",
+    "actions": {
+      "copy": "Kopieren",
+      "copied": "Kopiert",
+      "reask": "Neu fragen",
+      "saveCard": "Als Karte speichern",
+      "share": "Teilen",
+      "delete": "Löschen"
+    },
+    "reader": {
+      "continue": "Weiterlesen: {{range}}",
+      "playAll": "Alle abspielen",
+      "repeat": "Vers wiederholen",
+      "rate": "Tempo"
+    },
+    "suggestions": {
+      "random": "Zufälliger Vers",
+      "lastRead": "Weiterlesen",
+      "genesis1": "Lies 1. Mose 1",
+      "psalm23": "Lies Psalm 23"
+    }
   },
   "playback": {
     "play": "Abspielen",
@@ -95,6 +122,25 @@
       "lavender": "Lavendel",
       "sage": "Salbei",
       "sky": "Himmel"
+    }
+  },
+  "voice": {
+    "overlay": {
+      "listening": "Höre zu…",
+      "openInChat": "Im Chat öffnen",
+      "dismiss": "Schließen"
+    },
+    "mic": {
+      "position": "Mikrofon-Position",
+      "tl": "Oben links",
+      "tr": "Oben rechts",
+      "bl": "Unten links",
+      "br": "Unten rechts",
+      "dragHint": "Lange drücken und ziehen, um zu verschieben"
+    },
+    "ribbon": {
+      "noCurrent": "Starte zuerst eine Lesung oder gib eine Stelle an.",
+      "notSet": "Lesezeichen {{color}} ist noch nicht gesetzt."
     }
   },
   "settings": {

@@ -18,7 +18,34 @@
     "empty": "Try: \"Read Galatians 5:22\" or \"Tell me the story of the lost son\"",
     "errorGeneric": "Something went wrong.",
     "pushToTalk": "Recording…",
-    "pushToTalkHint": "Hold {{key}} to push-to-talk"
+    "pushToTalkHint": "Hold {{key}} to push-to-talk",
+    "title": "Bible Assistant",
+    "clear": "Clear chat",
+    "clearConfirm": "Clear the entire conversation?",
+    "scrollToBottom": "Scroll to latest",
+    "thinkingFetching": "Fetching passage…",
+    "thinkingCards": "Working on your library…",
+    "thinkingSettings": "Updating settings…",
+    "actions": {
+      "copy": "Copy",
+      "copied": "Copied",
+      "reask": "Re-ask",
+      "saveCard": "Save to card",
+      "share": "Share",
+      "delete": "Delete"
+    },
+    "reader": {
+      "continue": "Continue: {{range}}",
+      "playAll": "Play all",
+      "repeat": "Repeat verse",
+      "rate": "Rate"
+    },
+    "suggestions": {
+      "random": "Random verse",
+      "lastRead": "Continue last",
+      "genesis1": "Read Genesis 1",
+      "psalm23": "Read Psalm 23"
+    }
   },
   "playback": {
     "play": "Play",
@@ -95,6 +122,25 @@
       "lavender": "Lavender",
       "sage": "Sage",
       "sky": "Sky"
+    }
+  },
+  "voice": {
+    "overlay": {
+      "listening": "Listening…",
+      "openInChat": "Open in chat",
+      "dismiss": "Dismiss"
+    },
+    "mic": {
+      "position": "Microphone position",
+      "tl": "Top left",
+      "tr": "Top right",
+      "bl": "Bottom left",
+      "br": "Bottom right",
+      "dragHint": "Long-press and drag to move"
+    },
+    "ribbon": {
+      "noCurrent": "Start reading first or specify a passage.",
+      "notSet": "{{color}} ribbon isn't set yet."
     }
   },
   "settings": {

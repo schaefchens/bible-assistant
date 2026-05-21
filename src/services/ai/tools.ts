@@ -18,7 +18,9 @@ export type ToolName =
   | 'list_boards'
   | 'set_language'
   | 'set_translation'
-  | 'set_voice';
+  | 'set_voice'
+  | 'save_ribbon'
+  | 'continue_from_ribbon';
 
 export type ToolArgs = {
   read_verses: { reference: string; translation?: Translation };
@@ -46,6 +48,13 @@ export type ToolArgs = {
   set_language: { language: 'en' | 'de' };
   set_translation: { translation: Translation };
   set_voice: { voice: VoiceId };
+  save_ribbon: {
+    color: 'gold' | 'blue' | 'red' | 'green' | 'purple';
+    position?: { reference: string; translation?: Translation };
+  };
+  continue_from_ribbon: {
+    color: 'gold' | 'blue' | 'red' | 'green' | 'purple';
+  };
 };
 
 export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
@@ -329,6 +338,54 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'save_ribbon',
+      description:
+        'Save the current Bible reading position into one of five colored ribbon slots. Use when the user says e.g. "save a gold ribbon here", "speichere goldenes Lesezeichen", "mark this with the red ribbon". If no explicit position is given, defaults to the currently playing or most recently played verse.',
+      parameters: {
+        type: 'object',
+        properties: {
+          color: {
+            type: 'string',
+            enum: ['gold', 'blue', 'red', 'green', 'purple'],
+          },
+          position: {
+            type: 'object',
+            description:
+              'Optional explicit position. Omit to use the currently playing verse.',
+            properties: {
+              reference: {
+                type: 'string',
+                description: 'Canonical reference like "John 3:16".',
+              },
+              translation: { type: 'string', enum: ['S00', 'ESV'] },
+            },
+          },
+        },
+        required: ['color'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'continue_from_ribbon',
+      description:
+        'Continue reading from a previously saved ribbon, e.g. "continue from gold", "lies weiter ab gold". Resolves to a read_verses call starting from the saved verse to the end of that chapter.',
+      parameters: {
+        type: 'object',
+        properties: {
+          color: {
+            type: 'string',
+            enum: ['gold', 'blue', 'red', 'green', 'purple'],
+          },
+        },
+        required: ['color'],
+      },
+    },
+  },
 ];
 
 export function systemPrompt(locale: 'en' | 'de', translation: Translation): string {
@@ -343,6 +400,7 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
       `Antworte kurz und freundlich auf Deutsch.`,
       `Nach einem read_verses- oder random_verse-Aufruf GIB KEINE Textantwort zurück (leerer content). Die Bibelstelle selbst ist die Antwort — sie wird angezeigt und vorgelesen, eine Bestätigung wäre überflüssig.`,
       `Cards = Lernkarten mit Titel, Versen und Notizen. Boards = thematische Sammlungen von Cards. Nutze die passenden Tools.`,
+      `Du kannst die aktuelle Leseposition mit "save_ribbon" auf einem von fünf farbigen Lesezeichen (gold, blue, red, green, purple) speichern und mit "continue_from_ribbon" später dort weiterlesen.`,
     ].join(' ');
   }
   return [
@@ -354,5 +412,6 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
     `Reply briefly and warmly.`,
     `After a read_verses or random_verse call, return NO text content (empty content). The Bible passage itself is the response — it is shown and played; a confirmation would be redundant.`,
     `Cards = memorization cards with title, verses, notes. Boards = thematic groups of cards. Use the appropriate tools.`,
+    `You can save the user's current reading position to one of five colored ribbons (gold, blue, red, green, purple) with "save_ribbon" and resume reading from any saved ribbon later with "continue_from_ribbon".`,
   ].join(' ');
 }

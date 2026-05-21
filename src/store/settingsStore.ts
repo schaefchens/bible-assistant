@@ -3,6 +3,13 @@ import { persist } from 'zustand/middleware';
 import type { Locale, VoiceId } from '@/types/domain';
 import type { Translation } from '@/services/bible/bibleApi';
 
+export type MicCorner = 'tl' | 'tr' | 'bl' | 'br';
+export type AmbientSettings = {
+  enabled: boolean;
+  trackId: string | null;
+  volume: number;
+};
+
 type SettingsState = {
   locale: Locale;
   translation: Translation;
@@ -12,6 +19,8 @@ type SettingsState = {
   speakAssistant: boolean;
   useWhisperFallback: boolean;
   translationOverridden: boolean;
+  micCorner: MicCorner;
+  ambient: AmbientSettings;
   setLocale: (locale: Locale) => void;
   setTranslation: (translation: Translation, fromUser?: boolean) => void;
   setVoice: (voice: VoiceId) => void;
@@ -19,6 +28,14 @@ type SettingsState = {
   setAssistantVoice: (voice: VoiceId) => void;
   setSpeakAssistant: (value: boolean) => void;
   setUseWhisperFallback: (value: boolean) => void;
+  setMicCorner: (corner: MicCorner) => void;
+  setAmbient: (patch: Partial<AmbientSettings>) => void;
+};
+
+const DEFAULT_AMBIENT: AmbientSettings = {
+  enabled: false,
+  trackId: null,
+  volume: 0.3,
 };
 
 function defaultTranslationFor(locale: Locale): Translation {
@@ -46,6 +63,8 @@ export const useSettingsStore = create<SettingsState>()(
         speakAssistant: true,
         useWhisperFallback: true,
         translationOverridden: false,
+        micCorner: 'br',
+        ambient: DEFAULT_AMBIENT,
         setLocale: (locale) =>
           set((s) => ({
             locale,
@@ -61,10 +80,24 @@ export const useSettingsStore = create<SettingsState>()(
         setAssistantVoice: (assistantVoice) => set({ assistantVoice }),
         setSpeakAssistant: (speakAssistant) => set({ speakAssistant }),
         setUseWhisperFallback: (useWhisperFallback) => set({ useWhisperFallback }),
+        setMicCorner: (micCorner) => set({ micCorner }),
+        setAmbient: (patch) => set((s) => ({ ambient: { ...s.ambient, ...patch } })),
       };
     },
     {
       name: 'ba.settings',
+      version: 2,
+      migrate: (persisted, version) => {
+        const prev = (persisted as Partial<SettingsState>) ?? {};
+        if (version < 2) {
+          return {
+            ...prev,
+            micCorner: (prev.micCorner as MicCorner | undefined) ?? 'br',
+            ambient: { ...DEFAULT_AMBIENT, ...(prev.ambient ?? {}) },
+          };
+        }
+        return prev as SettingsState;
+      },
     },
   ),
 );

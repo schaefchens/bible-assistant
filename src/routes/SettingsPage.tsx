@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSettingsStore } from '@/store/settingsStore';
+import { useSettingsStore, type MicCorner } from '@/store/settingsStore';
 import { VOICE_OPTIONS } from '@/types/domain';
 import { getPassphrase } from '@/lib/passphrase';
 
@@ -98,6 +98,14 @@ export function SettingsPage() {
         </label>
       </Section>
 
+      <Section title={t('voice.mic.position')}>
+        <p className="text-xs text-cream-dim mb-2">{t('voice.mic.dragHint')}</p>
+        <MicCornerPicker
+          value={settings.micCorner}
+          onChange={(v) => settings.setMicCorner(v)}
+        />
+      </Section>
+
       <Section title="Whisper">
         <label className="flex items-center gap-2">
           <input
@@ -146,6 +154,41 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h3 className="text-xs uppercase tracking-wide text-gold-dim mb-2">{title}</h3>
       {children}
     </section>
+  );
+}
+
+function MicCornerPicker({
+  value,
+  onChange,
+}: {
+  value: MicCorner;
+  onChange: (v: MicCorner) => void;
+}) {
+  const { t } = useTranslation();
+  const corners: { value: MicCorner; label: string }[] = [
+    { value: 'tl', label: t('voice.mic.tl') },
+    { value: 'tr', label: t('voice.mic.tr') },
+    { value: 'bl', label: t('voice.mic.bl') },
+    { value: 'br', label: t('voice.mic.br') },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {corners.map((c) => (
+        <button
+          key={c.value}
+          type="button"
+          onClick={() => onChange(c.value)}
+          className={
+            'py-3 text-sm rounded-xl border transition-colors ' +
+            (value === c.value
+              ? 'bg-gold/15 text-gold border-gold/60'
+              : 'bg-navy-soft text-cream-dim border-navy-soft hover:text-cream')
+          }
+        >
+          {c.label}
+        </button>
+      ))}
+    </div>
   );
 }
 

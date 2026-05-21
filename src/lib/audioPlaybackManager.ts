@@ -1,4 +1,5 @@
 import { usePlaybackStore } from '@/store/playbackStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import type { Alignment } from '@/types/domain';
 import { findCurrentWordIndex, fetchAlignment } from './alignment';
 
@@ -14,20 +15,52 @@ type LoadedTrack = PlaybackTrack & {
   alignment: Alignment;
 };
 
+class AmbientBus {
+  private parent: AudioPlaybackManager;
+  constructor(parent: AudioPlaybackManager) {
+    this.parent = parent;
+  }
+  async load(url: string): Promise<void> {
+    await this.parent._ambientLoad(url);
+  }
+  play(): void {
+    this.parent._ambientPlay();
+  }
+  pause(): void {
+    this.parent._ambientPause();
+  }
+  setVolume(v: number): void {
+    this.parent._ambientSetVolume(v);
+  }
+}
+
 class AudioPlaybackManager {
   private ctx: AudioContext | null = null;
+  private master: GainNode | null = null;
+  private ttsGain: GainNode | null = null;
+  private ambientGain: GainNode | null = null;
+
   private source: AudioBufferSourceNode | null = null;
   private queue: PlaybackTrack[] = [];
   private currentIndex = 0;
   private currentLoaded: LoadedTrack | null = null;
   private currentStartTime = 0; // ctx.currentTime when source started
-  private currentOffset = 0; // seconds into the buffer when we started
+  private currentOffset = 0; // audio-time (seconds into the buffer) when we started
+  private currentRate = 1;
+  private loopCurrent = false;
   private tickHandle: number | null = null;
   private decodeCache = new Map<string, AudioBuffer>();
   private alignmentCache = new Map<string, Alignment>();
   // When set, the next track to finish loading will start at the given word
   // index instead of from the beginning. Consumed (cleared) on use.
   private pendingSeekWord: number | null = null;
+
+  // ambient
+  private ambientSource: AudioBufferSourceNode | null = null;
+  private ambientBuffer: AudioBuffer | null = null;
+  private ambientUrl: string | null = null;
+  private ambientDecodeCache = new Map<string, AudioBuffer>();
+  readonly ambient = new AmbientBus(this);
 
   /** Must be called inside a user gesture handler on iOS. */
   ensureContext(): AudioContext {
@@ -40,6 +73,15 @@ class AudioPlaybackManager {
           webkitAudioContext?: typeof AudioContext;
         }).webkitAudioContext!;
       this.ctx = new Ctor();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 1;
+      this.master.connect(this.ctx.destination);
+      this.ttsGain = this.ctx.createGain();
+      this.ttsGain.gain.value = 1;
+      this.ttsGain.connect(this.master);
+      this.ambientGain = this.ctx.createGain();
+      this.ambientGain.gain.value = useSettingsStore.getState().ambient.volume;
+      this.ambientGain.connect(this.master);
     }
     if (this.ctx.state === 'suspended') {
       void this.ctx.resume();
@@ -141,7 +183,8 @@ class AudioPlaybackManager {
     }
     const src = ctx.createBufferSource();
     src.buffer = buffer;
-    src.connect(ctx.destination);
+    src.playbackRate.value = this.currentRate;
+    src.connect(this.ttsGain ?? ctx.destination);
     src.onended = () => this.handleEnded();
     src.start(0, offset);
     this.source = src;
@@ -152,6 +195,13 @@ class AudioPlaybackManager {
 
   private handleEnded(): void {
     if (usePlaybackStore.getState().status === 'paused') return;
+    if (this.loopCurrent && this.currentLoaded) {
+      // Replay the same verse from the start.
+      this.currentOffset = 0;
+      this.startSource(this.currentLoaded.buffer, 0);
+      usePlaybackStore.getState().patchCurrent({ position: 0, currentWordIndex: -1 });
+      return;
+    }
     this.currentIndex++;
     if (this.currentIndex < this.queue.length) {
       void this.playCurrent();
@@ -171,7 +221,9 @@ class AudioPlaybackManager {
         this.tickHandle = null;
         return;
       }
-      const elapsed = this.ctx.currentTime - this.currentStartTime + this.currentOffset;
+      const elapsed =
+        (this.ctx.currentTime - this.currentStartTime) * this.currentRate +
+        this.currentOffset;
       const wordIndex = findCurrentWordIndex(this.currentLoaded.alignment, elapsed);
       usePlaybackStore.getState().patchCurrent({
         position: elapsed,
@@ -185,7 +237,9 @@ class AudioPlaybackManager {
   pause(): void {
     if (!this.source || !this.ctx) return;
     if (usePlaybackStore.getState().status !== 'playing') return;
-    const elapsed = this.ctx.currentTime - this.currentStartTime + this.currentOffset;
+    const elapsed =
+      (this.ctx.currentTime - this.currentStartTime) * this.currentRate +
+      this.currentOffset;
     try {
       this.source.onended = null;
       this.source.stop();
@@ -318,10 +372,39 @@ class AudioPlaybackManager {
     }
   }
 
+  /** Change playback rate without losing position. */
+  setPlaybackRate(rate: number): void {
+    const clamped = Math.max(0.25, Math.min(4, rate));
+    if (this.ctx && this.source && usePlaybackStore.getState().status === 'playing') {
+      const now = this.ctx.currentTime;
+      const elapsed =
+        (now - this.currentStartTime) * this.currentRate + this.currentOffset;
+      this.currentOffset = elapsed;
+      this.currentStartTime = now;
+      this.source.playbackRate.value = clamped;
+    }
+    this.currentRate = clamped;
+  }
+
+  getPlaybackRate(): number {
+    return this.currentRate;
+  }
+
+  setLoopCurrent(loop: boolean): void {
+    this.loopCurrent = loop;
+  }
+
+  isLoopCurrent(): boolean {
+    return this.loopCurrent;
+  }
+
   private getCurrentPosition(): number {
     if (!this.ctx) return this.currentOffset;
     if (!this.source) return this.currentOffset;
-    return this.ctx.currentTime - this.currentStartTime + this.currentOffset;
+    return (
+      (this.ctx.currentTime - this.currentStartTime) * this.currentRate +
+      this.currentOffset
+    );
   }
 
   isPlaying(messageId: string): boolean {
@@ -351,6 +434,64 @@ class AudioPlaybackManager {
     const al = await fetchAlignment(url);
     this.alignmentCache.set(url, al);
     return al;
+  }
+
+  // ─── Ambient bus (called via this.ambient) ───────────────────────────
+
+  async _ambientLoad(url: string): Promise<void> {
+    if (this.ambientUrl === url && this.ambientBuffer) return;
+    const cached = this.ambientDecodeCache.get(url);
+    if (cached) {
+      this.ambientBuffer = cached;
+      this.ambientUrl = url;
+      return;
+    }
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`ambient fetch failed: ${res.status}`);
+    const arr = await res.arrayBuffer();
+    const ctx = this.ensureContext();
+    const buf = await ctx.decodeAudioData(arr.slice(0));
+    this.ambientDecodeCache.set(url, buf);
+    this.ambientBuffer = buf;
+    this.ambientUrl = url;
+  }
+
+  _ambientPlay(): void {
+    if (!this.ambientBuffer) return;
+    const ctx = this.ensureContext();
+    if (this.ambientSource) {
+      // Already playing — no-op.
+      return;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = this.ambientBuffer;
+    src.loop = true;
+    src.connect(this.ambientGain ?? ctx.destination);
+    src.start(0);
+    this.ambientSource = src;
+  }
+
+  _ambientPause(): void {
+    if (!this.ambientSource) return;
+    try {
+      this.ambientSource.stop();
+    } catch {
+      /* ignore */
+    }
+    this.ambientSource = null;
+  }
+
+  _ambientSetVolume(v: number): void {
+    const clamped = Math.max(0, Math.min(1, v));
+    if (!this.ctx || !this.ambientGain) {
+      useSettingsStore.getState().setAmbient({ volume: clamped });
+      return;
+    }
+    const now = this.ctx.currentTime;
+    this.ambientGain.gain.cancelScheduledValues(now);
+    this.ambientGain.gain.setValueAtTime(this.ambientGain.gain.value, now);
+    this.ambientGain.gain.linearRampToValueAtTime(clamped, now + 0.15);
+    useSettingsStore.getState().setAmbient({ volume: clamped });
   }
 }
 

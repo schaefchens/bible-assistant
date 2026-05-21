@@ -1,16 +1,25 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useChatStore } from '@/store/chatStore';
-import { MessageItem } from './MessageItem';
+import { useCommandPipeline } from '@/hooks/useCommandPipeline';
+import { MessageBubble } from './MessageBubble';
+import { ReaderPanel } from './ReaderPanel';
+import { ThinkingIndicator } from './ThinkingIndicator';
+import type { ChatMessage } from '@/types/domain';
 
-export function MessageList() {
+type Props = {
+  scrollRef: RefObject<HTMLDivElement | null>;
+};
+
+export function MessageList({ scrollRef }: Props) {
   const { t } = useTranslation();
   const messages = useChatStore((s) => s.messages);
   const selectedIndex = useChatStore((s) => s.selectedIndex);
   const setSelected = useChatStore((s) => s.setSelected);
-  const isProcessing = useChatStore((s) => s.isProcessing);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const highlightedId = useChatStore((s) => s.highlightedMessageId);
+  const setHighlightedId = useChatStore((s) => s.setHighlightedMessageId);
   const lastCountRef = useRef(0);
+  const { send } = useCommandPipeline();
 
   useEffect(() => {
     if (messages.length > lastCountRef.current && scrollRef.current) {
@@ -20,7 +29,38 @@ export function MessageList() {
       });
     }
     lastCountRef.current = messages.length;
-  }, [messages.length]);
+  }, [messages.length, scrollRef]);
+
+  // When VoiceOverlay's "Open in chat" highlights a message, scroll it into view
+  // and clear the highlight after the gold flash settles.
+  useEffect(() => {
+    if (!highlightedId) return;
+    const idx = messages.findIndex((m) => m.id === highlightedId);
+    if (idx >= 0) {
+      setSelected(idx);
+      const el = scrollRef.current?.querySelector(
+        `[data-message-id="${highlightedId}"]`,
+      );
+      if (el) (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    const t = window.setTimeout(() => setHighlightedId(null), 1200);
+    return () => window.clearTimeout(t);
+  }, [highlightedId, messages, scrollRef, setHighlightedId, setSelected]);
+
+  const handleReask = (msg: ChatMessage) => {
+    if (msg.role === 'user') {
+      void send(msg.text);
+      return;
+    }
+    // Walk backward to most recent user message.
+    const idx = messages.findIndex((m) => m.id === msg.id);
+    for (let i = idx - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        void send(messages[i].text);
+        return;
+      }
+    }
+  };
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
@@ -29,19 +69,30 @@ export function MessageList() {
           <p className="font-serif italic">{t('chat.empty')}</p>
         </div>
       )}
-      {messages.map((m, i) => (
-        <MessageItem
-          key={m.id}
-          message={m}
-          selected={i === selectedIndex}
-          onSelect={() => setSelected(i)}
-        />
-      ))}
-      {isProcessing && (
-        <div className="text-cream-dim text-sm italic px-4 animate-pulse-soft">
-          {t('chat.thinking')}
-        </div>
-      )}
+      {messages.map((m, i) => {
+        const isReading =
+          m.role === 'assistant' && (m.verses?.length ?? 0) > 0;
+        const selected = i === selectedIndex;
+        return (
+          <div key={m.id} data-message-id={m.id}>
+            {isReading ? (
+              <ReaderPanel
+                message={m}
+                selected={selected}
+                onSelect={() => setSelected(i)}
+              />
+            ) : (
+              <MessageBubble
+                message={m}
+                selected={selected}
+                onSelect={() => setSelected(i)}
+                onReask={handleReask}
+              />
+            )}
+          </div>
+        );
+      })}
+      <ThinkingIndicator />
     </div>
   );
 }

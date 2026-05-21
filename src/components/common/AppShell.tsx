@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react';
 import { useChatNavigation } from '@/hooks/useChatNavigation';
 import { getPassphrase } from '@/lib/passphrase';
 import { PassphraseSetup } from '@/components/onboarding/PassphraseSetup';
+import { GlobalMicButton } from '@/components/voice/GlobalMicButton';
+import { VoiceOverlay } from '@/components/voice/VoiceOverlay';
 
 export function AppShell() {
   const { t } = useTranslation();
@@ -56,6 +58,9 @@ export function AppShell() {
         <NavTab to="/boards" label={t('nav.boards')} icon={<BoardsIcon />} />
         <NavTab to="/settings" label={t('nav.settings')} icon={<SettingsIcon />} />
       </nav>
+
+      <GlobalMicButton />
+      <VoiceOverlay />
     </div>
   );
 }
