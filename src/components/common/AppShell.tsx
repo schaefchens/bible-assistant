@@ -2,11 +2,14 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { useLibraryStore } from '@/store/libraryStore';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useChatNavigation } from '@/hooks/useChatNavigation';
+import { getPassphrase } from '@/lib/passphrase';
+import { PassphraseSetup } from '@/components/onboarding/PassphraseSetup';
 
 export function AppShell() {
   const { t } = useTranslation();
+  const [hasPassphrase, setHasPassphrase] = useState(() => !!getPassphrase());
   const init = useLibraryStore((s) => s.init);
   const setOnline = useLibraryStore((s) => s.setOnline);
   const online = useLibraryStore((s) => s.online);
@@ -15,6 +18,7 @@ export function AppShell() {
   useChatNavigation();
 
   useEffect(() => {
+    if (!hasPassphrase) return;
     void init();
     const onUp = () => setOnline(true);
     const onDown = () => setOnline(false);
@@ -24,7 +28,11 @@ export function AppShell() {
       window.removeEventListener('online', onUp);
       window.removeEventListener('offline', onDown);
     };
-  }, [init, setOnline]);
+  }, [init, setOnline, hasPassphrase]);
+
+  if (!hasPassphrase) {
+    return <PassphraseSetup onDone={() => setHasPassphrase(true)} />;
+  }
 
   return (
     <div className="flex flex-col h-full pt-safe">

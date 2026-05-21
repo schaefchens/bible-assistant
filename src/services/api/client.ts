@@ -1,4 +1,4 @@
-import { getOrCreateIdentity } from '@/lib/identity';
+import { requireIdentity } from '@/lib/identity';
 
 // import.meta.env.BASE_URL is the value of `base` in vite.config.ts ('/assistant/' here),
 // so the SPA can be served from any subpath without code changes.
@@ -17,7 +17,7 @@ export class ApiError extends Error {
 }
 
 function authHeaders(): Record<string, string> {
-  const identity = getOrCreateIdentity();
+  const identity = requireIdentity();
   return {
     'X-User-Id': identity.userId,
     'X-User-Secret': identity.userSecret,

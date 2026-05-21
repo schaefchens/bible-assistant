@@ -2,40 +2,24 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '@/store/settingsStore';
 import { VOICE_OPTIONS } from '@/types/domain';
-import {
-  exportIdentityString,
-  getOrCreateIdentity,
-  parseIdentityString,
-  setIdentity,
-} from '@/lib/identity';
+import { getPassphrase } from '@/lib/passphrase';
 
 export function SettingsPage() {
   const { t } = useTranslation();
   const settings = useSettingsStore();
-  const identity = getOrCreateIdentity();
-  const [importValue, setImportValue] = useState('');
+  const passphrase = getPassphrase() ?? '';
+  const words = passphrase.split(' ');
+  const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
-
-  const idString = exportIdentityString(identity);
 
   const onCopy = async () => {
     try {
-      await navigator.clipboard.writeText(idString);
+      await navigator.clipboard.writeText(passphrase);
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
     } catch {
       /* ignore */
     }
-  };
-
-  const onImport = () => {
-    const parsed = parseIdentityString(importValue);
-    if (!parsed) {
-      alert('Invalid identity');
-      return;
-    }
-    setIdentity(parsed);
-    location.reload();
   };
 
   return (
@@ -127,27 +111,30 @@ export function SettingsPage() {
 
       <Section title={t('settings.identity')}>
         <p className="text-xs text-cream-dim mb-2">{t('settings.identityHint')}</p>
-        <div className="flex gap-2 items-center">
-          <input
-            readOnly
-            value={idString}
-            className="flex-1 bg-navy-soft text-cream rounded-xl px-3 py-2 text-xs font-mono"
-          />
-          <button className="btn-ghost text-xs" onClick={onCopy}>
-            {copied ? '✓' : t('settings.copy')}
+        {!revealed ? (
+          <button className="btn-ghost text-xs" onClick={() => setRevealed(true)}>
+            {t('settings.reveal')}
           </button>
-        </div>
-        <div className="flex gap-2 items-center mt-3">
-          <input
-            value={importValue}
-            onChange={(e) => setImportValue(e.target.value)}
-            placeholder={t('settings.importPlaceholder')}
-            className="flex-1 bg-navy-soft text-cream rounded-xl px-3 py-2 text-xs font-mono"
-          />
-          <button className="btn-primary text-xs" onClick={onImport}>
-            {t('settings.import')}
-          </button>
-        </div>
+        ) : (
+          <>
+            <ol className="grid grid-cols-2 gap-x-3 gap-y-2 bg-navy-soft rounded-xl p-4">
+              {words.map((w, i) => (
+                <li key={i} className="flex items-baseline gap-2 text-sm font-mono">
+                  <span className="text-gold-dim text-xs w-6 text-right tabular-nums">{i + 1}.</span>
+                  <span className="text-cream">{w}</span>
+                </li>
+              ))}
+            </ol>
+            <div className="flex gap-2 mt-3">
+              <button className="btn-ghost text-xs" onClick={onCopy}>
+                {copied ? '✓ ' + t('settings.copy') : t('settings.copy')}
+              </button>
+              <button className="btn-ghost text-xs" onClick={() => setRevealed(false)}>
+                {t('settings.hide')}
+              </button>
+            </div>
+          </>
+        )}
       </Section>
     </div>
   );
