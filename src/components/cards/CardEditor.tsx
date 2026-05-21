@@ -92,9 +92,19 @@ export function CardEditor({ card, onClose }: Props) {
         <button className="btn-ghost text-sm" onClick={onClose}>
           ← {t('common.back')}
         </button>
-        <button className="btn-primary text-sm" onClick={save}>
-          {t('cards.save')}
-        </button>
+        <div className="flex items-center gap-2">
+          {card.title && (
+            <button
+              onClick={remove}
+              className="text-xs text-red-400 hover:text-red-300 px-2 py-2"
+            >
+              {t('cards.delete')}
+            </button>
+          )}
+          <button className="btn-primary text-sm" onClick={save}>
+            {t('cards.save')}
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-2">
@@ -189,13 +199,6 @@ export function CardEditor({ card, onClose }: Props) {
         </Field>
       )}
 
-      {card.title && (
-        <div className="pt-6">
-          <button onClick={remove} className="text-xs text-red-400 hover:text-red-300">
-            {t('cards.delete')}
-          </button>
-        </div>
-      )}
     </div>
   );
 }
