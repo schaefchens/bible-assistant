@@ -160,7 +160,23 @@
     "hide": "Verbergen",
     "copy": "Kopieren",
     "save": "Speichern",
-    "version": "Version"
+    "version": "Version",
+    "ambient": {
+      "title": "Hintergrundmusik",
+      "hint": "Spielt leise unter dem Vorlesen von Versen.",
+      "enabled": "Musik während des Vorlesens abspielen",
+      "track": "Musiktitel",
+      "none": "— Titel wählen —",
+      "noneAvailable": "Keine Titel verfügbar",
+      "loading": "Lade Titel…",
+      "musicVolume": "Musik-Lautstärke",
+      "speechVolume": "Lese-Lautstärke",
+      "preview": "Vorhören",
+      "stop": "Stopp"
+    }
+  },
+  "chatReader": {
+    "ambient": "Hintergrundmusik ein-/ausschalten"
   },
   "onboarding": {
     "welcomeSubtitle": "Richte dein Konto ein, um loszulegen.",

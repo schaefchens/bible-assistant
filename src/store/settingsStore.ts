@@ -21,6 +21,7 @@ type SettingsState = {
   translationOverridden: boolean;
   micCorner: MicCorner;
   ambient: AmbientSettings;
+  speechVolume: number;
   setLocale: (locale: Locale) => void;
   setTranslation: (translation: Translation, fromUser?: boolean) => void;
   setVoice: (voice: VoiceId) => void;
@@ -30,6 +31,7 @@ type SettingsState = {
   setUseWhisperFallback: (value: boolean) => void;
   setMicCorner: (corner: MicCorner) => void;
   setAmbient: (patch: Partial<AmbientSettings>) => void;
+  setSpeechVolume: (v: number) => void;
 };
 
 const DEFAULT_AMBIENT: AmbientSettings = {
@@ -65,6 +67,7 @@ export const useSettingsStore = create<SettingsState>()(
         translationOverridden: false,
         micCorner: 'br',
         ambient: DEFAULT_AMBIENT,
+        speechVolume: 1,
         setLocale: (locale) =>
           set((s) => ({
             locale,
@@ -82,18 +85,26 @@ export const useSettingsStore = create<SettingsState>()(
         setUseWhisperFallback: (useWhisperFallback) => set({ useWhisperFallback }),
         setMicCorner: (micCorner) => set({ micCorner }),
         setAmbient: (patch) => set((s) => ({ ambient: { ...s.ambient, ...patch } })),
+        setSpeechVolume: (v) =>
+          set({ speechVolume: Math.max(0, Math.min(1, v)) }),
       };
     },
     {
       name: 'ba.settings',
-      version: 2,
+      version: 3,
       migrate: (persisted, version) => {
-        const prev = (persisted as Partial<SettingsState>) ?? {};
+        let prev = (persisted as Partial<SettingsState>) ?? {};
         if (version < 2) {
-          return {
+          prev = {
             ...prev,
             micCorner: (prev.micCorner as MicCorner | undefined) ?? 'br',
             ambient: { ...DEFAULT_AMBIENT, ...(prev.ambient ?? {}) },
+          };
+        }
+        if (version < 3) {
+          prev = {
+            ...prev,
+            speechVolume: typeof prev.speechVolume === 'number' ? prev.speechVolume : 1,
           };
         }
         return prev as SettingsState;

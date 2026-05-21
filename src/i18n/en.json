@@ -160,7 +160,23 @@
     "hide": "Hide",
     "copy": "Copy",
     "save": "Save",
-    "version": "Version"
+    "version": "Version",
+    "ambient": {
+      "title": "Ambient music",
+      "hint": "Plays softly under verse readings.",
+      "enabled": "Play music while reading verses",
+      "track": "Music track",
+      "none": "— Pick a track —",
+      "noneAvailable": "No tracks available",
+      "loading": "Loading tracks…",
+      "musicVolume": "Music volume",
+      "speechVolume": "Reader volume",
+      "preview": "Preview",
+      "stop": "Stop"
+    }
+  },
+  "chatReader": {
+    "ambient": "Toggle background music"
   },
   "onboarding": {
     "welcomeSubtitle": "Set up your account to start.",

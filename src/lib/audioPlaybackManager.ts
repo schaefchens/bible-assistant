@@ -32,6 +32,19 @@ class AmbientBus {
   setVolume(v: number): void {
     this.parent._ambientSetVolume(v);
   }
+  isPlaying(): boolean {
+    return this.parent._ambientIsPlaying();
+  }
+}
+
+class SpeechBus {
+  private parent: AudioPlaybackManager;
+  constructor(parent: AudioPlaybackManager) {
+    this.parent = parent;
+  }
+  setVolume(v: number): void {
+    this.parent._speechSetVolume(v);
+  }
 }
 
 class AudioPlaybackManager {
@@ -60,7 +73,10 @@ class AudioPlaybackManager {
   private ambientBuffer: AudioBuffer | null = null;
   private ambientUrl: string | null = null;
   private ambientDecodeCache = new Map<string, AudioBuffer>();
+  private ambientStopTimer: number | null = null;
+  private readonly AMBIENT_FADE_SEC = 2;
   readonly ambient = new AmbientBus(this);
+  readonly speech = new SpeechBus(this);
 
   /** Must be called inside a user gesture handler on iOS. */
   ensureContext(): AudioContext {
@@ -77,7 +93,7 @@ class AudioPlaybackManager {
       this.master.gain.value = 1;
       this.master.connect(this.ctx.destination);
       this.ttsGain = this.ctx.createGain();
-      this.ttsGain.gain.value = 1;
+      this.ttsGain.gain.value = useSettingsStore.getState().speechVolume;
       this.ttsGain.connect(this.master);
       this.ambientGain = this.ctx.createGain();
       this.ambientGain.gain.value = useSettingsStore.getState().ambient.volume;
@@ -94,7 +110,7 @@ class AudioPlaybackManager {
     startIndex = 0,
     startWordIndex?: number,
   ): Promise<void> {
-    this.stop();
+    this.resetQueue();
     this.queue = tracks;
     this.currentIndex = Math.max(0, Math.min(tracks.length - 1, startIndex));
     if (startWordIndex !== undefined) this.pendingSeekWord = startWordIndex;
@@ -269,6 +285,14 @@ class AudioPlaybackManager {
   }
 
   stop(): void {
+    this.resetQueue();
+    this._ambientPause();
+    usePlaybackStore.getState().setStatus('idle');
+    usePlaybackStore.getState().setCurrent(null);
+  }
+
+  /** Tear down the TTS queue without touching ambient or playback-store state. */
+  private resetQueue(): void {
     if (this.source) {
       try {
         this.source.onended = null;
@@ -287,8 +311,6 @@ class AudioPlaybackManager {
     this.currentLoaded = null;
     this.currentOffset = 0;
     this.pendingSeekWord = null;
-    usePlaybackStore.getState().setStatus('idle');
-    usePlaybackStore.getState().setCurrent(null);
   }
 
   next(): void {
@@ -459,26 +481,73 @@ class AudioPlaybackManager {
   _ambientPlay(): void {
     if (!this.ambientBuffer) return;
     const ctx = this.ensureContext();
-    if (this.ambientSource) {
-      // Already playing — no-op.
-      return;
+
+    // Cancel any pending stop (e.g. user re-played during fade-out).
+    if (this.ambientStopTimer !== null) {
+      clearTimeout(this.ambientStopTimer);
+      this.ambientStopTimer = null;
     }
-    const src = ctx.createBufferSource();
-    src.buffer = this.ambientBuffer;
-    src.loop = true;
-    src.connect(this.ambientGain ?? ctx.destination);
-    src.start(0);
-    this.ambientSource = src;
+
+    if (!this.ambientSource) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.ambientBuffer;
+      src.loop = true;
+      src.connect(this.ambientGain ?? ctx.destination);
+      src.start(0);
+      this.ambientSource = src;
+      // Begin silent so the upcoming ramp acts as a fade-in.
+      if (this.ambientGain) {
+        this.ambientGain.gain.cancelScheduledValues(ctx.currentTime);
+        this.ambientGain.gain.setValueAtTime(0, ctx.currentTime);
+      }
+    }
+
+    if (this.ambientGain) {
+      const target = useSettingsStore.getState().ambient.volume;
+      const now = ctx.currentTime;
+      this.ambientGain.gain.cancelScheduledValues(now);
+      this.ambientGain.gain.setValueAtTime(this.ambientGain.gain.value, now);
+      this.ambientGain.gain.linearRampToValueAtTime(
+        target,
+        now + this.AMBIENT_FADE_SEC,
+      );
+    }
+    usePlaybackStore.getState().setAmbientPlaying(true);
   }
 
   _ambientPause(): void {
-    if (!this.ambientSource) return;
-    try {
-      this.ambientSource.stop();
-    } catch {
-      /* ignore */
+    if (!this.ambientSource) {
+      usePlaybackStore.getState().setAmbientPlaying(false);
+      return;
     }
-    this.ambientSource = null;
+    const src = this.ambientSource;
+
+    if (this.ctx && this.ambientGain) {
+      const now = this.ctx.currentTime;
+      this.ambientGain.gain.cancelScheduledValues(now);
+      this.ambientGain.gain.setValueAtTime(this.ambientGain.gain.value, now);
+      this.ambientGain.gain.linearRampToValueAtTime(
+        0,
+        now + this.AMBIENT_FADE_SEC,
+      );
+    }
+
+    if (this.ambientStopTimer !== null) {
+      clearTimeout(this.ambientStopTimer);
+    }
+    this.ambientStopTimer = window.setTimeout(() => {
+      try {
+        src.stop();
+      } catch {
+        /* ignore */
+      }
+      if (this.ambientSource === src) {
+        this.ambientSource = null;
+      }
+      this.ambientStopTimer = null;
+    }, this.AMBIENT_FADE_SEC * 1000 + 50);
+
+    usePlaybackStore.getState().setAmbientPlaying(false);
   }
 
   _ambientSetVolume(v: number): void {
@@ -492,6 +561,23 @@ class AudioPlaybackManager {
     this.ambientGain.gain.setValueAtTime(this.ambientGain.gain.value, now);
     this.ambientGain.gain.linearRampToValueAtTime(clamped, now + 0.15);
     useSettingsStore.getState().setAmbient({ volume: clamped });
+  }
+
+  _ambientIsPlaying(): boolean {
+    return this.ambientSource !== null;
+  }
+
+  _speechSetVolume(v: number): void {
+    const clamped = Math.max(0, Math.min(1, v));
+    if (!this.ctx || !this.ttsGain) {
+      useSettingsStore.getState().setSpeechVolume(clamped);
+      return;
+    }
+    const now = this.ctx.currentTime;
+    this.ttsGain.gain.cancelScheduledValues(now);
+    this.ttsGain.gain.setValueAtTime(this.ttsGain.gain.value, now);
+    this.ttsGain.gain.linearRampToValueAtTime(clamped, now + 0.15);
+    useSettingsStore.getState().setSpeechVolume(clamped);
   }
 }
 

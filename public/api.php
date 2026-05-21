@@ -25,6 +25,7 @@ declare(strict_types=1);
  *   boards.order.get (GET) Per-user board tab order: { order: string[], updatedAt: number }.
  *   boards.order.set      { order: string[], updatedAt: number }
  *   recording.upload      multipart: audio + bookId, chapter, verse, translation
+ *   ambient.list (GET)    List ambient music tracks under storage/ambient/.
  *
  * Auth: X-User-Id (UUID) + X-User-Secret (hex). First sighting registers.
  */
@@ -81,6 +82,7 @@ const ALIGNMENT_MODEL = 'whisper-1';
 @mkdir(STORAGE_DIR, 0775, true);
 @mkdir(USERS_DIR, 0775, true);
 @mkdir(AUDIO_DIR, 0775, true);
+@mkdir(STORAGE_DIR . '/ambient', 0775, true);
 
 // Deny directory listings within storage if writable
 $htaccessPath = STORAGE_DIR . '/.htaccess';
@@ -289,6 +291,9 @@ switch ($action) {
         break;
     case 'recording.upload':
         handleRecordingUpload($ctx);
+        break;
+    case 'ambient.list':
+        handleAmbientList();
         break;
     default:
         fail(404, 'unknown action');
@@ -705,4 +710,25 @@ function handleRecordingUpload(array $ctx): void {
         'audioUrl' => BASE_PATH . "/storage/audio/recordings/{$userId}/{$translation}/{$bookId}/{$chapter}/{$verse}.mp3",
         'alignmentUrl' => BASE_PATH . "/storage/audio/recordings/{$userId}/{$translation}/{$bookId}/{$chapter}/{$verse}.json",
     ]);
+}
+
+function handleAmbientList(): void {
+    $dir = STORAGE_DIR . '/ambient';
+    $tracks = [];
+    if (is_dir($dir)) {
+        $entries = scandir($dir) ?: [];
+        sort($entries, SORT_NATURAL | SORT_FLAG_CASE);
+        foreach ($entries as $name) {
+            if ($name === '.' || $name === '..') continue;
+            if (!preg_match('/\.mp3$/i', $name)) continue;
+            $id = preg_replace('/\.mp3$/i', '', $name);
+            $title = ucwords(str_replace(['-', '_'], ' ', $id));
+            $tracks[] = [
+                'id' => $id,
+                'title' => $title,
+                'url' => BASE_PATH . '/storage/ambient/' . rawurlencode($name),
+            ];
+        }
+    }
+    respond(200, ['tracks' => $tracks]);
 }

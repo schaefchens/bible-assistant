@@ -1,5 +1,6 @@
 import { audioPlayback, type PlaybackTrack } from './audioPlaybackManager';
 import { postTts } from '@/services/api/tts';
+import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { VerseSummary } from '@/types/domain';
 
@@ -10,8 +11,20 @@ export async function startPlaybackForVerses(
   startWordIndex?: number,
 ): Promise<void> {
   if (verses.length === 0) return;
-  const { voice, voiceStyle } = useSettingsStore.getState();
+  const { voice, voiceStyle, ambient } = useSettingsStore.getState();
   audioPlayback.ensureContext();
+  if (ambient.enabled && ambient.trackId) {
+    void getAmbientTrackUrl(ambient.trackId)
+      .then((url) => {
+        if (!url) return;
+        return audioPlayback.ambient.load(url).then(() => {
+          audioPlayback.ambient.play();
+        });
+      })
+      .catch((e) => {
+        console.warn('ambient load failed', e);
+      });
+  }
   const tracks: PlaybackTrack[] = [];
   for (let i = 0; i < verses.length; i++) {
     const v = verses[i];

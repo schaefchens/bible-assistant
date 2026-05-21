@@ -6,9 +6,12 @@ type Props = {
   isLoading: boolean;
   rate: number;
   repeat: boolean;
+  ambientVisible?: boolean;
+  ambientOn?: boolean;
   onTogglePlay: () => void;
   onCycleRate: () => void;
   onToggleRepeat: () => void;
+  onToggleAmbient?: () => void;
   onMenu: (pos: { x: number; y: number }) => void;
 };
 
@@ -17,9 +20,12 @@ export function ReaderControls({
   isLoading,
   rate,
   repeat,
+  ambientVisible,
+  ambientOn,
   onTogglePlay,
   onCycleRate,
   onToggleRepeat,
+  onToggleAmbient,
   onMenu,
 }: Props) {
   const { t } = useTranslation();
@@ -67,6 +73,23 @@ export function ReaderControls({
       >
         {rate.toFixed(2)}×
       </button>
+      {ambientVisible && onToggleAmbient && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleAmbient();
+          }}
+          aria-pressed={!!ambientOn}
+          aria-label={t('chatReader.ambient')}
+          className={clsx(
+            'btn-ghost h-9 w-9 px-0',
+            ambientOn && 'bg-gold/20 text-gold',
+          )}
+        >
+          <MusicIcon />
+        </button>
+      )}
       <button
         type="button"
         onClick={(e) => {
@@ -80,6 +103,16 @@ export function ReaderControls({
         <DotsIcon />
       </button>
     </div>
+  );
+}
+
+function MusicIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 18V5l12-2v13" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="16" r="3" />
+    </svg>
   );
 }
 

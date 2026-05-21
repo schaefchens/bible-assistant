@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useChatStore } from '@/store/chatStore';
 import { usePlaybackStore } from '@/store/playbackStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { startPlaybackForVerses } from '@/lib/startPlayback';
 import { useCommandPipeline, useContinueReading } from '@/hooks/useCommandPipeline';
@@ -33,10 +34,21 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
   const [rate, setRate] = useState(() => audioPlayback.getPlaybackRate());
   const [repeat, setRepeat] = useState(() => audioPlayback.isLoopCurrent());
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const ambientCfg = useSettingsStore((s) => s.ambient);
+  const ambientReady = ambientCfg.enabled && !!ambientCfg.trackId;
+  const ambientOn = usePlaybackStore((s) => s.ambientPlaying);
 
   const isOurMessage = current?.messageId === message.id;
   const isPlaying = isOurMessage && status === 'playing';
   const isLoading = isOurMessage && status === 'loading';
+
+  const toggleAmbient = useCallback(() => {
+    if (audioPlayback.ambient.isPlaying()) {
+      audioPlayback.ambient.pause();
+    } else {
+      audioPlayback.ambient.play();
+    }
+  }, []);
 
   const togglePlay = useCallback(() => {
     if (isOurMessage && (status === 'playing' || status === 'paused')) {
@@ -189,9 +201,12 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
           isLoading={isLoading}
           rate={rate}
           repeat={repeat}
+          ambientVisible={ambientReady && isOurMessage}
+          ambientOn={ambientOn}
           onTogglePlay={togglePlay}
           onCycleRate={cycleRate}
           onToggleRepeat={toggleRepeat}
+          onToggleAmbient={toggleAmbient}
           onMenu={(pos) => setMenuPos(pos)}
         />
 
