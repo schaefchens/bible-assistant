@@ -1,7 +1,7 @@
 import type { ParsedReference } from './referenceParser';
 import { apiPostJson } from '@/services/api/client';
 
-export type Translation = 'S00' | 'ESV';
+export type Translation = 'S00' | 'ESV' | 'KJV' | 'NKJV' | 'LUT' | 'HFA';
 
 export type BollsBook = {
   bookid: number;

@@ -74,7 +74,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
           },
           translation: {
             type: 'string',
-            enum: ['S00', 'ESV'],
+            enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA'],
             description: 'Optional override. Defaults to user-selected translation.',
           },
         },
@@ -91,7 +91,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
         type: 'object',
         properties: {
           reference: { type: 'string' },
-          translation: { type: 'string', enum: ['S00', 'ESV'] },
+          translation: { type: 'string', enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA'] },
         },
         required: ['reference'],
       },
@@ -118,7 +118,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
           },
           translation: {
             type: 'string',
-            enum: ['S00', 'ESV'],
+            enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA'],
             description: 'Optional override. Defaults to user-selected translation.',
           },
         },
@@ -313,10 +313,10 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     type: 'function',
     function: {
       name: 'set_translation',
-      description: 'Switch Bible translation. S00 = Schlachter 2000 (German), ESV = English Standard Version.',
+      description: 'Switch Bible translation. S00 = Schlachter 2000 (German), LUT = Luther (German), HFA = Hoffnung für Alle (German), ESV = English Standard Version, KJV = King James Version, NKJV = New King James Version.',
       parameters: {
         type: 'object',
-        properties: { translation: { type: 'string', enum: ['S00', 'ESV'] } },
+        properties: { translation: { type: 'string', enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA'] } },
         required: ['translation'],
       },
     },
@@ -362,7 +362,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
                 type: 'string',
                 description: 'Canonical reference like "John 3:16".',
               },
-              translation: { type: 'string', enum: ['S00', 'ESV'] },
+              translation: { type: 'string', enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA'] },
             },
           },
         },
@@ -395,7 +395,7 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
   if (locale === 'de') {
     return [
       `Du bist ein Bibel-Assistent. Heute ist ${today}.`,
-      `Standard-Übersetzung: ${translation} (S00 = Schlachter 2000, ESV = English Standard Version).`,
+      `Standard-Übersetzung: ${translation} (S00 = Schlachter 2000, LUT = Luther, HFA = Hoffnung für Alle, ESV = English Standard Version, KJV = King James Version, NKJV = New King James Version).`,
       `Wenn der Benutzer einen Vers, eine Geschichte oder ein Kapitel hören möchte, rufe IMMER das Tool "read_verses" auf.`,
       `Für zufällige Verse ("ein zufälliger Vers", "ein zufälliger Psalm", "irgendein Vers aus Johannes 3") nutze "random_verse".`,
       `Du kennst die Bibel: wenn der Benutzer eine Geschichte beim Namen nennt (z.B. "der verlorene Sohn"), löse die Stelle selbst auf (Lukas 15,11-32) und übergib sie als Referenz im Format "Buch K:V-V" (englische Buchnamen).`,
@@ -408,7 +408,7 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
   }
   return [
     `You are a Bible assistant. Today is ${today}.`,
-    `Default translation: ${translation} (S00 = Schlachter 2000 German, ESV = English Standard Version).`,
+    `Default translation: ${translation} (S00 = Schlachter 2000 German, LUT = Luther German, HFA = Hoffnung für Alle German, ESV = English Standard Version, KJV = King James Version, NKJV = New King James Version).`,
     `When the user wants to hear, read, or be told a verse, chapter, or story, ALWAYS call the "read_verses" tool.`,
     `For random picks ("a random verse", "a random Psalm", "any verse from John 3"), use "random_verse".`,
     `You know the Bible: if the user names a story (e.g. "the lost son"), resolve the reference yourself (Luke 15:11-32) and pass it in "Book C:V-V" form (English book name).`,

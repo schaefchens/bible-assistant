@@ -42,9 +42,13 @@ export function SettingsPage() {
           value={settings.translation}
           options={[
             { value: 'ESV', label: 'ESV' },
+            { value: 'KJV', label: 'KJV' },
+            { value: 'NKJV', label: 'NKJV' },
             { value: 'S00', label: 'Schlachter 2000' },
+            { value: 'LUT', label: 'Luther' },
+            { value: 'HFA', label: 'Hoffnung für Alle' },
           ]}
-          onChange={(v) => settings.setTranslation(v as 'ESV' | 'S00')}
+          onChange={(v) => settings.setTranslation(v as 'ESV' | 'KJV' | 'NKJV' | 'S00' | 'LUT' | 'HFA')}
         />
       </Section>
 
