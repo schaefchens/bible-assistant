@@ -20,16 +20,19 @@ export function TagFilterBar({ allTags, selected, onToggle, onClear }: Props) {
             {t('cards.noTagsYet')}
           </span>
         )}
-        {selected.length > 0 && (
-          <button
-            type="button"
-            onClick={onClear}
-            className="shrink-0 rounded-full px-2 py-1 text-xs bg-navy-soft text-cream-dim hover:text-cream"
-            aria-label={t('common.cancel') as string}
-          >
-            ✕
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={onClear}
+          className={[
+            'shrink-0 rounded-full px-2 py-1 text-xs bg-navy-soft text-cream-dim hover:text-cream',
+            selected.length > 0 ? '' : 'invisible',
+          ].join(' ')}
+          aria-hidden={selected.length === 0}
+          tabIndex={selected.length === 0 ? -1 : 0}
+          aria-label={t('common.cancel') as string}
+        >
+          ✕
+        </button>
         {allTags.map((tag) => {
           const isSel = selected.includes(tag);
           return (
