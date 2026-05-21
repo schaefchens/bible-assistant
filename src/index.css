@@ -87,4 +87,12 @@
       rgba(0, 0, 0, 0.1) 22px 23px
     );
   }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }

@@ -274,7 +274,7 @@ function TabRow({
   return (
     <div className={`relative border-b-2 ${railBorder}`} ref={wrapperRef}>
       <div className="flex items-stretch">
-        <div className="flex-1 overflow-x-auto whitespace-nowrap flex items-end gap-1 px-2 pt-2">
+        <div className="no-scrollbar flex-1 overflow-x-auto whitespace-nowrap flex items-end gap-1 px-2 pt-2">
           {boards.map((b) => {
             const isActive = b.id === activeBoardId;
             const tabCls = boardTabClasses(b.color);

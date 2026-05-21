@@ -11,7 +11,7 @@ export function TagFilterBar({ allTags, selected, onToggle, onClear }: Props) {
   const { t } = useTranslation();
   return (
     <div className="px-3 pt-1 pb-2">
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 min-h-[30px]">
+      <div className="no-scrollbar flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 min-h-[30px]">
         <span className="shrink-0 text-[10px] uppercase tracking-wide text-gold-dim">
           {t('cards.filterByTags')}
         </span>
