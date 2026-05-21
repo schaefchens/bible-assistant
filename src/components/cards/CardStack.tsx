@@ -328,7 +328,10 @@ function CardStackItem({
     >
       <div
         ref={raisedRef}
-        className={isLast ? 'relative' : 'absolute top-0 left-0 right-0'}
+        className={[
+          isLast ? 'relative' : 'absolute top-0 left-0 right-0',
+          isActive ? 'opacity-100' : 'opacity-[0.85]',
+        ].join(' ')}
         style={{
           transform: `translateX(${translateX}px)${isDragging ? ' scale(1.03)' : ''}`,
           boxShadow: isDragging ? '0 18px 40px rgba(0,0,0,0.55)' : undefined,
@@ -340,7 +343,7 @@ function CardStackItem({
           {...listeners}
           role={attributes.role ?? 'button'}
           tabIndex={attributes.tabIndex ?? 0}
-          className="block w-full text-left cursor-pointer rounded-2xl select-none focus:outline-none"
+          className="block w-full text-left cursor-pointer rounded-2xl select-none touch-none focus:outline-none"
           onClick={onTap}
           onContextMenu={(e) => e.preventDefault()}
           onKeyDown={(e) => {
