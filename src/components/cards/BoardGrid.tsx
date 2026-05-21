@@ -67,7 +67,12 @@ export function BoardGrid({ cards, onOpen, onReorder, onRemove, emptyLabel }: Pr
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over, delta } = event;
     const moved = Math.hypot(delta.x, delta.y) > DRAG_MOVE_THRESHOLD_PX;
-    if (!moved) return;
+    const card = cards.find((c) => c.id === active.id);
+    if (!card) return;
+    if (!moved) {
+      onOpen(card);
+      return;
+    }
     if (onReorder && over && active.id !== over.id) {
       onReorder(String(active.id), String(over.id));
     }
@@ -82,9 +87,7 @@ export function BoardGrid({ cards, onOpen, onReorder, onRemove, emptyLabel }: Pr
           flipped={flipped.has(card.id)}
           sortable={Boolean(onReorder)}
           onTap={() => toggleFlip(card.id)}
-          onEditClick={() => onOpen(card)}
           onRemoveClick={onRemove ? () => onRemove(card) : undefined}
-          editLabel={t('cards.edit') as string}
           noNotesLabel={t('cards.noNotes')}
           removeLabel={t('boards.removeFromBoard') as string}
         />
@@ -113,9 +116,7 @@ function BoardCell({
   flipped,
   sortable,
   onTap,
-  onEditClick,
   onRemoveClick,
-  editLabel,
   noNotesLabel,
   removeLabel,
 }: {
@@ -123,9 +124,7 @@ function BoardCell({
   flipped: boolean;
   sortable: boolean;
   onTap: () => void;
-  onEditClick: () => void;
   onRemoveClick?: () => void;
-  editLabel: string;
   noNotesLabel: string;
   removeLabel: string;
 }) {
@@ -175,8 +174,8 @@ function BoardCell({
         />
       </div>
 
-      <div className="absolute top-1.5 right-1.5 z-10 flex gap-1.5">
-        {onRemoveClick && (
+      {onRemoveClick && (
+        <div className="absolute top-1.5 right-1.5 z-10">
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
@@ -189,20 +188,8 @@ function BoardCell({
           >
             ✕
           </button>
-        )}
-        <button
-          type="button"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onEditClick();
-          }}
-          className="rounded-full bg-black/40 hover:bg-black/60 text-cream text-xs w-7 h-7 inline-flex items-center justify-center backdrop-blur-sm"
-          aria-label={editLabel}
-        >
-          ✎
-        </button>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
