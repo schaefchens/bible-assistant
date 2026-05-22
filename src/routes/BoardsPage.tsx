@@ -263,11 +263,7 @@ export function BoardsPage() {
               />
             )}
             {viewMode === 'pile' && (
-              <CardPile
-                cards={visibleCards}
-                onEdit={openCard}
-                emptyLabel={emptyGridLabel}
-              />
+              <CardPile cards={visibleCards} emptyLabel={emptyGridLabel} />
             )}
           </>
         )

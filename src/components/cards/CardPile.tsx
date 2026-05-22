@@ -7,7 +7,6 @@ import { FlipCard } from './FlipCard';
 
 type Props = {
   cards: Card[];
-  onEdit: (card: Card) => void;
   emptyLabel?: string;
 };
 
@@ -25,7 +24,7 @@ type Leaving = {
   toDx: number;
 };
 
-export function CardPile({ cards, onEdit, emptyLabel }: Props) {
+export function CardPile({ cards, emptyLabel }: Props) {
   const { t } = useTranslation();
   const [topIdx, setTopIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -141,9 +140,6 @@ export function CardPile({ cards, onEdit, emptyLabel }: Props) {
     slots.push({ card, slot: i });
   }
 
-  const flipLabel = t(flipped ? 'cards.front' : 'cards.flip') as string;
-  const editLabel = t('cards.edit') as string;
-
   return (
     <div className="flex-1 flex items-center justify-center px-4 pb-24 select-none">
       <div
@@ -194,36 +190,6 @@ export function CardPile({ cards, onEdit, emptyLabel }: Props) {
                     />
                   }
                 />
-                {isTop && (
-                  <div
-                    className="absolute top-2 right-2 flex gap-2"
-                    style={{ zIndex: 1100 }}
-                  >
-                    <button
-                      type="button"
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setFlipped((f) => !f);
-                      }}
-                      className="rounded-full bg-black/50 hover:bg-black/70 text-cream text-xs px-2.5 py-1"
-                    >
-                      {flipLabel}
-                    </button>
-                    <button
-                      type="button"
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEdit(card);
-                      }}
-                      className="rounded-full bg-black/50 hover:bg-black/70 text-cream text-xs px-2.5 py-1"
-                      aria-label={editLabel}
-                    >
-                      ✎
-                    </button>
-                  </div>
-                )}
               </div>
             );
           })}
