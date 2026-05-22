@@ -46,18 +46,28 @@ export function SettingsPage() {
       </Section>
 
       <Section title={t('settings.translation')}>
-        <SegmentedControl
-          value={settings.translation}
-          options={[
-            { value: 'ESV', label: 'ESV' },
-            { value: 'KJV', label: 'KJV' },
-            { value: 'NKJV', label: 'NKJV' },
-            { value: 'S00', label: 'Schlachter 2000' },
-            { value: 'LUT', label: 'Luther' },
-            { value: 'HFA', label: 'Hoffnung für Alle' },
-          ]}
-          onChange={(v) => settings.setTranslation(v as 'ESV' | 'KJV' | 'NKJV' | 'S00' | 'LUT' | 'HFA')}
-        />
+        <div className="space-y-2">
+          <SegmentedControl
+            value={settings.translation}
+            cols={3}
+            options={[
+              { value: 'ESV', label: 'ESV', title: 'English Standard Version' },
+              { value: 'KJV', label: 'KJV', title: 'King James Version' },
+              { value: 'NKJV', label: 'NKJV', title: 'New King James Version' },
+            ]}
+            onChange={(v) => settings.setTranslation(v as 'ESV' | 'KJV' | 'NKJV' | 'S00' | 'LUT' | 'HFA')}
+          />
+          <SegmentedControl
+            value={settings.translation}
+            cols={3}
+            options={[
+              { value: 'S00', label: 'Schlachter', title: 'Schlachter 2000' },
+              { value: 'LUT', label: 'Luther', title: 'Luther' },
+              { value: 'HFA', label: 'Hoffnung', title: 'Hoffnung für Alle' },
+            ]}
+            onChange={(v) => settings.setTranslation(v as 'ESV' | 'KJV' | 'NKJV' | 'S00' | 'LUT' | 'HFA')}
+          />
+        </div>
       </Section>
 
       <Section title={t('settings.voice')}>
@@ -185,7 +195,54 @@ export function SettingsPage() {
       <Section title={t('settings.dangerZone.title')}>
         <DangerZone />
       </Section>
+
+      <Imprint />
     </div>
+  );
+}
+
+function Imprint() {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <section className="mt-10 pt-6 border-t border-navy-soft/50 text-center text-xs text-cream-dim">
+      <h3 className="font-serif text-gold/80 text-sm tracking-wide">
+        Impressum
+      </h3>
+      <p className="text-[10px] uppercase tracking-widest text-cream-dim/70 mt-0.5">
+        gemäß § 5 TMG
+      </p>
+
+      <div className="mt-4 mx-auto max-w-xs rounded-2xl border border-navy-soft/60 bg-navy-soft/30 px-5 py-4 space-y-2">
+        <p className="text-cream-dim/80">Gemacht von:</p>
+        {revealed ? (
+          <address className="not-italic leading-relaxed text-cream">
+            Christoph Scharf
+            <br />
+            Mühltorstr. 1
+            <br />
+            67245 Lambsheim
+            <br />
+            <a
+              href="mailto:christoph.scharf+bibleassistant@scharfmedia.de"
+              className="text-gold hover:text-gold/80 break-all"
+            >
+              christoph.scharf+bibleassistant@scharfmedia.de
+            </a>
+          </address>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setRevealed(true)}
+            className="text-cream underline decoration-dotted underline-offset-4 hover:text-gold transition-colors"
+          >
+            einem Diener des Herrn
+          </button>
+        )}
+        <p className="pt-2 italic text-cream-dim/80 font-serif">
+          „Mit der Gnade Gottes und Claude"
+        </p>
+      </div>
+    </section>
   );
 }
 
@@ -480,18 +537,22 @@ function SegmentedControl<T extends string>({
   value,
   options,
   onChange,
+  cols = 2,
 }: {
   value: T;
-  options: { value: T; label: string }[];
+  options: { value: T; label: string; title?: string }[];
   onChange: (v: T) => void;
+  cols?: 2 | 3;
 }) {
+  const colsCls = cols === 3 ? 'grid-cols-3' : 'grid-cols-2';
   return (
-    <div className="grid grid-cols-2 bg-navy-soft rounded-xl p-1">
+    <div className={`grid ${colsCls} bg-navy-soft rounded-xl p-1`}>
       {options.map((opt) => (
         <button
           key={opt.value}
           type="button"
           onClick={() => onChange(opt.value)}
+          title={opt.title}
           className={
             'py-2 text-sm rounded-lg transition-colors ' +
             (value === opt.value ? 'bg-gold text-navy' : 'text-cream-dim hover:text-cream')
