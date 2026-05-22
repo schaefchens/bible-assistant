@@ -257,15 +257,18 @@ function PileLayer({ card, depth }: { card: Card; depth: 1 | 2 }) {
   // Scaling pulled the bottom edge back inside the parent box, defeating the
   // stack illusion — translateY without scale makes each layer's bottom poke
   // out exactly `offsetY` pixels below the one in front.
+  // `filter: brightness` dims the peek to suggest depth without making it
+  // translucent — opacity < 1 would let the layer behind bleed through when
+  // the top card swipes away.
   const offsetY = depth === 1 ? 14 : 28;
-  const opacity = depth === 1 ? 0.85 : 0.65;
+  const brightness = depth === 1 ? 0.85 : 0.7;
   return (
     <div
       aria-hidden
       className="absolute inset-0 pointer-events-none"
       style={{
         transform: `translateY(${offsetY}px)`,
-        opacity,
+        filter: `brightness(${brightness})`,
         zIndex: 3 - depth,
       }}
     >
