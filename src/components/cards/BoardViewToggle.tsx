@@ -16,8 +16,8 @@ export function BoardViewToggle({ mode, onChange }: Props) {
   const { t } = useTranslation();
   return (
     <div
-      className="fixed left-1/2 -translate-x-1/2 z-20 bottom-4 flex items-center gap-1 rounded-full bg-black/60 backdrop-blur-md shadow-lg border border-navy-soft/70 px-1.5 py-1.5"
-      style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
+      className="fixed left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 rounded-full bg-black/60 backdrop-blur-md shadow-lg border border-navy-soft/70 px-1.5 py-1.5"
+      style={{ bottom: 'calc(env(safe-area-inset-bottom) + 4.5rem)' }}
       role="group"
       aria-label={t('boards.view.switchTo') as string}
     >
