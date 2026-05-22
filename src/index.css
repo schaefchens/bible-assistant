@@ -48,6 +48,20 @@
     @apply text-gold-glow;
   }
 
+  /* Verse-level "currently reading" indicator. The base class always reserves
+     the same box (padding + inset shadow slot) so toggling `.verse-current`
+     only swaps colors — no layout shift while reading flips between verses. */
+  .verse {
+    @apply rounded-md px-2 -mx-2;
+    box-shadow: inset 3px 0 0 transparent;
+    background-color: transparent;
+    transition: background-color 200ms ease, box-shadow 200ms ease;
+  }
+  .verse-current {
+    background-color: rgba(200, 169, 110, 0.1);
+    box-shadow: inset 3px 0 0 #c8a96e;
+  }
+
   .message-selected {
     @apply ring-2 ring-gold/60;
   }

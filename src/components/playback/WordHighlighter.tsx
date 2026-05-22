@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { usePlaybackStore } from '@/store/playbackStore';
 import type { VerseSummary } from '@/types/domain';
 
+
 type Props = {
   messageId: string;
   verseIndex: number;
@@ -22,7 +23,10 @@ export function WordHighlighter({ messageId, verseIndex, verse, onWordTap }: Pro
   return (
     <p
       data-verse-key={`${messageId}:${verseIndex}`}
-      className="leading-relaxed font-serif text-cream scroll-mt-16"
+      className={clsx(
+        'verse leading-relaxed font-serif text-cream scroll-mt-16',
+        isCurrent && 'verse-current',
+      )}
     >
       <span className="text-gold-dim text-xs font-sans mr-2 align-baseline">
         {verse.verse}
