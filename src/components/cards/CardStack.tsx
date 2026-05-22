@@ -343,7 +343,7 @@ function CardStackItem({
           {...listeners}
           role={attributes.role ?? 'button'}
           tabIndex={attributes.tabIndex ?? 0}
-          className="block w-full text-left cursor-pointer rounded-2xl select-none touch-none focus:outline-none"
+          className="block w-full text-left cursor-pointer rounded-2xl select-none touch-pan-y focus:outline-none"
           onClick={onTap}
           onContextMenu={(e) => e.preventDefault()}
           onKeyDown={(e) => {

@@ -161,6 +161,24 @@
     "copy": "Copy",
     "save": "Save",
     "version": "Version",
+    "reading": "Reading",
+    "autoScroll": "Follow active verse while reading",
+    "autoScrollHint": "Scrolls the chat so the currently-spoken verse stays in view.",
+    "updates": {
+      "title": "Updates",
+      "version": "Version {{commit}} · built {{date}}",
+      "check": "Check for updates",
+      "checking": "Checking…",
+      "upToDate": "Up to date",
+      "found": "Update found — reloading…"
+    },
+    "dangerZone": {
+      "title": "Danger zone",
+      "hint": "Wipes settings, recovery passphrase, your library and all cached audio. The app restarts as if freshly installed.",
+      "wipe": "Wipe all data",
+      "confirm": "Tap again to confirm",
+      "wiping": "Wiping…"
+    },
     "ambient": {
       "title": "Ambient music",
       "hint": "Plays softly under verse readings.",
@@ -177,6 +195,9 @@
   },
   "chatReader": {
     "ambient": "Toggle background music"
+  },
+  "updates": {
+    "bannerAvailable": "New version available — tap to reload"
   },
   "onboarding": {
     "welcomeSubtitle": "Set up your account to start.",

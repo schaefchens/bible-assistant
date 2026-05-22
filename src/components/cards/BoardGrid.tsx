@@ -157,7 +157,7 @@ function BoardCell({
         {...listeners}
         role="button"
         tabIndex={0}
-        className="w-full h-full cursor-pointer touch-none focus:outline-none"
+        className="w-full h-full cursor-pointer touch-pan-y focus:outline-none"
         onClick={onTap}
         onContextMenu={(e) => e.preventDefault()}
         onKeyDown={(e) => {

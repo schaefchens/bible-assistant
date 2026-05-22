@@ -20,7 +20,10 @@ export function WordHighlighter({ messageId, verseIndex, verse, onWordTap }: Pro
   let wordCounter = -1;
 
   return (
-    <p className="leading-relaxed font-serif text-cream">
+    <p
+      data-verse-key={`${messageId}:${verseIndex}`}
+      className="leading-relaxed font-serif text-cream scroll-mt-16"
+    >
       <span className="text-gold-dim text-xs font-sans mr-2 align-baseline">
         {verse.verse}
       </span>

@@ -22,6 +22,7 @@ type SettingsState = {
   micCorner: MicCorner;
   ambient: AmbientSettings;
   speechVolume: number;
+  autoScrollReader: boolean;
   setLocale: (locale: Locale) => void;
   setTranslation: (translation: Translation, fromUser?: boolean) => void;
   setVoice: (voice: VoiceId) => void;
@@ -32,6 +33,7 @@ type SettingsState = {
   setMicCorner: (corner: MicCorner) => void;
   setAmbient: (patch: Partial<AmbientSettings>) => void;
   setSpeechVolume: (v: number) => void;
+  setAutoScrollReader: (v: boolean) => void;
 };
 
 const DEFAULT_AMBIENT: AmbientSettings = {
@@ -59,15 +61,16 @@ export const useSettingsStore = create<SettingsState>()(
       return {
         locale: initialLocale,
         translation: defaultTranslationFor(initialLocale),
-        voice: 'alloy',
+        voice: 'echo',
         voiceStyle: '',
-        assistantVoice: 'sage',
+        assistantVoice: 'echo',
         speakAssistant: true,
         useWhisperFallback: true,
         translationOverridden: false,
         micCorner: 'br',
         ambient: DEFAULT_AMBIENT,
         speechVolume: 1,
+        autoScrollReader: true,
         setLocale: (locale) =>
           set((s) => ({
             locale,
@@ -87,11 +90,12 @@ export const useSettingsStore = create<SettingsState>()(
         setAmbient: (patch) => set((s) => ({ ambient: { ...s.ambient, ...patch } })),
         setSpeechVolume: (v) =>
           set({ speechVolume: Math.max(0, Math.min(1, v)) }),
+        setAutoScrollReader: (autoScrollReader) => set({ autoScrollReader }),
       };
     },
     {
       name: 'ba.settings',
-      version: 3,
+      version: 4,
       migrate: (persisted, version) => {
         let prev = (persisted as Partial<SettingsState>) ?? {};
         if (version < 2) {
@@ -105,6 +109,13 @@ export const useSettingsStore = create<SettingsState>()(
           prev = {
             ...prev,
             speechVolume: typeof prev.speechVolume === 'number' ? prev.speechVolume : 1,
+          };
+        }
+        if (version < 4) {
+          prev = {
+            ...prev,
+            autoScrollReader:
+              typeof prev.autoScrollReader === 'boolean' ? prev.autoScrollReader : true,
           };
         }
         return prev as SettingsState;

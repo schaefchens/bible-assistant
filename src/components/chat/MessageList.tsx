@@ -2,6 +2,7 @@ import { useEffect, useRef, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useChatStore } from '@/store/chatStore';
 import { useCommandPipeline } from '@/hooks/useCommandPipeline';
+import { useAutoScrollActiveVerse } from '@/hooks/useAutoScrollActiveVerse';
 import { MessageBubble } from './MessageBubble';
 import { ReaderPanel } from './ReaderPanel';
 import { ThinkingIndicator } from './ThinkingIndicator';
@@ -20,6 +21,8 @@ export function MessageList({ scrollRef }: Props) {
   const setHighlightedId = useChatStore((s) => s.setHighlightedMessageId);
   const lastCountRef = useRef(0);
   const { send } = useCommandPipeline();
+
+  useAutoScrollActiveVerse(scrollRef);
 
   useEffect(() => {
     if (messages.length > lastCountRef.current && scrollRef.current) {

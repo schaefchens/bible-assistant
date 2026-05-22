@@ -9,6 +9,7 @@ import { getPassphrase } from '@/lib/passphrase';
 import { PassphraseSetup } from '@/components/onboarding/PassphraseSetup';
 import { GlobalMicButton } from '@/components/voice/GlobalMicButton';
 import { VoiceOverlay } from '@/components/voice/VoiceOverlay';
+import { UpdateBanner } from '@/components/common/UpdateBanner';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 
@@ -61,6 +62,7 @@ export function AppShell() {
 
   return (
     <div className="flex flex-col h-full pt-safe">
+      <UpdateBanner />
       <main className="flex-1 min-h-0 flex flex-col">
         <Outlet />
       </main>

@@ -5,6 +5,12 @@ import { VOICE_OPTIONS } from '@/types/domain';
 import { getPassphrase } from '@/lib/passphrase';
 import { getAmbientTracks, type AmbientTrack } from '@/services/api/ambient';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
+import { factoryReset } from '@/lib/factoryReset';
+import {
+  applyUpdate,
+  checkForUpdates,
+  useUpdateStore,
+} from '@/lib/pwaUpdate';
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -127,6 +133,23 @@ export function SettingsPage() {
         <AmbientSettings />
       </Section>
 
+      <Section title={t('settings.reading')}>
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={settings.autoScrollReader}
+            onChange={(e) => settings.setAutoScrollReader(e.target.checked)}
+          />
+          <span className="text-sm">
+            {t('settings.autoScroll')}
+            <span className="block text-xs text-cream-dim mt-0.5">
+              {t('settings.autoScrollHint')}
+            </span>
+          </span>
+        </label>
+      </Section>
+
       <Section title={t('settings.identity')}>
         <p className="text-xs text-cream-dim mb-2">{t('settings.identityHint')}</p>
         {!revealed ? (
@@ -154,6 +177,117 @@ export function SettingsPage() {
           </>
         )}
       </Section>
+
+      <Section title={t('settings.updates.title')}>
+        <UpdatesSection />
+      </Section>
+
+      <Section title={t('settings.dangerZone.title')}>
+        <DangerZone />
+      </Section>
+    </div>
+  );
+}
+
+function UpdatesSection() {
+  const { t, i18n } = useTranslation();
+  const needRefresh = useUpdateStore((s) => s.needRefresh);
+  const [status, setStatus] = useState<'idle' | 'checking' | 'upToDate' | 'found'>(
+    'idle',
+  );
+
+  const buildDate = (() => {
+    try {
+      return new Date(__BUILD_TIME__).toLocaleString(i18n.language || undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      });
+    } catch {
+      return __BUILD_TIME__;
+    }
+  })();
+
+  const onCheck = async () => {
+    setStatus('checking');
+    await checkForUpdates();
+    // Give the SW a brief moment to dispatch `onNeedRefresh` if a new version
+    // was found.
+    await new Promise((r) => setTimeout(r, 1200));
+    if (useUpdateStore.getState().needRefresh) {
+      setStatus('found');
+      await new Promise((r) => setTimeout(r, 600));
+      void applyUpdate();
+    } else {
+      setStatus('upToDate');
+      window.setTimeout(() => setStatus('idle'), 2500);
+    }
+  };
+
+  const label =
+    status === 'checking'
+      ? t('settings.updates.checking')
+      : status === 'upToDate'
+        ? t('settings.updates.upToDate')
+        : status === 'found' || needRefresh
+          ? t('settings.updates.found')
+          : t('settings.updates.check');
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-cream-dim font-mono">
+        {t('settings.updates.version', {
+          commit: __GIT_COMMIT__,
+          date: buildDate,
+        })}
+      </p>
+      <button
+        type="button"
+        className="btn-ghost text-xs"
+        onClick={() => void onCheck()}
+        disabled={status === 'checking' || status === 'found'}
+      >
+        {label}
+      </button>
+    </div>
+  );
+}
+
+function DangerZone() {
+  const { t } = useTranslation();
+  const [confirming, setConfirming] = useState(false);
+  const [wiping, setWiping] = useState(false);
+
+  useEffect(() => {
+    if (!confirming) return;
+    const id = window.setTimeout(() => setConfirming(false), 4000);
+    return () => window.clearTimeout(id);
+  }, [confirming]);
+
+  const onClick = () => {
+    if (wiping) return;
+    if (!confirming) {
+      setConfirming(true);
+      return;
+    }
+    setWiping(true);
+    void factoryReset();
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-cream-dim">{t('settings.dangerZone.hint')}</p>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={wiping}
+        className="text-sm text-red-400 hover:bg-red-500/10 border border-red-500/40 rounded-xl px-3 py-2 transition-colors disabled:opacity-60"
+      >
+        {wiping
+          ? t('settings.dangerZone.wiping')
+          : confirming
+            ? t('settings.dangerZone.confirm')
+            : t('settings.dangerZone.wipe')}
+      </button>
     </div>
   );
 }

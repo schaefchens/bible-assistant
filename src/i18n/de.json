@@ -161,6 +161,24 @@
     "copy": "Kopieren",
     "save": "Speichern",
     "version": "Version",
+    "reading": "Lesen",
+    "autoScroll": "Aktivem Vers beim Vorlesen folgen",
+    "autoScrollHint": "Scrollt den Chat so, dass der gerade vorgelesene Vers sichtbar bleibt.",
+    "updates": {
+      "title": "Updates",
+      "version": "Version {{commit}} · gebaut {{date}}",
+      "check": "Nach Updates suchen",
+      "checking": "Suche…",
+      "upToDate": "Aktuell",
+      "found": "Update gefunden — lade neu…"
+    },
+    "dangerZone": {
+      "title": "Gefahrenzone",
+      "hint": "Löscht Einstellungen, Wiederherstellungs-Passphrase, Bibliothek und alle Audio-Caches. Die App startet wie frisch installiert.",
+      "wipe": "Alle Daten löschen",
+      "confirm": "Zum Bestätigen erneut tippen",
+      "wiping": "Lösche…"
+    },
     "ambient": {
       "title": "Hintergrundmusik",
       "hint": "Spielt leise unter dem Vorlesen von Versen.",
@@ -177,6 +195,9 @@
   },
   "chatReader": {
     "ambient": "Hintergrundmusik ein-/ausschalten"
+  },
+  "updates": {
+    "bannerAvailable": "Neue Version verfügbar — tippen zum Neuladen"
   },
   "onboarding": {
     "welcomeSubtitle": "Richte dein Konto ein, um loszulegen.",
