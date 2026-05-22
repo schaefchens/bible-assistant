@@ -17,9 +17,12 @@ import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modi
 import { CSS } from '@dnd-kit/utilities';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
 import { BoardGrid } from '@/components/cards/BoardGrid';
+import { CardStack } from '@/components/cards/CardStack';
+import { CardPile } from '@/components/cards/CardPile';
+import { BoardViewToggle } from '@/components/cards/BoardViewToggle';
 import { TagFilterBar } from '@/components/cards/TagFilterBar';
 import { boardTabClasses, colorClasses } from '@/components/cards/cardColors';
-import type { Board, Card, CardColor } from '@/types/domain';
+import type { Board, BoardViewMode, Card, CardColor } from '@/types/domain';
 import { CARD_COLORS } from '@/types/domain';
 
 const TAB_LONG_PRESS_MS = 500;
@@ -202,6 +205,15 @@ export function BoardsPage() {
   const emptyGridLabel =
     selectedTags.length > 0 ? t('cards.noTagsMatch') : '—';
 
+  const viewMode: BoardViewMode = activeBoard?.viewMode ?? 'grid';
+  const setViewMode = async (mode: BoardViewMode) => {
+    if (!activeBoard) return;
+    if ((activeBoard.viewMode ?? 'grid') === mode) return;
+    await upsertBoard({ ...activeBoard, viewMode: mode });
+  };
+  const openCard = (c: Card) => navigate(`/cards/${c.id}`);
+  const showViewToggle = Boolean(activeBoard) && !showBoardEmptyCta;
+
   return (
     <div className="flex-1 overflow-y-auto pb-3 flex flex-col">
       <TabRow
@@ -232,16 +244,38 @@ export function BoardsPage() {
               onToggle={toggleTag}
               onClear={() => setSelectedTags([])}
             />
-            <BoardGrid
-              cards={visibleCards}
-              onOpen={(c) => navigate(`/cards/${c.id}`)}
-              onReorder={reorderInBoard}
-              onRemove={removeFromBoard}
-              emptyLabel={emptyGridLabel}
-            />
+            {viewMode === 'grid' && (
+              <BoardGrid
+                cards={visibleCards}
+                onOpen={openCard}
+                onReorder={reorderInBoard}
+                onRemove={removeFromBoard}
+                emptyLabel={emptyGridLabel}
+              />
+            )}
+            {viewMode === 'stack' && (
+              <CardStack
+                cards={visibleCards}
+                onEdit={openCard}
+                onDelete={removeFromBoard}
+                onReorder={reorderInBoard}
+                emptyLabel={emptyGridLabel}
+              />
+            )}
+            {viewMode === 'pile' && (
+              <CardPile
+                cards={visibleCards}
+                onEdit={openCard}
+                emptyLabel={emptyGridLabel}
+              />
+            )}
           </>
         )
       ) : null}
+
+      {showViewToggle && (
+        <BoardViewToggle mode={viewMode} onChange={setViewMode} />
+      )}
 
       {addPickerOpen && (
         <AddCardsModal

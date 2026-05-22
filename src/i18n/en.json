@@ -126,6 +126,12 @@
       "lavender": "Lavender",
       "sage": "Sage",
       "sky": "Sky"
+    },
+    "view": {
+      "grid": "Grid",
+      "stack": "Stack",
+      "pile": "Pile",
+      "switchTo": "Switch view"
     }
   },
   "voice": {

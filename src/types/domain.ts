@@ -107,12 +107,15 @@ export type Card = {
   updatedAt: number;
 };
 
+export type BoardViewMode = 'grid' | 'stack' | 'pile';
+
 export type Board = {
   id: string;
   name: string;
   cardIds: string[];
   color?: CardColor;
   emoji?: string;
+  viewMode?: BoardViewMode;
   createdAt: number;
   updatedAt: number;
 };

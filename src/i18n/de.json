@@ -126,6 +126,12 @@
       "lavender": "Lavendel",
       "sage": "Salbei",
       "sky": "Himmel"
+    },
+    "view": {
+      "grid": "Raster",
+      "stack": "Stapel",
+      "pile": "Stoß",
+      "switchTo": "Ansicht wechseln"
     }
   },
   "voice": {
