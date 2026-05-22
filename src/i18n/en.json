@@ -38,7 +38,8 @@
       "continue": "Continue: {{range}}",
       "playAll": "Play all",
       "repeat": "Repeat verse",
-      "rate": "Rate"
+      "rate": "Rate",
+      "autoScroll": "Follow active verse"
     },
     "suggestions": {
       "random": "Random verse",

@@ -6,11 +6,13 @@ type Props = {
   isLoading: boolean;
   rate: number;
   repeat: boolean;
+  autoScroll: boolean;
   ambientVisible?: boolean;
   ambientOn?: boolean;
   onTogglePlay: () => void;
   onCycleRate: () => void;
   onToggleRepeat: () => void;
+  onToggleAutoScroll: () => void;
   onToggleAmbient?: () => void;
   onMenu: (pos: { x: number; y: number }) => void;
 };
@@ -20,11 +22,13 @@ export function ReaderControls({
   isLoading,
   rate,
   repeat,
+  autoScroll,
   ambientVisible,
   ambientOn,
   onTogglePlay,
   onCycleRate,
   onToggleRepeat,
+  onToggleAutoScroll,
   onToggleAmbient,
   onMenu,
 }: Props) {
@@ -61,6 +65,21 @@ export function ReaderControls({
         )}
       >
         <RepeatIcon />
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleAutoScroll();
+        }}
+        aria-pressed={autoScroll}
+        aria-label={t('chat.reader.autoScroll')}
+        className={clsx(
+          'btn-ghost h-9 w-9 px-0',
+          autoScroll && 'bg-gold/20 text-gold',
+        )}
+      >
+        <FollowIcon />
       </button>
       <button
         type="button"
@@ -103,6 +122,15 @@ export function ReaderControls({
         <DotsIcon />
       </button>
     </div>
+  );
+}
+
+function FollowIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9" />
+      <line x1="4" y1="19" x2="20" y2="19" />
+    </svg>
   );
 }
 

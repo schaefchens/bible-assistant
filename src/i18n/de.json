@@ -38,7 +38,8 @@
       "continue": "Weiterlesen: {{range}}",
       "playAll": "Alle abspielen",
       "repeat": "Vers wiederholen",
-      "rate": "Tempo"
+      "rate": "Tempo",
+      "autoScroll": "Aktivem Vers folgen"
     },
     "suggestions": {
       "random": "Zufälliger Vers",
