@@ -10,7 +10,7 @@
     "settings": "Settings"
   },
   "chat": {
-    "placeholder": "Ask for a verse, a story, or a card…",
+    "placeholder": "What do you want to read?",
     "send": "Send",
     "thinking": "Thinking…",
     "holdToSpeak": "Tap to speak",
