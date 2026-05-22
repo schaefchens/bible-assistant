@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next';
 import {
   DndContext,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -36,8 +37,18 @@ export function BoardGrid({ cards, onOpen, onReorder, onRemove, emptyLabel }: Pr
   const { t } = useTranslation();
   const [flipped, setFlipped] = useState<Set<string>>(new Set());
 
+  // MouseSensor + TouchSensor (not PointerSensor) so quick vertical touch swipes
+  // pass through to native scroll on iOS/Android. Both sensors use a long-press
+  // delay so a hold-without-moving still enters drag mode — that's the "long
+  // press to edit" gesture (handleDragEnd fires onEdit when delta < threshold).
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
+      activationConstraint: {
+        delay: LONG_PRESS_MS,
+        tolerance: MOVE_TOLERANCE_PX,
+      },
+    }),
+    useSensor(TouchSensor, {
       activationConstraint: {
         delay: LONG_PRESS_MS,
         tolerance: MOVE_TOLERANCE_PX,
@@ -157,7 +168,7 @@ function BoardCell({
         {...listeners}
         role="button"
         tabIndex={0}
-        className="w-full h-full cursor-pointer touch-pan-y focus:outline-none"
+        className="w-full h-full cursor-pointer focus:outline-none"
         onClick={onTap}
         onContextMenu={(e) => e.preventDefault()}
         onKeyDown={(e) => {

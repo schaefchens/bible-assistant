@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   DndContext,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -61,8 +62,18 @@ export function CardStack({
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [raisedHeight, setRaisedHeight] = useState<number>(0);
 
+  // MouseSensor + TouchSensor (not PointerSensor) so quick vertical touch swipes
+  // pass through to native scroll on iOS/Android. Both sensors use a long-press
+  // delay so a hold-without-moving still enters drag mode — that's the "long
+  // press to edit" gesture (handleDragEnd fires onEdit when delta < threshold).
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
+      activationConstraint: {
+        delay: LONG_PRESS_MS,
+        tolerance: MOVE_TOLERANCE_PX,
+      },
+    }),
+    useSensor(TouchSensor, {
       activationConstraint: {
         delay: LONG_PRESS_MS,
         tolerance: MOVE_TOLERANCE_PX,
@@ -343,7 +354,7 @@ function CardStackItem({
           {...listeners}
           role={attributes.role ?? 'button'}
           tabIndex={attributes.tabIndex ?? 0}
-          className="block w-full text-left cursor-pointer rounded-2xl select-none touch-pan-y focus:outline-none"
+          className="block w-full text-left cursor-pointer rounded-2xl select-none focus:outline-none"
           onClick={onTap}
           onContextMenu={(e) => e.preventDefault()}
           onKeyDown={(e) => {
