@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Card } from '@/types/domain';
 import { CardFace } from './CardFace';
@@ -16,13 +16,20 @@ const AXIS_LOCK_THRESHOLD_PX = 8;
 const SWIPE_THRESHOLD_RATIO = 1 / 3;
 const EXIT_MS = 220;
 
+type Leaving = {
+  card: Card;
+  flipped: boolean;
+  fromDx: number;
+  toDx: number;
+};
+
 export function CardPile({ cards, onEdit, emptyLabel }: Props) {
   const { t } = useTranslation();
   const [topIdx, setTopIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [dragDx, setDragDx] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const [leavingDx, setLeavingDx] = useState<number | null>(null);
+  const [leaving, setLeaving] = useState<Leaving | null>(null);
 
   // Reset transient state when the deck reference changes (board switch,
   // cards added/removed). In-render reset pattern matches the codebase
@@ -33,7 +40,7 @@ export function CardPile({ cards, onEdit, emptyLabel }: Props) {
     setFlipped(false);
     setDragDx(0);
     setDragging(false);
-    setLeavingDx(null);
+    setLeaving(null);
     setTopIdx((i) => (cards.length === 0 ? 0 : i % cards.length));
   }
 
@@ -53,16 +60,8 @@ export function CardPile({ cards, onEdit, emptyLabel }: Props) {
   const next = len > 1 ? cards[(topIdx + 1) % len] : null;
   const nextNext = len > 2 ? cards[(topIdx + 2) % len] : null;
 
-  const cycle = () => {
-    setTopIdx((i) => (i + 1) % len);
-    setFlipped(false);
-    setLeavingDx(null);
-    setDragDx(0);
-    setDragging(false);
-  };
-
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (leavingDx !== null) return;
+    if (leaving) return;
     gestureRef.current = {
       startX: e.clientX,
       startY: e.clientY,
@@ -103,9 +102,19 @@ export function CardPile({ cards, onEdit, emptyLabel }: Props) {
     if (g.lockedAxis === 'x') {
       const threshold = window.innerWidth * SWIPE_THRESHOLD_RATIO;
       if (Math.abs(dx) > threshold) {
-        const exit = Math.sign(dx) * (window.innerWidth + 400);
+        // Hand the dragged card off to a separate overlay that will animate
+        // off-screen, and advance to the next card immediately so the new
+        // top is already in place — no snap-back glitch.
+        setLeaving({
+          card: top,
+          flipped,
+          fromDx: dx,
+          toDx: Math.sign(dx) * (window.innerWidth + 400),
+        });
+        setTopIdx((i) => (i + 1) % len);
+        setFlipped(false);
+        setDragDx(0);
         setDragging(false);
-        setLeavingDx(exit);
         return;
       }
       setDragging(false);
@@ -119,23 +128,10 @@ export function CardPile({ cards, onEdit, emptyLabel }: Props) {
     setDragDx(0);
   };
 
-  const topTransform = (() => {
-    if (leavingDx !== null) {
-      const rot = Math.sign(leavingDx) * 18;
-      return `translate3d(${leavingDx}px, 0, 0) rotate(${rot}deg)`;
-    }
-    if (dragDx !== 0) {
-      const rot = dragDx * 0.05;
-      return `translate3d(${dragDx}px, 0, 0) rotate(${rot}deg)`;
-    }
-    return undefined;
-  })();
-
-  const topTransition = (() => {
-    if (leavingDx !== null) return `transform ${EXIT_MS}ms ease-in`;
-    if (dragging) return 'none';
-    return 'transform 180ms ease-out';
-  })();
+  const topTransform = dragDx !== 0
+    ? `translate3d(${dragDx}px, 0, 0) rotate(${dragDx * 0.05}deg)`
+    : undefined;
+  const topTransition = dragging ? 'none' : 'transform 180ms ease-out';
 
   const flipLabel = t(flipped ? 'cards.front' : 'cards.flip') as string;
   const editLabel = t('cards.edit') as string;
@@ -149,11 +145,13 @@ export function CardPile({ cards, onEdit, emptyLabel }: Props) {
         }}
       >
         <div className="relative w-full" style={{ aspectRatio: '3 / 4' }}>
-          {nextNext && (
-            <PileLayer card={nextNext} depth={2} />
-          )}
+          {nextNext && <PileLayer card={nextNext} depth={2} />}
           {next && <PileLayer card={next} depth={1} />}
+          {/* key={topIdx}: mount a fresh div for each new top card so the
+              previous drag transform doesn't transition back to center on
+              the new card. */}
           <div
+            key={topIdx}
             className="absolute inset-0 touch-none"
             style={{
               transform: topTransform,
@@ -165,11 +163,6 @@ export function CardPile({ cards, onEdit, emptyLabel }: Props) {
             onPointerMove={onPointerMove}
             onPointerUp={endGesture}
             onPointerCancel={endGesture}
-            onTransitionEnd={(e) => {
-              if (e.propertyName === 'transform' && leavingDx !== null) {
-                cycle();
-              }
-            }}
           >
             <FlipCard
               flipped={flipped}
@@ -205,8 +198,56 @@ export function CardPile({ cards, onEdit, emptyLabel }: Props) {
               </button>
             </div>
           </div>
+          {leaving && (
+            <LeavingOverlay
+              key={`${leaving.card.id}-${leaving.toDx}`}
+              leaving={leaving}
+              emptyLabel={t('cards.noNotes')}
+              onDone={() => setLeaving(null)}
+            />
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function LeavingOverlay({
+  leaving,
+  emptyLabel,
+  onDone,
+}: {
+  leaving: Leaving;
+  emptyLabel: string;
+  onDone: () => void;
+}) {
+  // Render at fromDx with no transition first, then on the next frame switch
+  // to toDx so the browser sees the change and animates between them.
+  const [phase, setPhase] = useState<'enter' | 'exit'>('enter');
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setPhase('exit'));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  const dx = phase === 'enter' ? leaving.fromDx : leaving.toDx;
+  return (
+    <div
+      className="absolute inset-0 pointer-events-none"
+      style={{
+        zIndex: 4,
+        transform: `translate3d(${dx}px, 0, 0) rotate(${dx * 0.05}deg)`,
+        transition:
+          phase === 'enter' ? 'none' : `transform ${EXIT_MS}ms ease-in`,
+        willChange: 'transform',
+      }}
+      onTransitionEnd={(e) => {
+        if (e.propertyName === 'transform' && phase === 'exit') onDone();
+      }}
+    >
+      <FlipCard
+        flipped={leaving.flipped}
+        front={<CardFace card={leaving.card} size="full" isActive />}
+        back={<CardBack card={leaving.card} emptyLabel={emptyLabel} isActive />}
+      />
     </div>
   );
 }
