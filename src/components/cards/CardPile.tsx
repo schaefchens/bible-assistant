@@ -15,6 +15,8 @@ const TAP_MOVE_TOLERANCE_PX = 6;
 const AXIS_LOCK_THRESHOLD_PX = 8;
 const SWIPE_THRESHOLD_RATIO = 1 / 3;
 const EXIT_MS = 220;
+const SLOT_OFFSET_PX = 14;
+const BRIGHTNESS_BY_SLOT = [1, 0.85, 0.7];
 
 type Leaving = {
   card: Card;
@@ -57,8 +59,6 @@ export function CardPile({ cards, onEdit, emptyLabel }: Props) {
 
   const len = cards.length;
   const top = cards[topIdx % len];
-  const next = len > 1 ? cards[(topIdx + 1) % len] : null;
-  const nextNext = len > 2 ? cards[(topIdx + 2) % len] : null;
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (leaving) return;
@@ -102,9 +102,9 @@ export function CardPile({ cards, onEdit, emptyLabel }: Props) {
     if (g.lockedAxis === 'x') {
       const threshold = window.innerWidth * SWIPE_THRESHOLD_RATIO;
       if (Math.abs(dx) > threshold) {
-        // Hand the dragged card off to a separate overlay that will animate
-        // off-screen, and advance to the next card immediately so the new
-        // top is already in place — no snap-back glitch.
+        // Hand the dragged card off to a separate overlay that flies off; the
+        // pile keeps the remaining cards rendered with their `card.id` keys so
+        // CSS transitions can carry each peek up to its new slot without jumps.
         setLeaving({
           card: top,
           flipped,
@@ -128,10 +128,18 @@ export function CardPile({ cards, onEdit, emptyLabel }: Props) {
     setDragDx(0);
   };
 
-  const topTransform = dragDx !== 0
-    ? `translate3d(${dragDx}px, 0, 0) rotate(${dragDx * 0.05}deg)`
-    : undefined;
-  const topTransition = dragging ? 'none' : 'transform 180ms ease-out';
+  // Build the list of cards visible in the pile. Each card keeps its identity
+  // (key=card.id) so React reuses the same DOM node when it moves between
+  // slots — CSS transitions on transform + filter handle the animation.
+  // The leaving card is rendered in `LeavingOverlay` instead, so skip it here
+  // (it would otherwise reappear in the back-most slot via wraparound during
+  // the exit animation).
+  const slots: { card: Card; slot: number }[] = [];
+  for (let i = 0; i < Math.min(3, len); i++) {
+    const card = cards[(topIdx + i) % len];
+    if (leaving && card.id === leaving.card.id) continue;
+    slots.push({ card, slot: i });
+  }
 
   const flipLabel = t(flipped ? 'cards.front' : 'cards.flip') as string;
   const editLabel = t('cards.edit') as string;
@@ -140,64 +148,85 @@ export function CardPile({ cards, onEdit, emptyLabel }: Props) {
     <div className="flex-1 flex items-center justify-center px-4 pb-24 select-none">
       <div
         className="relative w-full"
-        style={{
-          maxWidth: 'min(80vw, 28rem)',
-        }}
+        style={{ maxWidth: 'min(80vw, 28rem)' }}
       >
         <div className="relative w-full" style={{ aspectRatio: '3 / 4' }}>
-          {nextNext && <PileLayer card={nextNext} depth={2} />}
-          {next && <PileLayer card={next} depth={1} />}
-          {/* key={topIdx}: mount a fresh div for each new top card so the
-              previous drag transform doesn't transition back to center on
-              the new card. */}
-          <div
-            key={topIdx}
-            className="absolute inset-0 touch-none"
-            style={{
-              transform: topTransform,
-              transition: topTransition,
-              willChange: 'transform',
-              zIndex: 3,
-            }}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={endGesture}
-            onPointerCancel={endGesture}
-          >
-            <FlipCard
-              flipped={flipped}
-              front={<CardFace card={top} size="full" isActive />}
-              back={<CardBack card={top} emptyLabel={t('cards.noNotes')} isActive />}
-            />
-            <div
-              className="absolute top-2 right-2 flex gap-2"
-              style={{ zIndex: 1100 }}
-            >
-              <button
-                type="button"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setFlipped((f) => !f);
+          {slots.map(({ card, slot }) => {
+            const isTop = slot === 0;
+            const baseY = slot * SLOT_OFFSET_PX;
+            const brightness = BRIGHTNESS_BY_SLOT[slot] ?? 1;
+            const transform =
+              isTop && dragDx !== 0
+                ? `translate3d(${dragDx}px, 0, 0) rotate(${dragDx * 0.05}deg)`
+                : `translateY(${baseY}px)`;
+            const transition =
+              isTop && dragging
+                ? 'none'
+                : `transform ${EXIT_MS}ms ease-out, filter ${EXIT_MS}ms ease-out`;
+            return (
+              <div
+                key={card.id}
+                aria-hidden={!isTop}
+                className={[
+                  'absolute inset-0',
+                  isTop ? 'touch-none' : 'pointer-events-none',
+                ].join(' ')}
+                style={{
+                  transform,
+                  transition,
+                  filter: `brightness(${brightness})`,
+                  zIndex: 3 - slot,
+                  willChange: 'transform',
                 }}
-                className="rounded-full bg-black/50 hover:bg-black/70 text-cream text-xs px-2.5 py-1"
+                onPointerDown={isTop ? onPointerDown : undefined}
+                onPointerMove={isTop ? onPointerMove : undefined}
+                onPointerUp={isTop ? endGesture : undefined}
+                onPointerCancel={isTop ? endGesture : undefined}
               >
-                {flipLabel}
-              </button>
-              <button
-                type="button"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit(top);
-                }}
-                className="rounded-full bg-black/50 hover:bg-black/70 text-cream text-xs px-2.5 py-1"
-                aria-label={editLabel}
-              >
-                ✎
-              </button>
-            </div>
-          </div>
+                <FlipCard
+                  flipped={isTop ? flipped : false}
+                  front={<CardFace card={card} size="full" isActive={isTop} />}
+                  back={
+                    <CardBack
+                      card={card}
+                      emptyLabel={t('cards.noNotes')}
+                      isActive={isTop}
+                    />
+                  }
+                />
+                {isTop && (
+                  <div
+                    className="absolute top-2 right-2 flex gap-2"
+                    style={{ zIndex: 1100 }}
+                  >
+                    <button
+                      type="button"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFlipped((f) => !f);
+                      }}
+                      className="rounded-full bg-black/50 hover:bg-black/70 text-cream text-xs px-2.5 py-1"
+                    >
+                      {flipLabel}
+                    </button>
+                    <button
+                      type="button"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEdit(card);
+                      }}
+                      className="rounded-full bg-black/50 hover:bg-black/70 text-cream text-xs px-2.5 py-1"
+                      aria-label={editLabel}
+                    >
+                      ✎
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
           {leaving && (
             <LeavingOverlay
               key={`${leaving.card.id}-${leaving.toDx}`}
@@ -248,31 +277,6 @@ function LeavingOverlay({
         front={<CardFace card={leaving.card} size="full" isActive />}
         back={<CardBack card={leaving.card} emptyLabel={emptyLabel} isActive />}
       />
-    </div>
-  );
-}
-
-function PileLayer({ card, depth }: { card: Card; depth: 1 | 2 }) {
-  // Pure translateY so the peek shows as a clean band below the top card.
-  // Scaling pulled the bottom edge back inside the parent box, defeating the
-  // stack illusion — translateY without scale makes each layer's bottom poke
-  // out exactly `offsetY` pixels below the one in front.
-  // `filter: brightness` dims the peek to suggest depth without making it
-  // translucent — opacity < 1 would let the layer behind bleed through when
-  // the top card swipes away.
-  const offsetY = depth === 1 ? 14 : 28;
-  const brightness = depth === 1 ? 0.85 : 0.7;
-  return (
-    <div
-      aria-hidden
-      className="absolute inset-0 pointer-events-none"
-      style={{
-        transform: `translateY(${offsetY}px)`,
-        filter: `brightness(${brightness})`,
-        zIndex: 3 - depth,
-      }}
-    >
-      <CardFace card={card} size="full" />
     </div>
   );
 }
