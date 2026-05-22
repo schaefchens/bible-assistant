@@ -46,6 +46,9 @@
       "lastRead": "Continue last",
       "genesis1": "Read Genesis 1",
       "psalm23": "Read Psalm 23"
+    },
+    "ribbon": {
+      "resume": "Resume from {{color}} ribbon"
     }
   },
   "playback": {

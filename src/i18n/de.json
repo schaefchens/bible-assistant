@@ -46,6 +46,9 @@
       "lastRead": "Weiterlesen",
       "genesis1": "Lies 1. Mose 1",
       "psalm23": "Lies Psalm 23"
+    },
+    "ribbon": {
+      "resume": "Weiter ab {{color}}-Lesezeichen"
     }
   },
   "playback": {

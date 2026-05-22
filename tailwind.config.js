@@ -18,6 +18,13 @@ export default {
           DEFAULT: '#e8e0d0',
           dim: '#bdb6a9',
         },
+        ribbon: {
+          gold: '#c8a96e',
+          blue: '#7ab0d6',
+          red: '#d57a7a',
+          green: '#85bf9b',
+          purple: '#a89dcf',
+        },
         card: {
           'none-bg': '#2d2d49',
           'none-fg': '#e8e0d0',
