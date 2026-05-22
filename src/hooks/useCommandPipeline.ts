@@ -9,9 +9,21 @@ import { useGlobalVoiceStore, type VoiceSource } from '@/store/globalVoiceStore'
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { getChapter, type Translation } from '@/services/bible/bibleApi';
 import { formatReference, getBookById } from '@/services/bible/bookCatalog';
+import { parseReference } from '@/services/bible/referenceParser';
 import type { ChatMessage, ToolCallSummary, VerseSummary } from '@/types/domain';
 
 const MAX_TOOL_LOOPS = 6;
+
+// Canonical key for a parsed Bible reference, so "John 3:16" and "John 3:16-16"
+// collapse to the same identity for turn-level dedup. Returns null when the
+// string can't be parsed.
+function referenceKey(input: string): string | null {
+  const parsed = parseReference(input);
+  if (!parsed) return null;
+  const start = parsed.verseStart ?? 0;
+  const end = parsed.verseEnd ?? start;
+  return `${parsed.bookId}:${parsed.chapter}:${start}:${end}`;
+}
 
 function newId(): string {
   return crypto.randomUUID();
@@ -69,12 +81,24 @@ export function useCommandPipeline() {
       let loops = 0;
       let didReadAction = false;
       const readReferences: string[] = [];
+      // Canonical keys of passages already played this turn. Used to silently
+      // ignore the gpt-4o-mini tic of issuing `read_verses` with the exact
+      // reference just returned by `random_verse`/`continue_from_ribbon` — that
+      // duplicate would otherwise pile verses on the message and stomp on the
+      // already-started playback. Different references (multi-read flows) are
+      // unaffected.
+      const playedKeys = new Set<string>();
       while (loops < MAX_TOOL_LOOPS) {
         loops++;
         const resp = await postChat({
           messages: history,
           tools: TOOL_DEFINITIONS,
           model: 'gpt-4o-mini',
+          // Sequential tool calls: the model must see each result before issuing
+          // the next. Prevents parallel/duplicate `random_verse` spam while
+          // still allowing legit multi-read flows (e.g. "one from OT, one from
+          // NT, one from Psalms") by calling the tool once per verse.
+          parallel_tool_calls: false,
         });
         const choice = resp.message;
         if (choice.tool_calls && choice.tool_calls.length > 0) {
@@ -87,28 +111,55 @@ export function useCommandPipeline() {
           const summaries: ToolCallSummary[] = [];
           for (const tc of choice.tool_calls) {
             const name = tc.function.name as ToolName;
-            if (
+            const isRead =
               name === 'read_verses' ||
               name === 'random_verse' ||
-              name === 'continue_from_ribbon'
-            ) {
-              didReadAction = true;
+              name === 'continue_from_ribbon';
+            if (isRead) didReadAction = true;
+
+            // Skip a `read_verses` whose reference matches one already played
+            // this turn. This neutralizes the model's "I picked X, now I'll
+            // read X" follow-up after `random_verse`, without limiting how many
+            // distinct verses the user can request.
+            if (name === 'read_verses') {
+              const parsedArgs = safeJson(tc.function.arguments) as {
+                reference?: unknown;
+              };
+              const refStr = typeof parsedArgs.reference === 'string' ? parsedArgs.reference : '';
+              const key = refStr ? referenceKey(refStr) : null;
+              if (key && playedKeys.has(key)) {
+                const data = { reference: refStr, count: 0, duplicate: true };
+                summaries.push({
+                  id: tc.id,
+                  name: tc.function.name,
+                  args: parsedArgs as Record<string, unknown>,
+                  result: data,
+                });
+                history.push({
+                  role: 'tool',
+                  tool_call_id: tc.id,
+                  content: JSON.stringify({ ok: true, data }),
+                });
+                continue;
+              }
             }
+
             useChatStore.getState().setCurrentTool(name);
             const result = await dispatchTool(name, tc.function.arguments, {
               messageId: assistantMsg.id,
             });
             if (
-              (name === 'read_verses' ||
-                name === 'random_verse' ||
-                name === 'continue_from_ribbon') &&
+              isRead &&
               result.ok &&
               result.data &&
               typeof result.data === 'object' &&
               'reference' in result.data &&
               typeof (result.data as { reference: unknown }).reference === 'string'
             ) {
-              readReferences.push((result.data as { reference: string }).reference);
+              const ref = (result.data as { reference: string }).reference;
+              readReferences.push(ref);
+              const key = referenceKey(ref);
+              if (key) playedKeys.add(key);
             }
             summaries.push({
               id: tc.id,

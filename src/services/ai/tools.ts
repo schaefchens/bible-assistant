@@ -102,7 +102,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'random_verse',
       description:
-        'Pick a single random verse from the Bible and read it aloud. Use this when the user asks for a random verse, surprise verse, or wants you to choose for them. Optionally constrain to one book (e.g. "a random Psalm") or one chapter (e.g. "a random verse from John 3").',
+        'Pick ONE random verse from the Bible and read it aloud. Call this exactly ONCE for each verse the user explicitly asked for — never re-call to "improve randomness" or with the same arguments. For a plain "give me a random verse", call exactly once and stop. If the user asks for several with different scopes (e.g. "one from the OT and one from Psalms"), call once per scope and wait for each result before issuing the next. Optional `book` constrains the pick to one book (e.g. "Psalms", "John"); optional `chapter` constrains further.',
       parameters: {
         type: 'object',
         properties: {

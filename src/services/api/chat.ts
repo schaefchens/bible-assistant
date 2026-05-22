@@ -38,6 +38,7 @@ export function postChat(body: {
   messages: ChatRequestMessage[];
   tools: ChatToolDefinition[];
   model?: string;
+  parallel_tool_calls?: boolean;
 }): Promise<ChatResponse> {
   return apiPostJson<ChatResponse>('chat', body);
 }
