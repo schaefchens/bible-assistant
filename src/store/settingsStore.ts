@@ -23,6 +23,7 @@ type SettingsState = {
   ambient: AmbientSettings;
   speechVolume: number;
   autoScrollReader: boolean;
+  micSoundEnabled: boolean;
   setLocale: (locale: Locale) => void;
   setTranslation: (translation: Translation, fromUser?: boolean) => void;
   setVoice: (voice: VoiceId) => void;
@@ -34,6 +35,7 @@ type SettingsState = {
   setAmbient: (patch: Partial<AmbientSettings>) => void;
   setSpeechVolume: (v: number) => void;
   setAutoScrollReader: (v: boolean) => void;
+  setMicSoundEnabled: (v: boolean) => void;
 };
 
 const DEFAULT_AMBIENT: AmbientSettings = {
@@ -71,6 +73,7 @@ export const useSettingsStore = create<SettingsState>()(
         ambient: DEFAULT_AMBIENT,
         speechVolume: 1,
         autoScrollReader: true,
+        micSoundEnabled: true,
         setLocale: (locale) =>
           set((s) => ({
             locale,
@@ -91,11 +94,12 @@ export const useSettingsStore = create<SettingsState>()(
         setSpeechVolume: (v) =>
           set({ speechVolume: Math.max(0, Math.min(1, v)) }),
         setAutoScrollReader: (autoScrollReader) => set({ autoScrollReader }),
+        setMicSoundEnabled: (micSoundEnabled) => set({ micSoundEnabled }),
       };
     },
     {
       name: 'ba.settings',
-      version: 4,
+      version: 5,
       migrate: (persisted, version) => {
         let prev = (persisted as Partial<SettingsState>) ?? {};
         if (version < 2) {
@@ -116,6 +120,13 @@ export const useSettingsStore = create<SettingsState>()(
             ...prev,
             autoScrollReader:
               typeof prev.autoScrollReader === 'boolean' ? prev.autoScrollReader : true,
+          };
+        }
+        if (version < 5) {
+          prev = {
+            ...prev,
+            micSoundEnabled:
+              typeof prev.micSoundEnabled === 'boolean' ? prev.micSoundEnabled : true,
           };
         }
         return prev as SettingsState;

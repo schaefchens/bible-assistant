@@ -115,7 +115,7 @@ export function SettingsPage() {
         />
       </Section>
 
-      <Section title="Whisper">
+      <Section title={t('settings.microphone')}>
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -123,6 +123,14 @@ export function SettingsPage() {
             onChange={(e) => settings.setUseWhisperFallback(e.target.checked)}
           />
           <span className="text-sm">{t('settings.whisperFallback')}</span>
+        </label>
+        <label className="flex items-center gap-2 mt-2">
+          <input
+            type="checkbox"
+            checked={settings.micSoundEnabled}
+            onChange={(e) => settings.setMicSoundEnabled(e.target.checked)}
+          />
+          <span className="text-sm">{t('settings.micSound')}</span>
         </label>
       </Section>
 

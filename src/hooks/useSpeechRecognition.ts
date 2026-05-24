@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSettingsStore } from '@/store/settingsStore';
 import { postTranscribe } from '@/services/api/transcribe';
+import { describeMicError, pickMicMime } from '@/lib/micRecord';
+import { playMicCue } from '@/lib/micCue';
 
 type SpeechRecognitionAlternative = { transcript: string; confidence: number };
 type SpeechRecognitionResultLike = ArrayLike<SpeechRecognitionAlternative> & {
@@ -32,6 +34,19 @@ function getSpeechRecognitionCtor(): { new (): SpeechRecognitionLike } | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
+// iOS Safari exposes `webkitSpeechRecognition` but it's unreliable — it
+// often fires `onerror` ('audio-capture'/'no-speech') almost immediately,
+// which forced a Whisper fallback that flickered the listening state and
+// triggered duplicate start/stop cues. Skipping it on iOS goes straight to
+// Whisper and avoids the start → stop → start dance.
+function isIos(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  if (/iPad|iPhone|iPod/.test(ua)) return true;
+  // iPadOS 13+ identifies as MacIntel with touch points.
+  return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+}
+
 export type UseSpeechResult = {
   start: () => Promise<void>;
   stop: () => Promise<void>;
@@ -56,20 +71,27 @@ export function useSpeechRecognition(onFinal: (text: string) => void): UseSpeech
     onFinalRef.current = onFinal;
   }, [onFinal]);
 
-  const speechCtor = getSpeechRecognitionCtor();
+  const rawSpeechCtor = getSpeechRecognitionCtor();
+  // On iOS prefer Whisper directly when it's available.
+  const speechCtor =
+    isIos() && useWhisperFallback ? null : rawSpeechCtor;
   const available = speechCtor !== null || useWhisperFallback;
 
-  const startWhisper = useCallback(async () => {
+  const startWhisper = useCallback(async (silent = false) => {
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = pickMicMime();
+      const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       chunksRef.current = [];
       mr.ondataavailable = (ev) => {
         if (ev.data.size > 0) chunksRef.current.push(ev.data);
       };
       mr.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        playMicCue('stop');
+        stream?.getTracks().forEach((t) => t.stop());
+        const type = mr.mimeType || mime || 'application/octet-stream';
+        const blob = new Blob(chunksRef.current, { type });
         setListening(false);
         try {
           const { text } = await postTranscribe(blob, locale);
@@ -82,9 +104,12 @@ export function useSpeechRecognition(onFinal: (text: string) => void): UseSpeech
       mediaRecorderRef.current = mr;
       mr.start();
       setListening(true);
+      if (!silent) playMicCue('start');
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'microphone unavailable');
+      stream?.getTracks().forEach((t) => t.stop());
+      const msg = describeMicError(e);
+      setError(msg);
       return false;
     }
   }, [locale]);
@@ -99,6 +124,7 @@ export function useSpeechRecognition(onFinal: (text: string) => void): UseSpeech
         rec.continuous = false;
         rec.interimResults = true;
         let producedTranscript = false;
+        let fallingBack = false;
         rec.onresult = (e: SpeechRecognitionEventLike) => {
           let finalText = '';
           let interim = '';
@@ -114,25 +140,41 @@ export function useSpeechRecognition(onFinal: (text: string) => void): UseSpeech
             onFinalRef.current(finalText.trim());
           }
         };
-        rec.onerror = async (ev: Event) => {
+        rec.onerror = (ev: Event) => {
           const errName = (ev as Event & { error?: string }).error ?? 'speech error';
-          setListening(false);
-          // Fall back to Whisper for permission/availability errors when enabled.
-          if (
+          const shouldFallback =
             useWhisperFallback &&
             !producedTranscript &&
-            (errName === 'not-allowed' || errName === 'service-not-allowed' || errName === 'audio-capture' || errName === 'network' || errName === 'aborted' || errName === 'no-speech')
-          ) {
-            const ok = await startWhisper();
-            if (!ok) setError(`Web Speech ${errName}; Whisper failed`);
-          } else {
-            setError(`Web Speech ${errName}`);
+            (errName === 'not-allowed' ||
+              errName === 'service-not-allowed' ||
+              errName === 'audio-capture' ||
+              errName === 'network' ||
+              errName === 'aborted' ||
+              errName === 'no-speech');
+          if (shouldFallback) {
+            // Set BEFORE the async work so onend (which may fire next) skips
+            // both the listening flicker and the duplicate stop cue.
+            fallingBack = true;
+            void startWhisper(true).then((ok) => {
+              if (!ok) {
+                setError(`Web Speech ${errName}; Whisper failed`);
+                setListening(false);
+              }
+            });
+            return;
           }
+          setListening(false);
+          setError(`Web Speech ${errName}`);
         };
-        rec.onend = () => setListening(false);
+        rec.onend = () => {
+          if (fallingBack) return;
+          setListening(false);
+          playMicCue('stop');
+        };
         recognitionRef.current = rec;
         rec.start();
         setListening(true);
+        playMicCue('start');
         return;
       } catch (e) {
         console.warn('SpeechRecognition failed, falling back', e);

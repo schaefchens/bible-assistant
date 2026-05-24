@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSettingsStore } from '@/store/settingsStore';
 import { postTranscribe } from '@/services/api/transcribe';
+import { describeMicError, pickMicMime } from '@/lib/micRecord';
+import { playMicCue } from '@/lib/micCue';
 
 const HOTKEY_CODE = 'Backquote';
 
@@ -35,19 +37,23 @@ export function usePushToTalk(onTranscript: (text: string) => void) {
       return;
     }
     startingRef.current = true;
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-      const mr = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      const mime = pickMicMime();
+      const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       chunksRef.current = [];
       mr.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       mr.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
+        playMicCue('stop');
+        stream?.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
         setRecording(false);
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        const type = mr.mimeType || mime || 'application/octet-stream';
+        const blob = new Blob(chunksRef.current, { type });
         if (blob.size === 0) return;
         try {
           const { text } = await postTranscribe(blob, locale);
@@ -60,8 +66,12 @@ export function usePushToTalk(onTranscript: (text: string) => void) {
       mediaRecorderRef.current = mr;
       mr.start();
       setRecording(true);
+      playMicCue('start');
     } catch (e) {
-      console.warn('push-to-talk mic unavailable', e);
+      stream?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      setRecording(false);
+      console.warn('push-to-talk mic unavailable', describeMicError(e), e);
     } finally {
       startingRef.current = false;
     }
