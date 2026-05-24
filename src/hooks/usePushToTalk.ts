@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSettingsStore } from '@/store/settingsStore';
 import { postTranscribe } from '@/services/api/transcribe';
-import { describeMicError, pickMicMime } from '@/lib/micRecord';
+import { describeMicError, micConstraints, pickMicMime } from '@/lib/micRecord';
 import { playMicCue } from '@/lib/micCue';
+import { nudgeIosPlaybackRouting } from '@/lib/iosAudioRouting';
+import { audioPlayback } from '@/lib/audioPlaybackManager';
 
 const HOTKEY_CODE = 'Backquote';
 
@@ -39,7 +41,7 @@ export function usePushToTalk(onTranscript: (text: string) => void) {
     startingRef.current = true;
     let stream: MediaStream | null = null;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia(micConstraints());
       streamRef.current = stream;
       const mime = pickMicMime();
       const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
@@ -52,6 +54,9 @@ export function usePushToTalk(onTranscript: (text: string) => void) {
         stream?.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
         setRecording(false);
+        // Nudge iOS back to the playback audio category so system volume
+        // and TTS loudness return to normal.
+        nudgeIosPlaybackRouting(audioPlayback.getContext());
         const type = mr.mimeType || mime || 'application/octet-stream';
         const blob = new Blob(chunksRef.current, { type });
         if (blob.size === 0) return;
@@ -71,6 +76,7 @@ export function usePushToTalk(onTranscript: (text: string) => void) {
       stream?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       setRecording(false);
+      nudgeIosPlaybackRouting(audioPlayback.getContext());
       console.warn('push-to-talk mic unavailable', describeMicError(e), e);
     } finally {
       startingRef.current = false;

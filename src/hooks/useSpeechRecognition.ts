@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSettingsStore } from '@/store/settingsStore';
 import { postTranscribe } from '@/services/api/transcribe';
-import { describeMicError, pickMicMime } from '@/lib/micRecord';
+import { describeMicError, micConstraints, pickMicMime } from '@/lib/micRecord';
 import { playMicCue } from '@/lib/micCue';
+import { nudgeIosPlaybackRouting } from '@/lib/iosAudioRouting';
+import { audioPlayback } from '@/lib/audioPlaybackManager';
 
 type SpeechRecognitionAlternative = { transcript: string; confidence: number };
 type SpeechRecognitionResultLike = ArrayLike<SpeechRecognitionAlternative> & {
@@ -80,7 +82,7 @@ export function useSpeechRecognition(onFinal: (text: string) => void): UseSpeech
   const startWhisper = useCallback(async (silent = false) => {
     let stream: MediaStream | null = null;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia(micConstraints());
       const mime = pickMicMime();
       const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       chunksRef.current = [];
@@ -90,6 +92,9 @@ export function useSpeechRecognition(onFinal: (text: string) => void): UseSpeech
       mr.onstop = async () => {
         playMicCue('stop');
         stream?.getTracks().forEach((t) => t.stop());
+        // Nudge iOS back to the playback audio category so system volume
+        // and TTS loudness return to normal.
+        nudgeIosPlaybackRouting(audioPlayback.getContext());
         const type = mr.mimeType || mime || 'application/octet-stream';
         const blob = new Blob(chunksRef.current, { type });
         setListening(false);
@@ -108,6 +113,7 @@ export function useSpeechRecognition(onFinal: (text: string) => void): UseSpeech
       return true;
     } catch (e) {
       stream?.getTracks().forEach((t) => t.stop());
+      nudgeIosPlaybackRouting(audioPlayback.getContext());
       const msg = describeMicError(e);
       setError(msg);
       return false;

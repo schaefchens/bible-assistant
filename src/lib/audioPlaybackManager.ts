@@ -95,6 +95,13 @@ class AudioPlaybackManager {
   readonly ambient = new AmbientBus(this);
   readonly speech = new SpeechBus(this);
 
+  /** Read-only access to the shared AudioContext (or null if never
+   * created). Callers should use this rather than reaching into private
+   * state — handy for cross-cutting concerns like iOS routing nudges. */
+  getContext(): AudioContext | null {
+    return this.ctx;
+  }
+
   /** Must be called inside a user gesture handler on iOS. */
   ensureContext(): AudioContext {
     if (!this.ctx) {

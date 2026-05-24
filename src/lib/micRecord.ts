@@ -40,6 +40,27 @@ export function micFileNameFor(mime: string | undefined): string {
   return 'speech.bin';
 }
 
+/**
+ * `getUserMedia` constraints tuned to leave the iOS audio session alone.
+ *
+ * Background: on iOS Safari, asking for `{audio: true}` with default
+ * processing flags switches the system AVAudioSession into the "voice"
+ * category — volume buttons start controlling the ringer, and any
+ * subsequent Web Audio playback comes out quieter (routed through the
+ * voice path). Turning off echoCancellation / noiseSuppression / AGC keeps
+ * the session in plain media mode on iOS while still leaving the audio
+ * usable for Whisper.
+ */
+export function micConstraints(): MediaStreamConstraints {
+  return {
+    audio: {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+    },
+  };
+}
+
 /** Friendly error string for a `getUserMedia` rejection — used to render UI. */
 export function describeMicError(err: unknown): string {
   if (err instanceof DOMException) {
