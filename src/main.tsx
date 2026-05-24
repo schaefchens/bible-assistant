@@ -4,8 +4,10 @@ import './index.css';
 import './i18n';
 import App from './App';
 import { initPwaUpdate } from '@/lib/pwaUpdate';
+import { initPlaybackController } from '@/lib/playbackController';
 
 initPwaUpdate();
+initPlaybackController();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

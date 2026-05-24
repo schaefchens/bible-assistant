@@ -8,22 +8,28 @@ export type TtsResponse = {
   cached: boolean;
 };
 
-export function postTts(body: {
-  text: string;
-  voice: OpenAiVoiceId;
-  voiceStyle?: string;
-  translation: Translation;
-  bookId: number;
-  chapter: number;
-  verse: number;
-}): Promise<TtsResponse> {
-  return apiPostJson<TtsResponse>('tts', body);
+export function postTts(
+  body: {
+    text: string;
+    voice: OpenAiVoiceId;
+    voiceStyle?: string;
+    translation: Translation;
+    bookId: number;
+    chapter: number;
+    verse: number;
+  },
+  opts?: { signal?: AbortSignal },
+): Promise<TtsResponse> {
+  return apiPostJson<TtsResponse>('tts', body, opts);
 }
 
-export function postTtsSpeak(body: {
-  text: string;
-  voice: OpenAiVoiceId;
-  voiceStyle?: string;
-}): Promise<TtsResponse> {
-  return apiPostJson<TtsResponse>('tts.speak', body);
+export function postTtsSpeak(
+  body: {
+    text: string;
+    voice: OpenAiVoiceId;
+    voiceStyle?: string;
+  },
+  opts?: { signal?: AbortSignal },
+): Promise<TtsResponse> {
+  return apiPostJson<TtsResponse>('tts.speak', body, opts);
 }

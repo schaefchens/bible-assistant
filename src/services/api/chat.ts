@@ -34,11 +34,14 @@ export type ChatResponse = {
   finish_reason?: string;
 };
 
-export function postChat(body: {
-  messages: ChatRequestMessage[];
-  tools: ChatToolDefinition[];
-  model?: string;
-  parallel_tool_calls?: boolean;
-}): Promise<ChatResponse> {
-  return apiPostJson<ChatResponse>('chat', body);
+export function postChat(
+  body: {
+    messages: ChatRequestMessage[];
+    tools: ChatToolDefinition[];
+    model?: string;
+    parallel_tool_calls?: boolean;
+  },
+  opts?: { signal?: AbortSignal },
+): Promise<ChatResponse> {
+  return apiPostJson<ChatResponse>('chat', body, opts);
 }

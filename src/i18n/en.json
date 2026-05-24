@@ -3,6 +3,10 @@
     "title": "Bible Assistant",
     "tagline": "Speak. Read. Memorize."
   },
+  "announce": {
+    "chapter": "{{book}}, chapter {{n}}",
+    "verse": "Verse {{n}}"
+  },
   "nav": {
     "chat": "Chat",
     "cards": "Cards",
@@ -23,6 +27,7 @@
     "clear": "Clear chat",
     "clearConfirm": "Clear the entire conversation?",
     "scrollToBottom": "Scroll to latest",
+    "stopFollowing": "Stop following",
     "thinkingFetching": "Fetching passage…",
     "thinkingCards": "Working on your library…",
     "thinkingSettings": "Updating settings…",
@@ -178,6 +183,15 @@
     "reading": "Reading",
     "autoScroll": "Follow active verse while reading",
     "autoScrollHint": "Scrolls the chat so the currently-spoken verse stays in view.",
+    "readingRhythm": "Reading rhythm",
+    "announceChapter": "Announce chapter heading before reading",
+    "announceVerseNumber": "Announce verse number before each verse",
+    "verseStyleSpoken": "\"Verse 16\"",
+    "verseStyleSpokenHint": "Read the full phrase, e.g. \"Verse 16\".",
+    "verseStylePlain": "\"16\"",
+    "verseStylePlainHint": "Read only the number, e.g. \"16\".",
+    "pauseBetweenVerses": "Pause between verses",
+    "pauseBetweenChapters": "Pause between chapters",
     "updates": {
       "title": "Updates",
       "version": "Version {{commit}} · built {{date}}",

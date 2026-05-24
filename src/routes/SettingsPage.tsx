@@ -155,6 +155,62 @@ export function SettingsPage() {
         </label>
       </Section>
 
+      <Section title={t('settings.readingRhythm')}>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={settings.readChapterHeadings}
+              onChange={(e) => settings.setReadChapterHeadings(e.target.checked)}
+            />
+            <span className="text-sm">{t('settings.announceChapter')}</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={settings.readVerseNumbers}
+              onChange={(e) => settings.setReadVerseNumbers(e.target.checked)}
+            />
+            <span className="text-sm">{t('settings.announceVerseNumber')}</span>
+          </label>
+          {settings.readVerseNumbers && (
+            <div className="pl-6">
+              <SegmentedControl
+                value={settings.verseNumberStyle}
+                cols={2}
+                options={[
+                  {
+                    value: 'spoken',
+                    label: t('settings.verseStyleSpoken'),
+                    title: t('settings.verseStyleSpokenHint') as string,
+                  },
+                  {
+                    value: 'plain',
+                    label: t('settings.verseStylePlain'),
+                    title: t('settings.verseStylePlainHint') as string,
+                  },
+                ]}
+                onChange={(v) =>
+                  settings.setVerseNumberStyle(v as 'spoken' | 'plain')
+                }
+              />
+            </div>
+          )}
+          <MsSlider
+            label={t('settings.pauseBetweenVerses')}
+            value={settings.pauseBetweenVersesMs}
+            max={3000}
+            onChange={(v) => settings.setPauseBetweenVersesMs(v)}
+          />
+          <MsSlider
+            label={t('settings.pauseBetweenChapters')}
+            value={settings.pauseBetweenChaptersMs}
+            max={6000}
+            onChange={(v) => settings.setPauseBetweenChaptersMs(v)}
+          />
+        </div>
+      </Section>
+
       <Section title={t('settings.identity')}>
         <p className="text-xs text-cream-dim mb-2">{t('settings.identityHint')}</p>
         {!revealed ? (
@@ -340,6 +396,38 @@ function DangerZone() {
             ? t('settings.dangerZone.confirm')
             : t('settings.dangerZone.wipe')}
       </button>
+    </div>
+  );
+}
+
+function MsSlider({
+  label,
+  value,
+  max,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div>
+      <label className="flex items-center justify-between text-xs text-cream-dim mb-1">
+        <span>{label}</span>
+        <span className="font-mono tabular-nums">
+          {(value / 1000).toFixed(1)}s
+        </span>
+      </label>
+      <input
+        type="range"
+        min={0}
+        max={max}
+        step={100}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full accent-gold"
+      />
     </div>
   );
 }

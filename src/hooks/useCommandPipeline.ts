@@ -15,6 +15,72 @@ import { isBrowserVoice, type ChatMessage, type ToolCallSummary, type VerseSumma
 
 const MAX_TOOL_LOOPS = 6;
 
+// Voice/text phrases that map to "stop everything happening right now".
+// Normalized to lower-case and trimmed of trailing punctuation before lookup.
+const STOP_PHRASES = new Set([
+  // English
+  'stop',
+  'stop it',
+  'stop now',
+  'stop reading',
+  'stop playing',
+  'stop playback',
+  'cancel',
+  'cancel that',
+  'halt',
+  'quiet',
+  'silence',
+  'be quiet',
+  'shut up',
+  'enough',
+  'quit',
+  'end',
+  // German
+  'stopp',
+  'stoppen',
+  'halt an',
+  'anhalten',
+  'ruhe',
+  'leise',
+  'still',
+  'abbrechen',
+  'ende',
+  'aufhören',
+  'hör auf',
+  'hör auf damit',
+  'hör bitte auf',
+]);
+
+function isStopCommand(text: string): boolean {
+  const normalized = text.toLowerCase().replace(/[.!?,]+$/g, '').trim();
+  return STOP_PHRASES.has(normalized);
+}
+
+/**
+ * In-flight pipeline so a follow-up "stop" command can abort it. Only one
+ * send runs at a time (guarded by `isProcessing`), so a single ref is enough.
+ */
+let activeController: AbortController | null = null;
+
+/**
+ * Stop everything that's happening right now: kill audio playback (verse,
+ * assistant TTS, browser TTS, ambient), abort any in-flight chat/TTS
+ * request, and clear the "thinking" indicator. Safe to call from anywhere.
+ */
+export function cancelAllActivity(): void {
+  if (activeController) {
+    activeController.abort();
+    activeController = null;
+  }
+  audioPlayback.stop();
+  useChatStore.getState().setProcessing(false);
+  useChatStore.getState().setCurrentTool(null);
+}
+
+function isAbortError(e: unknown): boolean {
+  return e instanceof DOMException && e.name === 'AbortError';
+}
+
 // Canonical key for a parsed Bible reference, so "John 3:16" and "John 3:16-16"
 // collapse to the same identity for turn-level dedup. Returns null when the
 // string can't be parsed.
@@ -36,7 +102,25 @@ export function useCommandPipeline() {
   const send = useCallback(async (userText: string, opts?: SendOpts) => {
     const text = userText.trim();
     if (!text) return;
+
+    // Voice/text "stop" short-circuits the whole pipeline — it can run even
+    // while another send is processing, so it goes BEFORE the isProcessing
+    // guard. We swallow the phrase silently rather than appending it to the
+    // chat so history stays clean.
+    if (isStopCommand(text)) {
+      cancelAllActivity();
+      return;
+    }
+
     if (useChatStore.getState().isProcessing) return;
+
+    // Abort any straggler controller (defensive — isProcessing should
+    // already prevent overlap), then arm a fresh one for this send.
+    if (activeController) {
+      activeController.abort();
+    }
+    const controller = new AbortController();
+    activeController = controller;
 
     const source: VoiceSource = opts?.source ?? 'chat';
 
@@ -90,17 +174,21 @@ export function useCommandPipeline() {
       // unaffected.
       const playedKeys = new Set<string>();
       while (loops < MAX_TOOL_LOOPS) {
+        if (controller.signal.aborted) break;
         loops++;
-        const resp = await postChat({
-          messages: history,
-          tools: TOOL_DEFINITIONS,
-          model: 'gpt-4o-mini',
-          // Sequential tool calls: the model must see each result before issuing
-          // the next. Prevents parallel/duplicate `random_verse` spam while
-          // still allowing legit multi-read flows (e.g. "one from OT, one from
-          // NT, one from Psalms") by calling the tool once per verse.
-          parallel_tool_calls: false,
-        });
+        const resp = await postChat(
+          {
+            messages: history,
+            tools: TOOL_DEFINITIONS,
+            model: 'gpt-4o-mini',
+            // Sequential tool calls: the model must see each result before issuing
+            // the next. Prevents parallel/duplicate `random_verse` spam while
+            // still allowing legit multi-read flows (e.g. "one from OT, one from
+            // NT, one from Psalms") by calling the tool once per verse.
+            parallel_tool_calls: false,
+          },
+          { signal: controller.signal },
+        );
         const choice = resp.message;
         if (choice.tool_calls && choice.tool_calls.length > 0) {
           history.push({
@@ -111,6 +199,7 @@ export function useCommandPipeline() {
 
           const summaries: ToolCallSummary[] = [];
           for (const tc of choice.tool_calls) {
+            if (controller.signal.aborted) break;
             const name = tc.function.name as ToolName;
             const isRead =
               name === 'read_verses' ||
@@ -148,6 +237,7 @@ export function useCommandPipeline() {
             useChatStore.getState().setCurrentTool(name);
             const result = await dispatchTool(name, tc.function.arguments, {
               messageId: assistantMsg.id,
+              signal: controller.signal,
             });
             if (
               isRead &&
@@ -196,7 +286,7 @@ export function useCommandPipeline() {
           text: finalText,
           historyNote,
         });
-        if (!didReadAction) {
+        if (!didReadAction && !controller.signal.aborted) {
           void speakAssistantReply(finalText, assistantMsg.id);
         }
         if (source === 'global') {
@@ -213,10 +303,13 @@ export function useCommandPipeline() {
         break;
       }
     } catch (e) {
-      useChatStore.getState().updateMessage(assistantMsg.id, {
-        text: e instanceof Error ? e.message : String(e),
-      });
+      if (!isAbortError(e) && !controller.signal.aborted) {
+        useChatStore.getState().updateMessage(assistantMsg.id, {
+          text: e instanceof Error ? e.message : String(e),
+        });
+      }
     } finally {
+      if (activeController === controller) activeController = null;
       useChatStore.getState().setProcessing(false);
       useChatStore.getState().setCurrentTool(null);
     }

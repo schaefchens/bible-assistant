@@ -9,6 +9,13 @@ export type PlaybackTrack = {
   verseIndex: number;
   audioUrl: string;
   alignmentUrl?: string;
+  /** Wait this many ms before advancing to the next track. Music keeps
+   * playing during the gap (ambient runs on a separate bus). */
+  pauseAfterMs?: number;
+  /** When false, the per-word highlight tick is suppressed — used for
+   * heading / verse-number announcements whose alignment doesn't map onto
+   * the rendered verse text. Defaults to true. */
+  highlightVerse?: boolean;
 };
 
 type LoadedTrack = PlaybackTrack & {
@@ -68,6 +75,15 @@ class AudioPlaybackManager {
   // When set, the next track to finish loading will start at the given word
   // index instead of from the beginning. Consumed (cleared) on use.
   private pendingSeekWord: number | null = null;
+  // setTimeout handle for the gap between two consecutive tracks (when the
+  // just-finished track set pauseAfterMs > 0). Cleared on stop/pause/next/etc.
+  private pauseTimer: number | null = null;
+  // Queue has played to the end but we left state intact so a follow-up
+  // enqueue can bridge into one continuous playlist. Set in softEnd, cleared
+  // by enqueue/playQueue/stop.
+  private softEnded = false;
+  private softEndTimer: number | null = null;
+  private readonly SOFT_END_GRACE_MS = 60_000;
 
   // ambient
   private ambientSource: AudioBufferSourceNode | null = null;
@@ -112,6 +128,11 @@ class AudioPlaybackManager {
     startWordIndex?: number,
   ): Promise<void> {
     browserTts.stop();
+    this.softEnded = false;
+    if (this.softEndTimer !== null) {
+      clearTimeout(this.softEndTimer);
+      this.softEndTimer = null;
+    }
     this.resetQueue();
     this.queue = tracks;
     this.currentIndex = Math.max(0, Math.min(tracks.length - 1, startIndex));
@@ -123,6 +144,10 @@ class AudioPlaybackManager {
   /** Jump to a specific verse in the current queue, optionally at a word. */
   goToVerseIndex(verseIdx: number, wordIdx?: number): void {
     if (verseIdx < 0 || verseIdx >= this.queue.length) return;
+    if (this.pauseTimer !== null) {
+      clearTimeout(this.pauseTimer);
+      this.pauseTimer = null;
+    }
     this.currentIndex = verseIdx;
     if (wordIdx !== undefined) this.pendingSeekWord = wordIdx;
     void this.playCurrent();
@@ -140,10 +165,49 @@ class AudioPlaybackManager {
     if (browserTts.isActive()) {
       browserTts.stop();
     }
-    const hasActiveQueue =
+    const stillPlaying =
       this.queue.length > 0 && this.currentIndex < this.queue.length;
-    if (hasActiveQueue) {
+    const bridgingFromSoftEnd = this.softEnded && this.queue.length > 0;
+
+    if (stillPlaying || bridgingFromSoftEnd) {
+      // Bridge the boundary between two readings with a chapter-length
+      // pause — the prior queue's tail item was tagged pauseAfterMs:0
+      // because it didn't know more was coming.
+      const bridge = useSettingsStore.getState().pauseBetweenChaptersMs;
+      if (bridge > 0) {
+        const tailIdx = this.queue.length - 1;
+        const tail = this.queue[tailIdx];
+        this.queue[tailIdx] = { ...tail, pauseAfterMs: bridge };
+        // If the tail is the track currently playing, patch the loaded
+        // snapshot too — handleEnded reads from `currentLoaded`, not the
+        // queue, so without this the bridge would be lost.
+        if (this.currentLoaded && this.currentIndex === tailIdx) {
+          this.currentLoaded = { ...this.currentLoaded, pauseAfterMs: bridge };
+        }
+      }
+      const firstNewIdx = this.queue.length;
       this.queue = [...this.queue, ...tracks];
+
+      if (bridgingFromSoftEnd) {
+        // Cancel the hard-stop fallback and resume playback from the first
+        // newly-appended track, after the chapter pause.
+        this.softEnded = false;
+        if (this.softEndTimer !== null) {
+          clearTimeout(this.softEndTimer);
+          this.softEndTimer = null;
+        }
+        this.currentIndex = firstNewIdx;
+        const advance = () => {
+          this.pauseTimer = null;
+          void this.playCurrent();
+        };
+        if (bridge > 0) {
+          if (this.pauseTimer !== null) clearTimeout(this.pauseTimer);
+          this.pauseTimer = window.setTimeout(advance, bridge);
+        } else {
+          advance();
+        }
+      }
       return;
     }
     await this.playQueue(tracks);
@@ -225,11 +289,22 @@ class AudioPlaybackManager {
       usePlaybackStore.getState().patchCurrent({ position: 0, currentWordIndex: -1 });
       return;
     }
+    const justFinished = this.currentLoaded;
     this.currentIndex++;
-    if (this.currentIndex < this.queue.length) {
+    if (this.currentIndex >= this.queue.length) {
+      this.softEnd();
+      return;
+    }
+    const advance = () => {
+      this.pauseTimer = null;
       void this.playCurrent();
+    };
+    const gap = justFinished?.pauseAfterMs ?? 0;
+    if (gap > 0) {
+      if (this.pauseTimer !== null) clearTimeout(this.pauseTimer);
+      this.pauseTimer = window.setTimeout(advance, gap);
     } else {
-      this.stop();
+      advance();
     }
   }
 
@@ -247,7 +322,14 @@ class AudioPlaybackManager {
       const elapsed =
         (this.ctx.currentTime - this.currentStartTime) * this.currentRate +
         this.currentOffset;
-      const wordIndex = findCurrentWordIndex(this.currentLoaded.alignment, elapsed);
+      // Heading/verse-number tracks share their alignment with the
+      // announcement audio (e.g. "Verse 16"), NOT the rendered verse text.
+      // Skip the lookup so the WordHighlighter doesn't underline the wrong
+      // words on the verse below the announcement.
+      const highlight = this.currentLoaded.highlightVerse !== false;
+      const wordIndex = highlight
+        ? findCurrentWordIndex(this.currentLoaded.alignment, elapsed)
+        : -1;
       usePlaybackStore.getState().patchCurrent({
         position: elapsed,
         currentWordIndex: wordIndex,
@@ -280,6 +362,10 @@ class AudioPlaybackManager {
       cancelAnimationFrame(this.tickHandle);
       this.tickHandle = null;
     }
+    if (this.pauseTimer !== null) {
+      clearTimeout(this.pauseTimer);
+      this.pauseTimer = null;
+    }
   }
 
   resume(): void {
@@ -303,8 +389,48 @@ class AudioPlaybackManager {
     else if (status === 'paused') this.resume();
   }
 
+  /**
+   * Queue played to completion. Tear down the audio source + tick but
+   * preserve queue, currentIndex, and currentLoaded so a follow-up enqueue
+   * can bridge into the same playlist. Ambient stays on through the grace
+   * window; if no new reading arrives, a real stop fires after
+   * SOFT_END_GRACE_MS so music doesn't play indefinitely.
+   */
+  private softEnd(): void {
+    if (this.source) {
+      try {
+        this.source.onended = null;
+        this.source.stop();
+      } catch {
+        /* ignore */
+      }
+      this.source = null;
+    }
+    if (this.tickHandle !== null) {
+      cancelAnimationFrame(this.tickHandle);
+      this.tickHandle = null;
+    }
+    if (this.pauseTimer !== null) {
+      clearTimeout(this.pauseTimer);
+      this.pauseTimer = null;
+    }
+    this.softEnded = true;
+    usePlaybackStore.getState().setStatus('idle');
+    usePlaybackStore.getState().setCurrent(null);
+    if (this.softEndTimer !== null) clearTimeout(this.softEndTimer);
+    this.softEndTimer = window.setTimeout(() => {
+      this.softEndTimer = null;
+      this.stop();
+    }, this.SOFT_END_GRACE_MS);
+  }
+
   stop(): void {
     browserTts.stop();
+    this.softEnded = false;
+    if (this.softEndTimer !== null) {
+      clearTimeout(this.softEndTimer);
+      this.softEndTimer = null;
+    }
     this.resetQueue();
     this._ambientPause();
     usePlaybackStore.getState().setStatus('idle');
@@ -331,16 +457,70 @@ class AudioPlaybackManager {
     this.currentLoaded = null;
     this.currentOffset = 0;
     this.pendingSeekWord = null;
+    if (this.pauseTimer !== null) {
+      clearTimeout(this.pauseTimer);
+      this.pauseTimer = null;
+    }
   }
 
   next(): void {
     if (this.currentIndex >= this.queue.length - 1) return;
+    if (this.pauseTimer !== null) {
+      clearTimeout(this.pauseTimer);
+      this.pauseTimer = null;
+    }
     this.currentIndex++;
     void this.playCurrent();
   }
 
+  /** Read-only view of the queued tracks (for the playback controller's
+   * rebuild logic). Returns a shallow copy to discourage mutation. */
+  getQueueSnapshot(): { tracks: PlaybackTrack[]; currentIndex: number } {
+    return { tracks: this.queue.slice(), currentIndex: this.currentIndex };
+  }
+
+  /**
+   * Replace the contiguous block of upcoming tracks belonging to `messageId`
+   * (the block immediately after the currently-playing track) with
+   * `newTracks`. Used when settings change mid-playlist so the rest of the
+   * current reading honors the new headings / verse-number / pause options.
+   *
+   * If no upcoming tracks for `messageId` are found, the new tracks are
+   * inserted right after `currentIndex` (so a freshly-enabled toggle takes
+   * effect from the next item).
+   */
+  replaceUpcomingFor(messageId: string, newTracks: PlaybackTrack[]): void {
+    const startIdx = this.queue.findIndex(
+      (t, i) => i > this.currentIndex && t.messageId === messageId,
+    );
+    if (startIdx < 0) {
+      this.queue = [
+        ...this.queue.slice(0, this.currentIndex + 1),
+        ...newTracks,
+        ...this.queue.slice(this.currentIndex + 1),
+      ];
+      return;
+    }
+    let endIdx = startIdx;
+    while (
+      endIdx < this.queue.length &&
+      this.queue[endIdx].messageId === messageId
+    ) {
+      endIdx++;
+    }
+    this.queue = [
+      ...this.queue.slice(0, startIdx),
+      ...newTracks,
+      ...this.queue.slice(endIdx),
+    ];
+  }
+
   previous(): void {
     if (this.currentIndex <= 0) return;
+    if (this.pauseTimer !== null) {
+      clearTimeout(this.pauseTimer);
+      this.pauseTimer = null;
+    }
     this.currentIndex--;
     void this.playCurrent();
   }

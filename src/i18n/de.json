@@ -3,6 +3,10 @@
     "title": "Bibel-Assistent",
     "tagline": "Sprechen. Lesen. Merken."
   },
+  "announce": {
+    "chapter": "{{book}}, Kapitel {{n}}",
+    "verse": "Vers {{n}}"
+  },
   "nav": {
     "chat": "Chat",
     "cards": "Karten",
@@ -23,6 +27,7 @@
     "clear": "Chat leeren",
     "clearConfirm": "Den gesamten Verlauf löschen?",
     "scrollToBottom": "Zum neuesten Eintrag",
+    "stopFollowing": "Nicht mehr folgen",
     "thinkingFetching": "Hole Bibelstelle…",
     "thinkingCards": "Bearbeite Bibliothek…",
     "thinkingSettings": "Aktualisiere Einstellungen…",
@@ -178,6 +183,15 @@
     "reading": "Lesen",
     "autoScroll": "Aktivem Vers beim Vorlesen folgen",
     "autoScrollHint": "Scrollt den Chat so, dass der gerade vorgelesene Vers sichtbar bleibt.",
+    "readingRhythm": "Leserhythmus",
+    "announceChapter": "Kapitelüberschrift vor dem Lesen ansagen",
+    "announceVerseNumber": "Versnummer vor jedem Vers ansagen",
+    "verseStyleSpoken": "„Vers 16\"",
+    "verseStyleSpokenHint": "Vollständige Ansage, z.B. „Vers 16\".",
+    "verseStylePlain": "„16\"",
+    "verseStylePlainHint": "Nur die Zahl, z.B. „16\".",
+    "pauseBetweenVerses": "Pause zwischen Versen",
+    "pauseBetweenChapters": "Pause zwischen Kapiteln",
     "updates": {
       "title": "Updates",
       "version": "Version {{commit}} · gebaut {{date}}",

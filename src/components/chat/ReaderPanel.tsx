@@ -5,7 +5,7 @@ import { useChatStore } from '@/store/chatStore';
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
-import { startPlaybackForVerses } from '@/lib/startPlayback';
+import { startReadingPlaylist } from '@/lib/startPlayback';
 import { useCommandPipeline, useContinueReading } from '@/hooks/useCommandPipeline';
 import { WordHighlighter } from '@/components/playback/WordHighlighter';
 import { getBookById } from '@/services/bible/bookCatalog';
@@ -56,7 +56,7 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
     if (isOurMessage && (status === 'playing' || status === 'paused')) {
       audioPlayback.toggle();
     } else if (message.verses?.length) {
-      void startPlaybackForVerses(message.id, message.verses);
+      void startReadingPlaylist(message.id, message.verses);
     }
   }, [isOurMessage, status, message.id, message.verses]);
 
@@ -88,7 +88,7 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
         audioPlayback.goToVerseIndex(verseIdx, wordIdx);
         return;
       }
-      void startPlaybackForVerses(message.id, message.verses, verseIdx, wordIdx);
+      void startReadingPlaylist(message.id, message.verses, verseIdx, wordIdx);
     },
     [message.id, message.verses],
   );

@@ -24,7 +24,11 @@ function authHeaders(): Record<string, string> {
   };
 }
 
-export async function apiPostJson<T = unknown>(action: string, body: unknown): Promise<T> {
+export async function apiPostJson<T = unknown>(
+  action: string,
+  body: unknown,
+  opts?: { signal?: AbortSignal },
+): Promise<T> {
   const res = await fetch(`${API_BASE}?action=${encodeURIComponent(action)}`, {
     method: 'POST',
     headers: {
@@ -32,6 +36,7 @@ export async function apiPostJson<T = unknown>(action: string, body: unknown): P
       ...authHeaders(),
     },
     body: JSON.stringify(body ?? {}),
+    signal: opts?.signal,
   });
 
   return parseResponse<T>(res);

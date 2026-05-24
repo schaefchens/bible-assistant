@@ -6,6 +6,7 @@ import { ChatHeader } from '@/components/chat/ChatHeader';
 import { SuggestionChips } from '@/components/chat/SuggestionChips';
 import { RibbonBar } from '@/components/chat/RibbonBar';
 import { ScrollToBottomFab } from '@/components/chat/ScrollToBottomFab';
+import { AutoScrollFab } from '@/components/chat/AutoScrollFab';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 
 export function ChatPage() {
@@ -24,6 +25,7 @@ export function ChatPage() {
       />
       <div className="relative flex-1 min-h-0 flex flex-col">
         <MessageList scrollRef={scrollRef} />
+        <AutoScrollFab />
         <ScrollToBottomFab scrollRef={scrollRef} />
       </div>
       <ComposerBar />

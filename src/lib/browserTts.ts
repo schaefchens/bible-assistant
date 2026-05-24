@@ -8,6 +8,9 @@ export type BrowserTtsItem = {
   text: string;
   /** Optional — picks a system voice matching the verse's language. */
   translation?: Translation;
+  /** Wait this many ms before advancing to the next item. Music keeps
+   * playing because ambient runs on a separate Web Audio bus. */
+  pauseAfterMs?: number;
 };
 
 function isSupported(): boolean {
@@ -60,14 +63,51 @@ class BrowserTtsManager {
   private current: SpeechSynthesisUtterance | null = null;
   private rate = 1;
   private active = false;
+  private pauseTimer: number | null = null;
+  // Queue played out but state is held briefly so a follow-up enqueue can
+  // bridge into one playlist.
+  private softEnded = false;
+  private softEndTimer: number | null = null;
+  private readonly SOFT_END_GRACE_MS = 60_000;
 
-  /** True while the engine owns playback (queue running or paused). */
+  /** True while the engine owns playback (running, paused, OR soft-ended
+   * within the playlist-bridge grace window). */
   isActive(): boolean {
-    return this.active;
+    return this.active || this.softEnded;
   }
 
   isSupported(): boolean {
     return isSupported();
+  }
+
+  /** Snapshot of the queue + position (for the playback controller). */
+  getQueueSnapshot(): { items: BrowserTtsItem[]; currentIndex: number } {
+    return { items: this.queue.slice(), currentIndex: this.currentIndex };
+  }
+
+  /** Same semantics as audioPlayback.replaceUpcomingFor — replace the
+   * contiguous block of upcoming items for `messageId`. */
+  replaceUpcomingFor(messageId: string, newItems: BrowserTtsItem[]): void {
+    const startIdx = this.queue.findIndex(
+      (it, i) => i > this.currentIndex && it.messageId === messageId,
+    );
+    if (startIdx < 0) {
+      this.queue = [
+        ...this.queue.slice(0, this.currentIndex + 1),
+        ...newItems,
+        ...this.queue.slice(this.currentIndex + 1),
+      ];
+      return;
+    }
+    let endIdx = startIdx;
+    while (endIdx < this.queue.length && this.queue[endIdx].messageId === messageId) {
+      endIdx++;
+    }
+    this.queue = [
+      ...this.queue.slice(0, startIdx),
+      ...newItems,
+      ...this.queue.slice(endIdx),
+    ];
   }
 
   setRate(rate: number): void {
@@ -81,6 +121,7 @@ class BrowserTtsManager {
 
   async speakQueue(items: BrowserTtsItem[]): Promise<void> {
     if (!isSupported() || items.length === 0) return;
+    // stop() already clears softEnded/softEndTimer.
     this.stop();
     await ensureVoicesReady();
     this.queue = items;
@@ -94,8 +135,42 @@ class BrowserTtsManager {
    */
   async enqueue(items: BrowserTtsItem[]): Promise<void> {
     if (items.length === 0) return;
-    if (this.active && this.currentIndex < this.queue.length) {
+
+    const stillPlaying = this.active && this.currentIndex < this.queue.length;
+    const bridgingFromSoftEnd = this.softEnded && this.queue.length > 0;
+
+    if (stillPlaying || bridgingFromSoftEnd) {
+      // Bridge the boundary between two readings with a chapter-length pause.
+      const bridge = useSettingsStore.getState().pauseBetweenChaptersMs;
+      if (bridge > 0) {
+        const tail = this.queue[this.queue.length - 1];
+        this.queue[this.queue.length - 1] = {
+          ...tail,
+          pauseAfterMs: bridge,
+        };
+      }
+      const firstNewIdx = this.queue.length;
       this.queue = [...this.queue, ...items];
+
+      if (bridgingFromSoftEnd) {
+        this.softEnded = false;
+        if (this.softEndTimer !== null) {
+          clearTimeout(this.softEndTimer);
+          this.softEndTimer = null;
+        }
+        this.active = true;
+        this.currentIndex = firstNewIdx;
+        const advance = () => {
+          this.pauseTimer = null;
+          this.playCurrent();
+        };
+        if (bridge > 0) {
+          if (this.pauseTimer !== null) clearTimeout(this.pauseTimer);
+          this.pauseTimer = window.setTimeout(advance, bridge);
+        } else {
+          advance();
+        }
+      }
       return;
     }
     await this.speakQueue(items);
@@ -103,10 +178,11 @@ class BrowserTtsManager {
 
   private playCurrent(): void {
     if (this.currentIndex >= this.queue.length) {
-      this.cleanup();
+      this.softEnd();
       return;
     }
-    const item = this.queue[this.currentIndex];
+    const startedAt = this.currentIndex;
+    const item = this.queue[startedAt];
     const { locale, speechVolume } = useSettingsStore.getState();
     const fallbackLang = locale === 'de' ? 'de-DE' : 'en-US';
     const lang = langForTranslation(item.translation, fallbackLang);
@@ -117,17 +193,25 @@ class BrowserTtsManager {
     if (voice) utter.voice = voice;
     utter.rate = this.rate;
     utter.volume = speechVolume;
-    utter.onend = () => {
+    const advance = () => {
       // Only advance if this is still the active utterance — stop() nulls it.
       if (this.current !== utter) return;
-      this.currentIndex++;
-      this.playCurrent();
+      // Re-read from the queue so a mid-flight enqueue that patched our
+      // pauseAfterMs (to bridge two readings) is honored.
+      const gap = this.queue[startedAt]?.pauseAfterMs ?? 0;
+      this.currentIndex = startedAt + 1;
+      if (gap > 0 && this.currentIndex < this.queue.length) {
+        if (this.pauseTimer !== null) clearTimeout(this.pauseTimer);
+        this.pauseTimer = window.setTimeout(() => {
+          this.pauseTimer = null;
+          this.playCurrent();
+        }, gap);
+      } else {
+        this.playCurrent();
+      }
     };
-    utter.onerror = () => {
-      if (this.current !== utter) return;
-      this.currentIndex++;
-      this.playCurrent();
-    };
+    utter.onend = advance;
+    utter.onerror = advance;
     this.current = utter;
     window.speechSynthesis.speak(utter);
 
@@ -166,8 +250,17 @@ class BrowserTtsManager {
   }
 
   stop(): void {
-    const wasActive = this.active;
+    const wasActive = this.active || this.softEnded;
     this.active = false;
+    this.softEnded = false;
+    if (this.pauseTimer !== null) {
+      clearTimeout(this.pauseTimer);
+      this.pauseTimer = null;
+    }
+    if (this.softEndTimer !== null) {
+      clearTimeout(this.softEndTimer);
+      this.softEndTimer = null;
+    }
     if (this.current) this.current.onend = null;
     this.current = null;
     this.queue = [];
@@ -185,13 +278,26 @@ class BrowserTtsManager {
     }
   }
 
-  private cleanup(): void {
+  /**
+   * Queue played to completion. Preserve queue + state for a brief grace
+   * window so a follow-up enqueue can bridge into the same playlist; a
+   * hard-stop fires if no follow-up arrives.
+   */
+  private softEnd(): void {
     this.active = false;
+    if (this.pauseTimer !== null) {
+      clearTimeout(this.pauseTimer);
+      this.pauseTimer = null;
+    }
     this.current = null;
-    this.queue = [];
-    this.currentIndex = 0;
+    this.softEnded = true;
     usePlaybackStore.getState().setStatus('idle');
     usePlaybackStore.getState().setCurrent(null);
+    if (this.softEndTimer !== null) clearTimeout(this.softEndTimer);
+    this.softEndTimer = window.setTimeout(() => {
+      this.softEndTimer = null;
+      this.stop();
+    }, this.SOFT_END_GRACE_MS);
   }
 }
 

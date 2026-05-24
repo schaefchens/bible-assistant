@@ -3,19 +3,32 @@ import { parseReference } from '@/services/bible/referenceParser';
 import { getVerses, getChapter, stripHtml } from '@/services/bible/bibleApi';
 import type { Translation } from '@/services/bible/bibleApi';
 import { BOOKS, findBookByName, formatReference, getBookById } from '@/services/bible/bookCatalog';
-import { postTts } from '@/services/api/tts';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useChatStore } from '@/store/chatStore';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useRibbonsStore, type RibbonColor, RIBBON_COLORS } from '@/store/ribbonsStore';
-import { audioPlayback, type PlaybackTrack } from '@/lib/audioPlaybackManager';
+import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { browserTts } from '@/lib/browserTts';
-import { startAmbientIfEnabled } from '@/lib/startPlayback';
-import { isBrowserVoice, type Card, type Board, type VerseSummary } from '@/types/domain';
+import {
+  startAmbientIfEnabled,
+  planToBrowserItems,
+  planToOpenAiTracks,
+} from '@/lib/startPlayback';
+import { buildPlaybackPlan } from '@/lib/playbackPlan';
+import {
+  isBrowserVoice,
+  type Card,
+  type Board,
+  type OpenAiVoiceId,
+  type VerseSummary,
+} from '@/types/domain';
 
 type DispatchContext = {
   messageId: string;
+  /** Aborted when the user issued a voice/text "stop". Tools that do
+   * expensive work (TTS, audio enqueue) should bail out if it's set. */
+  signal?: AbortSignal;
 };
 
 export type ToolDispatchResult = {
@@ -114,43 +127,31 @@ async function handleReadVerses(
 
   useChatStore.getState().attachVerses(ctx.messageId, summaries);
 
-  if (autoplay) {
+  if (autoplay && !ctx.signal?.aborted) {
     audioPlayback.ensureContext();
     startAmbientIfEnabled();
+    const settings = useSettingsStore.getState();
+    const plan = buildPlaybackPlan(summaries, {
+      locale,
+      readChapterHeadings: settings.readChapterHeadings,
+      readVerseNumbers: settings.readVerseNumbers,
+      verseNumberStyle: settings.verseNumberStyle,
+      pauseBetweenVersesMs: settings.pauseBetweenVersesMs,
+      pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
+    });
     if (isBrowserVoice(voice)) {
-      void browserTts.enqueue(
-        summaries.map((s, i) => ({
-          messageId: ctx.messageId,
-          verseIndex: i,
-          text: s.text,
-          translation,
-        })),
-      );
-    } else {
-      const tracks: PlaybackTrack[] = [];
-      for (let i = 0; i < summaries.length; i++) {
-        const s = summaries[i];
-        try {
-          const tts = await postTts({
-            text: s.text,
-            voice,
-            voiceStyle: voiceStyle || undefined,
-            translation,
-            bookId: s.bookId,
-            chapter: s.chapter,
-            verse: s.verse,
-          });
-          tracks.push({
-            messageId: ctx.messageId,
-            verseIndex: i,
-            audioUrl: tts.audioUrl,
-            alignmentUrl: tts.alignmentUrl,
-          });
-        } catch (e) {
-          console.warn('TTS failed for verse', s.display, e);
-        }
+      if (!ctx.signal?.aborted) {
+        void browserTts.enqueue(planToBrowserItems(plan, ctx.messageId));
       }
-      if (tracks.length > 0) {
+    } else {
+      const tracks = await planToOpenAiTracks(
+        plan,
+        ctx.messageId,
+        voice as OpenAiVoiceId,
+        voiceStyle || undefined,
+        ctx.signal,
+      );
+      if (tracks.length > 0 && !ctx.signal?.aborted) {
         void audioPlayback.enqueue(tracks);
       }
     }
