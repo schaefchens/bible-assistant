@@ -92,6 +92,7 @@ export function useSpeechRecognition(onFinal: (text: string) => void): UseSpeech
       mr.onstop = async () => {
         playMicCue('stop');
         stream?.getTracks().forEach((t) => t.stop());
+        audioPlayback.setDucked(false);
         // Nudge iOS back to the playback audio category so system volume
         // and TTS loudness return to normal.
         nudgeIosPlaybackRouting(audioPlayback.getContext());
@@ -109,10 +110,12 @@ export function useSpeechRecognition(onFinal: (text: string) => void): UseSpeech
       mediaRecorderRef.current = mr;
       mr.start();
       setListening(true);
+      audioPlayback.setDucked(true);
       if (!silent) playMicCue('start');
       return true;
     } catch (e) {
       stream?.getTracks().forEach((t) => t.stop());
+      audioPlayback.setDucked(false);
       nudgeIosPlaybackRouting(audioPlayback.getContext());
       const msg = describeMicError(e);
       setError(msg);
@@ -165,21 +168,25 @@ export function useSpeechRecognition(onFinal: (text: string) => void): UseSpeech
               if (!ok) {
                 setError(`Web Speech ${errName}; Whisper failed`);
                 setListening(false);
+                audioPlayback.setDucked(false);
               }
             });
             return;
           }
           setListening(false);
+          audioPlayback.setDucked(false);
           setError(`Web Speech ${errName}`);
         };
         rec.onend = () => {
           if (fallingBack) return;
           setListening(false);
+          audioPlayback.setDucked(false);
           playMicCue('stop');
         };
         recognitionRef.current = rec;
         rec.start();
         setListening(true);
+        audioPlayback.setDucked(true);
         playMicCue('start');
         return;
       } catch (e) {

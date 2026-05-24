@@ -54,6 +54,7 @@ export function usePushToTalk(onTranscript: (text: string) => void) {
         stream?.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
         setRecording(false);
+        audioPlayback.setDucked(false);
         // Nudge iOS back to the playback audio category so system volume
         // and TTS loudness return to normal.
         nudgeIosPlaybackRouting(audioPlayback.getContext());
@@ -71,11 +72,13 @@ export function usePushToTalk(onTranscript: (text: string) => void) {
       mediaRecorderRef.current = mr;
       mr.start();
       setRecording(true);
+      audioPlayback.setDucked(true);
       playMicCue('start');
     } catch (e) {
       stream?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       setRecording(false);
+      audioPlayback.setDucked(false);
       nudgeIosPlaybackRouting(audioPlayback.getContext());
       console.warn('push-to-talk mic unavailable', describeMicError(e), e);
     } finally {

@@ -69,6 +69,11 @@ class BrowserTtsManager {
   private softEnded = false;
   private softEndTimer: number | null = null;
   private readonly SOFT_END_GRACE_MS = 60_000;
+  // Ducking. SpeechSynthesis has no per-utterance volume control we can
+  // change mid-flight, so ducking pauses the engine; unduck resumes only
+  // if it was actually playing when we ducked.
+  private ducked = false;
+  private wasSpeakingWhenDucked = false;
 
   /** True while the engine owns playback (running, paused, OR soft-ended
    * within the playlist-bridge grace window). */
@@ -78,6 +83,34 @@ class BrowserTtsManager {
 
   isSupported(): boolean {
     return isSupported();
+  }
+
+  /** Pause the SpeechSynthesis engine for the duration of a mic capture. */
+  duck(): void {
+    if (this.ducked || !isSupported()) return;
+    this.ducked = true;
+    this.wasSpeakingWhenDucked =
+      window.speechSynthesis.speaking && !window.speechSynthesis.paused;
+    if (this.wasSpeakingWhenDucked) {
+      try {
+        window.speechSynthesis.pause();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  unduck(): void {
+    if (!this.ducked) return;
+    this.ducked = false;
+    if (this.wasSpeakingWhenDucked && isSupported()) {
+      try {
+        window.speechSynthesis.resume();
+      } catch {
+        /* ignore */
+      }
+    }
+    this.wasSpeakingWhenDucked = false;
   }
 
   /** Snapshot of the queue + position (for the playback controller). */

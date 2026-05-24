@@ -85,6 +85,13 @@ class AudioPlaybackManager {
   private softEndTimer: number | null = null;
   private readonly SOFT_END_GRACE_MS = 60_000;
 
+  // Ducking — set while the mic is open so verse playback and ambient drop
+  // to a fraction of their settings volume, leaving the user audible to
+  // the speech recognizer.
+  private ducked = false;
+  private readonly DUCK_FACTOR = 0.15;
+  private readonly DUCK_RAMP_SEC = 0.15;
+
   // ambient
   private ambientSource: AudioBufferSourceNode | null = null;
   private ambientBuffer: AudioBuffer | null = null;
@@ -100,6 +107,42 @@ class AudioPlaybackManager {
    * state — handy for cross-cutting concerns like iOS routing nudges. */
   getContext(): AudioContext | null {
     return this.ctx;
+  }
+
+  /**
+   * Duck (lower) or unduck verse playback + ambient music. Used while the
+   * mic is open so the user's voice carries cleanly over playback. The
+   * settings volumes are unchanged — only the live gain is scaled.
+   *
+   * Also propagates to the browser TTS engine (which has no per-utterance
+   * volume control), pausing/resuming SpeechSynthesis as the analog.
+   */
+  setDucked(ducked: boolean): void {
+    if (this.ducked === ducked) return;
+    this.ducked = ducked;
+    this.applyDuckedGains();
+    if (ducked) browserTts.duck();
+    else browserTts.unduck();
+  }
+
+  private applyDuckedGains(): void {
+    if (!this.ctx) return;
+    const settings = useSettingsStore.getState();
+    const factor = this.ducked ? this.DUCK_FACTOR : 1;
+    const now = this.ctx.currentTime;
+    const ramp = this.DUCK_RAMP_SEC;
+    if (this.ttsGain) {
+      const target = settings.speechVolume * factor;
+      this.ttsGain.gain.cancelScheduledValues(now);
+      this.ttsGain.gain.setValueAtTime(this.ttsGain.gain.value, now);
+      this.ttsGain.gain.linearRampToValueAtTime(target, now + ramp);
+    }
+    if (this.ambientGain) {
+      const target = settings.ambient.volume * factor;
+      this.ambientGain.gain.cancelScheduledValues(now);
+      this.ambientGain.gain.setValueAtTime(this.ambientGain.gain.value, now);
+      this.ambientGain.gain.linearRampToValueAtTime(target, now + ramp);
+    }
   }
 
   /** Must be called inside a user gesture handler on iOS. */
@@ -768,10 +811,11 @@ class AudioPlaybackManager {
       useSettingsStore.getState().setAmbient({ volume: clamped });
       return;
     }
+    const factor = this.ducked ? this.DUCK_FACTOR : 1;
     const now = this.ctx.currentTime;
     this.ambientGain.gain.cancelScheduledValues(now);
     this.ambientGain.gain.setValueAtTime(this.ambientGain.gain.value, now);
-    this.ambientGain.gain.linearRampToValueAtTime(clamped, now + 0.15);
+    this.ambientGain.gain.linearRampToValueAtTime(clamped * factor, now + 0.15);
     useSettingsStore.getState().setAmbient({ volume: clamped });
   }
 
@@ -785,10 +829,11 @@ class AudioPlaybackManager {
       useSettingsStore.getState().setSpeechVolume(clamped);
       return;
     }
+    const factor = this.ducked ? this.DUCK_FACTOR : 1;
     const now = this.ctx.currentTime;
     this.ttsGain.gain.cancelScheduledValues(now);
     this.ttsGain.gain.setValueAtTime(this.ttsGain.gain.value, now);
-    this.ttsGain.gain.linearRampToValueAtTime(clamped, now + 0.15);
+    this.ttsGain.gain.linearRampToValueAtTime(clamped * factor, now + 0.15);
     useSettingsStore.getState().setSpeechVolume(clamped);
   }
 }
