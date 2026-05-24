@@ -85,11 +85,11 @@ class AudioPlaybackManager {
   private softEndTimer: number | null = null;
   private readonly SOFT_END_GRACE_MS = 60_000;
 
-  // Ducking — set while the mic is open so verse playback and ambient drop
-  // to a fraction of their settings volume, leaving the user audible to
-  // the speech recognizer.
+  // Ducking — set while the mic is open. Fully mutes verse playback and
+  // ambient (factor 0) so the speech recognizer hears only the user, not
+  // any audio bleeding from the speaker into the mic.
   private ducked = false;
-  private readonly DUCK_FACTOR = 0.15;
+  private readonly DUCK_FACTOR = 0;
   private readonly DUCK_RAMP_SEC = 0.15;
 
   // ambient
