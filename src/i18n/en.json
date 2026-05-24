@@ -160,6 +160,8 @@
     "voice": "Voice",
     "voiceStyle": "Voice style (optional)",
     "voiceStyleHint": "e.g. \"calm, reverent\" or \"warm storyteller\"",
+    "browserVoice": "Browser (system voice)",
+    "browserVoiceHint": "Uses your device's built-in speech engine — works offline and saves API credits. Word-level highlighting and voice style are unavailable.",
     "assistantVoice": "Assistant voice",
     "assistantVoiceHint": "A distinct voice for the assistant's spoken replies (separate from the Bible reading voice).",
     "speakAssistant": "Speak assistant replies automatically",

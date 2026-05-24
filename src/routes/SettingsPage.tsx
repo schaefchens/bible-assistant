@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore, type MicCorner } from '@/store/settingsStore';
-import { VOICE_OPTIONS } from '@/types/domain';
+import { VOICE_OPTIONS, type VoiceId } from '@/types/domain';
 import { getPassphrase } from '@/lib/passphrase';
 import { getAmbientTracks, type AmbientTrack } from '@/services/api/ambient';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
@@ -71,45 +71,32 @@ export function SettingsPage() {
       </Section>
 
       <Section title={t('settings.voice')}>
-        <select
+        <VoiceSelect
           value={settings.voice}
-          onChange={(e) =>
-            settings.setVoice(e.target.value as (typeof VOICE_OPTIONS)[number])
-          }
-          className="w-full bg-navy-soft text-cream rounded-xl px-3 py-2"
-        >
-          {VOICE_OPTIONS.map((v) => (
-            <option key={v} value={v}>
-              {v}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => settings.setVoice(v)}
+        />
+        {settings.voice === 'browser' && (
+          <p className="mt-2 text-xs text-cream-dim">{t('settings.browserVoiceHint')}</p>
+        )}
       </Section>
 
-      <Section title={t('settings.voiceStyle')}>
-        <input
-          value={settings.voiceStyle}
-          onChange={(e) => settings.setVoiceStyle(e.target.value)}
-          placeholder={t('settings.voiceStyleHint')}
-          className="w-full bg-navy-soft text-cream rounded-xl px-3 py-2"
-        />
-      </Section>
+      {settings.voice !== 'browser' && (
+        <Section title={t('settings.voiceStyle')}>
+          <input
+            value={settings.voiceStyle}
+            onChange={(e) => settings.setVoiceStyle(e.target.value)}
+            placeholder={t('settings.voiceStyleHint')}
+            className="w-full bg-navy-soft text-cream rounded-xl px-3 py-2"
+          />
+        </Section>
+      )}
 
       <Section title={t('settings.assistantVoice')}>
         <p className="text-xs text-cream-dim mb-2">{t('settings.assistantVoiceHint')}</p>
-        <select
+        <VoiceSelect
           value={settings.assistantVoice}
-          onChange={(e) =>
-            settings.setAssistantVoice(e.target.value as (typeof VOICE_OPTIONS)[number])
-          }
-          className="w-full bg-navy-soft text-cream rounded-xl px-3 py-2"
-        >
-          {VOICE_OPTIONS.map((v) => (
-            <option key={v} value={v}>
-              {v}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => settings.setAssistantVoice(v)}
+        />
         <label className="flex items-center gap-2 mt-3">
           <input
             type="checkbox"
@@ -346,6 +333,29 @@ function DangerZone() {
             : t('settings.dangerZone.wipe')}
       </button>
     </div>
+  );
+}
+
+function VoiceSelect({
+  value,
+  onChange,
+}: {
+  value: VoiceId;
+  onChange: (v: VoiceId) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as VoiceId)}
+      className="w-full bg-navy-soft text-cream rounded-xl px-3 py-2"
+    >
+      {VOICE_OPTIONS.map((v) => (
+        <option key={v} value={v}>
+          {v === 'browser' ? t('settings.browserVoice') : v}
+        </option>
+      ))}
+    </select>
   );
 }
 

@@ -2,6 +2,7 @@ import { usePlaybackStore } from '@/store/playbackStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { Alignment } from '@/types/domain';
 import { findCurrentWordIndex, fetchAlignment } from './alignment';
+import { browserTts } from './browserTts';
 
 export type PlaybackTrack = {
   messageId: string;
@@ -110,6 +111,7 @@ class AudioPlaybackManager {
     startIndex = 0,
     startWordIndex?: number,
   ): Promise<void> {
+    browserTts.stop();
     this.resetQueue();
     this.queue = tracks;
     this.currentIndex = Math.max(0, Math.min(tracks.length - 1, startIndex));
@@ -133,6 +135,11 @@ class AudioPlaybackManager {
    */
   async enqueue(tracks: PlaybackTrack[]): Promise<void> {
     if (tracks.length === 0) return;
+    // Browser TTS owns playback — its queue is the active one. Stop it so
+    // OpenAI audio can take over instead of double-playing.
+    if (browserTts.isActive()) {
+      browserTts.stop();
+    }
     const hasActiveQueue =
       this.queue.length > 0 && this.currentIndex < this.queue.length;
     if (hasActiveQueue) {
@@ -251,6 +258,10 @@ class AudioPlaybackManager {
   }
 
   pause(): void {
+    if (browserTts.isActive()) {
+      browserTts.pause();
+      return;
+    }
     if (!this.source || !this.ctx) return;
     if (usePlaybackStore.getState().status !== 'playing') return;
     const elapsed =
@@ -272,6 +283,10 @@ class AudioPlaybackManager {
   }
 
   resume(): void {
+    if (browserTts.isActive()) {
+      browserTts.resume();
+      return;
+    }
     if (!this.currentLoaded) return;
     if (usePlaybackStore.getState().status !== 'paused') return;
     this.startSource(this.currentLoaded.buffer, this.currentOffset);
@@ -279,12 +294,17 @@ class AudioPlaybackManager {
   }
 
   toggle(): void {
+    if (browserTts.isActive()) {
+      browserTts.toggle();
+      return;
+    }
     const status = usePlaybackStore.getState().status;
     if (status === 'playing') this.pause();
     else if (status === 'paused') this.resume();
   }
 
   stop(): void {
+    browserTts.stop();
     this.resetQueue();
     this._ambientPause();
     usePlaybackStore.getState().setStatus('idle');
@@ -397,6 +417,11 @@ class AudioPlaybackManager {
   /** Change playback rate without losing position. */
   setPlaybackRate(rate: number): void {
     const clamped = Math.max(0.25, Math.min(4, rate));
+    if (browserTts.isActive()) {
+      browserTts.setRate(clamped);
+      this.currentRate = clamped;
+      return;
+    }
     if (this.ctx && this.source && usePlaybackStore.getState().status === 'playing') {
       const now = this.ctx.currentTime;
       const elapsed =

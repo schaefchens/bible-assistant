@@ -10,8 +10,9 @@ import { useLibraryStore, nowId } from '@/store/libraryStore';
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useRibbonsStore, type RibbonColor, RIBBON_COLORS } from '@/store/ribbonsStore';
 import { audioPlayback, type PlaybackTrack } from '@/lib/audioPlaybackManager';
+import { browserTts } from '@/lib/browserTts';
 import { startAmbientIfEnabled } from '@/lib/startPlayback';
-import type { Card, Board, VerseSummary } from '@/types/domain';
+import { isBrowserVoice, type Card, type Board, type VerseSummary } from '@/types/domain';
 
 type DispatchContext = {
   messageId: string;
@@ -114,33 +115,44 @@ async function handleReadVerses(
   useChatStore.getState().attachVerses(ctx.messageId, summaries);
 
   if (autoplay) {
-    const tracks: PlaybackTrack[] = [];
-    for (let i = 0; i < summaries.length; i++) {
-      const s = summaries[i];
-      try {
-        const tts = await postTts({
-          text: s.text,
-          voice,
-          voiceStyle: voiceStyle || undefined,
-          translation,
-          bookId: s.bookId,
-          chapter: s.chapter,
-          verse: s.verse,
-        });
-        tracks.push({
+    audioPlayback.ensureContext();
+    startAmbientIfEnabled();
+    if (isBrowserVoice(voice)) {
+      void browserTts.enqueue(
+        summaries.map((s, i) => ({
           messageId: ctx.messageId,
           verseIndex: i,
-          audioUrl: tts.audioUrl,
-          alignmentUrl: tts.alignmentUrl,
-        });
-      } catch (e) {
-        console.warn('TTS failed for verse', s.display, e);
+          text: s.text,
+          translation,
+        })),
+      );
+    } else {
+      const tracks: PlaybackTrack[] = [];
+      for (let i = 0; i < summaries.length; i++) {
+        const s = summaries[i];
+        try {
+          const tts = await postTts({
+            text: s.text,
+            voice,
+            voiceStyle: voiceStyle || undefined,
+            translation,
+            bookId: s.bookId,
+            chapter: s.chapter,
+            verse: s.verse,
+          });
+          tracks.push({
+            messageId: ctx.messageId,
+            verseIndex: i,
+            audioUrl: tts.audioUrl,
+            alignmentUrl: tts.alignmentUrl,
+          });
+        } catch (e) {
+          console.warn('TTS failed for verse', s.display, e);
+        }
       }
-    }
-    if (tracks.length > 0) {
-      audioPlayback.ensureContext();
-      startAmbientIfEnabled();
-      void audioPlayback.enqueue(tracks);
+      if (tracks.length > 0) {
+        void audioPlayback.enqueue(tracks);
+      }
     }
   }
 

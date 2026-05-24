@@ -1,6 +1,6 @@
 import { apiPostJson } from './client';
 import type { Translation } from '@/services/bible/bibleApi';
-import type { VoiceId } from '@/types/domain';
+import type { OpenAiVoiceId } from '@/types/domain';
 
 export type TtsResponse = {
   audioUrl: string;
@@ -10,7 +10,7 @@ export type TtsResponse = {
 
 export function postTts(body: {
   text: string;
-  voice: VoiceId;
+  voice: OpenAiVoiceId;
   voiceStyle?: string;
   translation: Translation;
   bookId: number;
@@ -22,7 +22,7 @@ export function postTts(body: {
 
 export function postTtsSpeak(body: {
   text: string;
-  voice: VoiceId;
+  voice: OpenAiVoiceId;
   voiceStyle?: string;
 }): Promise<TtsResponse> {
   return apiPostJson<TtsResponse>('tts.speak', body);

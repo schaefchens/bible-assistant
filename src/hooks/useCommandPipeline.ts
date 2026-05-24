@@ -7,10 +7,11 @@ import { useChatStore } from '@/store/chatStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useGlobalVoiceStore, type VoiceSource } from '@/store/globalVoiceStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
+import { browserTts } from '@/lib/browserTts';
 import { getChapter, type Translation } from '@/services/bible/bibleApi';
 import { formatReference, getBookById } from '@/services/bible/bookCatalog';
 import { parseReference } from '@/services/bible/referenceParser';
-import type { ChatMessage, ToolCallSummary, VerseSummary } from '@/types/domain';
+import { isBrowserVoice, type ChatMessage, type ToolCallSummary, type VerseSummary } from '@/types/domain';
 
 const MAX_TOOL_LOOPS = 6;
 
@@ -233,10 +234,22 @@ function safeJson(s: string): Record<string, unknown> {
 }
 
 async function speakAssistantReply(text: string, messageId: string): Promise<void> {
-  const trimmed = text.trim();
+  const trimmed = stripMarkdownForSpeech(text);
   if (!trimmed) return;
-  const { speakAssistant, assistantVoice, voiceStyle } = useSettingsStore.getState();
+  const { speakAssistant, assistantVoice, voiceStyle, locale } =
+    useSettingsStore.getState();
   if (!speakAssistant) return;
+  if (isBrowserVoice(assistantVoice)) {
+    void browserTts.enqueue([
+      {
+        messageId,
+        verseIndex: 0,
+        text: trimmed,
+        translation: locale === 'de' ? 'S00' : 'ESV',
+      },
+    ]);
+    return;
+  }
   try {
     const tts = await postTtsSpeak({
       text: trimmed,
@@ -255,6 +268,22 @@ async function speakAssistantReply(text: string, messageId: string): Promise<voi
   } catch (e) {
     console.warn('assistant TTS failed', e);
   }
+}
+
+// Strip the lightweight markdown the assistant may emit so the TTS engine
+// doesn't read out asterisks, hashes, or link syntax.
+function stripMarkdownForSpeech(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^\s*#{1,6}\s+/gm, '')
+    .replace(/(\*\*|__)(.*?)\1/g, '$2')
+    .replace(/(\*|_)(.*?)\1/g, '$2')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .trim();
 }
 
 // ─── Continue Reading helper ──────────────────────────────────────────

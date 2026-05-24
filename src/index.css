@@ -109,4 +109,67 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  /* Inline markdown styling for assistant chat bubbles. Tailwind's prose
+     plugin would be heavier; this targets just the tags react-markdown emits. */
+  .markdown-body > * + * {
+    margin-top: 0.5rem;
+  }
+  .markdown-body p {
+    @apply whitespace-pre-wrap;
+  }
+  .markdown-body strong {
+    @apply text-cream font-semibold;
+  }
+  .markdown-body em {
+    @apply italic;
+  }
+  .markdown-body a {
+    @apply text-gold underline underline-offset-2 break-words;
+  }
+  .markdown-body ul,
+  .markdown-body ol {
+    @apply pl-5 space-y-1;
+  }
+  .markdown-body ul {
+    @apply list-disc;
+  }
+  .markdown-body ol {
+    @apply list-decimal;
+  }
+  .markdown-body li > p {
+    @apply inline;
+  }
+  .markdown-body h1,
+  .markdown-body h2,
+  .markdown-body h3,
+  .markdown-body h4 {
+    @apply font-serif text-gold;
+  }
+  .markdown-body h1 { @apply text-lg; }
+  .markdown-body h2 { @apply text-base; }
+  .markdown-body h3,
+  .markdown-body h4 { @apply text-sm uppercase tracking-wide text-gold-dim; }
+  .markdown-body blockquote {
+    @apply border-l-2 border-gold/40 pl-3 text-cream/85 italic;
+  }
+  .markdown-body code {
+    @apply font-mono text-[0.9em] bg-navy-soft/70 rounded px-1 py-0.5;
+  }
+  .markdown-body pre {
+    @apply bg-navy-soft/70 rounded-lg p-3 overflow-x-auto;
+  }
+  .markdown-body pre code {
+    @apply bg-transparent p-0;
+  }
+  .markdown-body hr {
+    @apply border-navy-soft/60 my-3;
+  }
+  .markdown-body table {
+    @apply w-full text-sm;
+  }
+  .markdown-body th,
+  .markdown-body td {
+    @apply px-2 py-1 border border-navy-soft/60 text-left;
+  }
 }

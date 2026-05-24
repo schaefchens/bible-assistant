@@ -1,8 +1,9 @@
 import { audioPlayback, type PlaybackTrack } from './audioPlaybackManager';
+import { browserTts } from './browserTts';
 import { postTts } from '@/services/api/tts';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { useSettingsStore } from '@/store/settingsStore';
-import type { VerseSummary } from '@/types/domain';
+import { isBrowserVoice, type VerseSummary } from '@/types/domain';
 
 /**
  * Fire-and-forget: if the user has ambient music enabled, load the selected
@@ -34,6 +35,19 @@ export async function startPlaybackForVerses(
   const { voice, voiceStyle } = useSettingsStore.getState();
   audioPlayback.ensureContext();
   startAmbientIfEnabled();
+
+  if (isBrowserVoice(voice)) {
+    // Browser TTS has no per-word alignment, so startWordIndex is ignored.
+    const items = verses.slice(startIndex).map((v, i) => ({
+      messageId,
+      verseIndex: startIndex + i,
+      text: v.text,
+      translation: v.translation,
+    }));
+    void browserTts.speakQueue(items);
+    return;
+  }
+
   const tracks: PlaybackTrack[] = [];
   for (let i = 0; i < verses.length; i++) {
     const v = verses[i];

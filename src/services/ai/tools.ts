@@ -1,6 +1,6 @@
 import type { ChatToolDefinition } from '@/services/api/chat';
 import type { Translation } from '@/services/bible/bibleApi';
-import type { VoiceId } from '@/types/domain';
+import type { OpenAiVoiceId } from '@/types/domain';
 
 export type ToolName =
   | 'read_verses'
@@ -47,7 +47,7 @@ export type ToolArgs = {
   list_boards: Record<string, never>;
   set_language: { language: 'en' | 'de' };
   set_translation: { translation: Translation };
-  set_voice: { voice: VoiceId };
+  set_voice: { voice: OpenAiVoiceId };
   save_ribbon: {
     color?: 'gold' | 'blue' | 'red' | 'green' | 'purple';
     position?: { reference: string; translation?: Translation };

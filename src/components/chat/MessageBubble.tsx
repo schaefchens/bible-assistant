@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useChatStore } from '@/store/chatStore';
 import type { ChatMessage } from '@/types/domain';
 import { MessageActionsMenu, type MessageActionItem } from './MessageActionsMenu';
@@ -73,7 +75,15 @@ export function MessageBubble({ message, selected, onSelect, onReask }: Props) {
         )}
       >
         {message.text && (
-          <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>
+          isUser ? (
+            <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>
+          ) : (
+            <div className="markdown-body leading-relaxed">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {message.text}
+              </ReactMarkdown>
+            </div>
+          )
         )}
         {message.toolCalls && message.toolCalls.length > 0 && !message.text && (
           <p className="text-xs text-cream-dim italic">
