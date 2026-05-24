@@ -39,6 +39,8 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
   const ambientOn = usePlaybackStore((s) => s.ambientPlaying);
   const autoScroll = useSettingsStore((s) => s.autoScrollReader);
   const setAutoScroll = useSettingsStore((s) => s.setAutoScrollReader);
+  const autoPlay = useSettingsStore((s) => s.autoPlayReading);
+  const setAutoPlay = useSettingsStore((s) => s.setAutoPlayReading);
 
   const isOurMessage = current?.messageId === message.id;
   const isPlaying = isOurMessage && status === 'playing';
@@ -204,12 +206,14 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
           rate={rate}
           repeat={repeat}
           autoScroll={autoScroll}
+          autoPlay={autoPlay}
           ambientVisible={ambientReady && isOurMessage}
           ambientOn={ambientOn}
           onTogglePlay={togglePlay}
           onCycleRate={cycleRate}
           onToggleRepeat={toggleRepeat}
           onToggleAutoScroll={() => setAutoScroll(!autoScroll)}
+          onToggleAutoPlay={() => setAutoPlay(!autoPlay)}
           onToggleAmbient={toggleAmbient}
           onMenu={(pos) => setMenuPos(pos)}
         />

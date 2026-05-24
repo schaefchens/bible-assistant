@@ -7,12 +7,14 @@ type Props = {
   rate: number;
   repeat: boolean;
   autoScroll: boolean;
+  autoPlay: boolean;
   ambientVisible?: boolean;
   ambientOn?: boolean;
   onTogglePlay: () => void;
   onCycleRate: () => void;
   onToggleRepeat: () => void;
   onToggleAutoScroll: () => void;
+  onToggleAutoPlay: () => void;
   onToggleAmbient?: () => void;
   onMenu: (pos: { x: number; y: number }) => void;
 };
@@ -23,12 +25,14 @@ export function ReaderControls({
   rate,
   repeat,
   autoScroll,
+  autoPlay,
   ambientVisible,
   ambientOn,
   onTogglePlay,
   onCycleRate,
   onToggleRepeat,
   onToggleAutoScroll,
+  onToggleAutoPlay,
   onToggleAmbient,
   onMenu,
 }: Props) {
@@ -85,6 +89,21 @@ export function ReaderControls({
         type="button"
         onClick={(e) => {
           e.stopPropagation();
+          onToggleAutoPlay();
+        }}
+        aria-pressed={autoPlay}
+        aria-label={t('chat.reader.autoPlay')}
+        className={clsx(
+          'btn-ghost h-9 w-9 px-0',
+          autoPlay && 'bg-gold/20 text-gold',
+        )}
+      >
+        <InfinityIcon />
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
           onCycleRate();
         }}
         aria-label={t('chat.reader.rate')}
@@ -122,6 +141,14 @@ export function ReaderControls({
         <DotsIcon />
       </button>
     </div>
+  );
+}
+
+function InfinityIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5.5 12c0-2.2 1.8-4 4-4s3 1.2 4.5 4 3 4 4.5 4 2-1.8 2-4-1.8-4-4-4-3 1.2-4.5 4-3 4-4.5 4-2-1.8-2-4z" />
+    </svg>
   );
 }
 

@@ -8,6 +8,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useGlobalVoiceStore, type VoiceSource } from '@/store/globalVoiceStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { browserTts } from '@/lib/browserTts';
+import { cancelAutoPlayPrefetch } from '@/lib/autoPlay';
 import { getChapter, type Translation } from '@/services/bible/bibleApi';
 import { formatReference, getBookById } from '@/services/bible/bookCatalog';
 import { parseReference } from '@/services/bible/referenceParser';
@@ -72,6 +73,9 @@ export function cancelAllActivity(): void {
     activeController.abort();
     activeController = null;
   }
+  // audioPlayback.stop() also cancels auto-play, but be explicit here so
+  // this entry point reads as "kill everything in flight".
+  cancelAutoPlayPrefetch();
   audioPlayback.stop();
   useChatStore.getState().setProcessing(false);
   useChatStore.getState().setCurrentTool(null);

@@ -81,6 +81,12 @@ class BrowserTtsManager {
     return this.active || this.softEnded;
   }
 
+  /** True only when the queue played to its natural end and state is held
+   * for the playlist-bridge grace window. */
+  isSoftEnded(): boolean {
+    return this.softEnded;
+  }
+
   isSupported(): boolean {
     return isSupported();
   }

@@ -208,6 +208,20 @@ export function SettingsPage() {
             max={6000}
             onChange={(v) => settings.setPauseBetweenChaptersMs(v)}
           />
+          <label className="flex items-start gap-2 pt-1">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={settings.autoPlayReading}
+              onChange={(e) => settings.setAutoPlayReading(e.target.checked)}
+            />
+            <span className="text-sm">
+              {t('settings.autoPlay')}
+              <span className="block text-xs text-cream-dim mt-0.5">
+                {t('settings.autoPlayHint')}
+              </span>
+            </span>
+          </label>
         </div>
       </Section>
 

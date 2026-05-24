@@ -31,6 +31,8 @@ type SettingsState = {
   verseNumberStyle: VerseNumberStyle;
   pauseBetweenVersesMs: number;
   pauseBetweenChaptersMs: number;
+  /** When true, audio continues to the next chunk after a reading ends. */
+  autoPlayReading: boolean;
   setLocale: (locale: Locale) => void;
   setTranslation: (translation: Translation, fromUser?: boolean) => void;
   setVoice: (voice: VoiceId) => void;
@@ -48,6 +50,7 @@ type SettingsState = {
   setVerseNumberStyle: (v: VerseNumberStyle) => void;
   setPauseBetweenVersesMs: (v: number) => void;
   setPauseBetweenChaptersMs: (v: number) => void;
+  setAutoPlayReading: (v: boolean) => void;
 };
 
 const DEFAULT_AMBIENT: AmbientSettings = {
@@ -91,6 +94,7 @@ export const useSettingsStore = create<SettingsState>()(
         verseNumberStyle: 'spoken',
         pauseBetweenVersesMs: 0,
         pauseBetweenChaptersMs: 0,
+        autoPlayReading: false,
         setLocale: (locale) =>
           set((s) => ({
             locale,
@@ -120,11 +124,12 @@ export const useSettingsStore = create<SettingsState>()(
           set({ pauseBetweenVersesMs: Math.max(0, Math.min(6000, Math.round(v))) }),
         setPauseBetweenChaptersMs: (v) =>
           set({ pauseBetweenChaptersMs: Math.max(0, Math.min(10000, Math.round(v))) }),
+        setAutoPlayReading: (autoPlayReading) => set({ autoPlayReading }),
       };
     },
     {
       name: 'ba.settings',
-      version: 7,
+      version: 8,
       migrate: (persisted, version) => {
         let prev = (persisted as Partial<SettingsState>) ?? {};
         if (version < 2) {
@@ -174,6 +179,13 @@ export const useSettingsStore = create<SettingsState>()(
               prev.verseNumberStyle === 'plain' || prev.verseNumberStyle === 'spoken'
                 ? prev.verseNumberStyle
                 : 'spoken',
+          };
+        }
+        if (version < 8) {
+          prev = {
+            ...prev,
+            autoPlayReading:
+              typeof prev.autoPlayReading === 'boolean' ? prev.autoPlayReading : false,
           };
         }
         return prev as SettingsState;

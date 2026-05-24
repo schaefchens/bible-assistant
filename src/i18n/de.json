@@ -44,7 +44,8 @@
       "playAll": "Alle abspielen",
       "repeat": "Vers wiederholen",
       "rate": "Tempo",
-      "autoScroll": "Aktivem Vers folgen"
+      "autoScroll": "Aktivem Vers folgen",
+      "autoPlay": "Automatisch weiterlesen"
     },
     "suggestions": {
       "random": "Zufälliger Vers",
@@ -192,6 +193,8 @@
     "verseStylePlainHint": "Nur die Zahl, z.B. „16\".",
     "pauseBetweenVerses": "Pause zwischen Versen",
     "pauseBetweenChapters": "Pause zwischen Kapiteln",
+    "autoPlay": "Nächste Passage automatisch wiedergeben",
+    "autoPlayHint": "Liest mit dem nächsten Kapitel (oder den nächsten ~5 Versen) weiter, bis du stoppst.",
     "updates": {
       "title": "Updates",
       "version": "Version {{commit}} · gebaut {{date}}",

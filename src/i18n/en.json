@@ -44,7 +44,8 @@
       "playAll": "Play all",
       "repeat": "Repeat verse",
       "rate": "Rate",
-      "autoScroll": "Follow active verse"
+      "autoScroll": "Follow active verse",
+      "autoPlay": "Auto-play"
     },
     "suggestions": {
       "random": "Random verse",
@@ -192,6 +193,8 @@
     "verseStylePlainHint": "Read only the number, e.g. \"16\".",
     "pauseBetweenVerses": "Pause between verses",
     "pauseBetweenChapters": "Pause between chapters",
+    "autoPlay": "Auto-play next passage when playback ends",
+    "autoPlayHint": "Continues into the next chapter (or next ~5 verses) and reads on until you stop.",
     "updates": {
       "title": "Updates",
       "version": "Version {{commit}} · built {{date}}",

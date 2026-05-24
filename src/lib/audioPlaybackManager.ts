@@ -3,6 +3,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import type { Alignment } from '@/types/domain';
 import { findCurrentWordIndex, fetchAlignment } from './alignment';
 import { browserTts } from './browserTts';
+import { cancelAutoPlayPrefetch } from './autoPlay';
 
 export type PlaybackTrack = {
   messageId: string;
@@ -109,6 +110,13 @@ class AudioPlaybackManager {
     return this.ctx;
   }
 
+  /** True while the queue has reached its natural end but state is held
+   * for the playlist-bridge grace window. Used by the auto-play
+   * controller to distinguish a natural end from a user-initiated stop. */
+  isSoftEnded(): boolean {
+    return this.softEnded;
+  }
+
   /**
    * Duck (lower) or unduck verse playback + ambient music. Used while the
    * mic is open so the user's voice carries cleanly over playback. The
@@ -177,6 +185,8 @@ class AudioPlaybackManager {
     startIndex = 0,
     startWordIndex?: number,
   ): Promise<void> {
+    // A fresh playback supersedes any pending auto-play continuation.
+    cancelAutoPlayPrefetch();
     browserTts.stop();
     this.softEnded = false;
     if (this.softEndTimer !== null) {
@@ -475,6 +485,8 @@ class AudioPlaybackManager {
   }
 
   stop(): void {
+    // User-initiated stop also kills any pending auto-play continuation.
+    cancelAutoPlayPrefetch();
     browserTts.stop();
     this.softEnded = false;
     if (this.softEndTimer !== null) {
