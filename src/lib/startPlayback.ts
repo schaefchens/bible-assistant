@@ -7,6 +7,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { isBrowserVoice, type OpenAiVoiceId, type VerseSummary } from '@/types/domain';
 import {
   buildPlaybackPlan,
+  localeForTranslation,
   sliceFromVerseIndex,
   type PlanItem,
 } from './playbackPlan';
@@ -174,7 +175,15 @@ export async function planToOpenAiTracks(
               },
               { signal },
             )
-          : await postTtsSpeak({ text: it.text, voice, voiceStyle }, { signal });
+          : await postTtsSpeak(
+              {
+                text: it.text,
+                voice,
+                voiceStyle,
+                language: localeForTranslation(it.translation),
+              },
+              { signal },
+            );
       tracks.push({
         messageId,
         verseIndex: it.verseIndex,

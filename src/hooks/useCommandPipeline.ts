@@ -352,6 +352,7 @@ async function speakAssistantReply(text: string, messageId: string): Promise<voi
       text: trimmed,
       voice: assistantVoice,
       voiceStyle: voiceStyle || undefined,
+      language: locale === 'de' ? 'de' : 'en',
     });
     audioPlayback.ensureContext();
     void audioPlayback.enqueue([

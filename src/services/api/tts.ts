@@ -28,6 +28,9 @@ export function postTtsSpeak(
     text: string;
     voice: OpenAiVoiceId;
     voiceStyle?: string;
+    /** ISO-639-1 language code hint ("en" | "de"). Helps the model lock in
+     * pronunciation on short announcements like "Vers 16". */
+    language?: 'en' | 'de';
   },
   opts?: { signal?: AbortSignal },
 ): Promise<TtsResponse> {

@@ -354,6 +354,33 @@ function curlRawJson(string $url, string $payload): array {
     return $decoded;
 }
 
+/**
+ * Compose `instructions` for the OpenAI TTS request. A language hint based
+ * on the Bible translation prevents the model from drifting into English
+ * pronunciation on short German verses (or vice versa). Any user-provided
+ * voiceStyle is appended after the language hint.
+ */
+function composeTtsInstructions(string $translation, string $voiceStyle): string {
+    static $germanTranslations = ['S00' => 1, 'LUT' => 1, 'HFA' => 1];
+    $upper = strtoupper($translation);
+    $hint = isset($germanTranslations[$upper])
+        ? 'Read this Bible passage in clear, reverent German.'
+        : 'Read this Bible passage in clear, reverent English.';
+    return $voiceStyle !== '' ? "$hint $voiceStyle" : $hint;
+}
+
+/** Counterpart for the free-form tts.speak endpoint (no translation, just
+ * an optional `language` code from the client). Returns '' if neither a
+ * language nor a voiceStyle were supplied. */
+function composeSpeakInstructions(string $language, string $voiceStyle): string {
+    $lang = strtolower($language);
+    $hint = '';
+    if ($lang === 'de') $hint = 'Speak this in clear German.';
+    elseif ($lang === 'en') $hint = 'Speak this in clear English.';
+    if ($hint === '') return $voiceStyle;
+    return $voiceStyle !== '' ? "$hint $voiceStyle" : $hint;
+}
+
 function handleTts(): void {
     $body = readJsonBody();
     $text = safeString($body['text'] ?? '');
@@ -380,10 +407,8 @@ function handleTts(): void {
             'voice' => $voice,
             'input' => $text,
             'response_format' => 'mp3',
+            'instructions' => composeTtsInstructions($translation, $voiceStyle),
         ];
-        if ($voiceStyle !== '') {
-            $ttsPayload['instructions'] = $voiceStyle;
-        }
         $tts = curlBinary('https://api.openai.com/v1/audio/speech', $ttsPayload);
         if (($tts['_status'] ?? 0) !== 200 || empty($tts['audio'])) {
             fail(502, 'tts failed', ['detail' => $tts['_error'] ?? '']);
@@ -432,10 +457,14 @@ function handleTtsSpeak(): void {
     $text = safeString($body['text'] ?? '', 4000);
     $voice = safeSlug(safeString($body['voice'] ?? 'alloy', 32));
     $voiceStyle = isset($body['voiceStyle']) ? safeString($body['voiceStyle'], 1000) : '';
+    // Optional language hint — short announcements (e.g. "Vers 16") benefit
+    // from an explicit nudge so the model doesn't default to English.
+    $language = safeSlug(safeString($body['language'] ?? '', 4));
 
     if (!$text) fail(400, 'missing tts.speak params');
 
-    $key = hash('sha256', $voice . ':' . $voiceStyle . ':' . $text);
+    // Cache key includes language so a hint change naturally invalidates.
+    $key = hash('sha256', $voice . ':' . $voiceStyle . ':' . $language . ':' . $text);
     $dir = AUDIO_DIR . "/speak/{$voice}";
     @mkdir($dir, 0775, true);
     $audioFile = "{$dir}/{$key}.mp3";
@@ -443,14 +472,15 @@ function handleTtsSpeak(): void {
 
     $cached = file_exists($audioFile) && file_exists($alignmentFile);
     if (!$cached) {
+        $instructions = composeSpeakInstructions($language, $voiceStyle);
         $ttsPayload = [
             'model' => TTS_MODEL,
             'voice' => $voice,
             'input' => $text,
             'response_format' => 'mp3',
         ];
-        if ($voiceStyle !== '') {
-            $ttsPayload['instructions'] = $voiceStyle;
+        if ($instructions !== '') {
+            $ttsPayload['instructions'] = $instructions;
         }
         $tts = curlBinary('https://api.openai.com/v1/audio/speech', $ttsPayload);
         if (($tts['_status'] ?? 0) !== 200 || empty($tts['audio'])) {
