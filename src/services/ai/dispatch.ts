@@ -1,6 +1,6 @@
 import type { ToolName, ToolArgs } from './tools';
 import { parseReference } from '@/services/bible/referenceParser';
-import { getVerses, getChapter, stripHtml } from '@/services/bible/bibleApi';
+import { getVerses, getChapter, verseSpeakable } from '@/services/bible/bibleApi';
 import type { Translation } from '@/services/bible/bibleApi';
 import {
   BOOKS,
@@ -143,7 +143,7 @@ async function handleReadVerses(
     bookId: parsed.bookId,
     chapter: parsed.chapter,
     verse: v.verse,
-    text: stripHtml(v.text),
+    text: verseSpeakable(v),
     display: formatReference(parsed.bookId, parsed.chapter, v.verse, v.verse, locale),
   }));
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSettingsStore } from '@/store/settingsStore';
-import { getVerses, stripHtml, type Translation } from '@/services/bible/bibleApi';
+import { getVerses, verseSpeakable, type Translation } from '@/services/bible/bibleApi';
 import { parseReference } from '@/services/bible/referenceParser';
 
 const textCache = new Map<string, string>();
@@ -26,7 +26,7 @@ export function useVerseText(reference: string): string | null {
     if (!promise) {
       promise = getVerses(translation, parsed)
         .then((verses) => {
-          textCache.set(key, verses.map((v) => stripHtml(v.text)).join(' '));
+          textCache.set(key, verses.map((v) => verseSpeakable(v)).join(' '));
         })
         .catch(() => {
           // swallow — UI shows reference without text

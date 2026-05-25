@@ -4,7 +4,7 @@ import { buildPlaybackPlan } from './playbackPlan';
 import { planToBrowserItems, planToOpenAiTracks } from './startPlayback';
 import {
   getChapter,
-  stripHtml,
+  verseSpeakable,
   type Translation,
 } from '@/services/bible/bibleApi';
 import { formatReference, getBookById } from '@/services/bible/bookCatalog';
@@ -196,7 +196,7 @@ async function buildSummariesFor(
     bookId: cont.bookId,
     chapter: cont.chapter,
     verse: v.verse,
-    text: stripHtml(v.text),
+    text: verseSpeakable(v),
     display: formatReference(cont.bookId, cont.chapter, v.verse, v.verse, locale),
   }));
 }

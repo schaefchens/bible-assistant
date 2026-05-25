@@ -72,6 +72,25 @@ if (!defined('BASE_PATH')) {
 }
 const AUDIO_BASE_URL = '/storage/audio'; // joined with BASE_PATH below
 
+/**
+ * Translation code -> Zefania XML filename under public/bibles/ (a.k.a.
+ * dist/bibles/ on the deployed server). Translations not listed here fall
+ * through to the bolls.life proxy in handleBibleChapter(). Drop the bolls
+ * path when this map covers every code the client can ask for.
+ */
+const BIBLE_XML_MAP = [
+    'S00'  => 's00.xml',
+    'ESV'  => 'esv.xml',
+    'KJV'  => 'kjv.xml',
+    'NKJV' => 'nkjv.xml',
+    'LUT'  => 'lut.xml',
+    'HFA'  => 'hfa.xml',
+];
+
+/** Cache schema marker — old bolls-shaped entries (bare verse arrays) are
+ * ignored on read so the new textTts field gets backfilled on next fetch. */
+const BIBLE_CACHE_FORMAT = 'xml-v1';
+
 const CHAT_MODEL_DEFAULT = 'gpt-4o-mini';
 const TTS_MODEL = 'gpt-4o-mini-tts';
 /** Plain STT for voice input — fastest/best for the chat composer. */
@@ -232,6 +251,9 @@ function requireAuth(): array {
 }
 
 // ---------- routing ---------------------------------------------------------
+
+// Skip the router when included by a CLI test harness (no HTTP request).
+if (PHP_SAPI === 'cli' && !defined('BIBLE_API_RUN_ROUTER')) return;
 
 $action = $_GET['action'] ?? '';
 if (!is_string($action) || $action === '') fail(400, 'missing action');
@@ -520,9 +542,10 @@ function handleTtsSpeak(): void {
 }
 
 /**
- * Fetch a Bible chapter from bolls.life with persistent server-side cache.
- * Stored alongside the audio in storage/bible/{translation}/{bookId}/{chapter}.json
- * so repeat reads don't hit bolls.life again.
+ * Fetch a Bible chapter. Prefers the local Zefania XML when the translation is
+ * mapped above; falls back to bolls.life otherwise. Both paths cache to
+ * storage/bible/{translation}/{bookId}/{chapter}.json so repeat reads are
+ * disk-only.
  */
 function handleBibleChapter(): void {
     $body = readJsonBody();
@@ -537,18 +560,38 @@ function handleBibleChapter(): void {
     @mkdir($dir, 0775, true);
     $file = "{$dir}/{$chapter}.json";
 
-    $cached = file_exists($file);
-    if ($cached) {
+    if (file_exists($file)) {
         $raw = file_get_contents($file);
         if ($raw !== false && $raw !== '') {
-            $verses = json_decode($raw, true);
-            if (is_array($verses)) {
-                respond(200, ['verses' => $verses, 'cached' => true]);
+            $cached = json_decode($raw, true);
+            // Modern cache entries are { format, verses }; old bolls entries
+            // are a bare verse array. Only the modern shape is reusable here.
+            if (is_array($cached) && ($cached['format'] ?? null) === BIBLE_CACHE_FORMAT) {
+                respond(200, ['verses' => $cached['verses'] ?? [], 'cached' => true]);
                 return;
             }
         }
     }
 
+    $xmlSlug = BIBLE_XML_MAP[strtoupper($translation)] ?? null;
+    if ($xmlSlug !== null) {
+        $xmlPath = __DIR__ . '/bibles/' . $xmlSlug;
+        if (!is_readable($xmlPath)) {
+            fail(500, 'bible xml missing on server', ['translation' => $translation]);
+        }
+        $verses = parseZefaniaChapter($xmlPath, $bookId, $chapter);
+        if ($verses === null) {
+            fail(404, 'chapter not found in xml', ['translation' => $translation, 'bookId' => $bookId, 'chapter' => $chapter]);
+        }
+        file_put_contents($file, json_encode([
+            'format' => BIBLE_CACHE_FORMAT,
+            'verses' => $verses,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        respond(200, ['verses' => $verses, 'cached' => false]);
+        return;
+    }
+
+    // Bolls.life fallback for any translation we haven't mapped to XML yet.
     $url = "https://bolls.life/get-text/{$translation}/{$bookId}/{$chapter}/";
     $ch = curl_init($url);
     curl_setopt_array($ch, [
@@ -562,12 +605,151 @@ function handleBibleChapter(): void {
     if ($payload === false || $status !== 200) {
         fail(502, 'bolls.life fetch failed', ['status' => $status]);
     }
-    $verses = json_decode($payload, true);
-    if (!is_array($verses)) {
+    $bollsVerses = json_decode($payload, true);
+    if (!is_array($bollsVerses)) {
         fail(502, 'bolls.life returned invalid JSON');
     }
-    file_put_contents($file, $payload);
+    // Project bolls's { pk, verse, text } into our normalized shape so the
+    // client sees the same fields regardless of source.
+    $verses = array_map(function ($v) {
+        $text = is_string($v['text'] ?? null) ? $v['text'] : '';
+        return [
+            'pk' => $v['pk'] ?? null,
+            'verse' => $v['verse'] ?? null,
+            'text' => $text,
+            'textTts' => stripForTts(stripHtmlTags($text)),
+        ];
+    }, $bollsVerses);
+    file_put_contents($file, json_encode([
+        'format' => BIBLE_CACHE_FORMAT,
+        'verses' => $verses,
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     respond(200, ['verses' => $verses, 'cached' => false]);
+}
+
+/**
+ * Parse a single chapter out of a Zefania XML file. Returns an array of
+ * verse rows, or null if the requested book/chapter wasn't found.
+ *
+ * Handles both Zefania flavours we ship:
+ *   - simple:   <bible>/<testament>/<book number=>/<chapter number=>/<verse number=>
+ *   - zef2005:  <XMLBIBLE>/<BIBLEBOOK bnumber=>/<CHAPTER cnumber=>/<VERS vnumber=>
+ *
+ * Uses XMLReader to skip past non-matching books cheaply (the Strong's bibles
+ * are 12 MB each), then DOM-expands the matched book for mixed-content walks.
+ */
+function parseZefaniaChapter(string $xmlPath, int $bookId, int $chapter): ?array {
+    $reader = new XMLReader();
+    if (!$reader->open($xmlPath)) return null;
+    $doc = new DOMDocument();
+
+    while ($reader->read()) {
+        if ($reader->nodeType !== XMLReader::ELEMENT) continue;
+        $name = $reader->localName;
+        if ($name !== 'book' && $name !== 'BIBLEBOOK') continue;
+        $bnum = (int)($reader->getAttribute('number') ?: $reader->getAttribute('bnumber') ?: 0);
+        if ($bnum !== $bookId) {
+            $reader->next();
+            continue;
+        }
+        $bookNode = $reader->expand($doc);
+        $reader->close();
+        if (!$bookNode instanceof DOMElement) return null;
+        foreach ($bookNode->childNodes as $chapNode) {
+            if (!$chapNode instanceof DOMElement) continue;
+            $cname = $chapNode->nodeName;
+            if ($cname !== 'chapter' && $cname !== 'CHAPTER') continue;
+            $cnum = (int)($chapNode->getAttribute('number') ?: $chapNode->getAttribute('cnumber') ?: 0);
+            if ($cnum === $chapter) {
+                return parseZefaniaVerses($chapNode, $bookId, $chapter);
+            }
+        }
+        return null;
+    }
+    $reader->close();
+    return null;
+}
+
+function parseZefaniaVerses(DOMElement $chap, int $bookId, int $chapter): array {
+    $verses = [];
+    foreach ($chap->childNodes as $vnode) {
+        if (!$vnode instanceof DOMElement) continue;
+        $vname = $vnode->nodeName;
+        if ($vname !== 'verse' && $vname !== 'VERS') continue;
+        $vnum = (int)($vnode->getAttribute('number') ?: $vnode->getAttribute('vnumber') ?: 0);
+        if ($vnum <= 0) continue;
+
+        [$segments, $hasStrongs] = extractZefaniaSegments($vnode);
+        $text = normalizeSpace(implode('', array_column($segments, 't')));
+        $textTts = stripForTts($text);
+
+        $verse = [
+            'pk' => $bookId * 1_000_000 + $chapter * 1_000 + $vnum,
+            'verse' => $vnum,
+            'text' => $text,
+            'textTts' => $textTts,
+        ];
+        if ($hasStrongs) {
+            $verse['segments'] = array_map(
+                fn($s) => $s['s'] !== null ? ['t' => $s['t'], 's' => $s['s']] : ['t' => $s['t']],
+                $segments,
+            );
+        }
+        $verses[] = $verse;
+    }
+    return $verses;
+}
+
+/**
+ * Walk a <verse>/<VERS> element collecting [text, strong-number] segments.
+ * Returns [segments, hasStrongs]. <NOTE> and <DIV> subtrees are dropped
+ * entirely — they're study notes, not verse text.
+ */
+function extractZefaniaSegments(DOMElement $verse): array {
+    $segments = [];
+    $hasStrongs = false;
+    foreach ($verse->childNodes as $node) {
+        if ($node instanceof DOMText || $node instanceof DOMCdataSection) {
+            $segments[] = ['t' => $node->nodeValue, 's' => null];
+            continue;
+        }
+        if (!$node instanceof DOMElement) continue;
+        $nm = $node->nodeName;
+        if ($nm === 'gr') {
+            $strong = $node->getAttribute('str');
+            $segments[] = ['t' => $node->textContent, 's' => $strong !== '' ? $strong : null];
+            if ($strong !== '') $hasStrongs = true;
+            continue;
+        }
+        if ($nm === 'NOTE' || $nm === 'DIV') continue;
+        // Anything else (rare): fold its plain text in so we don't lose content.
+        $segments[] = ['t' => $node->textContent, 's' => null];
+    }
+    return [$segments, $hasStrongs];
+}
+
+function normalizeSpace(string $s): string {
+    $s = preg_replace('/\s+/u', ' ', $s) ?? $s;
+    return trim($s);
+}
+
+function stripHtmlTags(string $s): string {
+    $s = preg_replace('/<[^>]+>/u', '', $s) ?? $s;
+    return normalizeSpace($s);
+}
+
+/**
+ * Produce a TTS-safe variant by removing bracketed editor inserts that read
+ * aloud as noise — numeric footnote refs like "[37]", manuscript caveats like
+ * "[SOME OF THE EARLIEST MANUSCRIPTS...]", and the bracketed alternate-reading
+ * inserts found in ESV/NLT. Multi-verse "[[ ... ]]" spans (e.g. Mark 16:9-20)
+ * leave orphan brackets when split per verse, so strip leftover bracket chars
+ * too — the text in between is real verse content.
+ */
+function stripForTts(string $s): string {
+    $s = preg_replace('/\[+[^\[\]]*\]+/u', '', $s) ?? $s;
+    $s = preg_replace('/[\[\]]/u', '', $s) ?? $s;
+    return normalizeSpace($s);
 }
 
 function handleTranscribe(): void {

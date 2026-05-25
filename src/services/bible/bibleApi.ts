@@ -10,10 +10,21 @@ export type BollsBook = {
   chapters: number;
 };
 
+/** One run of words within a verse — `s` is the Strong's number (or
+ * space-separated numbers) when the source bible carries them. */
+export type VerseSegment = { t: string; s?: string };
+
 export type BollsVerse = {
   pk: number;
   verse: number;
   text: string;
+  /** TTS-ready variant: HTML, study notes, and bracketed editor inserts
+   * removed. Populated by the PHP Zefania parser; absent for legacy
+   * bolls.life rows, where callers should fall back to `stripHtml(text)`. */
+  textTts?: string;
+  /** Strong's-tagged word segments. Present only for the Strong's bibles
+   * (currently just LUT among the user-facing translations). */
+  segments?: VerseSegment[];
 };
 
 const BASE = 'https://bolls.life';
@@ -94,9 +105,22 @@ export async function getVerses(
   );
 }
 
+/** Clean a verse for display *and* TTS: drop HTML markup, bracketed editor
+ * inserts ("[37]", "[SOME OF THE EARLIEST MANUSCRIPTS...]"), and any orphan
+ * bracket characters left when a "[[ ... ]]" span crosses verse boundaries.
+ * Mirrors `stripForTts` in api.php so legacy bolls.life rows arrive
+ * normalized too. */
 export function stripHtml(text: string): string {
   return text
     .replace(/<[^>]+>/g, '')
+    .replace(/\[+[^[\]]*\]+/g, '')
+    .replace(/[[\]]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/** Preferred TTS/display text for a verse — uses the parser's pre-cleaned
+ * `textTts` when present, otherwise falls back to `stripHtml(text)`. */
+export function verseSpeakable(v: BollsVerse): string {
+  return v.textTts ?? stripHtml(v.text);
 }
