@@ -1,6 +1,7 @@
 import type { ToolName, ToolArgs } from './tools';
 import { parseReference } from '@/services/bible/referenceParser';
 import { getVerses, getChapter, verseSpeakable } from '@/services/bible/bibleApi';
+import { effectiveReadingVoice, effectiveVoiceStyle } from '@/store/settingsStore';
 import type { Translation } from '@/services/bible/bibleApi';
 import {
   BOOKS,
@@ -133,7 +134,9 @@ async function handleReadVerses(
 ): Promise<ToolDispatchResult> {
   const parsed = parseReference(args.reference);
   if (!parsed) return { ok: false, error: `could not parse reference "${args.reference}"` };
-  const { locale, translation: defaultTrans, voice, voiceStyle } = useSettingsStore.getState();
+  const { locale, translation: defaultTrans } = useSettingsStore.getState();
+  const voice = effectiveReadingVoice();
+  const voiceStyle = effectiveVoiceStyle();
   const translation = args.translation ?? defaultTrans;
   const verses = await getVerses(translation, parsed);
   if (verses.length === 0) return { ok: false, error: 'no verses found' };

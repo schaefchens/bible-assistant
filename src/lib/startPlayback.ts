@@ -3,7 +3,11 @@ import { browserTts, type BrowserTtsItem } from './browserTts';
 import { postTts, postTtsSpeak } from '@/services/api/tts';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { useChatStore } from '@/store/chatStore';
-import { useSettingsStore } from '@/store/settingsStore';
+import {
+  effectiveReadingVoice,
+  effectiveVoiceStyle,
+  useSettingsStore,
+} from '@/store/settingsStore';
 import { isBrowserVoice, type OpenAiVoiceId, type VerseSummary } from '@/types/domain';
 import {
   buildPlaybackPlan,
@@ -55,7 +59,8 @@ export async function startPlaybackForVerses(
   });
   const plan = sliceFromVerseIndex(fullPlan, startIndex);
 
-  if (isBrowserVoice(settings.voice)) {
+  const readerVoice = effectiveReadingVoice();
+  if (isBrowserVoice(readerVoice)) {
     const items = planToBrowserItems(plan, messageId);
     void browserTts.speakQueue(items);
     return;
@@ -64,8 +69,8 @@ export async function startPlaybackForVerses(
   const tracks = await planToOpenAiTracks(
     plan,
     messageId,
-    settings.voice as OpenAiVoiceId,
-    settings.voiceStyle || undefined,
+    readerVoice as OpenAiVoiceId,
+    effectiveVoiceStyle() || undefined,
     undefined,
   );
   if (tracks.length > 0) {
@@ -128,15 +133,16 @@ async function enqueueReadingForMessage(
     pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
     wholeChapter: msg?.headingWholeChapter ?? false,
   });
-  if (isBrowserVoice(settings.voice)) {
+  const readerVoice = effectiveReadingVoice();
+  if (isBrowserVoice(readerVoice)) {
     void browserTts.enqueue(planToBrowserItems(plan, messageId));
     return;
   }
   const tracks = await planToOpenAiTracks(
     plan,
     messageId,
-    settings.voice as OpenAiVoiceId,
-    settings.voiceStyle || undefined,
+    readerVoice as OpenAiVoiceId,
+    effectiveVoiceStyle() || undefined,
     undefined,
   );
   if (tracks.length > 0) {

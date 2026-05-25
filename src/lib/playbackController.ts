@@ -4,7 +4,11 @@ import { buildPlaybackPlan, type PlanItem } from './playbackPlan';
 import { planToBrowserItems, planToOpenAiTracks } from './startPlayback';
 import { useChatStore } from '@/store/chatStore';
 import { usePlaybackStore } from '@/store/playbackStore';
-import { useSettingsStore } from '@/store/settingsStore';
+import {
+  effectiveReadingVoice,
+  effectiveVoiceStyle,
+  useSettingsStore,
+} from '@/store/settingsStore';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { isBrowserVoice, type OpenAiVoiceId } from '@/types/domain';
 
@@ -56,8 +60,8 @@ async function rebuildCurrentTail(): Promise<void> {
       | BrowserTtsItem
       | undefined;
 
-  const usingBrowser =
-    browserTts.isActive() || isBrowserVoice(useSettingsStore.getState().voice);
+  const readerVoice = effectiveReadingVoice();
+  const usingBrowser = browserTts.isActive() || isBrowserVoice(readerVoice);
 
   // The currently-playing track tells us where to slice. For the audio
   // engine: highlightVerse=false means it's an announcement; the verse
@@ -109,8 +113,8 @@ async function rebuildCurrentTail(): Promise<void> {
   const tracks = await planToOpenAiTracks(
     shifted,
     cur.messageId,
-    settings.voice as OpenAiVoiceId,
-    settings.voiceStyle || undefined,
+    readerVoice as OpenAiVoiceId,
+    effectiveVoiceStyle() || undefined,
     undefined,
   );
   // A newer rebuild may have started while TTS fetches were in flight —

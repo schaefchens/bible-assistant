@@ -172,6 +172,17 @@
     "voiceStyleHint": "z.B. \"ruhig, ehrfürchtig\" oder \"warmer Erzähler\"",
     "browserVoice": "Browser (Systemstimme)",
     "browserVoiceHint": "Nutzt die integrierte Sprachausgabe deines Geräts — funktioniert offline und spart API-Guthaben. Wort-Hervorhebung und Stimmstil sind nicht verfügbar.",
+    "readingVoiceRestricted": "Hinterlege deinen eigenen OpenAI-Schlüssel, um alle Lesestimmen freizuschalten.",
+    "openaiKey": {
+      "title": "OpenAI-API-Schlüssel",
+      "hint": "Optional — füge deinen eigenen Schlüssel ein, um alle Stimmen zu nutzen und Chat, Sprache und Transkription über dein Konto abzurechnen.",
+      "save": "Speichern",
+      "saving": "Wird geprüft…",
+      "remove": "Schlüssel entfernen",
+      "invalid": "Dieser Schlüssel konnte nicht geprüft werden.",
+      "usingSharedThisSession": "Dein Schlüssel hat versagt — diese Sitzung läuft über den geteilten Schlüssel.",
+      "retryWithMine": "Meinen Schlüssel erneut versuchen"
+    },
     "assistantVoice": "Assistent-Stimme",
     "assistantVoiceHint": "Eine eigene Stimme für die Antworten des Assistenten (getrennt von der Bibel-Lesestimme).",
     "speakAssistant": "Assistent-Antworten automatisch vorlesen",
@@ -254,6 +265,12 @@
     "online": "Online",
     "offline": "Offline",
     "pending": "{{count}} ausstehend"
+  },
+  "keyFailure": {
+    "title": "Dein OpenAI-Schlüssel wurde abgelehnt.",
+    "hint": "Für diese Sitzung den geteilten Schlüssel verwenden? Die Lesestimme fällt auf den Standard (Echo) zurück.",
+    "useShared": "Geteilten Schlüssel nutzen",
+    "dismiss": "Nicht jetzt"
   },
   "playbackSheet": {
     "title": "Wiedergabe",

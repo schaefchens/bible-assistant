@@ -11,6 +11,12 @@ import { GlobalMicButton } from '@/components/voice/GlobalMicButton';
 import { VoiceOverlay } from '@/components/voice/VoiceOverlay';
 import { FloatingPlaybackBar } from '@/components/playback/FloatingPlaybackBar';
 import { UpdateBanner } from '@/components/common/UpdateBanner';
+import { KeyFailureBanner } from '@/components/common/KeyFailureBanner';
+import { getOpenAiKeyStatus } from '@/services/api/auth';
+import {
+  effectiveAssistantVoice,
+  effectiveReadingVoice,
+} from '@/store/settingsStore';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 
@@ -48,6 +54,31 @@ export function AppShell() {
     };
   }, [init, setOnline, hasPassphrase]);
 
+  // Hydrate the personal-OpenAI-key status from the server. On hasKey=false,
+  // call the effective-voice helpers once so previously-stored non-allowed
+  // values (reading or assistant voice) get force-reset to their locked
+  // defaults before the first playback / chat reply.
+  useEffect(() => {
+    if (!hasPassphrase) return;
+    let cancelled = false;
+    const prune = () => {
+      effectiveReadingVoice();
+      effectiveAssistantVoice();
+    };
+    void getOpenAiKeyStatus()
+      .then((s) => {
+        if (cancelled) return;
+        useSettingsStore.getState().setUserOpenAiKeyStatus(!!s.hasKey, s.masked ?? null);
+        prune();
+      })
+      .catch(() => {
+        if (!cancelled) prune();
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasPassphrase]);
+
   useEffect(() => {
     if (!hasPassphrase) return;
     if (!ambientEnabled || !ambientTrackId) return;
@@ -72,6 +103,7 @@ export function AppShell() {
   return (
     <div className="flex flex-col h-full pt-safe">
       <UpdateBanner />
+      <KeyFailureBanner />
       <main className="flex-1 min-h-0 flex flex-col">
         <Outlet />
       </main>

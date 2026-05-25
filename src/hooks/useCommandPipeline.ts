@@ -9,7 +9,11 @@ import {
 } from '@/services/ai/tools';
 import { dispatchTool } from '@/services/ai/dispatch';
 import { useChatStore } from '@/store/chatStore';
-import { useSettingsStore } from '@/store/settingsStore';
+import {
+  effectiveAssistantVoice,
+  effectiveVoiceStyle,
+  useSettingsStore,
+} from '@/store/settingsStore';
 import { useGlobalVoiceStore, type VoiceSource } from '@/store/globalVoiceStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { browserTts } from '@/lib/browserTts';
@@ -173,11 +177,20 @@ export function useCommandPipeline() {
             (m.role === 'assistant' && (m.text || m.historyNote)),
         )
         .slice(-12)
-        .map<ChatRequestMessage>((m) =>
-          m.role === 'user'
-            ? { role: 'user', content: m.text }
-            : { role: 'assistant', content: m.historyNote || m.text },
-        ),
+        // Pure read-action turns produce no chat text — only the verse audio.
+        // We log them as `historyNote: "(Played aloud: …)"` so the model can
+        // resolve "continue reading" later. Surface those notes as `system`
+        // observations rather than fake `assistant` content; otherwise, after
+        // several reads in a row, the model pattern-matches on its own past
+        // "(Played aloud: …)" entries and emits that string as natural-language
+        // reply text instead of calling read_verses.
+        .flatMap<ChatRequestMessage>((m) => {
+          if (m.role === 'user') return [{ role: 'user', content: m.text }];
+          const out: ChatRequestMessage[] = [];
+          if (m.text) out.push({ role: 'assistant', content: m.text });
+          if (m.historyNote) out.push({ role: 'system', content: m.historyNote });
+          return out;
+        }),
     ];
 
     const assistantMsg: ChatMessage = {
@@ -356,9 +369,9 @@ function safeJson(s: string): Record<string, unknown> {
 async function speakAssistantReply(text: string, messageId: string): Promise<void> {
   const trimmed = stripMarkdownForSpeech(text);
   if (!trimmed) return;
-  const { speakAssistant, assistantVoice, voiceStyle, locale } =
-    useSettingsStore.getState();
+  const { speakAssistant, locale } = useSettingsStore.getState();
   if (!speakAssistant) return;
+  const assistantVoice = effectiveAssistantVoice();
   if (isBrowserVoice(assistantVoice)) {
     void browserTts.enqueue([
       {
@@ -370,6 +383,7 @@ async function speakAssistantReply(text: string, messageId: string): Promise<voi
     ]);
     return;
   }
+  const voiceStyle = effectiveVoiceStyle();
   try {
     const tts = await postTtsSpeak({
       text: trimmed,

@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSettingsStore, type MicCorner } from '@/store/settingsStore';
+import {
+  hasActivePersonalKey,
+  useSettingsStore,
+  type MicCorner,
+} from '@/store/settingsStore';
 import type { Translation } from '@/services/bible/bibleApi';
 import { VOICE_OPTIONS, type VoiceId } from '@/types/domain';
 import { getPassphrase } from '@/lib/passphrase';
@@ -11,6 +15,8 @@ import {
   checkForUpdates,
   useUpdateStore,
 } from '@/lib/pwaUpdate';
+import { ApiError } from '@/services/api/client';
+import { clearOpenAiKey, setOpenAiKey } from '@/services/api/auth';
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -79,17 +85,27 @@ export function SettingsPage() {
         </div>
       </Section>
 
+      <Section title={t('settings.openaiKey.title')}>
+        <OpenAiKeySection />
+      </Section>
+
       <Section title={t('settings.voice')}>
         <VoiceSelect
           value={settings.voice}
           onChange={(v) => settings.setVoice(v)}
+          allowedVoices={hasActivePersonalKey(settings) ? undefined : ['echo', 'browser']}
         />
         {settings.voice === 'browser' && (
           <p className="mt-2 text-xs text-cream-dim">{t('settings.browserVoiceHint')}</p>
         )}
+        {!hasActivePersonalKey(settings) && (
+          <p className="mt-2 text-xs text-cream-dim">
+            {t('settings.readingVoiceRestricted')}
+          </p>
+        )}
       </Section>
 
-      {settings.voice !== 'browser' && (
+      {settings.voice !== 'browser' && hasActivePersonalKey(settings) && (
         <Section title={t('settings.voiceStyle')}>
           <input
             value={settings.voiceStyle}
@@ -105,6 +121,7 @@ export function SettingsPage() {
         <VoiceSelect
           value={settings.assistantVoice}
           onChange={(v) => settings.setAssistantVoice(v)}
+          allowedVoices={hasActivePersonalKey(settings) ? undefined : ['browser']}
         />
         <label className="flex items-center gap-2 mt-3">
           <input
@@ -337,24 +354,135 @@ function DangerZone() {
 function VoiceSelect({
   value,
   onChange,
+  allowedVoices,
 }: {
   value: VoiceId;
   onChange: (v: VoiceId) => void;
+  /** Optional allowlist; defaults to the full VOICE_OPTIONS list. */
+  allowedVoices?: VoiceId[];
 }) {
   const { t } = useTranslation();
+  const options = allowedVoices
+    ? VOICE_OPTIONS.filter((v) => allowedVoices.includes(v))
+    : VOICE_OPTIONS;
   return (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value as VoiceId)}
       className="w-full bg-navy-soft text-cream rounded-xl px-3 py-2"
     >
-      {VOICE_OPTIONS.map((v) => (
+      {options.map((v) => (
         <option key={v} value={v}>
           {v === 'browser' ? t('settings.browserVoice') : v}
         </option>
       ))}
     </select>
   );
+}
+
+function OpenAiKeySection() {
+  const { t } = useTranslation();
+  const hasKey = useSettingsStore((s) => s.hasUserOpenAiKey);
+  const masked = useSettingsStore((s) => s.userOpenAiKeyMasked);
+  const sessionPreferShared = useSettingsStore((s) => s.sessionPreferSharedKey);
+  const setStatus = useSettingsStore((s) => s.setUserOpenAiKeyStatus);
+  const setPreferShared = useSettingsStore((s) => s.setSessionPreferSharedKey);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onSave = async () => {
+    const key = draft.trim();
+    if (!key) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const resp = await setOpenAiKey(key);
+      setStatus(!!resp.hasKey, resp.masked ?? null);
+      setDraft('');
+      // A freshly-validated key cancels any prior shared-key opt-in.
+      if (sessionPreferShared) setPreferShared(false);
+    } catch (e) {
+      setError(extractErrorDetail(e) ?? t('settings.openaiKey.invalid'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onClear = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await clearOpenAiKey();
+      setStatus(false, null);
+    } catch (e) {
+      setError(extractErrorDetail(e) ?? 'failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-cream-dim">{t('settings.openaiKey.hint')}</p>
+      {hasKey ? (
+        <>
+          <div className="flex items-center justify-between gap-2 bg-navy-soft rounded-xl px-3 py-2">
+            <span className="font-mono text-sm text-cream">{masked ?? '••••••'}</span>
+            <button
+              type="button"
+              className="btn-ghost text-xs"
+              disabled={busy}
+              onClick={() => void onClear()}
+            >
+              {t('settings.openaiKey.remove')}
+            </button>
+          </div>
+          {sessionPreferShared && (
+            <p className="text-xs text-red-400">
+              {t('settings.openaiKey.usingSharedThisSession')}{' '}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => setPreferShared(false)}
+              >
+                {t('settings.openaiKey.retryWithMine')}
+              </button>
+            </p>
+          )}
+        </>
+      ) : (
+        <div className="flex gap-2">
+          <input
+            type="password"
+            autoComplete="off"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="sk-..."
+            className="flex-1 bg-navy-soft text-cream rounded-xl px-3 py-2 font-mono text-sm"
+          />
+          <button
+            type="button"
+            disabled={busy || !draft.trim()}
+            onClick={() => void onSave()}
+            className="btn-ghost text-xs disabled:opacity-50"
+          >
+            {busy ? t('settings.openaiKey.saving') : t('settings.openaiKey.save')}
+          </button>
+        </div>
+      )}
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </div>
+  );
+}
+
+function extractErrorDetail(e: unknown): string | null {
+  if (e instanceof ApiError && e.body && typeof e.body === 'object') {
+    const body = e.body as { detail?: unknown; error?: unknown };
+    if (typeof body.detail === 'string' && body.detail) return body.detail;
+    if (typeof body.error === 'string' && body.error) return body.error;
+  }
+  return e instanceof Error ? e.message : null;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

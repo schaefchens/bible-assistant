@@ -10,7 +10,11 @@ import {
 import { formatReference, getBookById } from '@/services/bible/bookCatalog';
 import { useChatStore } from '@/store/chatStore';
 import { usePlaybackStore } from '@/store/playbackStore';
-import { useSettingsStore } from '@/store/settingsStore';
+import {
+  effectiveReadingVoice,
+  effectiveVoiceStyle,
+  useSettingsStore,
+} from '@/store/settingsStore';
 import { isBrowserVoice, type OpenAiVoiceId, type VerseSummary } from '@/types/domain';
 
 /**
@@ -267,7 +271,8 @@ async function enqueueContinuationFor(
     createdAt: Date.now(),
   });
 
-  if (isBrowserVoice(settings.voice)) {
+  const readerVoice = effectiveReadingVoice();
+  if (isBrowserVoice(readerVoice)) {
     const plan = buildPlaybackPlan(summaries, {
       locale: settings.locale,
       readChapterHeadings: settings.readChapterHeadings,
@@ -302,8 +307,8 @@ async function enqueueContinuationFor(
     tracks = await planToOpenAiTracks(
       plan,
       newMessageId,
-      settings.voice as OpenAiVoiceId,
-      settings.voiceStyle || undefined,
+      readerVoice as OpenAiVoiceId,
+      effectiveVoiceStyle() || undefined,
       undefined,
     );
   }
@@ -335,7 +340,8 @@ async function schedulePrefetchFor(messageId: string): Promise<void> {
 
     const key = chunkKey(next.cont, next.translation);
     let tracks: PlaybackTrack[] | null = null;
-    const usingBrowser = isBrowserVoice(settings.voice);
+    const prefetchVoice = effectiveReadingVoice();
+    const usingBrowser = isBrowserVoice(prefetchVoice);
     if (!usingBrowser) {
       const plan = buildPlaybackPlan(summaries, {
         locale: settings.locale,
@@ -349,8 +355,8 @@ async function schedulePrefetchFor(messageId: string): Promise<void> {
       tracks = await planToOpenAiTracks(
         plan,
         messageId,
-        settings.voice as OpenAiVoiceId,
-        settings.voiceStyle || undefined,
+        prefetchVoice as OpenAiVoiceId,
+        effectiveVoiceStyle() || undefined,
         controller.signal,
       );
     }

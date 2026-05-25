@@ -110,6 +110,22 @@ if (!file_exists($htaccessPath)) {
     @file_put_contents($htaccessPath, "Options -Indexes\n");
 }
 
+// Tighter guard on users/ — UUIDs are sent on every request, so anyone who
+// knows a userId could otherwise GET storage/users/{id}/secret.txt or
+// openai_key.txt directly. Block all HTTP access to this subtree; PHP keeps
+// reading via the filesystem.
+$usersHtaccessPath = USERS_DIR . '/.htaccess';
+if (!file_exists($usersHtaccessPath)) {
+    @file_put_contents(
+        $usersHtaccessPath,
+        "Require all denied\n" .
+        "<IfModule !mod_authz_core.c>\n" .
+        "  Order deny,allow\n" .
+        "  Deny from all\n" .
+        "</IfModule>\n",
+    );
+}
+
 // ---------- helpers ---------------------------------------------------------
 
 function respond(int $status, array $body): void {
@@ -147,7 +163,25 @@ function safeString(mixed $v, int $maxLen = 8000): string {
     return $v;
 }
 
-function curlJson(string $url, array $payload, array $extraHeaders = []): array {
+/**
+ * Resolve the OpenAI key to use for a request. Prefer the caller's saved
+ * personal key (users/{id}/openai_key.txt) so usage is billed to their
+ * account; fall back to OPENAI_API_KEY only when they haven't set one or
+ * have explicitly opted into the shared key via X-Prefer-Shared-Key.
+ * Returns '' when no key is configured anywhere.
+ */
+function effectiveOpenAiKey(array $ctx, bool $preferShared = false): string {
+    if (!$preferShared && isset($ctx['userDir'])) {
+        $f = $ctx['userDir'] . '/openai_key.txt';
+        if (is_readable($f)) {
+            $k = trim((string)@file_get_contents($f));
+            if ($k !== '') return $k;
+        }
+    }
+    return OPENAI_API_KEY;
+}
+
+function curlJson(string $url, array $payload, array $extraHeaders = [], ?string $apiKey = null): array {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
@@ -156,7 +190,7 @@ function curlJson(string $url, array $payload, array $extraHeaders = []): array 
         CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
         CURLOPT_HTTPHEADER => array_merge([
             'Content-Type: application/json',
-            'Authorization: Bearer ' . OPENAI_API_KEY,
+            'Authorization: Bearer ' . ($apiKey ?? OPENAI_API_KEY),
         ], $extraHeaders),
     ]);
     $body = curl_exec($ch);
@@ -173,7 +207,7 @@ function curlJson(string $url, array $payload, array $extraHeaders = []): array 
     return $decoded;
 }
 
-function curlBinary(string $url, array $payload): array {
+function curlBinary(string $url, array $payload, ?string $apiKey = null): array {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
@@ -182,7 +216,7 @@ function curlBinary(string $url, array $payload): array {
         CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
         CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
-            'Authorization: Bearer ' . OPENAI_API_KEY,
+            'Authorization: Bearer ' . ($apiKey ?? OPENAI_API_KEY),
         ],
     ]);
     $body = curl_exec($ch);
@@ -201,7 +235,7 @@ function curlBinary(string $url, array $payload): array {
     return ['_status' => $status, 'audio' => $body, 'contentType' => $contentType];
 }
 
-function curlMultipart(string $url, array $fields, string $fileField, string $filePath, string $fileName): array {
+function curlMultipart(string $url, array $fields, string $fileField, string $filePath, string $fileName, ?string $apiKey = null): array {
     $ch = curl_init($url);
     $fields[$fileField] = new CURLFile($filePath, 'audio/webm', $fileName);
     curl_setopt_array($ch, [
@@ -210,7 +244,7 @@ function curlMultipart(string $url, array $fields, string $fileField, string $fi
         CURLOPT_TIMEOUT => 180,
         CURLOPT_POSTFIELDS => $fields,
         CURLOPT_HTTPHEADER => [
-            'Authorization: Bearer ' . OPENAI_API_KEY,
+            'Authorization: Bearer ' . ($apiKey ?? OPENAI_API_KEY),
         ],
     ]);
     $body = curl_exec($ch);
@@ -259,28 +293,46 @@ if (PHP_SAPI === 'cli' && !defined('BIBLE_API_RUN_ROUTER')) return;
 $action = $_GET['action'] ?? '';
 if (!is_string($action) || $action === '') fail(400, 'missing action');
 
-if (OPENAI_API_KEY === '' && in_array($action, ['chat', 'tts', 'transcribe'], true)) {
-    fail(500, 'OPENAI_API_KEY not configured on server');
-}
-
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $ctx = requireAuth();
 
+// Resolve the effective OpenAI key once per request — prefer the caller's
+// own key over the shared OPENAI_API_KEY so usage bills to their account.
+// Honoured by every handler that touches OpenAI; the new auth.openaiKey.set
+// handler ignores this and uses the freshly-submitted key for validation.
+$OPENAI_ACTIONS = ['chat', 'tts', 'tts.speak', 'transcribe', 'recording.upload'];
+$ctx['preferShared'] = (($_SERVER['HTTP_X_PREFER_SHARED_KEY'] ?? '') === '1');
+if (in_array($action, $OPENAI_ACTIONS, true)) {
+    $ctx['openaiKey'] = effectiveOpenAiKey($ctx, $ctx['preferShared']);
+    if ($ctx['openaiKey'] === '') {
+        fail(500, 'no OpenAI API key configured');
+    }
+}
+
 switch ($action) {
     case 'chat':
-        handleChat();
+        handleChat($ctx);
         break;
     case 'tts':
-        handleTts();
+        handleTts($ctx);
         break;
     case 'tts.speak':
-        handleTtsSpeak();
+        handleTtsSpeak($ctx);
         break;
     case 'bible.chapter':
         handleBibleChapter();
         break;
     case 'transcribe':
-        handleTranscribe();
+        handleTranscribe($ctx);
+        break;
+    case 'auth.openaiKey.status':
+        handleOpenAiKeyStatus($ctx);
+        break;
+    case 'auth.openaiKey.set':
+        handleOpenAiKeySet($ctx);
+        break;
+    case 'auth.openaiKey.clear':
+        handleOpenAiKeyClear($ctx);
         break;
     case 'cards.list':
         handleListJson($ctx['userDir'] . '/cards.json', 'cards');
@@ -324,7 +376,7 @@ switch ($action) {
 
 // ---------- handlers --------------------------------------------------------
 
-function handleChat(): void {
+function handleChat(array $ctx): void {
     // Decode as stdClass (NOT assoc) so empty objects like `properties: {}` survive
     // a JSON round-trip — assoc arrays can't distinguish [] from {} and OpenAI rejects
     // any tool whose `parameters.properties` arrives as `[]` instead of `{}`.
@@ -339,9 +391,9 @@ function handleChat(): void {
     if (!isset($obj->temperature)) $obj->temperature = 0.2;
 
     $payload = json_encode($obj, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    $resp = curlRawJson('https://api.openai.com/v1/chat/completions', $payload);
+    $resp = curlRawJson('https://api.openai.com/v1/chat/completions', $payload, $ctx['openaiKey']);
     if (($resp['_status'] ?? 0) !== 200) {
-        fail(502, 'openai chat failed', ['status' => $resp['_status'] ?? 0, 'detail' => $resp['_error'] ?? ($resp['error']['message'] ?? '')]);
+        failOpenAi($ctx, 'openai chat failed', $resp);
     }
     $choice = $resp['choices'][0] ?? null;
     if (!$choice) fail(502, 'no choice returned');
@@ -351,7 +403,25 @@ function handleChat(): void {
     ]);
 }
 
-function curlRawJson(string $url, string $payload): array {
+/**
+ * Surface an OpenAI error to the client. When the caller is using their own
+ * key and OpenAI rejected it (401/403), tag the error with `user_key_failed`
+ * so the client can offer a one-time fallback to the shared key for this
+ * session.
+ */
+function failOpenAi(array $ctx, string $message, array $resp): void {
+    $status = (int)($resp['_status'] ?? 0);
+    $detail = $resp['_error'] ?? ($resp['error']['message'] ?? '');
+    $usingPersonalKey = !($ctx['preferShared'] ?? false)
+        && isset($ctx['userDir'])
+        && is_readable($ctx['userDir'] . '/openai_key.txt');
+    if ($usingPersonalKey && ($status === 401 || $status === 403)) {
+        fail(502, 'user_key_failed', ['status' => $status, 'detail' => $detail]);
+    }
+    fail(502, $message, ['status' => $status, 'detail' => $detail]);
+}
+
+function curlRawJson(string $url, string $payload, ?string $apiKey = null): array {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
@@ -360,7 +430,7 @@ function curlRawJson(string $url, string $payload): array {
         CURLOPT_POSTFIELDS => $payload,
         CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
-            'Authorization: Bearer ' . OPENAI_API_KEY,
+            'Authorization: Bearer ' . ($apiKey ?? OPENAI_API_KEY),
         ],
     ]);
     $body = curl_exec($ch);
@@ -404,7 +474,7 @@ function composeSpeakInstructions(string $language, string $voiceStyle): string 
     return $voiceStyle !== '' ? "$hint $voiceStyle" : $hint;
 }
 
-function handleTts(): void {
+function handleTts(array $ctx): void {
     $body = readJsonBody();
     $text = safeString($body['text'] ?? '');
     $voice = safeSlug(safeString($body['voice'] ?? 'alloy', 32));
@@ -432,9 +502,9 @@ function handleTts(): void {
             'response_format' => 'mp3',
             'instructions' => composeTtsInstructions($translation, $voiceStyle),
         ];
-        $tts = curlBinary('https://api.openai.com/v1/audio/speech', $ttsPayload);
+        $tts = curlBinary('https://api.openai.com/v1/audio/speech', $ttsPayload, $ctx['openaiKey']);
         if (($tts['_status'] ?? 0) !== 200 || empty($tts['audio'])) {
-            fail(502, 'tts failed', ['detail' => $tts['_error'] ?? '']);
+            failOpenAi($ctx, 'tts failed', $tts);
         }
         if (file_put_contents($audioFile, $tts['audio']) === false) {
             fail(500, 'could not write audio file');
@@ -450,6 +520,7 @@ function handleTts(): void {
             'file',
             $audioFile,
             $verse . '.mp3',
+            $ctx['openaiKey'],
         );
         if (($align['_status'] ?? 0) !== 200) {
             // We still have the audio; write empty alignment so client falls back gracefully.
@@ -475,7 +546,7 @@ function handleTts(): void {
  * Free-form TTS for assistant chat replies (no bible coords). Cached by a
  * sha-256 hash of voice+style+text so identical lines reuse audio.
  */
-function handleTtsSpeak(): void {
+function handleTtsSpeak(array $ctx): void {
     $body = readJsonBody();
     $text = safeString($body['text'] ?? '', 4000);
     $voice = safeSlug(safeString($body['voice'] ?? 'alloy', 32));
@@ -505,9 +576,9 @@ function handleTtsSpeak(): void {
         if ($instructions !== '') {
             $ttsPayload['instructions'] = $instructions;
         }
-        $tts = curlBinary('https://api.openai.com/v1/audio/speech', $ttsPayload);
+        $tts = curlBinary('https://api.openai.com/v1/audio/speech', $ttsPayload, $ctx['openaiKey']);
         if (($tts['_status'] ?? 0) !== 200 || empty($tts['audio'])) {
-            fail(502, 'tts failed', ['detail' => $tts['_error'] ?? '']);
+            failOpenAi($ctx, 'tts failed', $tts);
         }
         if (file_put_contents($audioFile, $tts['audio']) === false) {
             fail(500, 'could not write audio file');
@@ -522,6 +593,7 @@ function handleTtsSpeak(): void {
             'file',
             $audioFile,
             $key . '.mp3',
+            $ctx['openaiKey'],
         );
         if (($align['_status'] ?? 0) !== 200) {
             file_put_contents($alignmentFile, json_encode(['words' => []]));
@@ -718,7 +790,7 @@ function stripForTts(string $s): string {
     return normalizeSpace($s);
 }
 
-function handleTranscribe(): void {
+function handleTranscribe(array $ctx): void {
     if (empty($_FILES['audio'])) fail(400, 'no audio uploaded');
     $tmp = $_FILES['audio']['tmp_name'];
     $name = $_FILES['audio']['name'] ?? 'audio.webm';
@@ -734,9 +806,10 @@ function handleTranscribe(): void {
         'file',
         $tmp,
         $name,
+        $ctx['openaiKey'],
     );
     if (($resp['_status'] ?? 0) !== 200) {
-        fail(502, 'transcribe failed', ['detail' => $resp['_error'] ?? '']);
+        failOpenAi($ctx, 'transcribe failed', $resp);
     }
     respond(200, ['text' => $resp['text'] ?? '']);
 }
@@ -867,13 +940,14 @@ function handleRecordingUpload(array $ctx): void {
     $align = curlMultipart(
         'https://api.openai.com/v1/audio/transcriptions',
         [
-            'model' => TRANSCRIBE_MODEL,
+            'model' => ALIGNMENT_MODEL,
             'response_format' => 'verbose_json',
             'timestamp_granularities[]' => 'word',
         ],
         'file',
         $dest,
         "{$verse}.mp3",
+        $ctx['openaiKey'] ?? null,
     );
     $alignmentPath = "{$dir}/{$verse}.json";
     if (($align['_status'] ?? 0) === 200) {
@@ -909,4 +983,65 @@ function handleAmbientList(): void {
         }
     }
     respond(200, ['tracks' => $tracks]);
+}
+
+/** Show last-4 chars of a key so the UI can confirm which one is saved
+ * without exposing it. Anything shorter than 8 chars is masked entirely. */
+function maskOpenAiKey(string $key): string {
+    $len = strlen($key);
+    if ($len <= 8) return str_repeat('•', $len);
+    return substr($key, 0, 3) . '…' . substr($key, -4);
+}
+
+function handleOpenAiKeyStatus(array $ctx): void {
+    $f = $ctx['userDir'] . '/openai_key.txt';
+    $hasKey = is_readable($f);
+    $payload = ['hasKey' => $hasKey];
+    if ($hasKey) {
+        $k = trim((string)@file_get_contents($f));
+        if ($k !== '') $payload['masked'] = maskOpenAiKey($k);
+        else $payload['hasKey'] = false;
+    }
+    respond(200, $payload);
+}
+
+function handleOpenAiKeySet(array $ctx): void {
+    $body = readJsonBody();
+    $key = trim(safeString($body['key'] ?? '', 512));
+    if ($key === '') fail(400, 'missing key');
+
+    // Validate by hitting /v1/models with the submitted key. Cheap, no
+    // request body, and surfaces a clear error if the key is rejected.
+    $ch = curl_init('https://api.openai.com/v1/models');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $key],
+    ]);
+    $resp = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($resp === false || $status !== 200) {
+        $detail = '';
+        if (is_string($resp) && $resp !== '') {
+            $decoded = json_decode($resp, true);
+            if (is_array($decoded) && isset($decoded['error']['message'])) {
+                $detail = (string)$decoded['error']['message'];
+            }
+        }
+        fail(400, 'key rejected by OpenAI', ['status' => $status, 'detail' => $detail]);
+    }
+
+    $f = $ctx['userDir'] . '/openai_key.txt';
+    if (@file_put_contents($f, $key, LOCK_EX) === false) {
+        fail(500, 'could not store key');
+    }
+    @chmod($f, 0600);
+    respond(200, ['hasKey' => true, 'masked' => maskOpenAiKey($key)]);
+}
+
+function handleOpenAiKeyClear(array $ctx): void {
+    $f = $ctx['userDir'] . '/openai_key.txt';
+    if (file_exists($f)) @unlink($f);
+    respond(200, ['hasKey' => false]);
 }

@@ -33,6 +33,14 @@ type SettingsState = {
   pauseBetweenChaptersMs: number;
   /** When true, audio continues to the next chunk after a reading ends. */
   autoPlayReading: boolean;
+  /** Whether the server has a personal OpenAI key on file for this user.
+   * Hydrated from auth.openaiKey.status on boot; transient (not persisted). */
+  hasUserOpenAiKey: boolean;
+  /** Masked preview of the stored key (e.g. "sk-…abc12"). Transient. */
+  userOpenAiKeyMasked: string | null;
+  /** Set when the user opts to fall back to the shared server key for this
+   * session after their personal key failed. Transient — clears on reload. */
+  sessionPreferSharedKey: boolean;
   setLocale: (locale: Locale) => void;
   setTranslation: (translation: Translation, fromUser?: boolean) => void;
   setVoice: (voice: VoiceId) => void;
@@ -51,7 +59,58 @@ type SettingsState = {
   setPauseBetweenVersesMs: (v: number) => void;
   setPauseBetweenChaptersMs: (v: number) => void;
   setAutoPlayReading: (v: boolean) => void;
+  setUserOpenAiKeyStatus: (hasKey: boolean, masked: string | null) => void;
+  setSessionPreferSharedKey: (v: boolean) => void;
 };
+
+/** Whether the user is currently using their own OpenAI key (server has it
+ * on file, session hasn't opted into the shared fallback). Gates: which
+ * voices appear in the Settings pickers, whether the voice-style input
+ * shows, and what the runtime sends to OpenAI. */
+export function hasActivePersonalKey(state: SettingsState): boolean {
+  return state.hasUserOpenAiKey && !state.sessionPreferSharedKey;
+}
+
+/** Back-compat alias — older callers used readingVoicesUnlocked(). */
+export const readingVoicesUnlocked = hasActivePersonalKey;
+
+/** Reading-voice allowlist when locked (shared server key). Echo because
+ * it's the canonical reading voice; browser for offline / API-free. */
+const ALLOWED_READING_VOICES_SHARED: VoiceId[] = ['echo', 'browser'];
+
+/** Assistant-voice allowlist when locked. Browser only — assistant chat
+ * TTS via tts.speak is unbounded so we keep it free. */
+const ALLOWED_ASSISTANT_VOICES_SHARED: VoiceId[] = ['browser'];
+
+/** Pick the reading voice to use for an actual playback request. Returns
+ * the stored value when unrestricted; otherwise force-resets the store to
+ * 'echo' (per the user's preference: prune stale non-allowed values) and
+ * returns 'echo'. Safe to call from outside React. */
+export function effectiveReadingVoice(): VoiceId {
+  const s = useSettingsStore.getState();
+  if (hasActivePersonalKey(s)) return s.voice;
+  if (ALLOWED_READING_VOICES_SHARED.includes(s.voice)) return s.voice;
+  useSettingsStore.setState({ voice: 'echo' });
+  return 'echo';
+}
+
+/** Counterpart for the assistant chat-reply voice. Force-resets to
+ * 'browser' when locked, matching the picker's allowlist. */
+export function effectiveAssistantVoice(): VoiceId {
+  const s = useSettingsStore.getState();
+  if (hasActivePersonalKey(s)) return s.assistantVoice;
+  if (ALLOWED_ASSISTANT_VOICES_SHARED.includes(s.assistantVoice)) return s.assistantVoice;
+  useSettingsStore.setState({ assistantVoice: 'browser' });
+  return 'browser';
+}
+
+/** Voice-style is paid (OpenAI-only); we keep the stored value (typed
+ * text is annoying to lose) but suppress it at runtime when locked so
+ * nothing leaks into tts / tts.speak requests on the shared key. */
+export function effectiveVoiceStyle(): string {
+  const s = useSettingsStore.getState();
+  return hasActivePersonalKey(s) ? s.voiceStyle : '';
+}
 
 const DEFAULT_AMBIENT: AmbientSettings = {
   enabled: false,
@@ -80,7 +139,10 @@ export const useSettingsStore = create<SettingsState>()(
         translation: defaultTranslationFor(initialLocale),
         voice: 'echo',
         voiceStyle: '',
-        assistantVoice: 'echo',
+        // Defaults to 'browser' so fresh users on the shared key don't pay
+        // for tts.speak. They can switch to an OpenAI voice once they
+        // supply their own key.
+        assistantVoice: 'browser',
         speakAssistant: true,
         useWhisperFallback: true,
         translationOverridden: false,
@@ -95,6 +157,9 @@ export const useSettingsStore = create<SettingsState>()(
         pauseBetweenVersesMs: 0,
         pauseBetweenChaptersMs: 0,
         autoPlayReading: false,
+        hasUserOpenAiKey: false,
+        userOpenAiKeyMasked: null,
+        sessionPreferSharedKey: false,
         setLocale: (locale) =>
           set((s) => ({
             locale,
@@ -125,11 +190,25 @@ export const useSettingsStore = create<SettingsState>()(
         setPauseBetweenChaptersMs: (v) =>
           set({ pauseBetweenChaptersMs: Math.max(0, Math.min(10000, Math.round(v))) }),
         setAutoPlayReading: (autoPlayReading) => set({ autoPlayReading }),
+        setUserOpenAiKeyStatus: (hasKey, masked) =>
+          set({ hasUserOpenAiKey: hasKey, userOpenAiKeyMasked: masked }),
+        setSessionPreferSharedKey: (sessionPreferSharedKey) =>
+          set({ sessionPreferSharedKey }),
       };
     },
     {
       name: 'ba.settings',
       version: 8,
+      // Don't persist server-derived state — hydrate fresh on every boot.
+      // Otherwise an older "hasUserOpenAiKey: true" could outlive a key the
+      // server has since cleared.
+      partialize: (state) => {
+        const { hasUserOpenAiKey, userOpenAiKeyMasked, sessionPreferSharedKey, ...rest } = state;
+        void hasUserOpenAiKey;
+        void userOpenAiKeyMasked;
+        void sessionPreferSharedKey;
+        return rest as SettingsState;
+      },
       migrate: (persisted, version) => {
         let prev = (persisted as Partial<SettingsState>) ?? {};
         if (version < 2) {

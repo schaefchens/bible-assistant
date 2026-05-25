@@ -172,6 +172,17 @@
     "voiceStyleHint": "e.g. \"calm, reverent\" or \"warm storyteller\"",
     "browserVoice": "Browser (system voice)",
     "browserVoiceHint": "Uses your device's built-in speech engine — works offline and saves API credits. Word-level highlighting and voice style are unavailable.",
+    "readingVoiceRestricted": "Add your own OpenAI key to unlock all reading voices.",
+    "openaiKey": {
+      "title": "OpenAI API key",
+      "hint": "Optional — paste your own key to use all voices and pay for chat, voice, and transcription on your own account.",
+      "save": "Save",
+      "saving": "Validating…",
+      "remove": "Remove key",
+      "invalid": "Could not validate this key.",
+      "usingSharedThisSession": "Your key failed earlier — using the shared key for this session.",
+      "retryWithMine": "Try my key again"
+    },
     "assistantVoice": "Assistant voice",
     "assistantVoiceHint": "A distinct voice for the assistant's spoken replies (separate from the Bible reading voice).",
     "speakAssistant": "Speak assistant replies automatically",
@@ -254,6 +265,12 @@
     "online": "Online",
     "offline": "Offline",
     "pending": "{{count}} pending"
+  },
+  "keyFailure": {
+    "title": "Your OpenAI key was rejected.",
+    "hint": "Continue with the shared key for this session? Reading voice will fall back to the default (Echo).",
+    "useShared": "Use shared key",
+    "dismiss": "Not now"
   },
   "playbackSheet": {
     "title": "Playback",
