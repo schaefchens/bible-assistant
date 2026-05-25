@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useChatStore } from '@/store/chatStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useUpdateStore, applyUpdate } from '@/lib/pwaUpdate';
+import { cancelAllActivity } from '@/hooks/useCommandPipeline';
 import { MessageActionsMenu, type MessageActionItem } from './MessageActionsMenu';
 
 export function ChatHeader() {
@@ -19,7 +20,12 @@ export function ChatHeader() {
       label: t('chat.clear'),
       destructive: true,
       onClick: () => {
-        if (window.confirm(t('chat.clearConfirm'))) clear();
+        if (window.confirm(t('chat.clearConfirm'))) {
+          // Halt any in-flight chat/TTS/playback before wiping history;
+          // otherwise reading + music keep going against an empty chat.
+          cancelAllActivity();
+          clear();
+        }
       },
     },
   ];

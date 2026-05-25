@@ -568,23 +568,31 @@ export function playbackStatePrompt(currentTrackTitle: string | null): string {
   const loop = audioPlayback.isLoopCurrent();
   const ambientPlaying = audioPlayback.ambient.isPlaying();
 
+  // Field names below intentionally match the tool argument names exactly so
+  // the model can translate a snapshot value into a tool call without
+  // guessing — e.g. `repeat: true` here → `set_reader_preferences({ repeat: false })`.
   const lines = [
-    'Current playback settings (use these to interpret relative requests):',
-    `- music.enabled: ${s.ambient.enabled}`,
-    `- music.track: ${s.ambient.trackId ?? '(none selected)'}${currentTrackTitle ? ` (${currentTrackTitle})` : ''}`,
-    `- music.playingNow: ${ambientPlaying}`,
-    `- music.volume: ${s.ambient.volume.toFixed(2)} (0–1)`,
-    `- speech.volume: ${s.speechVolume.toFixed(2)} (0–1)`,
-    `- playback.rate: ${rate.toFixed(2)}`,
-    `- repeatCurrentVerse: ${loop}`,
-    `- autoPlayReading: ${s.autoPlayReading}`,
-    `- autoScrollReader: ${s.autoScrollReader}`,
-    `- readChapterHeadings: ${s.readChapterHeadings}`,
-    `- readVerseNumbers: ${s.readVerseNumbers}`,
-    `- verseNumberStyle: ${s.verseNumberStyle}`,
-    `- pauseBetweenVersesMs: ${s.pauseBetweenVersesMs}`,
-    `- pauseBetweenChaptersMs: ${s.pauseBetweenChaptersMs}`,
-    `- micCorner: ${s.micCorner}`,
+    'Current playback settings (use these to interpret relative requests, and pick the inverse for "turn off"/"stop"). Field names match tool argument names.',
+    `set_music:`,
+    `  enabled: ${s.ambient.enabled}`,
+    `  track: ${s.ambient.trackId ?? '(none selected)'}${currentTrackTitle ? ` — "${currentTrackTitle}"` : ''}`,
+    `  musicVolume: ${s.ambient.volume.toFixed(2)}`,
+    `  speechVolume: ${s.speechVolume.toFixed(2)}`,
+    `  (musicPlayingNow: ${ambientPlaying} — informational, not a tool arg)`,
+    `set_playback_rate:`,
+    `  rate: ${rate.toFixed(2)}`,
+    `set_reader_preferences:`,
+    `  repeat: ${loop}`,
+    `  autoPlay: ${s.autoPlayReading}`,
+    `  autoScroll: ${s.autoScrollReader}`,
+    `set_announcements:`,
+    `  readChapterHeadings: ${s.readChapterHeadings}`,
+    `  readVerseNumbers: ${s.readVerseNumbers}`,
+    `  verseNumberStyle: ${s.verseNumberStyle}`,
+    `  pauseBetweenVersesMs: ${s.pauseBetweenVersesMs}`,
+    `  pauseBetweenChaptersMs: ${s.pauseBetweenChaptersMs}`,
+    `set_mic_position:`,
+    `  corner: ${s.micCorner}`,
   ];
   return lines.join('\n');
 }

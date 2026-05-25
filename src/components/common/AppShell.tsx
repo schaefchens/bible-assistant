@@ -27,6 +27,14 @@ export function AppShell() {
   const ambientEnabled = useSettingsStore((s) => s.ambient.enabled);
   const ambientTrackId = useSettingsStore((s) => s.ambient.trackId);
 
+  // Defensive: if an iOS PWA was suspended (not killed) the previous audio
+  // session can still be alive when we boot. Tear down all buses once at
+  // start so nothing keeps playing into a fresh session without a user
+  // gesture.
+  useEffect(() => {
+    audioPlayback.stop();
+  }, []);
+
   useEffect(() => {
     if (!hasPassphrase) return;
     void init();
