@@ -474,6 +474,24 @@ function composeSpeakInstructions(string $language, string $voiceStyle): string 
     return $voiceStyle !== '' ? "$hint $voiceStyle" : $hint;
 }
 
+/** Hash of the inputs that determine TTS audio output. Stored alongside
+ * the alignment so a cached mp3 can be detected as stale when the source
+ * text (or voiceStyle) changes — e.g. after the bolls-to-XML migration
+ * cleaned up inline footnote refs like "[16]" that had been baked into
+ * the audio. Voice/translation/bookId/chapter/verse are already part of
+ * the cache path so they don't need to be in the hash. */
+function sha256ForCache(string $text, string $voiceStyle): string {
+    return hash('sha256', $voiceStyle . "\x00" . $text);
+}
+
+function cachedAlignmentMatches(string $alignmentFile, string $expectedHash): bool {
+    $raw = @file_get_contents($alignmentFile);
+    if ($raw === false || $raw === '') return false;
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) return false;
+    return isset($decoded['sourceTextHash']) && $decoded['sourceTextHash'] === $expectedHash;
+}
+
 function handleTts(array $ctx): void {
     $body = readJsonBody();
     $text = safeString($body['text'] ?? '');
@@ -493,7 +511,14 @@ function handleTts(array $ctx): void {
     $audioFile = "{$dir}/{$verse}.mp3";
     $alignmentFile = "{$dir}/{$verse}.json";
 
-    $cached = file_exists($audioFile) && file_exists($alignmentFile);
+    // Treat audio as stale when its sourceTextHash doesn't match the current
+    // text. Pre-migration audio (bolls.life pipeline) sometimes baked inline
+    // footnote refs like "16" / "17" into the mp3 because textTts hadn't been
+    // stripped yet — without this check those keep playing forever.
+    $expectedHash = sha256ForCache($text, $voiceStyle);
+    $cached = file_exists($audioFile)
+        && file_exists($alignmentFile)
+        && cachedAlignmentMatches($alignmentFile, $expectedHash);
     if (!$cached) {
         $ttsPayload = [
             'model' => TTS_MODEL,
@@ -524,12 +549,16 @@ function handleTts(array $ctx): void {
         );
         if (($align['_status'] ?? 0) !== 200) {
             // We still have the audio; write empty alignment so client falls back gracefully.
-            file_put_contents($alignmentFile, json_encode(['words' => []]));
+            file_put_contents($alignmentFile, json_encode([
+                'words' => [],
+                'sourceTextHash' => $expectedHash,
+            ]));
         } else {
             $alignmentBody = [
                 'words' => $align['words'] ?? [],
                 'duration' => $align['duration'] ?? null,
                 'text' => $align['text'] ?? null,
+                'sourceTextHash' => $expectedHash,
             ];
             file_put_contents($alignmentFile, json_encode($alignmentBody, JSON_UNESCAPED_UNICODE));
         }

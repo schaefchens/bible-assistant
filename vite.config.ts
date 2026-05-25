@@ -80,7 +80,12 @@ export default defineConfig({
             urlPattern: /\/storage\/audio\/.*\.(?:mp3|json)$/i,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'verse-audio',
+              // Bump the cache name to evict pre-XML-migration audio that
+              // baked inline footnote refs ("16", "17") into the mp3. The
+              // new server-side sha256ForCache() check keeps cache honest
+              // going forward; this name bump invalidates clients that
+              // already cached the broken takes.
+              cacheName: 'verse-audio-v2',
               expiration: {
                 maxEntries: 5000,
                 maxAgeSeconds: 60 * 60 * 24 * 365,
