@@ -1,6 +1,8 @@
 import type { ChatToolDefinition } from '@/services/api/chat';
 import type { Translation } from '@/services/bible/bibleApi';
 import type { OpenAiVoiceId } from '@/types/domain';
+import { useSettingsStore } from '@/store/settingsStore';
+import { audioPlayback } from '@/lib/audioPlaybackManager';
 
 export type ToolName =
   | 'read_verses'
@@ -549,6 +551,40 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
     `Cards = memorization cards with title, verses, notes. Boards = thematic groups of cards. Use the appropriate tools.`,
     `When the user says simply "continue reading", "read on", "next verses", "weiterlesen" or similar WITHOUT mentioning a ribbon/bookmark: call "read_verses" with the next slice. Look at your most recent "(Played aloud: …)" history notes to see what was just read and figure out the next verses yourself (continue in the same chapter if verses remain, otherwise start the next chapter).`,
     `Ribbons (bookmarks): there are five colored ribbons (gold, blue, red, green, purple). "save_ribbon" stores the current reading position; "continue_from_ribbon" resumes from a saved ribbon. ONLY call these tools when the user explicitly mentions "ribbon", "bookmark", "Lesezeichen", or names a color. Plain "continue reading" / "weiterlesen" is NOT a ribbon command. If no color is given, omit the color argument — save_ribbon defaults to "gold" and continue_from_ribbon automatically uses the single saved ribbon when there's exactly one.`,
-    `Playback settings are voice-controllable: "set_playback_rate" for tempo ("read faster", "slow down", "normal speed"), "set_music" for music on/off/track/volume ("music off", "play the forest track", "music louder"), "set_reader_preferences" for auto-play / auto-scroll / repeat-verse, "set_announcements" for chapter headings / verse numbers / pause durations, "set_mic_position" to move the mic to a corner. Only pass the fields the user actually mentioned — never invent defaults for fields they didn't talk about.`,
+    `Playback settings are voice-controllable: "set_playback_rate" for tempo ("read faster", "slow down", "normal speed"), "set_music" for music on/off/track/volume ("music off", "play the forest track", "music louder"), "set_reader_preferences" for auto-play / auto-scroll / repeat-verse, "set_announcements" for chapter headings / verse numbers / pause durations, "set_mic_position" to move the mic to a corner. Only pass the fields the user actually mentioned — never invent defaults for fields they didn't talk about. The current values are provided in the next system message; use them to compute relative changes ("a bit louder" = current + ~0.1, "much faster" = ~1.3) and DO NOT ask the user for fields you can derive (e.g. "turn music on" should reuse the already-selected track — only ask if no track is selected).`,
   ].join(' ');
+}
+
+/**
+ * A second system message that snapshots the current playback settings so the
+ * model can compute relative changes ("louder", "a bit faster") and avoid
+ * asking for fields it can derive ("turn music on" with a track already
+ * selected). Pass the resolved ambient track title (from getAmbientTracks's
+ * cache) when available so the model can refer to it by name.
+ */
+export function playbackStatePrompt(currentTrackTitle: string | null): string {
+  const s = useSettingsStore.getState();
+  const rate = audioPlayback.getPlaybackRate();
+  const loop = audioPlayback.isLoopCurrent();
+  const ambientPlaying = audioPlayback.ambient.isPlaying();
+
+  const lines = [
+    'Current playback settings (use these to interpret relative requests):',
+    `- music.enabled: ${s.ambient.enabled}`,
+    `- music.track: ${s.ambient.trackId ?? '(none selected)'}${currentTrackTitle ? ` (${currentTrackTitle})` : ''}`,
+    `- music.playingNow: ${ambientPlaying}`,
+    `- music.volume: ${s.ambient.volume.toFixed(2)} (0–1)`,
+    `- speech.volume: ${s.speechVolume.toFixed(2)} (0–1)`,
+    `- playback.rate: ${rate.toFixed(2)}`,
+    `- repeatCurrentVerse: ${loop}`,
+    `- autoPlayReading: ${s.autoPlayReading}`,
+    `- autoScrollReader: ${s.autoScrollReader}`,
+    `- readChapterHeadings: ${s.readChapterHeadings}`,
+    `- readVerseNumbers: ${s.readVerseNumbers}`,
+    `- verseNumberStyle: ${s.verseNumberStyle}`,
+    `- pauseBetweenVersesMs: ${s.pauseBetweenVersesMs}`,
+    `- pauseBetweenChaptersMs: ${s.pauseBetweenChaptersMs}`,
+    `- micCorner: ${s.micCorner}`,
+  ];
+  return lines.join('\n');
 }

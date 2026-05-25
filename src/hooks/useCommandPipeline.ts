@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { postChat, type ChatRequestMessage } from '@/services/api/chat';
 import { postTtsSpeak } from '@/services/api/tts';
-import { TOOL_DEFINITIONS, systemPrompt, type ToolName } from '@/services/ai/tools';
+import {
+  TOOL_DEFINITIONS,
+  playbackStatePrompt,
+  systemPrompt,
+  type ToolName,
+} from '@/services/ai/tools';
 import { dispatchTool } from '@/services/ai/dispatch';
 import { useChatStore } from '@/store/chatStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -9,6 +14,7 @@ import { useGlobalVoiceStore, type VoiceSource } from '@/store/globalVoiceStore'
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { browserTts } from '@/lib/browserTts';
 import { cancelAutoPlayPrefetch } from '@/lib/autoPlay';
+import { getAmbientTracks } from '@/services/api/ambient';
 import { getChapter, type Translation } from '@/services/bible/bibleApi';
 import { formatReference, getBookById } from '@/services/bible/bookCatalog';
 import { parseReference } from '@/services/bible/referenceParser';
@@ -138,10 +144,27 @@ export function useCommandPipeline() {
     useChatStore.getState().setProcessing(true);
     useChatStore.getState().setCurrentTool(null);
 
-    const { locale, translation } = useSettingsStore.getState();
+    const { locale, translation, ambient: ambientSettings } =
+      useSettingsStore.getState();
+
+    // Resolve the currently-selected ambient track's title from the cached
+    // track list so the model can refer to it by name in answers. If the
+    // cache isn't populated yet the await primes it for the next request;
+    // the snapshot just falls back to "(id only)" this turn.
+    let currentTrackTitle: string | null = null;
+    if (ambientSettings.trackId) {
+      try {
+        const tracks = await getAmbientTracks();
+        currentTrackTitle =
+          tracks.find((t) => t.id === ambientSettings.trackId)?.title ?? null;
+      } catch {
+        /* offline / list unavailable — fine, the trackId still goes in */
+      }
+    }
 
     const history: ChatRequestMessage[] = [
       { role: 'system', content: systemPrompt(locale, translation) },
+      { role: 'system', content: playbackStatePrompt(currentTrackTitle) },
       ...useChatStore
         .getState()
         .messages.filter(
