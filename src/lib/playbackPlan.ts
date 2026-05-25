@@ -43,6 +43,10 @@ export type PlaybackPlanOptions = {
   verseNumberStyle: VerseNumberStyle;
   pauseBetweenVersesMs: number;
   pauseBetweenChaptersMs: number;
+  /** When true, the run is a complete chapter read: heading announces
+   * just "Book, chapter N". When false (default), the heading includes
+   * the actual verse(s) being read so the listener knows the scope. */
+  wholeChapter?: boolean;
 };
 
 /** Spoken language for a Bible translation — drives both the announcement
@@ -76,9 +80,36 @@ function groupRuns(verses: VerseSummary[]): ChapterRun[] {
   return runs;
 }
 
-function headingTextFor(bookId: number, chapter: number, locale: Locale): string {
+type HeadingScope =
+  | { kind: 'chapter' }
+  | { kind: 'single'; verse: number }
+  | { kind: 'range'; from: number; to: number };
+
+function headingTextFor(
+  bookId: number,
+  chapter: number,
+  locale: Locale,
+  scope: HeadingScope,
+): string {
   const book = getBookById(bookId);
   const bookName = book ? (locale === 'de' ? book.nameDe : book.nameEn) : '';
+  if (scope.kind === 'single') {
+    return i18n.t('announce.chapterVerse', {
+      book: bookName,
+      n: chapter,
+      v: scope.verse,
+      lng: locale,
+    });
+  }
+  if (scope.kind === 'range') {
+    return i18n.t('announce.chapterRange', {
+      book: bookName,
+      n: chapter,
+      from: scope.from,
+      to: scope.to,
+      lng: locale,
+    });
+  }
   return i18n.t('announce.chapter', {
     book: bookName,
     n: chapter,
@@ -122,10 +153,20 @@ export function buildPlaybackPlan(
     const runLang = localeForTranslation(runTranslation);
 
     if (opts.readChapterHeadings) {
+      const firstVerse = run.items[0].verse.verse;
+      const lastVerse = run.items[run.items.length - 1].verse.verse;
+      let scope: HeadingScope;
+      if (opts.wholeChapter) {
+        scope = { kind: 'chapter' };
+      } else if (run.items.length === 1) {
+        scope = { kind: 'single', verse: firstVerse };
+      } else {
+        scope = { kind: 'range', from: firstVerse, to: lastVerse };
+      }
       plan.push({
         kind: 'heading',
         verseIndex: run.items[0].verseIndex,
-        text: headingTextFor(run.bookId, run.chapter, runLang),
+        text: headingTextFor(run.bookId, run.chapter, runLang, scope),
         translation: runTranslation,
         // Brief breath after the announcement before the first verse.
         pauseAfterMs: opts.pauseBetweenVersesMs,

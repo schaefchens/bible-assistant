@@ -43,6 +43,7 @@ export async function startPlaybackForVerses(
   audioPlayback.ensureContext();
   startAmbientIfEnabled();
 
+  const msg = useChatStore.getState().messages.find((m) => m.id === messageId);
   const fullPlan = buildPlaybackPlan(verses, {
     locale: settings.locale,
     readChapterHeadings: settings.readChapterHeadings,
@@ -50,6 +51,7 @@ export async function startPlaybackForVerses(
     verseNumberStyle: settings.verseNumberStyle,
     pauseBetweenVersesMs: settings.pauseBetweenVersesMs,
     pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
+    wholeChapter: msg?.headingWholeChapter ?? false,
   });
   const plan = sliceFromVerseIndex(fullPlan, startIndex);
 
@@ -116,6 +118,7 @@ async function enqueueReadingForMessage(
   verses: VerseSummary[],
 ): Promise<void> {
   const settings = useSettingsStore.getState();
+  const msg = useChatStore.getState().messages.find((m) => m.id === messageId);
   const plan = buildPlaybackPlan(verses, {
     locale: settings.locale,
     readChapterHeadings: settings.readChapterHeadings,
@@ -123,6 +126,7 @@ async function enqueueReadingForMessage(
     verseNumberStyle: settings.verseNumberStyle,
     pauseBetweenVersesMs: settings.pauseBetweenVersesMs,
     pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
+    wholeChapter: msg?.headingWholeChapter ?? false,
   });
   if (isBrowserVoice(settings.voice)) {
     void browserTts.enqueue(planToBrowserItems(plan, messageId));

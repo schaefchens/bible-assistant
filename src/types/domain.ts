@@ -68,6 +68,10 @@ export type ChatMessage = {
    * even when the visible `text` is suppressed (e.g. after read actions).
    */
   historyNote?: string;
+  /** True when the original read request covered an entire chapter
+   * (no verse range). Drives the heading-announcement phrasing on
+   * tap-to-play. Defaults to false (treat as a specific verse range). */
+  headingWholeChapter?: boolean;
   createdAt: number;
 };
 

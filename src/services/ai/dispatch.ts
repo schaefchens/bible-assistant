@@ -126,6 +126,13 @@ async function handleReadVerses(
   }));
 
   useChatStore.getState().attachVerses(ctx.messageId, summaries);
+  // Whole-chapter when the reference had no verse range (e.g. "Galatians 5"
+  // rather than "Galatians 5:1-5"). Stored on the message so a later tap-
+  // to-play preserves the same heading style.
+  const wholeChapter = parsed.verseStart === undefined;
+  useChatStore
+    .getState()
+    .updateMessage(ctx.messageId, { headingWholeChapter: wholeChapter });
 
   if (autoplay && !ctx.signal?.aborted) {
     audioPlayback.ensureContext();
@@ -138,6 +145,7 @@ async function handleReadVerses(
       verseNumberStyle: settings.verseNumberStyle,
       pauseBetweenVersesMs: settings.pauseBetweenVersesMs,
       pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
+      wholeChapter,
     });
     if (isBrowserVoice(voice)) {
       if (!ctx.signal?.aborted) {

@@ -178,11 +178,25 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
           const book = getBookById(run.bookId);
           const lang = (i18n.language || 'en').startsWith('de') ? 'de' : 'en';
           const bookName = book ? (lang === 'de' ? book.nameDe : book.nameEn) : `Book ${run.bookId}`;
+          // Mirror the spoken-heading logic: when the request wasn't a
+          // whole chapter, surface the actual verse range in the header so
+          // the user can see at a glance what's being read.
+          const showVerseScope = message.headingWholeChapter === false;
+          const firstVerse = run.items[0]?.verse;
+          const lastVerse = run.items[run.items.length - 1]?.verse;
+          let headerLabel = `${bookName} ${run.chapter}`;
+          if (showVerseScope && firstVerse !== undefined && lastVerse !== undefined) {
+            const sep = lang === 'de' ? ',' : ':';
+            headerLabel =
+              firstVerse === lastVerse
+                ? `${bookName} ${run.chapter}${sep}${firstVerse}`
+                : `${bookName} ${run.chapter}${sep}${firstVerse}-${lastVerse}`;
+          }
           return (
             <div key={`${run.headerKey}-${ri}`} className={ri > 0 ? 'mt-4 pt-4 border-t border-gold/15' : ''}>
               <header className="flex items-baseline justify-between mb-2">
                 <h3 className="font-serif text-gold text-lg leading-tight">
-                  {bookName} {run.chapter}
+                  {headerLabel}
                 </h3>
                 <span className="text-[10px] uppercase tracking-wider text-gold-dim">
                   {run.translation}

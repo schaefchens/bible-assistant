@@ -5,6 +5,8 @@
   },
   "announce": {
     "chapter": "{{book}}, Kapitel {{n}}",
+    "chapterVerse": "{{book}}, Kapitel {{n}}, Vers {{v}}",
+    "chapterRange": "{{book}}, Kapitel {{n}}, Verse {{from}} bis {{to}}",
     "verse": "Vers {{n}}"
   },
   "nav": {

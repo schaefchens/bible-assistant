@@ -251,6 +251,10 @@ async function enqueueContinuationFor(
   }
   if (summaries.length === 0) return;
 
+  // Continuation is a whole chapter only when `cont.verseStart` is
+  // undefined (chapter mode in computeNextChunk).
+  const wholeChapter = cont.verseStart === undefined;
+
   // Create a fresh assistant message for this chunk.
   const newMessageId = crypto.randomUUID();
   useChatStore.getState().appendMessage({
@@ -259,6 +263,7 @@ async function enqueueContinuationFor(
     text: '',
     verses: summaries,
     historyNote: rangeHistoryNote(summaries, settings.locale),
+    headingWholeChapter: wholeChapter,
     createdAt: Date.now(),
   });
 
@@ -270,6 +275,7 @@ async function enqueueContinuationFor(
       verseNumberStyle: settings.verseNumberStyle,
       pauseBetweenVersesMs: settings.pauseBetweenVersesMs,
       pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
+      wholeChapter,
     });
     const items: BrowserTtsItem[] = planToBrowserItems(plan, newMessageId);
     void browserTts.enqueue(items);
@@ -291,6 +297,7 @@ async function enqueueContinuationFor(
       verseNumberStyle: settings.verseNumberStyle,
       pauseBetweenVersesMs: settings.pauseBetweenVersesMs,
       pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
+      wholeChapter,
     });
     tracks = await planToOpenAiTracks(
       plan,
@@ -337,6 +344,7 @@ async function schedulePrefetchFor(messageId: string): Promise<void> {
         verseNumberStyle: settings.verseNumberStyle,
         pauseBetweenVersesMs: settings.pauseBetweenVersesMs,
         pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
+        wholeChapter: next.cont.verseStart === undefined,
       });
       tracks = await planToOpenAiTracks(
         plan,
