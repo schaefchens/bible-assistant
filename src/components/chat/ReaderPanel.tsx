@@ -3,13 +3,11 @@ import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useChatStore } from '@/store/chatStore';
 import { usePlaybackStore } from '@/store/playbackStore';
-import { useSettingsStore } from '@/store/settingsStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { startReadingPlaylist } from '@/lib/startPlayback';
 import { useCommandPipeline, useContinueReading } from '@/hooks/useCommandPipeline';
 import { WordHighlighter } from '@/components/playback/WordHighlighter';
 import { getBookById } from '@/services/bible/bookCatalog';
-import { ReaderControls } from './ReaderControls';
 import { MessageActionsMenu, type MessageActionItem } from './MessageActionsMenu';
 import type { ChatMessage } from '@/types/domain';
 
@@ -19,61 +17,15 @@ type Props = {
   onSelect: () => void;
 };
 
-const RATE_CYCLE = [0.85, 1.0, 1.15, 1.3];
-
 export function ReaderPanel({ message, selected, onSelect }: Props) {
   const { t, i18n } = useTranslation();
-  const current = usePlaybackStore((s) => s.current);
-  const status = usePlaybackStore((s) => s.status);
   const isProcessing = useChatStore((s) => s.isProcessing);
   const highlightedId = useChatStore((s) => s.highlightedMessageId);
   const isHighlighted = highlightedId === message.id;
   const { send } = useCommandPipeline();
   const cont = useContinueReading(message, send);
 
-  const [rate, setRate] = useState(() => audioPlayback.getPlaybackRate());
-  const [repeat, setRepeat] = useState(() => audioPlayback.isLoopCurrent());
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
-  const ambientCfg = useSettingsStore((s) => s.ambient);
-  const ambientReady = ambientCfg.enabled && !!ambientCfg.trackId;
-  const ambientOn = usePlaybackStore((s) => s.ambientPlaying);
-  const autoScroll = useSettingsStore((s) => s.autoScrollReader);
-  const setAutoScroll = useSettingsStore((s) => s.setAutoScrollReader);
-  const autoPlay = useSettingsStore((s) => s.autoPlayReading);
-  const setAutoPlay = useSettingsStore((s) => s.setAutoPlayReading);
-
-  const isOurMessage = current?.messageId === message.id;
-  const isPlaying = isOurMessage && status === 'playing';
-  const isLoading = isOurMessage && status === 'loading';
-
-  const toggleAmbient = useCallback(() => {
-    if (audioPlayback.ambient.isPlaying()) {
-      audioPlayback.ambient.pause();
-    } else {
-      audioPlayback.ambient.play();
-    }
-  }, []);
-
-  const togglePlay = useCallback(() => {
-    if (isOurMessage && (status === 'playing' || status === 'paused')) {
-      audioPlayback.toggle();
-    } else if (message.verses?.length) {
-      void startReadingPlaylist(message.id, message.verses);
-    }
-  }, [isOurMessage, status, message.id, message.verses]);
-
-  const cycleRate = useCallback(() => {
-    const idx = RATE_CYCLE.indexOf(rate);
-    const next = RATE_CYCLE[(idx + 1) % RATE_CYCLE.length] ?? 1;
-    audioPlayback.setPlaybackRate(next);
-    setRate(next);
-  }, [rate]);
-
-  const toggleRepeat = useCallback(() => {
-    const next = !repeat;
-    audioPlayback.setLoopCurrent(next);
-    setRepeat(next);
-  }, [repeat]);
 
   const handleWordTap = useCallback(
     (verseIdx: number, wordIdx: number) => {
@@ -85,14 +37,10 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
         playbackCurrent.verseIndex === verseIdx &&
         playbackCurrent.isVerse;
       if (onSameVerseTrack) {
-        // Already inside the verse track — just seek within its alignment.
         audioPlayback.seekToWord(wordIdx);
         return;
       }
       if (sameMessage) {
-        // Different verse, or an announcement is currently playing — jump
-        // to the verse track. goToVerseIndex maps versesArray index →
-        // queue index correctly even with heading / number tracks present.
         audioPlayback.goToVerseIndex(verseIdx, wordIdx);
         return;
       }
@@ -178,16 +126,11 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
           const book = getBookById(run.bookId);
           const lang = (i18n.language || 'en').startsWith('de') ? 'de' : 'en';
           const bookName = book ? (lang === 'de' ? book.nameDe : book.nameEn) : `Book ${run.bookId}`;
-          // Mirror the spoken-heading logic: when the request wasn't a
-          // whole chapter, surface the actual verse range in the header so
-          // the user can see at a glance what's being read. Non-contiguous
-          // selections are listed (e.g. "37+39" / "37, 39").
           const showVerseScope = message.headingWholeChapter === false;
           let headerLabel = `${bookName} ${run.chapter}`;
           if (showVerseScope && run.items.length > 0) {
             const chapterSep = lang === 'de' ? ',' : ':';
             const listSep = lang === 'de' ? '.' : ',';
-            // Collapse contiguous verses into compact ranges.
             const ranges: { start: number; end: number }[] = [];
             for (const v of run.items) {
               const last = ranges[ranges.length - 1];
@@ -202,15 +145,32 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
               .join(listSep);
             headerLabel = `${bookName} ${run.chapter}${chapterSep}${versePart}`;
           }
+          const isFirstRun = ri === 0;
           return (
             <div key={`${run.headerKey}-${ri}`} className={ri > 0 ? 'mt-4 pt-4 border-t border-gold/15' : ''}>
-              <header className="flex items-baseline justify-between mb-2">
+              <header className="flex items-baseline justify-between mb-2 gap-2">
                 <h3 className="font-serif text-gold text-lg leading-tight">
                   {headerLabel}
                 </h3>
-                <span className="text-[10px] uppercase tracking-wider text-gold-dim">
-                  {run.translation}
-                </span>
+                <div className="flex items-baseline gap-2 shrink-0">
+                  <span className="text-[10px] uppercase tracking-wider text-gold-dim">
+                    {run.translation}
+                  </span>
+                  {isFirstRun && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                        setMenuPos({ x: rect.left, y: rect.bottom + 4 });
+                      }}
+                      aria-label="More"
+                      className="text-cream-dim hover:text-cream transition-colors px-1 -mr-1"
+                    >
+                      <DotsIcon />
+                    </button>
+                  )}
+                </div>
               </header>
               <div className="font-serif text-cream/95 leading-7 space-y-1">
                 {run.items.map((v) => {
@@ -229,24 +189,6 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
             </div>
           );
         })}
-
-        <ReaderControls
-          isPlaying={isPlaying}
-          isLoading={isLoading}
-          rate={rate}
-          repeat={repeat}
-          autoScroll={autoScroll}
-          autoPlay={autoPlay}
-          ambientVisible={ambientReady && isOurMessage}
-          ambientOn={ambientOn}
-          onTogglePlay={togglePlay}
-          onCycleRate={cycleRate}
-          onToggleRepeat={toggleRepeat}
-          onToggleAutoScroll={() => setAutoScroll(!autoScroll)}
-          onToggleAutoPlay={() => setAutoPlay(!autoPlay)}
-          onToggleAmbient={toggleAmbient}
-          onMenu={(pos) => setMenuPos(pos)}
-        />
 
         {cont.canContinue && (
           <button
@@ -274,5 +216,15 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
         />
       )}
     </>
+  );
+}
+
+function DotsIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="5" cy="12" r="1.6" />
+      <circle cx="12" cy="12" r="1.6" />
+      <circle cx="19" cy="12" r="1.6" />
+    </svg>
   );
 }

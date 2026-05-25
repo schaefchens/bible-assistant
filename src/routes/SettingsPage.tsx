@@ -3,8 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSettingsStore, type MicCorner } from '@/store/settingsStore';
 import { VOICE_OPTIONS, type VoiceId } from '@/types/domain';
 import { getPassphrase } from '@/lib/passphrase';
-import { getAmbientTracks, type AmbientTrack } from '@/services/api/ambient';
-import { audioPlayback } from '@/lib/audioPlaybackManager';
+import { PlaybackSettingsForm } from '@/components/playback/PlaybackSettingsForm';
 import { factoryReset } from '@/lib/factoryReset';
 import {
   applyUpdate,
@@ -134,96 +133,7 @@ export function SettingsPage() {
         </label>
       </Section>
 
-      <Section title={t('settings.ambient.title')}>
-        <AmbientSettings />
-      </Section>
-
-      <Section title={t('settings.reading')}>
-        <label className="flex items-start gap-2">
-          <input
-            type="checkbox"
-            className="mt-0.5"
-            checked={settings.autoScrollReader}
-            onChange={(e) => settings.setAutoScrollReader(e.target.checked)}
-          />
-          <span className="text-sm">
-            {t('settings.autoScroll')}
-            <span className="block text-xs text-cream-dim mt-0.5">
-              {t('settings.autoScrollHint')}
-            </span>
-          </span>
-        </label>
-      </Section>
-
-      <Section title={t('settings.readingRhythm')}>
-        <div className="space-y-2">
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={settings.readChapterHeadings}
-              onChange={(e) => settings.setReadChapterHeadings(e.target.checked)}
-            />
-            <span className="text-sm">{t('settings.announceChapter')}</span>
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={settings.readVerseNumbers}
-              onChange={(e) => settings.setReadVerseNumbers(e.target.checked)}
-            />
-            <span className="text-sm">{t('settings.announceVerseNumber')}</span>
-          </label>
-          {settings.readVerseNumbers && (
-            <div className="pl-6">
-              <SegmentedControl
-                value={settings.verseNumberStyle}
-                cols={2}
-                options={[
-                  {
-                    value: 'spoken',
-                    label: t('settings.verseStyleSpoken'),
-                    title: t('settings.verseStyleSpokenHint') as string,
-                  },
-                  {
-                    value: 'plain',
-                    label: t('settings.verseStylePlain'),
-                    title: t('settings.verseStylePlainHint') as string,
-                  },
-                ]}
-                onChange={(v) =>
-                  settings.setVerseNumberStyle(v as 'spoken' | 'plain')
-                }
-              />
-            </div>
-          )}
-          <MsSlider
-            label={t('settings.pauseBetweenVerses')}
-            value={settings.pauseBetweenVersesMs}
-            max={3000}
-            onChange={(v) => settings.setPauseBetweenVersesMs(v)}
-          />
-          <MsSlider
-            label={t('settings.pauseBetweenChapters')}
-            value={settings.pauseBetweenChaptersMs}
-            max={6000}
-            onChange={(v) => settings.setPauseBetweenChaptersMs(v)}
-          />
-          <label className="flex items-start gap-2 pt-1">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={settings.autoPlayReading}
-              onChange={(e) => settings.setAutoPlayReading(e.target.checked)}
-            />
-            <span className="text-sm">
-              {t('settings.autoPlay')}
-              <span className="block text-xs text-cream-dim mt-0.5">
-                {t('settings.autoPlayHint')}
-              </span>
-            </span>
-          </label>
-        </div>
-      </Section>
+      <PlaybackSettingsForm />
 
       <Section title={t('settings.identity')}>
         <p className="text-xs text-cream-dim mb-2">{t('settings.identityHint')}</p>
@@ -414,38 +324,6 @@ function DangerZone() {
   );
 }
 
-function MsSlider({
-  label,
-  value,
-  max,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  max: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div>
-      <label className="flex items-center justify-between text-xs text-cream-dim mb-1">
-        <span>{label}</span>
-        <span className="font-mono tabular-nums">
-          {(value / 1000).toFixed(1)}s
-        </span>
-      </label>
-      <input
-        type="range"
-        min={0}
-        max={max}
-        step={100}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-gold"
-      />
-    </div>
-  );
-}
-
 function VoiceSelect({
   value,
   onChange,
@@ -509,146 +387,6 @@ function MicCornerPicker({
           {c.label}
         </button>
       ))}
-    </div>
-  );
-}
-
-function AmbientSettings() {
-  const { t } = useTranslation();
-  const ambient = useSettingsStore((s) => s.ambient);
-  const setAmbient = useSettingsStore((s) => s.setAmbient);
-  const speechVolume = useSettingsStore((s) => s.speechVolume);
-  const [tracks, setTracks] = useState<AmbientTrack[] | null>(null);
-  const [loadError, setLoadError] = useState(false);
-  const [previewing, setPreviewing] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    getAmbientTracks()
-      .then((list) => {
-        if (alive) setTracks(list);
-      })
-      .catch(() => {
-        if (alive) {
-          setTracks([]);
-          setLoadError(true);
-        }
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  const selectedTrack = tracks?.find((t) => t.id === ambient.trackId) ?? null;
-
-  const onPreview = async () => {
-    if (!selectedTrack) return;
-    audioPlayback.ensureContext();
-    try {
-      await audioPlayback.ambient.load(selectedTrack.url);
-      audioPlayback.ambient.play();
-      setPreviewing(true);
-    } catch (e) {
-      console.warn('ambient preview failed', e);
-    }
-  };
-
-  const onStopPreview = () => {
-    audioPlayback.ambient.pause();
-    setPreviewing(false);
-  };
-
-  return (
-    <div className="space-y-3">
-      <p className="text-xs text-cream-dim">{t('settings.ambient.hint')}</p>
-
-      <label className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          checked={ambient.enabled}
-          onChange={(e) => setAmbient({ enabled: e.target.checked })}
-        />
-        <span className="text-sm">{t('settings.ambient.enabled')}</span>
-      </label>
-
-      <div>
-        <label className="block text-xs text-cream-dim mb-1">
-          {t('settings.ambient.track')}
-        </label>
-        <div className="flex gap-2">
-          <select
-            value={ambient.trackId ?? ''}
-            onChange={(e) => setAmbient({ trackId: e.target.value || null })}
-            disabled={tracks === null}
-            className="flex-1 bg-navy-soft text-cream rounded-xl px-3 py-2 disabled:opacity-50"
-          >
-            <option value="">
-              {tracks === null
-                ? t('settings.ambient.loading')
-                : tracks.length === 0
-                  ? t('settings.ambient.noneAvailable')
-                  : t('settings.ambient.none')}
-            </option>
-            {tracks?.map((tr) => (
-              <option key={tr.id} value={tr.id}>
-                {tr.title}
-              </option>
-            ))}
-          </select>
-          {selectedTrack && (
-            <button
-              type="button"
-              onClick={previewing ? onStopPreview : onPreview}
-              className="btn-ghost h-auto px-3 text-xs whitespace-nowrap"
-            >
-              {previewing ? t('settings.ambient.stop') : t('settings.ambient.preview')}
-            </button>
-          )}
-        </div>
-        {loadError && (
-          <p className="mt-1 text-xs text-coral">{t('chat.errorGeneric')}</p>
-        )}
-      </div>
-
-      <VolumeSlider
-        label={t('settings.ambient.musicVolume')}
-        value={ambient.volume}
-        onChange={(v) => audioPlayback.ambient.setVolume(v)}
-      />
-
-      <VolumeSlider
-        label={t('settings.ambient.speechVolume')}
-        value={speechVolume}
-        onChange={(v) => audioPlayback.speech.setVolume(v)}
-      />
-    </div>
-  );
-}
-
-function VolumeSlider({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div>
-      <label className="flex items-center justify-between text-xs text-cream-dim mb-1">
-        <span>{label}</span>
-        <span className="font-mono tabular-nums">{Math.round(value * 100)}%</span>
-      </label>
-      <input
-        type="range"
-        min={0}
-        max={1}
-        step={0.01}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-gold"
-      />
     </div>
   );
 }

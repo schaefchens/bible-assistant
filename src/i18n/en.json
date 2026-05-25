@@ -249,8 +249,14 @@
   "common": {
     "back": "Back",
     "cancel": "Cancel",
+    "close": "Close",
     "online": "Online",
     "offline": "Offline",
     "pending": "{{count}} pending"
+  },
+  "playbackSheet": {
+    "title": "Playback",
+    "readingTitle": "Reading",
+    "announcementsTitle": "Announcements"
   }
 }
