@@ -131,6 +131,16 @@ async function handleReadVerses(
     display: formatReference(parsed.bookId, parsed.chapter, v.verse, v.verse, locale),
   }));
 
+  // Capture how many verses the message ALREADY has so we can shift the
+  // plan's verseIndex into the final message.verses index space. Without
+  // this, a second read_verses call in the same turn would produce tracks
+  // whose verseIndex starts at 0, while the rendered verses array has the
+  // new batch at positions [existing..existing+N-1] — highlighting would
+  // point at the wrong verses.
+  const existingVerseCount =
+    useChatStore.getState().messages.find((m) => m.id === ctx.messageId)
+      ?.verses?.length ?? 0;
+
   useChatStore.getState().attachVerses(ctx.messageId, summaries);
   // Whole-chapter when the reference had no verse range (e.g. "Galatians 5"
   // rather than "Galatians 5:1-5"). Stored on the message so a later tap-
@@ -144,7 +154,7 @@ async function handleReadVerses(
     audioPlayback.ensureContext();
     startAmbientIfEnabled();
     const settings = useSettingsStore.getState();
-    const plan = buildPlaybackPlan(summaries, {
+    const rawPlan = buildPlaybackPlan(summaries, {
       locale,
       readChapterHeadings: settings.readChapterHeadings,
       readVerseNumbers: settings.readVerseNumbers,
@@ -153,6 +163,13 @@ async function handleReadVerses(
       pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
       wholeChapter,
     });
+    const plan =
+      existingVerseCount === 0
+        ? rawPlan
+        : rawPlan.map((it) => ({
+            ...it,
+            verseIndex: it.verseIndex + existingVerseCount,
+          }));
     if (isBrowserVoice(voice)) {
       if (!ctx.signal?.aborted) {
         void browserTts.enqueue(planToBrowserItems(plan, ctx.messageId));
