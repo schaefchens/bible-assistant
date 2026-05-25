@@ -26,7 +26,6 @@ export function getMicAnchor(opts: {
   corner: MicCorner | undefined;
   route: string;
   composerHeight: number;
-  playbackBarHeight?: number;
 }): AnchorStyle {
   const corner: MicCorner = opts.corner ?? 'br';
   const top = PAD + safeAreaInset('top');
@@ -36,9 +35,9 @@ export function getMicAnchor(opts: {
   const right = PAD + safeAreaInset('right');
 
   // On the chat route, the composer also lives above the nav. Lift bottom corners
-  // above it so the floating mic doesn't cover the send button.
+  // above it so floaters don't cover the send button.
   if (opts.route === '/' && (corner === 'br' || corner === 'bl')) {
-    bottom += opts.composerHeight + (opts.playbackBarHeight ?? 0) + 4;
+    bottom += opts.composerHeight + 4;
   }
 
   switch (corner) {
@@ -51,6 +50,15 @@ export function getMicAnchor(opts: {
     case 'br':
     default:
       return { position: 'fixed', bottom, right };
+  }
+}
+
+export function oppositeCorner(c: MicCorner): MicCorner {
+  switch (c) {
+    case 'tl': return 'tr';
+    case 'tr': return 'tl';
+    case 'bl': return 'br';
+    case 'br': return 'bl';
   }
 }
 

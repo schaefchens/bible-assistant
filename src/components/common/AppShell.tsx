@@ -9,6 +9,7 @@ import { getPassphrase } from '@/lib/passphrase';
 import { PassphraseSetup } from '@/components/onboarding/PassphraseSetup';
 import { GlobalMicButton } from '@/components/voice/GlobalMicButton';
 import { VoiceOverlay } from '@/components/voice/VoiceOverlay';
+import { FloatingPlaybackBar } from '@/components/playback/FloatingPlaybackBar';
 import { UpdateBanner } from '@/components/common/UpdateBanner';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
@@ -85,6 +86,7 @@ export function AppShell() {
       </nav>
 
       <GlobalMicButton />
+      <FloatingPlaybackBar />
       <VoiceOverlay />
     </div>
   );

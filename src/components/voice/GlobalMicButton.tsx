@@ -13,7 +13,6 @@ export function GlobalMicButton() {
   const location = useLocation();
   const corner = useSettingsStore((s) => s.micCorner);
   const composerHeight = useUiLayoutStore((s) => s.composerHeight);
-  const playbackBarHeight = useUiLayoutStore((s) => s.playbackBarHeight);
 
   const voice = useGlobalVoice();
   const { state: dragState, bindings } = useMicDrag();
@@ -24,7 +23,6 @@ export function GlobalMicButton() {
     corner,
     route: location.pathname,
     composerHeight,
-    playbackBarHeight,
   });
 
   const dragStyle: React.CSSProperties =

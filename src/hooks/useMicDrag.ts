@@ -18,8 +18,16 @@ type Bindings = {
   consumeClickIfDragged: () => boolean;
 };
 
-export function useMicDrag(): { state: DragState; bindings: Bindings } {
-  const setMicCorner = useSettingsStore((s) => s.setMicCorner);
+/**
+ * Generic long-press-to-drag-into-corner hook used by both the mic and the
+ * playback bar. The caller provides what to do with the dropped corner (the
+ * mic writes `setMicCorner` directly; the bar writes `oppositeCorner` of the
+ * drop so the two stay in opposing slots).
+ */
+export function useCornerDrag(onDrop: (corner: MicCorner) => void): {
+  state: DragState;
+  bindings: Bindings;
+} {
   const [state, setState] = useState<DragState>({
     dragging: false,
     ghost: null,
@@ -40,7 +48,6 @@ export function useMicDrag(): { state: DragState; bindings: Bindings } {
     setState({ dragging: false, ghost: null, activeCorner: null });
   }, []);
 
-  // Global pointermove/up listeners only attach while a drag is active.
   useEffect(() => {
     if (!state.dragging) return;
     const onMove = (e: PointerEvent) => {
@@ -58,7 +65,7 @@ export function useMicDrag(): { state: DragState; bindings: Bindings } {
         width: window.innerWidth,
         height: window.innerHeight,
       });
-      setMicCorner(corner);
+      onDrop(corner);
       if (navigator.vibrate) navigator.vibrate(8);
       draggedThisCycleRef.current = true;
       cleanup();
@@ -72,13 +79,12 @@ export function useMicDrag(): { state: DragState; bindings: Bindings } {
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
     };
-  }, [state.dragging, setMicCorner, cleanup]);
+  }, [state.dragging, onDrop, cleanup]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     startRef.current = { x: e.clientX, y: e.clientY };
     draggedThisCycleRef.current = false;
-    // Pre-drag move-tolerance guard while we wait for the long-press timer.
     const onPreMove = (ev: PointerEvent) => {
       if (!startRef.current) return;
       const dx = ev.clientX - startRef.current.x;
@@ -133,4 +139,10 @@ export function useMicDrag(): { state: DragState; bindings: Bindings } {
   }, []);
 
   return { state, bindings: { onPointerDown, onContextMenu, consumeClickIfDragged } };
+}
+
+/** Thin wrapper kept for the existing mic caller — writes directly to `setMicCorner`. */
+export function useMicDrag() {
+  const setMicCorner = useSettingsStore((s) => s.setMicCorner);
+  return useCornerDrag(setMicCorner);
 }

@@ -7,7 +7,6 @@ import { SuggestionChips } from '@/components/chat/SuggestionChips';
 import { RibbonBar } from '@/components/chat/RibbonBar';
 import { ScrollToBottomFab } from '@/components/chat/ScrollToBottomFab';
 import { AutoScrollFab } from '@/components/chat/AutoScrollFab';
-import { FloatingPlaybackBar } from '@/components/playback/FloatingPlaybackBar';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 
 export function ChatPage() {
@@ -29,7 +28,6 @@ export function ChatPage() {
         <AutoScrollFab />
         <ScrollToBottomFab scrollRef={scrollRef} />
       </div>
-      <FloatingPlaybackBar />
       <ComposerBar />
     </div>
   );
