@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '@/store/settingsStore';
-import { usePlaybackStore } from '@/store/playbackStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { RATE_CYCLE } from '@/hooks/usePlaybackTransport';
 import { getAmbientTracks, type AmbientTrack } from '@/services/api/ambient';
@@ -161,15 +160,10 @@ function ReadingSettings() {
   const autoPlay = useSettingsStore((s) => s.autoPlayReading);
   const setAutoPlay = useSettingsStore((s) => s.setAutoPlayReading);
 
-  const playbackTick = usePlaybackStore((s) => s.current);
+  // Local mirrors of engine state — initialized on mount and kept in sync via
+  // the click handlers below (this form is the only writer for rate/repeat).
   const [rate, setRate] = useState(() => audioPlayback.getPlaybackRate());
   const [repeat, setRepeat] = useState(() => audioPlayback.isLoopCurrent());
-  // Re-sync local mirrors whenever a new track loads — playback manager may have
-  // adopted the persisted rate/loop already on its own.
-  useEffect(() => {
-    setRate(audioPlayback.getPlaybackRate());
-    setRepeat(audioPlayback.isLoopCurrent());
-  }, [playbackTick]);
 
   return (
     <div className="space-y-3">

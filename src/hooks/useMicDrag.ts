@@ -37,6 +37,13 @@ export function useCornerDrag(onDrop: (corner: MicCorner) => void): {
   const startRef = useRef<{ x: number; y: number } | null>(null);
   const draggingRef = useRef(false);
   const draggedThisCycleRef = useRef(false);
+  // Ref the callback so the pointer-listener effect never re-runs because of
+  // its identity (prevents a render → effect → setState loop when a caller
+  // passes an unstable callback).
+  const onDropRef = useRef(onDrop);
+  useEffect(() => {
+    onDropRef.current = onDrop;
+  }, [onDrop]);
 
   const cleanup = useCallback(() => {
     if (timerRef.current !== null) {
@@ -65,7 +72,7 @@ export function useCornerDrag(onDrop: (corner: MicCorner) => void): {
         width: window.innerWidth,
         height: window.innerHeight,
       });
-      onDrop(corner);
+      onDropRef.current(corner);
       if (navigator.vibrate) navigator.vibrate(8);
       draggedThisCycleRef.current = true;
       cleanup();
@@ -79,7 +86,7 @@ export function useCornerDrag(onDrop: (corner: MicCorner) => void): {
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
     };
-  }, [state.dragging, onDrop, cleanup]);
+  }, [state.dragging, cleanup]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
