@@ -11,6 +11,9 @@ export type BrowserTtsItem = {
   /** Wait this many ms before advancing to the next item. Music keeps
    * playing because ambient runs on a separate Web Audio bus. */
   pauseAfterMs?: number;
+  /** False for heading / verse-number announcements (so tap-to-seek can
+   * tell the difference). Defaults to true. */
+  isVerse?: boolean;
 };
 
 function isSupported(): boolean {
@@ -262,6 +265,7 @@ class BrowserTtsManager {
       position: 0,
       duration: 0,
       currentWordIndex: -1,
+      isVerse: item.isVerse !== false,
     });
     usePlaybackStore.getState().setStatus('playing');
   }

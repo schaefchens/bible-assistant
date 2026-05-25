@@ -12,6 +12,9 @@ export type CurrentTrack = {
   position: number;
   duration: number;
   currentWordIndex: number;
+  /** False while a heading or verse-number announcement is playing; tap-
+   * to-play uses this to decide whether seekToWord is meaningful. */
+  isVerse: boolean;
 };
 
 type PlaybackState = {

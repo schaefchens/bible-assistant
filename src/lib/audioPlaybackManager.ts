@@ -201,14 +201,21 @@ class AudioPlaybackManager {
     await this.playCurrent();
   }
 
-  /** Jump to a specific verse in the current queue, optionally at a word. */
+  /** Jump to a specific verse in the current queue, optionally at a word.
+   * `verseIdx` is the verse's position in `message.verses`, not the queue
+   * index — heading and verse-number announcement tracks sit between
+   * verse tracks, so we have to look up the actual verse track. */
   goToVerseIndex(verseIdx: number, wordIdx?: number): void {
-    if (verseIdx < 0 || verseIdx >= this.queue.length) return;
+    if (verseIdx < 0) return;
+    const queueIdx = this.queue.findIndex(
+      (t) => t.verseIndex === verseIdx && t.highlightVerse !== false,
+    );
+    if (queueIdx < 0) return;
     if (this.pauseTimer !== null) {
       clearTimeout(this.pauseTimer);
       this.pauseTimer = null;
     }
-    this.currentIndex = verseIdx;
+    this.currentIndex = queueIdx;
     if (wordIdx !== undefined) this.pendingSeekWord = wordIdx;
     void this.playCurrent();
   }
@@ -314,6 +321,7 @@ class AudioPlaybackManager {
       position: startOffset,
       duration: buffer.duration,
       currentWordIndex: startWordIdx,
+      isVerse: track.highlightVerse !== false,
     });
     usePlaybackStore.getState().setStatus('playing');
   }

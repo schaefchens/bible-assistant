@@ -147,6 +147,7 @@ export function planToBrowserItems(plan: PlanItem[], messageId: string): Browser
     text: itemText(it),
     translation: it.kind === 'verse' ? it.verse.translation : it.translation,
     pauseAfterMs: it.pauseAfterMs,
+    isVerse: it.kind === 'verse',
   }));
 }
 

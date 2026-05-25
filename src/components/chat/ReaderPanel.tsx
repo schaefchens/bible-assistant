@@ -79,14 +79,20 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
     (verseIdx: number, wordIdx: number) => {
       if (!message.verses?.length) return;
       const playbackCurrent = usePlaybackStore.getState().current;
-      if (
-        playbackCurrent?.messageId === message.id &&
-        playbackCurrent.verseIndex === verseIdx
-      ) {
+      const sameMessage = playbackCurrent?.messageId === message.id;
+      const onSameVerseTrack =
+        sameMessage &&
+        playbackCurrent.verseIndex === verseIdx &&
+        playbackCurrent.isVerse;
+      if (onSameVerseTrack) {
+        // Already inside the verse track — just seek within its alignment.
         audioPlayback.seekToWord(wordIdx);
         return;
       }
-      if (playbackCurrent?.messageId === message.id) {
+      if (sameMessage) {
+        // Different verse, or an announcement is currently playing — jump
+        // to the verse track. goToVerseIndex maps versesArray index →
+        // queue index correctly even with heading / number tracks present.
         audioPlayback.goToVerseIndex(verseIdx, wordIdx);
         return;
       }

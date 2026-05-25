@@ -50,6 +50,11 @@ type PrefetchCache = {
 let lastPlayedMessageId: string | null = null;
 let prefetched: PrefetchCache | null = null;
 let prefetchController: AbortController | null = null;
+/** The messageId we last started (or completed) a prefetch for. The
+ * playbackStore subscriber fires on every frame's currentWordIndex tick,
+ * so without this guard each tick would abort + restart the in-flight
+ * prefetch and it'd never finish. */
+let prefetchAnchorMessageId: string | null = null;
 let firingContinuation = false;
 
 function chunkKey(cont: Continuation, translation: Translation): string {
@@ -70,6 +75,7 @@ export function cancelAutoPlayPrefetch(): void {
     prefetchController = null;
   }
   prefetched = null;
+  prefetchAnchorMessageId = null;
 }
 
 /**
@@ -301,7 +307,12 @@ async function enqueueContinuationFor(
 
 async function schedulePrefetchFor(messageId: string): Promise<void> {
   if (!autoPlayOn()) return;
+  // Already prefetching for this anchor — let it finish.
+  if (prefetchAnchorMessageId === messageId && (prefetchController || prefetched)) {
+    return;
+  }
   cancelAutoPlayPrefetch();
+  prefetchAnchorMessageId = messageId;
   const controller = new AbortController();
   prefetchController = controller;
   try {
@@ -386,22 +397,14 @@ export function initAutoPlay(): void {
       void onSoftEnd(lastPlayedMessageId);
     }
 
-    // Prefetch trigger: when a new verse starts playing AND auto-play is
-    // on, ensure the next-chunk prefetch is current. This naturally
-    // re-runs whenever the messageId or last verse changes.
+    // Prefetch trigger: only when the playing message CHANGES. The
+    // subscribe callback fires on every per-frame currentWordIndex tick;
+    // anchoring on messageId means we kick off one prefetch per message
+    // and let it complete (rather than aborting + restarting 60×/sec).
     if (state.current && autoPlayOn() && state.current.messageId) {
       const msgId = state.current.messageId;
-      const msg = getMessage(msgId);
-      const last = msg?.verses?.[msg.verses.length - 1];
-      // Cache key check happens inside schedulePrefetchFor (it compares
-      // computed key to lastPrefetchKey) so we only call when the trailing
-      // state actually changes.
-      if (last) {
-        // Use a quick guard: schedule prefetch only when nothing is cached
-        // yet OR when the last verse moved past what we anchored on.
-        if (!prefetched) {
-          void schedulePrefetchFor(msgId);
-        }
+      if (msgId !== prefetchAnchorMessageId) {
+        void schedulePrefetchFor(msgId);
       }
     }
   });
