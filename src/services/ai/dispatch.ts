@@ -2,7 +2,13 @@ import type { ToolName, ToolArgs } from './tools';
 import { parseReference } from '@/services/bible/referenceParser';
 import { getVerses, getChapter, stripHtml } from '@/services/bible/bibleApi';
 import type { Translation } from '@/services/bible/bibleApi';
-import { BOOKS, findBookByName, formatReference, getBookById } from '@/services/bible/bookCatalog';
+import {
+  BOOKS,
+  findBookByName,
+  formatRangeList,
+  formatReference,
+  getBookById,
+} from '@/services/bible/bookCatalog';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useChatStore } from '@/store/chatStore';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
@@ -165,10 +171,17 @@ async function handleReadVerses(
     }
   }
 
+  // For the tool result we need the ACTUAL selection (including gaps),
+  // not just the first..last span — otherwise non-contiguous reads like
+  // "Matthew 22:37,39" would report back as "Matthew 22:37-39" and the
+  // model would think verse 38 was played.
+  const refString = parsed.verseRanges
+    ? formatRangeList(parsed.bookId, parsed.chapter, parsed.verseRanges, locale)
+    : formatReference(parsed.bookId, parsed.chapter, undefined, undefined, locale);
   return {
     ok: true,
     data: {
-      reference: formatReference(parsed.bookId, parsed.chapter, parsed.verseStart, parsed.verseEnd, locale),
+      reference: refString,
       count: summaries.length,
     },
   };

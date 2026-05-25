@@ -180,17 +180,27 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
           const bookName = book ? (lang === 'de' ? book.nameDe : book.nameEn) : `Book ${run.bookId}`;
           // Mirror the spoken-heading logic: when the request wasn't a
           // whole chapter, surface the actual verse range in the header so
-          // the user can see at a glance what's being read.
+          // the user can see at a glance what's being read. Non-contiguous
+          // selections are listed (e.g. "37+39" / "37, 39").
           const showVerseScope = message.headingWholeChapter === false;
-          const firstVerse = run.items[0]?.verse;
-          const lastVerse = run.items[run.items.length - 1]?.verse;
           let headerLabel = `${bookName} ${run.chapter}`;
-          if (showVerseScope && firstVerse !== undefined && lastVerse !== undefined) {
-            const sep = lang === 'de' ? ',' : ':';
-            headerLabel =
-              firstVerse === lastVerse
-                ? `${bookName} ${run.chapter}${sep}${firstVerse}`
-                : `${bookName} ${run.chapter}${sep}${firstVerse}-${lastVerse}`;
+          if (showVerseScope && run.items.length > 0) {
+            const chapterSep = lang === 'de' ? ',' : ':';
+            const listSep = lang === 'de' ? '.' : ',';
+            // Collapse contiguous verses into compact ranges.
+            const ranges: { start: number; end: number }[] = [];
+            for (const v of run.items) {
+              const last = ranges[ranges.length - 1];
+              if (last && v.verse === last.end + 1) {
+                last.end = v.verse;
+              } else {
+                ranges.push({ start: v.verse, end: v.verse });
+              }
+            }
+            const versePart = ranges
+              .map((r) => (r.start === r.end ? String(r.start) : `${r.start}-${r.end}`))
+              .join(listSep);
+            headerLabel = `${bookName} ${run.chapter}${chapterSep}${versePart}`;
           }
           return (
             <div key={`${run.headerKey}-${ri}`} className={ri > 0 ? 'mt-4 pt-4 border-t border-gold/15' : ''}>

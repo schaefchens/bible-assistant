@@ -122,3 +122,25 @@ export function formatReference(
   if (!verseEnd || verseEnd === verseStart) return `${name} ${chapter}:${verseStart}`;
   return `${name} ${chapter}:${verseStart}-${verseEnd}`;
 }
+
+/** Format a non-contiguous verse selection.
+ *   en: "Matthew 22:37,39,41-43"
+ *   de: "Matthäus 22,37.39.41-43"
+ */
+export function formatRangeList(
+  bookId: number,
+  chapter: number,
+  ranges: { start: number; end: number }[],
+  lang: 'en' | 'de' = 'en',
+): string {
+  const book = getBookById(bookId);
+  if (!book) return `?${bookId} ${chapter}`;
+  const name = lang === 'de' ? book.nameDe : book.nameEn;
+  if (ranges.length === 0) return `${name} ${chapter}`;
+  const chapterSep = lang === 'de' ? ',' : ':';
+  const listSep = lang === 'de' ? '.' : ',';
+  const versePart = ranges
+    .map((r) => (r.start === r.end ? String(r.start) : `${r.start}-${r.end}`))
+    .join(listSep);
+  return `${name} ${chapter}${chapterSep}${versePart}`;
+}

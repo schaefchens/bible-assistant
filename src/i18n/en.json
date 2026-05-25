@@ -7,6 +7,7 @@
     "chapter": "{{book}}, chapter {{n}}",
     "chapterVerse": "{{book}}, chapter {{n}}, verse {{v}}",
     "chapterRange": "{{book}}, chapter {{n}}, verses {{from}} to {{to}}",
+    "chapterList": "{{book}}, chapter {{n}}, verses {{verses}}",
     "verse": "Verse {{n}}"
   },
   "nav": {

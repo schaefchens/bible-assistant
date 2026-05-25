@@ -88,10 +88,10 @@ export async function getVerses(
   ref: ParsedReference,
 ): Promise<BollsVerse[]> {
   const chapter = await getChapter(translation, ref.bookId, ref.chapter);
-  if (ref.verseStart === undefined) return chapter;
-  const start = ref.verseStart;
-  const end = ref.verseEnd ?? ref.verseStart;
-  return chapter.filter((v) => v.verse >= start && v.verse <= end);
+  if (!ref.verseRanges || ref.verseRanges.length === 0) return chapter;
+  return chapter.filter((v) =>
+    ref.verseRanges!.some((r) => v.verse >= r.start && v.verse <= r.end),
+  );
 }
 
 export function stripHtml(text: string): string {

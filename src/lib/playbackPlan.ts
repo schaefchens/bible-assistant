@@ -83,7 +83,8 @@ function groupRuns(verses: VerseSummary[]): ChapterRun[] {
 type HeadingScope =
   | { kind: 'chapter' }
   | { kind: 'single'; verse: number }
-  | { kind: 'range'; from: number; to: number };
+  | { kind: 'range'; from: number; to: number }
+  | { kind: 'list'; verses: number[] };
 
 function headingTextFor(
   bookId: number,
@@ -107,6 +108,19 @@ function headingTextFor(
       n: chapter,
       from: scope.from,
       to: scope.to,
+      lng: locale,
+    });
+  }
+  if (scope.kind === 'list') {
+    const formatter = new Intl.ListFormat(locale, {
+      style: 'long',
+      type: 'conjunction',
+    });
+    const versesStr = formatter.format(scope.verses.map(String));
+    return i18n.t('announce.chapterList', {
+      book: bookName,
+      n: chapter,
+      verses: versesStr,
       lng: locale,
     });
   }
@@ -153,15 +167,26 @@ export function buildPlaybackPlan(
     const runLang = localeForTranslation(runTranslation);
 
     if (opts.readChapterHeadings) {
-      const firstVerse = run.items[0].verse.verse;
-      const lastVerse = run.items[run.items.length - 1].verse.verse;
+      const verses = run.items.map((it) => it.verse.verse);
+      const firstVerse = verses[0];
+      const lastVerse = verses[verses.length - 1];
+      // Contiguous iff every step is +1 from the previous.
+      let isContiguous = true;
+      for (let i = 1; i < verses.length; i++) {
+        if (verses[i] !== verses[i - 1] + 1) {
+          isContiguous = false;
+          break;
+        }
+      }
       let scope: HeadingScope;
       if (opts.wholeChapter) {
         scope = { kind: 'chapter' };
-      } else if (run.items.length === 1) {
+      } else if (verses.length === 1) {
         scope = { kind: 'single', verse: firstVerse };
-      } else {
+      } else if (isContiguous) {
         scope = { kind: 'range', from: firstVerse, to: lastVerse };
+      } else {
+        scope = { kind: 'list', verses };
       }
       plan.push({
         kind: 'heading',

@@ -70,7 +70,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
           reference: {
             type: 'string',
             description:
-              'Canonical reference like "Galatians 5:22", "Matthew 23:8-10", "Luke 15:11-32", or whole chapter "Matthew 1". Always use English book names with chapter:verse format.',
+              'Canonical reference. Use English book names and chapter:verse format. Examples: single verse "Galatians 5:22", verse range "Matthew 23:8-10", whole chapter "Matthew 1", non-contiguous verses "Matthew 22:37,39", or a mix "Matthew 22:37-39,42". When the user names specific separate verses (e.g. "verse 37 and 39", "Vers 37 und 39"), pass them as a comma-separated list — DO NOT widen to a range that includes verses they did not name.',
           },
           translation: {
             type: 'string',
