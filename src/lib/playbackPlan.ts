@@ -52,7 +52,9 @@ export type PlaybackPlanOptions = {
 /** Spoken language for a Bible translation — drives both the announcement
  * text (book name, "chapter X" / "Kapitel X") and the browser TTS voice. */
 export function localeForTranslation(t: Translation): Locale {
-  return t === 'S00' || t === 'LUT' || t === 'HFA' ? 'de' : 'en';
+  return t === 'S00' || t === 'LUT' || t === 'HFA' || t === 'S51' || t === 'ELB'
+    ? 'de'
+    : 'en';
 }
 
 type ChapterRun = {

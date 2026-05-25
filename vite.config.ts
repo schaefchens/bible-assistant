@@ -88,17 +88,6 @@ export default defineConfig({
               cacheableResponse: { statuses: [0, 200] },
             },
           },
-          {
-            urlPattern: /^https:\/\/bolls\.life\/(get-books|get-text)\//,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'bolls-life',
-              expiration: {
-                maxEntries: 500,
-                maxAgeSeconds: 60 * 60 * 24 * 30,
-              },
-            },
-          },
         ],
       },
     }),

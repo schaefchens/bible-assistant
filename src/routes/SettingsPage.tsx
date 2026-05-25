@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore, type MicCorner } from '@/store/settingsStore';
+import type { Translation } from '@/services/bible/bibleApi';
 import { VOICE_OPTIONS, type VoiceId } from '@/types/domain';
 import { getPassphrase } from '@/lib/passphrase';
 import { PlaybackSettingsForm } from '@/components/playback/PlaybackSettingsForm';
@@ -54,17 +55,26 @@ export function SettingsPage() {
               { value: 'KJV', label: 'KJV', title: 'King James Version' },
               { value: 'NKJV', label: 'NKJV', title: 'New King James Version' },
             ]}
-            onChange={(v) => settings.setTranslation(v as 'ESV' | 'KJV' | 'NKJV' | 'S00' | 'LUT' | 'HFA')}
+            onChange={(v) => settings.setTranslation(v as Translation)}
           />
           <SegmentedControl
             value={settings.translation}
             cols={3}
             options={[
               { value: 'S00', label: 'Schlachter', title: 'Schlachter 2000' },
-              { value: 'LUT', label: 'Luther', title: 'Luther' },
+              { value: 'LUT', label: 'Luther', title: 'Luther 1912' },
               { value: 'HFA', label: 'Hoffnung', title: 'Hoffnung für Alle' },
             ]}
-            onChange={(v) => settings.setTranslation(v as 'ESV' | 'KJV' | 'NKJV' | 'S00' | 'LUT' | 'HFA')}
+            onChange={(v) => settings.setTranslation(v as Translation)}
+          />
+          <SegmentedControl
+            value={settings.translation}
+            cols={2}
+            options={[
+              { value: 'S51', label: 'SCH 1951', title: 'Schlachter 1951 (mit Strong)' },
+              { value: 'ELB', label: 'Elberfelder', title: 'Elberfelder 1905 (mit Strong)' },
+            ]}
+            onChange={(v) => settings.setTranslation(v as Translation)}
           />
         </div>
       </Section>

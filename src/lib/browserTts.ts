@@ -22,7 +22,7 @@ function isSupported(): boolean {
 
 function langForTranslation(t: Translation | undefined, fallback: string): string {
   if (!t) return fallback;
-  if (t === 'S00' || t === 'LUT' || t === 'HFA') return 'de-DE';
+  if (t === 'S00' || t === 'LUT' || t === 'HFA' || t === 'S51' || t === 'ELB') return 'de-DE';
   return 'en-US';
 }
 

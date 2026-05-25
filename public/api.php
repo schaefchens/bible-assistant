@@ -74,9 +74,8 @@ const AUDIO_BASE_URL = '/storage/audio'; // joined with BASE_PATH below
 
 /**
  * Translation code -> Zefania XML filename under public/bibles/ (a.k.a.
- * dist/bibles/ on the deployed server). Translations not listed here fall
- * through to the bolls.life proxy in handleBibleChapter(). Drop the bolls
- * path when this map covers every code the client can ask for.
+ * dist/bibles/ on the deployed server). Any code not in this map is
+ * rejected by handleBibleChapter() with a 400.
  */
 const BIBLE_XML_MAP = [
     'S00'  => 's00.xml',
@@ -85,11 +84,13 @@ const BIBLE_XML_MAP = [
     'NKJV' => 'nkjv.xml',
     'LUT'  => 'lut.xml',
     'HFA'  => 'hfa.xml',
+    'S51'  => 's51.xml',
+    'ELB'  => 'elb.xml',
 ];
 
-/** Cache schema marker — old bolls-shaped entries (bare verse arrays) are
- * ignored on read so the new textTts field gets backfilled on next fetch. */
-const BIBLE_CACHE_FORMAT = 'xml-v1';
+/** Cache schema marker. Bump when the verse JSON shape changes so stale
+ * entries on disk get invalidated on next read. */
+const BIBLE_CACHE_FORMAT = 'xml-v2';
 
 const CHAT_MODEL_DEFAULT = 'gpt-4o-mini';
 const TTS_MODEL = 'gpt-4o-mini-tts';
@@ -383,7 +384,7 @@ function curlRawJson(string $url, string $payload): array {
  * voiceStyle is appended after the language hint.
  */
 function composeTtsInstructions(string $translation, string $voiceStyle): string {
-    static $germanTranslations = ['S00' => 1, 'LUT' => 1, 'HFA' => 1];
+    static $germanTranslations = ['S00' => 1, 'LUT' => 1, 'HFA' => 1, 'S51' => 1, 'ELB' => 1];
     $upper = strtoupper($translation);
     $hint = isset($germanTranslations[$upper])
         ? 'Read this Bible passage in clear, reverent German.'
@@ -542,10 +543,10 @@ function handleTtsSpeak(): void {
 }
 
 /**
- * Fetch a Bible chapter. Prefers the local Zefania XML when the translation is
- * mapped above; falls back to bolls.life otherwise. Both paths cache to
+ * Fetch a Bible chapter from the local Zefania XML, cached per chapter to
  * storage/bible/{translation}/{bookId}/{chapter}.json so repeat reads are
- * disk-only.
+ * disk-only. Translations must be registered in BIBLE_XML_MAP; unknown codes
+ * return 400.
  */
 function handleBibleChapter(): void {
     $body = readJsonBody();
@@ -556,6 +557,11 @@ function handleBibleChapter(): void {
         fail(400, 'missing bible.chapter params');
     }
 
+    $xmlSlug = BIBLE_XML_MAP[strtoupper($translation)] ?? null;
+    if ($xmlSlug === null) {
+        fail(400, 'unknown translation', ['translation' => $translation]);
+    }
+
     $dir = STORAGE_DIR . "/bible/{$translation}/{$bookId}";
     @mkdir($dir, 0775, true);
     $file = "{$dir}/{$chapter}.json";
@@ -564,8 +570,8 @@ function handleBibleChapter(): void {
         $raw = file_get_contents($file);
         if ($raw !== false && $raw !== '') {
             $cached = json_decode($raw, true);
-            // Modern cache entries are { format, verses }; old bolls entries
-            // are a bare verse array. Only the modern shape is reusable here.
+            // Cache uses { format, verses } so future schema bumps via
+            // BIBLE_CACHE_FORMAT invalidate stale entries automatically.
             if (is_array($cached) && ($cached['format'] ?? null) === BIBLE_CACHE_FORMAT) {
                 respond(200, ['verses' => $cached['verses'] ?? [], 'cached' => true]);
                 return;
@@ -573,53 +579,14 @@ function handleBibleChapter(): void {
         }
     }
 
-    $xmlSlug = BIBLE_XML_MAP[strtoupper($translation)] ?? null;
-    if ($xmlSlug !== null) {
-        $xmlPath = __DIR__ . '/bibles/' . $xmlSlug;
-        if (!is_readable($xmlPath)) {
-            fail(500, 'bible xml missing on server', ['translation' => $translation]);
-        }
-        $verses = parseZefaniaChapter($xmlPath, $bookId, $chapter);
-        if ($verses === null) {
-            fail(404, 'chapter not found in xml', ['translation' => $translation, 'bookId' => $bookId, 'chapter' => $chapter]);
-        }
-        file_put_contents($file, json_encode([
-            'format' => BIBLE_CACHE_FORMAT,
-            'verses' => $verses,
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-        respond(200, ['verses' => $verses, 'cached' => false]);
-        return;
+    $xmlPath = __DIR__ . '/bibles/' . $xmlSlug;
+    if (!is_readable($xmlPath)) {
+        fail(500, 'bible xml missing on server', ['translation' => $translation]);
     }
-
-    // Bolls.life fallback for any translation we haven't mapped to XML yet.
-    $url = "https://bolls.life/get-text/{$translation}/{$bookId}/{$chapter}/";
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 30,
-        CURLOPT_HTTPHEADER => ['Accept: application/json'],
-    ]);
-    $payload = curl_exec($ch);
-    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    if ($payload === false || $status !== 200) {
-        fail(502, 'bolls.life fetch failed', ['status' => $status]);
+    $verses = parseZefaniaChapter($xmlPath, $bookId, $chapter);
+    if ($verses === null) {
+        fail(404, 'chapter not found', ['translation' => $translation, 'bookId' => $bookId, 'chapter' => $chapter]);
     }
-    $bollsVerses = json_decode($payload, true);
-    if (!is_array($bollsVerses)) {
-        fail(502, 'bolls.life returned invalid JSON');
-    }
-    // Project bolls's { pk, verse, text } into our normalized shape so the
-    // client sees the same fields regardless of source.
-    $verses = array_map(function ($v) {
-        $text = is_string($v['text'] ?? null) ? $v['text'] : '';
-        return [
-            'pk' => $v['pk'] ?? null,
-            'verse' => $v['verse'] ?? null,
-            'text' => $text,
-            'textTts' => stripForTts(stripHtmlTags($text)),
-        ];
-    }, $bollsVerses);
     file_put_contents($file, json_encode([
         'format' => BIBLE_CACHE_FORMAT,
         'verses' => $verses,
@@ -730,12 +697,11 @@ function extractZefaniaSegments(DOMElement $verse): array {
 
 function normalizeSpace(string $s): string {
     $s = preg_replace('/\s+/u', ' ', $s) ?? $s;
+    // Some Zefania bibles (notably ELB1905) keep trailing spaces inside
+    // <gr> tags, which surface as "Erde ." after concatenation. Trim space
+    // before sentence punctuation so display and TTS both read cleanly.
+    $s = preg_replace('/ +([.,;:!?»"])/u', '$1', $s) ?? $s;
     return trim($s);
-}
-
-function stripHtmlTags(string $s): string {
-    $s = preg_replace('/<[^>]+>/u', '', $s) ?? $s;
-    return normalizeSpace($s);
 }
 
 /**

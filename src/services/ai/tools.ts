@@ -101,7 +101,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
           },
           translation: {
             type: 'string',
-            enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA'],
+            enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA', 'S51', 'ELB'],
             description: 'Optional override. Defaults to user-selected translation.',
           },
         },
@@ -118,7 +118,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
         type: 'object',
         properties: {
           reference: { type: 'string' },
-          translation: { type: 'string', enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA'] },
+          translation: { type: 'string', enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA', 'S51', 'ELB'] },
         },
         required: ['reference'],
       },
@@ -145,7 +145,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
           },
           translation: {
             type: 'string',
-            enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA'],
+            enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA', 'S51', 'ELB'],
             description: 'Optional override. Defaults to user-selected translation.',
           },
         },
@@ -343,7 +343,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
       description: 'Switch Bible translation. S00 = Schlachter 2000 (German), LUT = Luther (German), HFA = Hoffnung für Alle (German), ESV = English Standard Version, KJV = King James Version, NKJV = New King James Version.',
       parameters: {
         type: 'object',
-        properties: { translation: { type: 'string', enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA'] } },
+        properties: { translation: { type: 'string', enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA', 'S51', 'ELB'] } },
         required: ['translation'],
       },
     },
@@ -495,7 +495,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
                 type: 'string',
                 description: 'Canonical reference like "John 3:16".',
               },
-              translation: { type: 'string', enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA'] },
+              translation: { type: 'string', enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA', 'S51', 'ELB'] },
             },
           },
         },
