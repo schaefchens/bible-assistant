@@ -14,7 +14,16 @@ const CARD_TOOLS = new Set([
   'remove_card_from_board',
   'list_boards',
 ]);
-const SETTINGS_TOOLS = new Set(['set_language', 'set_translation', 'set_voice']);
+const SETTINGS_TOOLS = new Set([
+  'set_language',
+  'set_translation',
+  'set_voice',
+  'set_playback_rate',
+  'set_music',
+  'set_reader_preferences',
+  'set_announcements',
+  'set_mic_position',
+]);
 
 export function ThinkingIndicator() {
   const { t } = useTranslation();

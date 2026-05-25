@@ -5,6 +5,7 @@ import { planToBrowserItems, planToOpenAiTracks } from './startPlayback';
 import { useChatStore } from '@/store/chatStore';
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { isBrowserVoice, type OpenAiVoiceId } from '@/types/domain';
 
 /**
@@ -121,9 +122,26 @@ async function rebuildCurrentTail(): Promise<void> {
   audioPlayback.replaceUpcomingFor(cur.messageId, tracks);
 }
 
+function isPlaybackActive(): boolean {
+  const status = usePlaybackStore.getState().status;
+  return status === 'playing' || status === 'loading' || status === 'paused';
+}
+
+async function startAmbientNow(trackId: string): Promise<void> {
+  try {
+    const url = await getAmbientTrackUrl(trackId);
+    if (!url) return;
+    await audioPlayback.ambient.load(url);
+    audioPlayback.ambient.play();
+  } catch (e) {
+    console.warn('ambient start failed', e);
+  }
+}
+
 /** Wire up the controller. Call once at app startup. */
 export function initPlaybackController(): void {
   useSettingsStore.subscribe((state, prev) => {
+    // Reading-rhythm settings: rebuild the upcoming verses with new metadata.
     if (
       state.readChapterHeadings !== prev.readChapterHeadings ||
       state.readVerseNumbers !== prev.readVerseNumbers ||
@@ -132,6 +150,39 @@ export function initPlaybackController(): void {
       state.pauseBetweenChaptersMs !== prev.pauseBetweenChaptersMs
     ) {
       scheduleRebuild();
+    }
+
+    // Ambient music toggled mid-flight: start/stop the music bus so the
+    // change is audible immediately without waiting for the next reading.
+    const prevWantsMusic = prev.ambient.enabled && !!prev.ambient.trackId;
+    const nextWantsMusic = state.ambient.enabled && !!state.ambient.trackId;
+    if (prevWantsMusic !== nextWantsMusic) {
+      if (nextWantsMusic && isPlaybackActive() && state.ambient.trackId) {
+        void startAmbientNow(state.ambient.trackId);
+      } else if (!nextWantsMusic) {
+        audioPlayback.ambient.pause();
+      }
+    } else if (
+      nextWantsMusic &&
+      prev.ambient.trackId !== state.ambient.trackId &&
+      state.ambient.trackId
+    ) {
+      // Music stays enabled but the track changed — swap in the new one,
+      // matching the prior playing state (so a paused bus stays paused).
+      const wasPlaying = audioPlayback.ambient.isPlaying();
+      audioPlayback.ambient.pause();
+      void (async () => {
+        try {
+          const url = await getAmbientTrackUrl(state.ambient.trackId!);
+          if (!url) return;
+          await audioPlayback.ambient.load(url);
+          if (wasPlaying || isPlaybackActive()) {
+            audioPlayback.ambient.play();
+          }
+        } catch (e) {
+          console.warn('ambient swap failed', e);
+        }
+      })();
     }
   });
 }

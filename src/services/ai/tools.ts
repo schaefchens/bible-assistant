@@ -19,6 +19,11 @@ export type ToolName =
   | 'set_language'
   | 'set_translation'
   | 'set_voice'
+  | 'set_playback_rate'
+  | 'set_music'
+  | 'set_reader_preferences'
+  | 'set_announcements'
+  | 'set_mic_position'
   | 'save_ribbon'
   | 'continue_from_ribbon';
 
@@ -48,6 +53,26 @@ export type ToolArgs = {
   set_language: { language: 'en' | 'de' };
   set_translation: { translation: Translation };
   set_voice: { voice: OpenAiVoiceId };
+  set_playback_rate: { rate: number };
+  set_music: {
+    enabled?: boolean;
+    track?: string;
+    musicVolume?: number;
+    speechVolume?: number;
+  };
+  set_reader_preferences: {
+    autoPlay?: boolean;
+    autoScroll?: boolean;
+    repeat?: boolean;
+  };
+  set_announcements: {
+    readChapterHeadings?: boolean;
+    readVerseNumbers?: boolean;
+    verseNumberStyle?: 'spoken' | 'plain';
+    pauseBetweenVersesMs?: number;
+    pauseBetweenChaptersMs?: number;
+  };
+  set_mic_position: { corner: 'tl' | 'tr' | 'bl' | 'br' };
   save_ribbon: {
     color?: 'gold' | 'blue' | 'red' | 'green' | 'purple';
     position?: { reference: string; translation?: Translation };
@@ -341,6 +366,112 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'set_playback_rate',
+      description:
+        'Change reading speed. Accept any positive number (typical range 0.5–2.0); the engine clamps. Recognised phrases: "read faster" → 1.15 or 1.3, "slow down" → 0.85, "normal speed" → 1.0, "double speed" → 2.0.',
+      parameters: {
+        type: 'object',
+        properties: {
+          rate: {
+            type: 'number',
+            description: 'Playback rate, e.g. 0.85, 1, 1.15, 1.3.',
+          },
+        },
+        required: ['rate'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'set_music',
+      description:
+        'Control background music. Use for "turn music on/off", "play X track", "music louder/quieter", "reader louder". You can pass any subset of the fields in one call (e.g. enable + pick a track at once). `track` accepts either an exact track id OR a case-insensitive title fragment ("forest", "rainfall"). `musicVolume` and `speechVolume` are 0–1.',
+      parameters: {
+        type: 'object',
+        properties: {
+          enabled: {
+            type: 'boolean',
+            description: 'Turn ambient music on or off.',
+          },
+          track: {
+            type: 'string',
+            description:
+              'Track id or case-insensitive substring of a track title. Errors if it cannot be resolved.',
+          },
+          musicVolume: {
+            type: 'number',
+            description: 'Music bus volume, 0–1.',
+          },
+          speechVolume: {
+            type: 'number',
+            description: 'Reader voice volume, 0–1.',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'set_reader_preferences',
+      description:
+        'Toggle the three quick reader preferences. `autoPlay` continues to the next chapter when the current passage ends. `autoScroll` keeps the chat scrolled to the active verse. `repeat` loops the currently-playing verse. Pass only the fields the user actually mentioned.',
+      parameters: {
+        type: 'object',
+        properties: {
+          autoPlay: { type: 'boolean' },
+          autoScroll: { type: 'boolean' },
+          repeat: { type: 'boolean' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'set_announcements',
+      description:
+        'Control how chapter / verse-number announcements are read aloud and the pauses between verses and chapters. Pass only the fields the user mentioned. Pause values are milliseconds (0–6000 between verses, 0–10000 between chapters).',
+      parameters: {
+        type: 'object',
+        properties: {
+          readChapterHeadings: { type: 'boolean' },
+          readVerseNumbers: { type: 'boolean' },
+          verseNumberStyle: {
+            type: 'string',
+            enum: ['spoken', 'plain'],
+            description: '"spoken" → "Verse 16"; "plain" → just "16".',
+          },
+          pauseBetweenVersesMs: { type: 'number' },
+          pauseBetweenChaptersMs: { type: 'number' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'set_mic_position',
+      description:
+        'Move the floating microphone to a corner. The playback bar (when visible) sits in the opposite corner automatically.',
+      parameters: {
+        type: 'object',
+        properties: {
+          corner: {
+            type: 'string',
+            enum: ['tl', 'tr', 'bl', 'br'],
+            description:
+              'tl = top-left, tr = top-right, bl = bottom-left, br = bottom-right.',
+          },
+        },
+        required: ['corner'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'save_ribbon',
       description:
         'Save a colored ribbon at the user\'s next resume point. ONLY use when the user explicitly mentions a ribbon/bookmark — e.g. "save a gold ribbon here", "speichere ein Lesezeichen", "mark this with the red ribbon". With no explicit position, the ribbon is stored at the verse AFTER the one just read (so continue_from_ribbon resumes with the next verse, not the one already heard). Color is optional: if the user did not name one, omit it and the system defaults to "gold". The tool result includes the actual reference that was stored, which you can confirm to the user.',
@@ -404,6 +535,7 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
       `Cards = Lernkarten mit Titel, Versen und Notizen. Boards = thematische Sammlungen von Cards. Nutze die passenden Tools.`,
       `Wenn der Benutzer einfach "weiterlesen", "weiter", "lies weiter" oder "die nächsten Verse" sagt OHNE ein Lesezeichen zu nennen: rufe "read_verses" mit dem nächsten Versabschnitt auf. Schau in deinen letzten "(Played aloud: …)"-Verlaufsnotizen, was zuletzt gelesen wurde, und bestimme die folgenden Verse selbst (gleiches Kapitel falls noch Verse übrig, sonst Anfang des nächsten Kapitels).`,
       `Lesezeichen (Ribbons): Es gibt fünf farbige Lesezeichen (gold, blue, red, green, purple). "save_ribbon" speichert die aktuelle Leseposition; "continue_from_ribbon" liest ab dem gespeicherten Lesezeichen weiter. Rufe diese Tools NUR auf, wenn der Benutzer ausdrücklich "Lesezeichen", "Ribbon" oder eine der Farben erwähnt. "Weiterlesen" ohne Erwähnung eines Lesezeichens ist KEIN Ribbon-Befehl. Wenn keine Farbe genannt wurde, lass das Argument color weg — bei save_ribbon ist gold die Vorgabe, bei continue_from_ribbon wird automatisch das einzige gesetzte Lesezeichen verwendet.`,
+      `Wiedergabe-Einstellungen sind per Sprachbefehl steuerbar: "set_playback_rate" für Tempo ("lies schneller/langsamer"), "set_music" für Musik an/aus/Titel/Lautstärke ("Musik aus", "Musik leiser", "spiel Forest Hymn"), "set_reader_preferences" für Auto-Play / Auto-Scroll / Vers-Wiederholung, "set_announcements" für Kapitel-Ansage / Vers-Nummern / Pausen, "set_mic_position" um das Mikrofon in eine Ecke zu schieben. Übergib nur die Felder, die der Benutzer wirklich erwähnt hat — keine Default-Werte für nicht genannte Optionen erfinden.`,
     ].join(' ');
   }
   return [
@@ -417,5 +549,6 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
     `Cards = memorization cards with title, verses, notes. Boards = thematic groups of cards. Use the appropriate tools.`,
     `When the user says simply "continue reading", "read on", "next verses", "weiterlesen" or similar WITHOUT mentioning a ribbon/bookmark: call "read_verses" with the next slice. Look at your most recent "(Played aloud: …)" history notes to see what was just read and figure out the next verses yourself (continue in the same chapter if verses remain, otherwise start the next chapter).`,
     `Ribbons (bookmarks): there are five colored ribbons (gold, blue, red, green, purple). "save_ribbon" stores the current reading position; "continue_from_ribbon" resumes from a saved ribbon. ONLY call these tools when the user explicitly mentions "ribbon", "bookmark", "Lesezeichen", or names a color. Plain "continue reading" / "weiterlesen" is NOT a ribbon command. If no color is given, omit the color argument — save_ribbon defaults to "gold" and continue_from_ribbon automatically uses the single saved ribbon when there's exactly one.`,
+    `Playback settings are voice-controllable: "set_playback_rate" for tempo ("read faster", "slow down", "normal speed"), "set_music" for music on/off/track/volume ("music off", "play the forest track", "music louder"), "set_reader_preferences" for auto-play / auto-scroll / repeat-verse, "set_announcements" for chapter headings / verse numbers / pause durations, "set_mic_position" to move the mic to a corner. Only pass the fields the user actually mentioned — never invent defaults for fields they didn't talk about.`,
   ].join(' ');
 }

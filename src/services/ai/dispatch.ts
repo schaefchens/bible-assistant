@@ -21,6 +21,7 @@ import {
   planToBrowserItems,
   planToOpenAiTracks,
 } from '@/lib/startPlayback';
+import { getAmbientTracks } from '@/services/api/ambient';
 import { buildPlaybackPlan } from '@/lib/playbackPlan';
 import {
   isBrowserVoice,
@@ -95,6 +96,21 @@ export async function dispatchTool(
       case 'set_voice':
         useSettingsStore.getState().setVoice((args as ToolArgs['set_voice']).voice);
         return { ok: true };
+      case 'set_playback_rate':
+        return handleSetPlaybackRate(args as ToolArgs['set_playback_rate']);
+      case 'set_music':
+        return await handleSetMusic(args as ToolArgs['set_music']);
+      case 'set_reader_preferences':
+        return handleSetReaderPreferences(
+          args as ToolArgs['set_reader_preferences'],
+        );
+      case 'set_announcements':
+        return handleSetAnnouncements(args as ToolArgs['set_announcements']);
+      case 'set_mic_position':
+        useSettingsStore
+          .getState()
+          .setMicCorner((args as ToolArgs['set_mic_position']).corner);
+        return { ok: true, data: { corner: (args as ToolArgs['set_mic_position']).corner } };
       case 'save_ribbon':
         return await handleSaveRibbon(args as ToolArgs['save_ribbon']);
       case 'continue_from_ribbon':
@@ -588,4 +604,139 @@ async function handleRemoveCardFromBoard(
     .getState()
     .upsertBoard({ ...board, cardIds: board.cardIds.filter((id) => id !== cardId) });
   return { ok: true, data: { boardId: board.id, boardName: board.name, cardId, cardTitle: cardLookup.card.title } };
+}
+
+function clamp01(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(1, v));
+}
+
+function handleSetPlaybackRate(
+  args: ToolArgs['set_playback_rate'],
+): ToolDispatchResult {
+  if (typeof args.rate !== 'number' || !Number.isFinite(args.rate)) {
+    return { ok: false, error: 'rate must be a number' };
+  }
+  const rate = Math.max(0.25, Math.min(3, args.rate));
+  audioPlayback.setPlaybackRate(rate);
+  return { ok: true, data: { rate } };
+}
+
+async function handleSetMusic(
+  args: ToolArgs['set_music'],
+): Promise<ToolDispatchResult> {
+  const setAmbient = useSettingsStore.getState().setAmbient;
+  const setSpeechVolume = useSettingsStore.getState().setSpeechVolume;
+  const result: Record<string, unknown> = {};
+
+  if (args.enabled !== undefined) {
+    setAmbient({ enabled: args.enabled });
+    result.enabled = args.enabled;
+  }
+
+  if (args.track !== undefined) {
+    const needle = args.track.trim().toLowerCase();
+    if (!needle) return { ok: false, error: 'track must be non-empty' };
+    let tracks;
+    try {
+      tracks = await getAmbientTracks();
+    } catch {
+      return { ok: false, error: 'could not load track list' };
+    }
+    const byId = tracks.find((t) => t.id === args.track);
+    const byTitle = tracks.find(
+      (t) => t.title.toLowerCase() === needle,
+    );
+    const byContains = tracks.find((t) =>
+      t.title.toLowerCase().includes(needle),
+    );
+    const match = byId ?? byTitle ?? byContains;
+    if (!match) {
+      return {
+        ok: false,
+        error: `no track matched "${args.track}". Available: ${tracks.map((t) => t.title).join(', ') || '(none)'}`,
+      };
+    }
+    setAmbient({ trackId: match.id });
+    result.trackId = match.id;
+    result.trackTitle = match.title;
+  }
+
+  if (args.musicVolume !== undefined) {
+    const v = clamp01(args.musicVolume);
+    setAmbient({ volume: v });
+    audioPlayback.ambient.setVolume(v);
+    result.musicVolume = v;
+  }
+
+  if (args.speechVolume !== undefined) {
+    const v = clamp01(args.speechVolume);
+    setSpeechVolume(v);
+    audioPlayback.speech.setVolume(v);
+    result.speechVolume = v;
+  }
+
+  if (Object.keys(result).length === 0) {
+    return { ok: false, error: 'no music fields provided' };
+  }
+  return { ok: true, data: result };
+}
+
+function handleSetReaderPreferences(
+  args: ToolArgs['set_reader_preferences'],
+): ToolDispatchResult {
+  const settings = useSettingsStore.getState();
+  const result: Record<string, unknown> = {};
+  if (args.autoPlay !== undefined) {
+    settings.setAutoPlayReading(args.autoPlay);
+    result.autoPlay = args.autoPlay;
+  }
+  if (args.autoScroll !== undefined) {
+    settings.setAutoScrollReader(args.autoScroll);
+    result.autoScroll = args.autoScroll;
+  }
+  if (args.repeat !== undefined) {
+    audioPlayback.setLoopCurrent(args.repeat);
+    result.repeat = args.repeat;
+  }
+  if (Object.keys(result).length === 0) {
+    return { ok: false, error: 'no reader-preference fields provided' };
+  }
+  return { ok: true, data: result };
+}
+
+function handleSetAnnouncements(
+  args: ToolArgs['set_announcements'],
+): ToolDispatchResult {
+  const settings = useSettingsStore.getState();
+  const result: Record<string, unknown> = {};
+  if (args.readChapterHeadings !== undefined) {
+    settings.setReadChapterHeadings(args.readChapterHeadings);
+    result.readChapterHeadings = args.readChapterHeadings;
+  }
+  if (args.readVerseNumbers !== undefined) {
+    settings.setReadVerseNumbers(args.readVerseNumbers);
+    result.readVerseNumbers = args.readVerseNumbers;
+  }
+  if (args.verseNumberStyle !== undefined) {
+    if (args.verseNumberStyle !== 'spoken' && args.verseNumberStyle !== 'plain') {
+      return { ok: false, error: 'verseNumberStyle must be "spoken" or "plain"' };
+    }
+    settings.setVerseNumberStyle(args.verseNumberStyle);
+    result.verseNumberStyle = args.verseNumberStyle;
+  }
+  if (args.pauseBetweenVersesMs !== undefined) {
+    settings.setPauseBetweenVersesMs(args.pauseBetweenVersesMs);
+    result.pauseBetweenVersesMs =
+      useSettingsStore.getState().pauseBetweenVersesMs;
+  }
+  if (args.pauseBetweenChaptersMs !== undefined) {
+    settings.setPauseBetweenChaptersMs(args.pauseBetweenChaptersMs);
+    result.pauseBetweenChaptersMs =
+      useSettingsStore.getState().pauseBetweenChaptersMs;
+  }
+  if (Object.keys(result).length === 0) {
+    return { ok: false, error: 'no announcement fields provided' };
+  }
+  return { ok: true, data: result };
 }
