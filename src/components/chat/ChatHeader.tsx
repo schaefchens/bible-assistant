@@ -5,6 +5,7 @@ import { useLibraryStore } from '@/store/libraryStore';
 import { useUpdateStore, applyUpdate } from '@/lib/pwaUpdate';
 import { cancelAllActivity } from '@/hooks/useCommandPipeline';
 import { MessageActionsMenu, type MessageActionItem } from './MessageActionsMenu';
+import { BookChapterPicker } from './BookChapterPicker';
 
 export function ChatHeader() {
   const { t } = useTranslation();
@@ -33,9 +34,12 @@ export function ChatHeader() {
   return (
     <>
       <header className="flex items-center justify-between px-4 py-2 border-b border-navy-soft/50 bg-navy/90 backdrop-blur">
-        <h1 className="font-serif text-gold text-base tracking-wide">
-          {t('chat.title')}
-        </h1>
+        <div className="flex items-center gap-3">
+          <BookChapterPicker />
+          <h1 className="font-serif text-gold text-base tracking-wide">
+            {t('chat.title')}
+          </h1>
+        </div>
         <div className="flex items-center gap-3">
           {needRefresh && (
             <button

@@ -58,6 +58,12 @@
     },
     "ribbon": {
       "resume": "Resume from {{color}} ribbon"
+    },
+    "bookPicker": {
+      "open": "Pick book and chapter",
+      "title": "Read a chapter",
+      "oldTestament": "Old Testament",
+      "newTestament": "New Testament"
     }
   },
   "playback": {

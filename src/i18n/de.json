@@ -58,6 +58,12 @@
     },
     "ribbon": {
       "resume": "Weiter ab {{color}}-Lesezeichen"
+    },
+    "bookPicker": {
+      "open": "Buch und Kapitel auswählen",
+      "title": "Kapitel lesen",
+      "oldTestament": "Altes Testament",
+      "newTestament": "Neues Testament"
     }
   },
   "playback": {
