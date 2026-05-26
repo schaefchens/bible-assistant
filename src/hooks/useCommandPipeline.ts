@@ -435,9 +435,19 @@ function computeNextRange(
   last: VerseSummary,
   chapterEndVerse: number | null,
   nextChapterMax: number | null,
+  wholeChapter: boolean,
 ): { reference: string; translation: Translation; label: string } | null {
   const book = getBookById(last.bookId);
   if (!book) return null;
+  if (wholeChapter) {
+    if (last.chapter >= book.chapters) return null;
+    const nextChapter = last.chapter + 1;
+    return {
+      reference: `${book.nameEn} ${nextChapter}`,
+      translation: last.translation,
+      label: `${book.nameEn} ${nextChapter}`,
+    };
+  }
   if (chapterEndVerse !== null && last.verse < chapterEndVerse) {
     const start = last.verse + 1;
     const end = Math.min(start + CHUNK_SIZE - 1, chapterEndVerse);
@@ -500,20 +510,32 @@ export function useContinueReading(
     return { canContinue: false, nextLabel: '', sendNext: () => {} };
   }
 
-  const next = computeNextRange(last, chapterEndVerse, nextChapterMax);
+  const next = computeNextRange(
+    last,
+    chapterEndVerse,
+    nextChapterMax,
+    message.headingWholeChapter === true,
+  );
   if (!next) {
     return { canContinue: false, nextLabel: '', sendNext: () => {} };
   }
 
   const { locale } = useSettingsStore.getState();
-  // Pretty label honors locale formatting (e.g. "Galater 5:23-27").
-  const startVerse = next.reference.split(':')[1]?.split('-')[0];
-  const endVerse = next.reference.split('-')[1];
-  const startNum = startVerse ? parseInt(startVerse, 10) : last.verse + 1;
-  const endNum = endVerse ? parseInt(endVerse, 10) : startNum;
-  const nextChapter = next.reference.match(/(\d+):/)?.[1];
-  const chapterNum = nextChapter ? parseInt(nextChapter, 10) : last.chapter;
-  const label = formatReference(last.bookId, chapterNum, startNum, endNum, locale);
+  // Pretty label honors locale formatting (e.g. "Galater 5:23-27" or
+  // "Galater 6" for a whole-chapter continuation).
+  const hasVerseRange = next.reference.includes(':');
+  const chapterMatch = next.reference.match(/(\d+)(?::|$)/)?.[1];
+  const chapterNum = chapterMatch ? parseInt(chapterMatch, 10) : last.chapter;
+  let label: string;
+  if (hasVerseRange) {
+    const startVerse = next.reference.split(':')[1]?.split('-')[0];
+    const endVerse = next.reference.split('-')[1];
+    const startNum = startVerse ? parseInt(startVerse, 10) : last.verse + 1;
+    const endNum = endVerse ? parseInt(endVerse, 10) : startNum;
+    label = formatReference(last.bookId, chapterNum, startNum, endNum, locale);
+  } else {
+    label = formatReference(last.bookId, chapterNum, undefined, undefined, locale);
+  }
 
   return {
     canContinue: true,

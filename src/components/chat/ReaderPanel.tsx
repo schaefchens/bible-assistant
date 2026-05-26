@@ -50,6 +50,38 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
   );
 
   const verses = useMemo(() => message.verses ?? [], [message.verses]);
+  // When the reading is isolated verses (not a whole chapter), offer a
+  // "Read context" button that loads the full surrounding chapter. Uses the
+  // first verse's chapter — sufficient for the common single-chapter case.
+  const contextTarget = useMemo(() => {
+    if (message.headingWholeChapter === true) return null;
+    const first = verses[0];
+    if (!first) return null;
+    const book = getBookById(first.bookId);
+    if (!book) return null;
+    const lang = (i18n.language || 'en').startsWith('de') ? 'de' : 'en';
+    const bookName = lang === 'de' ? book.nameDe : book.nameEn;
+    return {
+      reference: `${book.nameEn} ${first.chapter}`,
+      label: `${bookName} ${first.chapter}`,
+    };
+  }, [verses, message.headingWholeChapter, i18n.language]);
+  // For whole-chapter readings, offer a previous-chapter button alongside
+  // continue. Only meaningful when there is a previous chapter to read.
+  const prevTarget = useMemo(() => {
+    if (message.headingWholeChapter !== true) return null;
+    const first = verses[0];
+    if (!first || first.chapter <= 1) return null;
+    const book = getBookById(first.bookId);
+    if (!book) return null;
+    const lang = (i18n.language || 'en').startsWith('de') ? 'de' : 'en';
+    const bookName = lang === 'de' ? book.nameDe : book.nameEn;
+    const prevChapter = first.chapter - 1;
+    return {
+      reference: `${book.nameEn} ${prevChapter}`,
+      label: `${bookName} ${prevChapter}`,
+    };
+  }, [verses, message.headingWholeChapter, i18n.language]);
   // Group adjacent verses into runs sharing the same book + chapter so we can
   // print a single chapter heading per run.
   const runs = useMemo(() => {
@@ -190,22 +222,60 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
           );
         })}
 
-        {cont.canContinue && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              cont.sendNext();
-            }}
-            disabled={isProcessing}
-            className={clsx(
-              'mt-3 w-full h-10 text-sm rounded-xl border border-gold/30 text-gold',
-              'hover:bg-gold/10 active:scale-[0.98] transition-all',
-              isProcessing && 'opacity-50 pointer-events-none',
+        {(prevTarget || contextTarget || cont.canContinue) && (
+          <div className="mt-3 flex gap-2">
+            {prevTarget && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void send(`Read ${prevTarget.reference}`);
+                }}
+                disabled={isProcessing}
+                className={clsx(
+                  'flex-1 h-10 text-sm rounded-xl border border-gold/30 text-gold',
+                  'hover:bg-gold/10 active:scale-[0.98] transition-all',
+                  isProcessing && 'opacity-50 pointer-events-none',
+                )}
+              >
+                ← {prevTarget.label}
+              </button>
             )}
-          >
-            {t('chat.reader.continue', { range: cont.nextLabel })} →
-          </button>
+            {contextTarget && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void send(`Read ${contextTarget.reference}`);
+                }}
+                disabled={isProcessing}
+                className={clsx(
+                  'flex-1 h-10 text-sm rounded-xl border border-gold/30 text-gold',
+                  'hover:bg-gold/10 active:scale-[0.98] transition-all',
+                  isProcessing && 'opacity-50 pointer-events-none',
+                )}
+              >
+                {t('chat.reader.context', { range: contextTarget.label })}
+              </button>
+            )}
+            {cont.canContinue && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  cont.sendNext();
+                }}
+                disabled={isProcessing}
+                className={clsx(
+                  'flex-1 h-10 text-sm rounded-xl border border-gold/30 text-gold',
+                  'hover:bg-gold/10 active:scale-[0.98] transition-all',
+                  isProcessing && 'opacity-50 pointer-events-none',
+                )}
+              >
+                {t('chat.reader.continue', { range: cont.nextLabel })} →
+              </button>
+            )}
+          </div>
         )}
       </article>
       {menuPos && (

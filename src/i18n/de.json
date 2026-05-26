@@ -44,6 +44,7 @@
     },
     "reader": {
       "continue": "Weiterlesen: {{range}}",
+      "context": "Kontext lesen: {{range}}",
       "playAll": "Alle abspielen",
       "repeat": "Vers wiederholen",
       "rate": "Tempo",

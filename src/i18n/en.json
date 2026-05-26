@@ -44,6 +44,7 @@
     },
     "reader": {
       "continue": "Continue: {{range}}",
+      "context": "Read context: {{range}}",
       "playAll": "Play all",
       "repeat": "Repeat verse",
       "rate": "Rate",
