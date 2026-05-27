@@ -10,7 +10,45 @@ import { getTranslationInfo } from '@/services/bible/translationCatalog';
 import { TranslationList } from '@/components/bible/TranslationList';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 
-type View = 'books' | 'translations';
+type View = 'books' | 'chapters' | 'translations';
+
+function BackChevron() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  );
+}
+
+function BookIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    </svg>
+  );
+}
 
 export function BookChapterPicker() {
   const { t, i18n } = useTranslation();
@@ -49,26 +87,26 @@ export function BookChapterPicker() {
   const bookLabel = (book: (typeof BOOKS)[number]) =>
     lang === 'de' ? book.nameDe : book.nameEn;
 
-  const renderBookButton = (book: (typeof BOOKS)[number]) => {
-    const selected = book.id === selectedBookId;
-    return (
-      <button
-        key={book.id}
-        type="button"
-        onClick={() => setSelectedBookId(book.id)}
-        className={clsx(
-          'w-full text-left px-4 py-2 text-sm transition-colors border-l-2',
-          selected
-            ? 'bg-gold/15 text-gold border-gold'
-            : 'text-cream hover:bg-gold/10 border-transparent',
-        )}
-      >
-        {bookLabel(book)}
-      </button>
-    );
-  };
+  const renderBookButton = (book: (typeof BOOKS)[number]) => (
+    <button
+      key={book.id}
+      type="button"
+      onClick={() => {
+        setSelectedBookId(book.id);
+        setView('chapters');
+      }}
+      className="w-full text-left px-3 py-2 text-sm leading-snug text-cream hover:bg-gold/10 active:bg-gold/15 transition-colors"
+    >
+      {bookLabel(book)}
+    </button>
+  );
 
-  const showingTranslations = view === 'translations';
+  const headerTitle =
+    view === 'translations'
+      ? t('chat.bookPicker.translations')
+      : view === 'chapters'
+        ? bookLabel(selectedBook)
+        : t('chat.bookPicker.title');
 
   return (
     <>
@@ -82,20 +120,7 @@ export function BookChapterPicker() {
         }}
         className="text-cream-dim hover:text-cream disabled:opacity-30 px-2 py-1 transition-colors"
       >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-        </svg>
+        <BookIcon />
       </button>
 
       {createPortal(
@@ -111,11 +136,7 @@ export function BookChapterPicker() {
           <div
             role="dialog"
             aria-modal="true"
-            aria-label={
-              (showingTranslations
-                ? t('chat.bookPicker.translations')
-                : t('chat.bookPicker.title')) as string
-            }
+            aria-label={headerTitle as string}
             className={clsx(
               'fixed left-0 right-0 bottom-0 z-50',
               'rounded-t-3xl bg-navy-deep border-t border-gold/30 shadow-2xl',
@@ -129,46 +150,32 @@ export function BookChapterPicker() {
                 <div className="h-1.5 w-12 rounded-full bg-cream/20" />
               </div>
               <div className="flex items-center justify-between px-5 pb-3 gap-2">
-                {showingTranslations ? (
+                {view === 'books' ? (
+                  <h2 className="font-serif text-gold text-lg truncate">{headerTitle}</h2>
+                ) : (
                   <button
                     type="button"
                     onClick={() => setView('books')}
                     aria-label={t('chat.bookPicker.back') as string}
-                    className="text-cream-dim hover:text-cream transition-colors -ml-1 px-1 flex items-center gap-1"
+                    className="text-cream-dim hover:text-cream transition-colors -ml-1 px-1 flex items-center gap-1 min-w-0"
                   >
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <polyline points="15 18 9 12 15 6" />
-                    </svg>
-                    <span className="font-serif text-gold text-lg">
-                      {t('chat.bookPicker.translations')}
+                    <BackChevron />
+                    <span className="font-serif text-gold text-lg truncate">
+                      {headerTitle}
                     </span>
                   </button>
-                ) : (
-                  <h2 className="font-serif text-gold text-lg">
-                    {t('chat.bookPicker.title')}
-                  </h2>
                 )}
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
                   aria-label={t('common.close') as string}
-                  className="text-cream-dim hover:text-cream transition-colors text-2xl leading-none px-2"
+                  className="text-cream-dim hover:text-cream transition-colors text-2xl leading-none px-2 shrink-0"
                 >
                   ×
                 </button>
               </div>
 
-              {!showingTranslations && (
+              {view === 'books' && (
                 <div className="px-5 pb-3 border-b border-navy-soft/40">
                   <button
                     type="button"
@@ -180,21 +187,7 @@ export function BookChapterPicker() {
                       'transition-colors text-left',
                     )}
                   >
-                    <svg
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="text-gold shrink-0"
-                      aria-hidden="true"
-                    >
-                      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                    </svg>
+                    <BookIcon className="text-gold shrink-0" />
                     <span className="flex-1 min-w-0">
                       <span className="block font-serif text-gold text-sm leading-tight truncate">
                         {currentTranslation.name}
@@ -224,50 +217,56 @@ export function BookChapterPicker() {
                 </div>
               )}
 
-              {!showingTranslations && (
+              {view === 'books' && (
                 <div className="flex flex-1 min-h-0 pb-safe">
-                  <div className="w-2/5 overflow-y-auto border-r border-navy-soft/40 py-2">
-                    <h3 className="px-4 pt-2 pb-1 text-xs uppercase tracking-wider text-cream-dim/70 font-serif">
+                  <div className="w-1/2 flex flex-col border-r border-navy-soft/40">
+                    <h3 className="shrink-0 px-3 pt-2 pb-2 text-xs uppercase tracking-wider text-cream-dim/70 font-serif border-b border-navy-soft/40">
                       {t('chat.bookPicker.oldTestament')}
                     </h3>
-                    {ot.map(renderBookButton)}
-                    <h3 className="px-4 pt-4 pb-1 text-xs uppercase tracking-wider text-cream-dim/70 font-serif">
+                    <div className="flex-1 min-h-0 overflow-y-auto py-1">
+                      {ot.map(renderBookButton)}
+                    </div>
+                  </div>
+                  <div className="w-1/2 flex flex-col">
+                    <h3 className="shrink-0 px-3 pt-2 pb-2 text-xs uppercase tracking-wider text-cream-dim/70 font-serif border-b border-navy-soft/40">
                       {t('chat.bookPicker.newTestament')}
                     </h3>
-                    {nt.map(renderBookButton)}
-                  </div>
-                  <div className="w-3/5 overflow-y-auto p-3">
-                    <div className="px-1 pb-2 text-xs text-cream-dim/70 font-serif">
-                      {bookLabel(selectedBook)}
-                    </div>
-                    <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-2">
-                      {chapters.map((chapter) => (
-                        <button
-                          key={chapter}
-                          type="button"
-                          disabled={isProcessing}
-                          onClick={() => {
-                            audioPlayback.ensureContext();
-                            void send(`Read ${selectedBook.nameEn} ${chapter}`);
-                            setOpen(false);
-                          }}
-                          className={clsx(
-                            'aspect-square rounded-xl bg-navy border border-navy-soft/50',
-                            'text-cream text-sm font-mono',
-                            'hover:bg-gold/10 hover:border-gold/40 active:scale-95',
-                            'transition-colors',
-                            'disabled:opacity-40 disabled:pointer-events-none',
-                          )}
-                        >
-                          {chapter}
-                        </button>
-                      ))}
+                    <div className="flex-1 min-h-0 overflow-y-auto py-1">
+                      {nt.map(renderBookButton)}
                     </div>
                   </div>
                 </div>
               )}
 
-              {showingTranslations && (
+              {view === 'chapters' && (
+                <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-safe">
+                  <div className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-9 gap-2">
+                    {chapters.map((chapter) => (
+                      <button
+                        key={chapter}
+                        type="button"
+                        disabled={isProcessing}
+                        onClick={() => {
+                          audioPlayback.ensureContext();
+                          void send(`Read ${selectedBook.nameEn} ${chapter}`);
+                          setOpen(false);
+                        }}
+                        className={clsx(
+                          'aspect-square rounded-xl bg-navy border border-navy-soft/50',
+                          'text-cream text-sm font-mono',
+                          'hover:bg-gold/10 hover:border-gold/40 active:scale-95',
+                          'transition-colors',
+                          'disabled:opacity-40 disabled:pointer-events-none',
+                        )}
+                      >
+                        {chapter}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {view === 'translations' && (
                 <TranslationList
                   value={translation}
                   onChange={(code) => {
