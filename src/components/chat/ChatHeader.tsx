@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useChatStore } from '@/store/chatStore';
-import { useLibraryStore } from '@/store/libraryStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { useUpdateStore, applyUpdate } from '@/lib/pwaUpdate';
 import { cancelAllActivity } from '@/hooks/useCommandPipeline';
 import { MessageActionsMenu, type MessageActionItem } from './MessageActionsMenu';
@@ -11,7 +12,10 @@ export function ChatHeader() {
   const { t } = useTranslation();
   const messageCount = useChatStore((s) => s.messages.length);
   const clear = useChatStore((s) => s.clear);
-  const online = useLibraryStore((s) => s.online);
+  const readingOnly = useSettingsStore((s) => s.readingOnlyView);
+  const setReadingOnly = useSettingsStore((s) => s.setReadingOnlyView);
+  const hideComposer = useSettingsStore((s) => s.hideComposer);
+  const setHideComposer = useSettingsStore((s) => s.setHideComposer);
   const needRefresh = useUpdateStore((s) => s.needRefresh);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
 
@@ -64,14 +68,36 @@ export function ChatHeader() {
               </svg>
             </button>
           )}
-          <span
-            aria-label={(online ? t('common.online') : t('common.offline')) as string}
-            title={(online ? t('common.online') : t('common.offline')) as string}
-            className={[
-              'inline-block h-2 w-2 rounded-full',
-              online ? 'bg-emerald-700' : 'bg-amber-500',
-            ].join(' ')}
-          />
+          <button
+            type="button"
+            aria-label={t('chat.readingView') as string}
+            title={t('chat.readingView') as string}
+            aria-pressed={readingOnly}
+            onClick={() => setReadingOnly(!readingOnly)}
+            className={clsx(
+              'px-2 py-1 rounded-lg transition-colors',
+              readingOnly
+                ? 'text-gold bg-gold/15'
+                : 'text-cream-dim hover:text-cream',
+            )}
+          >
+            <ReadingViewIcon active={readingOnly} />
+          </button>
+          <button
+            type="button"
+            aria-label={t('chat.hideComposer') as string}
+            title={t('chat.hideComposer') as string}
+            aria-pressed={hideComposer}
+            onClick={() => setHideComposer(!hideComposer)}
+            className={clsx(
+              'px-2 py-1 rounded-lg transition-colors',
+              hideComposer
+                ? 'text-gold bg-gold/15'
+                : 'text-cream-dim hover:text-cream',
+            )}
+          >
+            <KeyboardIcon hidden={hideComposer} />
+          </button>
           <button
             type="button"
             aria-label={t('chat.clear')}
@@ -98,5 +124,54 @@ export function ChatHeader() {
         />
       )}
     </>
+  );
+}
+
+// Open book when filtering to readings only; book with a small "lines"
+// overlay (i.e. full chat) when showing everything.
+function ReadingViewIcon({ active }: { active: boolean }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 6.5C10.5 5 8 4.5 4 5v13c4-.5 6.5 0 8 1.5 1.5-1.5 4-2 8-1.5V5c-4-.5-6.5 0-8 1.5z" />
+      <line x1="12" y1="6.5" x2="12" y2="19" />
+      {!active && (
+        <>
+          <line x1="6.5" y1="9" x2="9.5" y2="9" />
+          <line x1="14.5" y1="9" x2="17.5" y2="9" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+// Keyboard outline; a strike-through when the composer is hidden.
+function KeyboardIcon({ hidden }: { hidden: boolean }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="3" y="7" width="18" height="11" rx="2" />
+      <line x1="7" y1="11" x2="7" y2="11" />
+      <line x1="11" y1="11" x2="11" y2="11" />
+      <line x1="15" y1="11" x2="15" y2="11" />
+      <line x1="8" y1="14.5" x2="16" y2="14.5" />
+      {hidden && <line x1="4" y1="20" x2="20" y2="4" />}
+    </svg>
   );
 }

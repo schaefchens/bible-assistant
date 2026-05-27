@@ -1,6 +1,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useChatStore } from '@/store/chatStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { useCommandPipeline } from '@/hooks/useCommandPipeline';
 import { useAutoScrollActiveVerse } from '@/hooks/useAutoScrollActiveVerse';
 import { MessageBubble } from './MessageBubble';
@@ -15,6 +16,7 @@ type Props = {
 export function MessageList({ scrollRef }: Props) {
   const { t } = useTranslation();
   const messages = useChatStore((s) => s.messages);
+  const readingOnly = useSettingsStore((s) => s.readingOnlyView);
   const selectedIndex = useChatStore((s) => s.selectedIndex);
   const setSelected = useChatStore((s) => s.setSelected);
   const highlightedId = useChatStore((s) => s.highlightedMessageId);
@@ -65,6 +67,11 @@ export function MessageList({ scrollRef }: Props) {
     }
   };
 
+  const readingCount = messages.reduce(
+    (n, m) => n + (m.role === 'assistant' && (m.verses?.length ?? 0) > 0 ? 1 : 0),
+    0,
+  );
+
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
       {messages.length === 0 && (
@@ -72,9 +79,17 @@ export function MessageList({ scrollRef }: Props) {
           <p className="font-serif italic">{t('chat.empty')}</p>
         </div>
       )}
+      {readingOnly && messages.length > 0 && readingCount === 0 && (
+        <div className="text-center text-cream-dim py-12 px-4">
+          <p className="font-serif italic">{t('chat.readingViewEmpty')}</p>
+        </div>
+      )}
       {messages.map((m, i) => {
         const isReading =
           m.role === 'assistant' && (m.verses?.length ?? 0) > 0;
+        // Reading-only view: keep the original index (for selection) by
+        // returning null rather than filtering the array.
+        if (readingOnly && !isReading) return null;
         const selected = i === selectedIndex;
         return (
           <div key={m.id} data-message-id={m.id}>

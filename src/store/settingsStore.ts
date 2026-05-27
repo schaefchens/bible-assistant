@@ -24,6 +24,12 @@ type SettingsState = {
   ambient: AmbientSettings;
   speechVolume: number;
   autoScrollReader: boolean;
+  /** Chat view filter: when true, only reading (verse) messages render, for
+   * a distraction-free reading view. */
+  readingOnlyView: boolean;
+  /** When true, the chat composer (text input + send) is hidden to free up
+   * reading space; floaters drop down as composerHeight goes to 0. */
+  hideComposer: boolean;
   micSoundEnabled: boolean;
   readChapterHeadings: boolean;
   readVerseNumbers: boolean;
@@ -52,6 +58,8 @@ type SettingsState = {
   setAmbient: (patch: Partial<AmbientSettings>) => void;
   setSpeechVolume: (v: number) => void;
   setAutoScrollReader: (v: boolean) => void;
+  setReadingOnlyView: (v: boolean) => void;
+  setHideComposer: (v: boolean) => void;
   setMicSoundEnabled: (v: boolean) => void;
   setReadChapterHeadings: (v: boolean) => void;
   setReadVerseNumbers: (v: boolean) => void;
@@ -150,6 +158,8 @@ export const useSettingsStore = create<SettingsState>()(
         ambient: DEFAULT_AMBIENT,
         speechVolume: 1,
         autoScrollReader: true,
+        readingOnlyView: false,
+        hideComposer: false,
         micSoundEnabled: true,
         readChapterHeadings: false,
         readVerseNumbers: false,
@@ -180,6 +190,8 @@ export const useSettingsStore = create<SettingsState>()(
         setSpeechVolume: (v) =>
           set({ speechVolume: Math.max(0, Math.min(1, v)) }),
         setAutoScrollReader: (autoScrollReader) => set({ autoScrollReader }),
+        setReadingOnlyView: (readingOnlyView) => set({ readingOnlyView }),
+        setHideComposer: (hideComposer) => set({ hideComposer }),
         setMicSoundEnabled: (micSoundEnabled) => set({ micSoundEnabled }),
         setReadChapterHeadings: (readChapterHeadings) =>
           set({ readChapterHeadings }),
@@ -198,7 +210,7 @@ export const useSettingsStore = create<SettingsState>()(
     },
     {
       name: 'ba.settings',
-      version: 8,
+      version: 10,
       // Don't persist server-derived state — hydrate fresh on every boot.
       // Otherwise an older "hasUserOpenAiKey: true" could outlive a key the
       // server has since cleared.
@@ -265,6 +277,20 @@ export const useSettingsStore = create<SettingsState>()(
             ...prev,
             autoPlayReading:
               typeof prev.autoPlayReading === 'boolean' ? prev.autoPlayReading : false,
+          };
+        }
+        if (version < 9) {
+          prev = {
+            ...prev,
+            readingOnlyView:
+              typeof prev.readingOnlyView === 'boolean' ? prev.readingOnlyView : false,
+          };
+        }
+        if (version < 10) {
+          prev = {
+            ...prev,
+            hideComposer:
+              typeof prev.hideComposer === 'boolean' ? prev.hideComposer : false,
           };
         }
         return prev as SettingsState;
