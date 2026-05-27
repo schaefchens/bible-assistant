@@ -109,13 +109,36 @@ export function FloatingPlaybackBar() {
           }
         }}
         className={clsx(
-          'flex items-center gap-2',
+          'relative flex items-center gap-2',
           'rounded-2xl bg-navy-deep/95 backdrop-blur',
           'border border-gold/30 shadow-xl',
           'px-2 py-1',
           onRightSide && 'flex-row-reverse',
         )}
       >
+        {/* Hard-stop badge — floats on the bar's top-outer corner instead of
+            taking a slot in the transport row, which overflows on narrow
+            phones (iPhone SE). stopPropagation on pointerdown so tapping it
+            never starts a bar drag. */}
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleClose();
+          }}
+          aria-label={t('playback.close')}
+          className={clsx(
+            'absolute -top-2 z-10 h-7 w-7 rounded-full',
+            'flex items-center justify-center',
+            'bg-navy-deep border border-gold/40 text-cream-dim',
+            'shadow-md hover:text-cream active:scale-90 transition-all',
+            onRightSide ? '-right-1.5' : '-left-1.5',
+          )}
+        >
+          <CloseIcon />
+        </button>
+
         {/* Transport group — internal order (Prev | Play | Next) never changes;
             only its position within the bar flips when on the right side. */}
         <div className="flex items-center gap-1">
@@ -174,13 +197,6 @@ export function FloatingPlaybackBar() {
             onClick={() => setSheetOpen(true)}
           >
             <SettingsIcon />
-          </TransportButton>
-
-          <TransportButton
-            aria-label={t('playback.close')}
-            onClick={handleClose}
-          >
-            <CloseIcon />
           </TransportButton>
         </div>
       </div>
