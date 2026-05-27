@@ -40,7 +40,7 @@ export function CardFace({ card, size: _size, isActive = false }: Props) {
       {card.references.length > 0 && (
         <div className="flex-1 min-h-0 overflow-hidden space-y-2">
           {card.references.map((r, i) => (
-            <VerseBlock key={i} reference={r} fgClass={c.fg} dimClass={c.fgDim} isActive={isActive} />
+            <VerseBlock key={i} reference={r} dimClass={c.fgDim} isActive={isActive} />
           ))}
         </div>
       )}
@@ -66,12 +66,10 @@ export function CardFace({ card, size: _size, isActive = false }: Props) {
 
 function VerseBlock({
   reference,
-  fgClass,
   dimClass,
   isActive,
 }: {
   reference: CardReference;
-  fgClass: string;
   dimClass: string;
   isActive: boolean;
 }) {
@@ -84,7 +82,7 @@ function VerseBlock({
         {formatCardReferenceHeading(reference, locale)}
       </div>
       {reference.label && (
-        <div className={['font-serif font-semibold italic mt-0.5 leading-snug line-clamp-2 break-words', fgClass].join(' ')}>
+        <div className={['font-serif italic text-sm mt-0.5 leading-snug line-clamp-2 break-words', dimClass].join(' ')}>
           {reference.label}
         </div>
       )}
