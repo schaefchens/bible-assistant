@@ -12,10 +12,20 @@ type Props = {
 };
 
 export function WordHighlighter({ messageId, verseIndex, verse, onWordTap }: Props) {
-  const current = usePlaybackStore((s) => s.current);
-  const isCurrent =
-    current?.messageId === messageId && current.verseIndex === verseIndex;
-  const activeWordIndex = isCurrent ? current.currentWordIndex : -1;
+  // Subscribe to primitives rather than the whole `current` object. The
+  // playback rAF loop rebuilds `current` ~60×/sec (to advance `position`),
+  // so selecting the object would re-render every verse in the chapter every
+  // frame. These selectors return stable values for verses that aren't the
+  // active one, so only the playing verse re-renders, and only when its word
+  // index actually changes.
+  const isCurrent = usePlaybackStore(
+    (s) => s.current?.messageId === messageId && s.current.verseIndex === verseIndex,
+  );
+  const activeWordIndex = usePlaybackStore((s) =>
+    s.current?.messageId === messageId && s.current.verseIndex === verseIndex
+      ? s.current.currentWordIndex
+      : -1,
+  );
 
   const words = useMemo(() => verse.text.split(/(\s+)/), [verse.text]);
   let wordCounter = -1;
