@@ -164,7 +164,12 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
           references: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Array of canonical references like ["Galatians 5:22"].',
+            description:
+              'Array of references. Each entry is "Reference[; Translation][; Custom text]". ' +
+              'The reference is canonical like "Galatians 5:22". You may pin a translation code ' +
+              '(e.g. ESV, S00, LUT) and/or add a short highlighted note. ' +
+              'Examples: "Galatians 5:22", "Galatians 5:22; ESV", "Galatians 5:22; LUT; The fruit of the Spirit". ' +
+              'To compare translations, add two entries for the same verse with different codes.',
           },
           notes: { type: 'string' },
           boards: {
@@ -192,7 +197,13 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
             description: 'Card id or exact card title (case-insensitive).',
           },
           title: { type: 'string' },
-          references: { type: 'array', items: { type: 'string' } },
+          references: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Replaces all references. Each entry is "Reference[; Translation][; Custom text]", ' +
+              'e.g. "Galatians 5:22; ESV; The fruit of the Spirit".',
+          },
           notes: { type: 'string' },
         },
         required: ['card'],

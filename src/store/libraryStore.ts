@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { db, type SyncOp } from '@/db/dexie';
 import type { Card, Board } from '@/types/domain';
 import { apiGetJson, apiPostJson, ApiError } from '@/services/api/client';
+import { normalizeCardReferences } from '@/services/bible/cardReference';
 
 type LibraryState = {
   cards: Card[];
@@ -124,7 +125,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       db.preferences.get(BOARD_ORDER_KEY),
       db.preferences.get(ACTIVE_BOARD_KEY),
     ]);
-    const liveCards = cards.map(stripLocal);
+    const liveCards = cards.map(stripLocal).map(normalizeCard);
     const liveBoards = boards.map(stripLocal);
     const storedCardOrder = readStoredOrder(savedCardOrderRow?.value);
     const reconciledCardOrder = reconcileOrder(storedCardOrder.order, liveCards);
@@ -415,7 +416,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       db.cards.filter((c) => c.deleted !== 1).toArray(),
       db.boards.filter((b) => b.deleted !== 1).toArray(),
     ]);
-    const liveCards = cards.map(stripLocal);
+    const liveCards = cards.map(stripLocal).map(normalizeCard);
     const liveBoards = boards.map(stripLocal);
 
     // Adopt remote order only if it's newer AND no local change is still
@@ -485,6 +486,13 @@ function stripLocal<T extends { dirty?: number; deleted?: number }>(local: T): O
   void _d;
   void _x;
   return rest;
+}
+
+// Normalize a card read from storage/server into the current shape. Migrates
+// legacy `references: string[]` (and any partial structured data) into
+// CardReference[] on read, so old local rows and remote payloads both work.
+function normalizeCard(card: Card): Card {
+  return { ...card, references: normalizeCardReferences(card.references) };
 }
 
 function replaceOrAdd<T extends { id: string }>(items: T[], next: T): T[] {

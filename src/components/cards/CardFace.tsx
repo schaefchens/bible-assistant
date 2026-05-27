@@ -1,6 +1,8 @@
-import type { Card } from '@/types/domain';
+import type { Card, CardReference } from '@/types/domain';
 import { colorClasses } from './cardColors';
 import { useVerseText } from '@/hooks/useVerseText';
+import { useSettingsStore } from '@/store/settingsStore';
+import { formatCardReferenceHeading } from '@/services/bible/cardReference';
 
 type Size = 'grid' | 'full';
 
@@ -38,7 +40,7 @@ export function CardFace({ card, size: _size, isActive = false }: Props) {
       {card.references.length > 0 && (
         <div className="flex-1 min-h-0 overflow-hidden space-y-2">
           {card.references.map((r, i) => (
-            <VerseBlock key={i} reference={r} dimClass={c.fgDim} isActive={isActive} />
+            <VerseBlock key={i} reference={r} fgClass={c.fg} dimClass={c.fgDim} isActive={isActive} />
           ))}
         </div>
       )}
@@ -64,20 +66,28 @@ export function CardFace({ card, size: _size, isActive = false }: Props) {
 
 function VerseBlock({
   reference,
+  fgClass,
   dimClass,
   isActive,
 }: {
-  reference: string;
+  reference: CardReference;
+  fgClass: string;
   dimClass: string;
   isActive: boolean;
 }) {
+  const locale = useSettingsStore((s) => s.locale);
   const text = useVerseText(reference);
   const verseSize = isActive ? 'text-lg sm:text-xl' : 'text-base sm:text-lg';
   return (
     <div>
-      <div className={['font-sans text-[11px] uppercase tracking-wide', dimClass].join(' ')}>
-        {reference}
+      <div className={['font-sans text-xs uppercase tracking-wide', dimClass].join(' ')}>
+        {formatCardReferenceHeading(reference, locale)}
       </div>
+      {reference.label && (
+        <div className={['font-serif font-semibold italic mt-0.5 leading-snug line-clamp-2 break-words', fgClass].join(' ')}>
+          {reference.label}
+        </div>
+      )}
       <div className={['font-serif mt-0.5 leading-snug', verseSize].join(' ')}>
         {text ?? <span className={dimClass}>…</span>}
       </div>

@@ -1,25 +1,32 @@
 import { useEffect, useState } from 'react';
 import { useSettingsStore } from '@/store/settingsStore';
 import { getVerses, verseSpeakable, type Translation } from '@/services/bible/bibleApi';
-import { parseReference } from '@/services/bible/referenceParser';
+import { cardReferenceToParsed } from '@/services/bible/cardReference';
+import type { CardReference } from '@/types/domain';
 
 const textCache = new Map<string, string>();
 const pendingFetches = new Map<string, Promise<void>>();
 
-function cacheKey(translation: Translation, reference: string): string {
-  return `${translation}::${reference}`;
+function rangesKey(ref: CardReference): string {
+  if (!ref.ranges || ref.ranges.length === 0) return 'all';
+  return ref.ranges.map((r) => `${r.start}-${r.end}`).join(',');
 }
 
-export function useVerseText(reference: string): string | null {
-  const translation = useSettingsStore((s) => s.translation);
-  const key = cacheKey(translation, reference);
+function cacheKey(translation: Translation, ref: CardReference): string {
+  return `${translation}::${ref.bookId}/${ref.chapter}/${rangesKey(ref)}`;
+}
+
+export function useVerseText(ref: CardReference): string | null {
+  const globalTranslation = useSettingsStore((s) => s.translation);
+  const translation = ref.translation ?? globalTranslation;
+  const parsed = cardReferenceToParsed(ref);
+  const key = parsed ? cacheKey(translation, ref) : null;
   const [, setTick] = useState(0);
-  const cached = textCache.get(key);
+  const cached = key ? textCache.get(key) : undefined;
 
   useEffect(() => {
+    if (!key || !parsed) return;
     if (textCache.has(key)) return;
-    const parsed = parseReference(reference);
-    if (!parsed) return;
 
     let cancelled = false;
     let promise = pendingFetches.get(key);
@@ -43,7 +50,8 @@ export function useVerseText(reference: string): string | null {
     return () => {
       cancelled = true;
     };
-  }, [key, reference, translation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, translation]);
 
   return cached ?? null;
 }

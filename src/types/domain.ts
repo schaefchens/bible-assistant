@@ -107,10 +107,31 @@ export const CARD_COLORS: CardColor[] = [
   'sky',
 ];
 
+export type CardVerseRange = { start: number; end: number };
+
+/**
+ * A verse reference attached to a card. Stored structurally as numbers
+ * (book/chapter/verse) so it is i18n-stable — display text and the fetched
+ * verse are resolved at runtime. `bookId`/`chapter` are absent only when the
+ * user's input could not be parsed, in which case `raw` holds it verbatim.
+ */
+export type CardReference = {
+  bookId?: number;
+  chapter?: number;
+  /** Verse ranges, in order. `undefined` means the whole chapter. */
+  ranges?: CardVerseRange[];
+  /** Optional per-reference translation override of the global setting. */
+  translation?: Translation;
+  /** Optional custom highlighted text shown alongside the heading. */
+  label?: string;
+  /** Original input, kept only when the line could not be parsed. */
+  raw?: string;
+};
+
 export type Card = {
   id: string;
   title: string;
-  references: string[];
+  references: CardReference[];
   notes?: string;
   tags?: string[];
   color?: CardColor;

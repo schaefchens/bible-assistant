@@ -16,6 +16,8 @@ import {
 import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
+import { useSettingsStore } from '@/store/settingsStore';
+import { formatCardReferenceHeading } from '@/services/bible/cardReference';
 import { BoardGrid } from '@/components/cards/BoardGrid';
 import { CardStack } from '@/components/cards/CardStack';
 import { CardPile } from '@/components/cards/CardPile';
@@ -675,6 +677,7 @@ function AddCardsModal({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const locale = useSettingsStore((s) => s.locale);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -743,7 +746,7 @@ function AddCardsModal({
                 <div className="font-serif text-cream text-sm truncate">{c.title || '—'}</div>
                 {c.references.length > 0 && (
                   <div className="text-xs text-gold-dim mt-0.5 truncate">
-                    {c.references.join(' · ')}
+                    {c.references.map((r) => formatCardReferenceHeading(r, locale)).join(' · ')}
                   </div>
                 )}
               </button>

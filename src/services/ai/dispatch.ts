@@ -10,6 +10,10 @@ import {
   formatReference,
   getBookById,
 } from '@/services/bible/bookCatalog';
+import {
+  parseCardReferenceLine,
+  formatCardReferenceInput,
+} from '@/services/bible/cardReference';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useChatStore } from '@/store/chatStore';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
@@ -311,16 +315,23 @@ function resolveCard(ref: string): CardLookup {
   };
 }
 
-function listCardsInUserOrder(): Card[] {
+function listCardsInUserOrder(): (Omit<Card, 'references'> & { references: string[] })[] {
   const { cards, cardOrder } = useLibraryStore.getState();
+  const locale = useSettingsStore.getState().locale;
   const rank = new Map(cardOrder.map((id, i) => [id, i]));
   const fallback = cards.length + 1;
-  return cards.slice().sort((a, b) => {
-    const ra = rank.get(a.id) ?? fallback;
-    const rb = rank.get(b.id) ?? fallback;
-    if (ra !== rb) return ra - rb;
-    return b.updatedAt - a.updatedAt;
-  });
+  return cards
+    .slice()
+    .sort((a, b) => {
+      const ra = rank.get(a.id) ?? fallback;
+      const rb = rank.get(b.id) ?? fallback;
+      if (ra !== rb) return ra - rb;
+      return b.updatedAt - a.updatedAt;
+    })
+    .map((c) => ({
+      ...c,
+      references: c.references.map((r) => formatCardReferenceInput(r, locale)),
+    }));
 }
 
 async function handleCreateCard(args: ToolArgs['create_card']): Promise<ToolDispatchResult> {
@@ -334,7 +345,7 @@ async function handleCreateCard(args: ToolArgs['create_card']): Promise<ToolDisp
   const card: Card = {
     id: nowId(),
     title: args.title,
-    references: args.references,
+    references: args.references.map(parseCardReferenceLine),
     notes: args.notes,
     color: 'yellow',
     createdAt: Date.now(),
@@ -377,7 +388,9 @@ async function handleUpdateCard(args: ToolArgs['update_card']): Promise<ToolDisp
   const updated: Card = {
     ...lookup.card,
     title: args.title ?? lookup.card.title,
-    references: args.references ?? lookup.card.references,
+    references: args.references
+      ? args.references.map(parseCardReferenceLine)
+      : lookup.card.references,
     notes: args.notes ?? lookup.card.notes,
     updatedAt: Date.now(),
   };

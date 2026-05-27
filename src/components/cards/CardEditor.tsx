@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLibraryStore } from '@/store/libraryStore';
-import { parseReference } from '@/services/bible/referenceParser';
-import { formatReference } from '@/services/bible/bookCatalog';
+import {
+  parseCardReferenceLine,
+  formatCardReferenceInput,
+} from '@/services/bible/cardReference';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { Card, CardColor } from '@/types/domain';
 import { CARD_COLORS } from '@/types/domain';
@@ -24,7 +26,9 @@ export function CardEditor({ card, onClose }: Props) {
 
   const [title, setTitle] = useState(card.title);
   const [emoji, setEmoji] = useState(card.emoji ?? '');
-  const [referencesText, setReferencesText] = useState(card.references.join('\n'));
+  const [referencesText, setReferencesText] = useState(
+    card.references.map((r) => formatCardReferenceInput(r, locale)).join('\n'),
+  );
   const [notes, setNotes] = useState(card.notes ?? '');
   const [tags, setTags] = useState<string[]>(card.tags ?? []);
   const [color, setColor] = useState<CardColor>(card.color ?? 'none');
@@ -37,11 +41,7 @@ export function CardEditor({ card, onClose }: Props) {
       .split('\n')
       .map((s) => s.trim())
       .filter(Boolean)
-      .map((raw) => {
-        const parsed = parseReference(raw);
-        if (!parsed) return raw;
-        return formatReference(parsed.bookId, parsed.chapter, parsed.verseStart, parsed.verseEnd, locale);
-      });
+      .map((raw) => parseCardReferenceLine(raw));
 
     await upsertCard({
       ...card,
@@ -134,8 +134,9 @@ export function CardEditor({ card, onClose }: Props) {
           onChange={(e) => setReferencesText(e.target.value)}
           rows={3}
           className="w-full bg-navy-soft rounded-xl px-3 py-2 text-cream font-serif outline-none focus:ring-2 focus:ring-gold/60"
-          placeholder="Galatians 5:22"
+          placeholder={t('cards.versesPlaceholder') as string}
         />
+        <span className="block text-[11px] text-cream-dim mt-1">{t('cards.versesHint')}</span>
       </Field>
 
       <Field label={t('cards.notes')}>

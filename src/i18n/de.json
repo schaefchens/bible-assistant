@@ -88,6 +88,8 @@
     "cardTitle": "Titel",
     "emoji": "Emoji",
     "verses": "Verse",
+    "versesPlaceholder": "Galater 5,22; S00; optionaler Hinweis",
+    "versesHint": "Eine pro Zeile: Stelle; optionale Übersetzung (S00, LUT, ESV…); optionaler Hinweis.",
     "addVerse": "Vers hinzufügen",
     "notes": "Notizen",
     "noNotes": "Noch keine Notizen.",

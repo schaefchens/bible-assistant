@@ -88,6 +88,8 @@
     "cardTitle": "Title",
     "emoji": "Emoji",
     "verses": "Verses",
+    "versesPlaceholder": "Galatians 5:22; ESV; optional note",
+    "versesHint": "One per line: Reference; optional translation (ESV, S00, LUT…); optional note.",
     "addVerse": "Add verse",
     "notes": "Notes",
     "noNotes": "No notes yet.",
