@@ -73,7 +73,13 @@ export function MessageList({ scrollRef }: Props) {
   );
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
+    <div
+      ref={scrollRef}
+      // pb reserves room for the fixed mic / playback-bar floaters that sit
+      // over the bottom corners, so the last message and its Continue button
+      // can scroll clear of them instead of hiding underneath.
+      className="flex-1 overflow-y-auto px-3 pt-4 pb-20 space-y-3"
+    >
       {messages.length === 0 && (
         <div className="text-center text-cream-dim py-12 px-4">
           <p className="font-serif italic">{t('chat.empty')}</p>
