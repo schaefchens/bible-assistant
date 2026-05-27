@@ -505,6 +505,23 @@ class AudioPlaybackManager {
     this._ambientPause();
     usePlaybackStore.getState().setStatus('idle');
     usePlaybackStore.getState().setCurrent(null);
+    this.maybeSuspendContext();
+  }
+
+  /**
+   * Suspend the AudioContext once nothing is using it so iOS can power down
+   * the audio hardware (a `running` context keeps the audio session — and the
+   * CPU — awake, which warms the device long after reading stops). Safe to
+   * call repeatedly: it no-ops while a tick, ambient source, or non-idle
+   * status is live, and ensureContext() resumes the (already-unlocked) context
+   * on the next play without needing a fresh user gesture.
+   */
+  private maybeSuspendContext(): void {
+    if (!this.ctx || this.ctx.state !== 'running') return;
+    if (this.tickHandle !== null) return;
+    if (this.ambientSource) return;
+    if (usePlaybackStore.getState().status !== 'idle') return;
+    void this.ctx.suspend();
   }
 
   /** Tear down the TTS queue without touching ambient or playback-store state. */
@@ -820,6 +837,8 @@ class AudioPlaybackManager {
         this.ambientSource = null;
       }
       this.ambientStopTimer = null;
+      // Ambient was the last thing holding the context open — let it suspend.
+      this.maybeSuspendContext();
     }, this.AMBIENT_FADE_SEC * 1000 + 50);
 
     usePlaybackStore.getState().setAmbientPlaying(false);
