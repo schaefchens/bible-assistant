@@ -1,7 +1,7 @@
 import type { MicCorner } from '@/store/settingsStore';
 
 const PAD = 12;
-const BOTTOM_NAV_H = 64; // nav grid height (icon + label)
+const BOTTOM_NAV_H = 56; // measured nav grid height (icon + label), excl. safe area
 
 export type AnchorStyle = {
   position: 'fixed';
@@ -37,7 +37,7 @@ export function getMicAnchor(opts: {
   // On the chat route, the composer also lives above the nav. Lift bottom corners
   // above it so floaters don't cover the send button.
   if (opts.route === '/' && (corner === 'br' || corner === 'bl')) {
-    bottom += opts.composerHeight + 4;
+    bottom += opts.composerHeight - 4;
   }
 
   switch (corner) {
