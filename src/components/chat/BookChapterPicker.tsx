@@ -6,11 +6,8 @@ import { useChatStore } from '@/store/chatStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useCommandPipeline } from '@/hooks/useCommandPipeline';
 import { BOOKS, getBookById } from '@/services/bible/bookCatalog';
-import {
-  TRANSLATIONS,
-  getTranslationInfo,
-  type TranslationInfo,
-} from '@/services/bible/translationCatalog';
+import { getTranslationInfo } from '@/services/bible/translationCatalog';
+import { TranslationList } from '@/components/bible/TranslationList';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 
 type View = 'books' | 'translations';
@@ -30,13 +27,6 @@ export function BookChapterPicker() {
     () => ({
       ot: BOOKS.filter((b) => b.id <= 39),
       nt: BOOKS.filter((b) => b.id >= 40),
-    }),
-    [],
-  );
-  const { enTrans, deTrans } = useMemo(
-    () => ({
-      enTrans: TRANSLATIONS.filter((tr) => tr.language === 'en'),
-      deTrans: TRANSLATIONS.filter((tr) => tr.language === 'de'),
     }),
     [],
   );
@@ -74,56 +64,6 @@ export function BookChapterPicker() {
         )}
       >
         {bookLabel(book)}
-      </button>
-    );
-  };
-
-  const renderTranslationRow = (tr: TranslationInfo) => {
-    const selected = tr.code === translation;
-    const langLabel =
-      tr.language === 'de'
-        ? t('chat.bookPicker.languageDe')
-        : t('chat.bookPicker.languageEn');
-    return (
-      <button
-        key={tr.code}
-        type="button"
-        onClick={() => {
-          setTranslation(tr.code, true);
-          setView('books');
-        }}
-        className={clsx(
-          'w-full text-left px-4 py-3 transition-colors border-l-2 flex items-start gap-3',
-          selected
-            ? 'bg-gold/15 border-gold'
-            : 'hover:bg-gold/5 border-transparent',
-        )}
-      >
-        <span
-          className={clsx(
-            'shrink-0 mt-0.5 inline-flex items-center justify-center',
-            'min-w-[3rem] px-2 py-0.5 rounded-md text-xs font-mono tracking-wide',
-            'border',
-            selected
-              ? 'border-gold/60 text-gold bg-gold/10'
-              : 'border-navy-soft/60 text-cream-dim bg-navy/40',
-          )}
-        >
-          {tr.code}
-        </span>
-        <span className="flex-1 min-w-0">
-          <span
-            className={clsx(
-              'block font-serif text-sm leading-tight',
-              selected ? 'text-gold' : 'text-cream',
-            )}
-          >
-            {tr.name}
-          </span>
-          <span className="block text-xs text-cream-dim/80 mt-0.5">
-            {tr.year} · {langLabel} · {tr.blurb[lang]}
-          </span>
-        </span>
       </button>
     );
   };
@@ -328,16 +268,14 @@ export function BookChapterPicker() {
               )}
 
               {showingTranslations && (
-                <div className="flex-1 min-h-0 overflow-y-auto pb-safe">
-                  <h3 className="px-4 pt-2 pb-1 text-xs uppercase tracking-wider text-cream-dim/70 font-serif">
-                    {t('chat.bookPicker.languageEn')}
-                  </h3>
-                  {enTrans.map(renderTranslationRow)}
-                  <h3 className="px-4 pt-4 pb-1 text-xs uppercase tracking-wider text-cream-dim/70 font-serif">
-                    {t('chat.bookPicker.languageDe')}
-                  </h3>
-                  {deTrans.map(renderTranslationRow)}
-                </div>
+                <TranslationList
+                  value={translation}
+                  onChange={(code) => {
+                    setTranslation(code, true);
+                    setView('books');
+                  }}
+                  className="flex-1 min-h-0 overflow-y-auto pb-safe"
+                />
               )}
             </div>
           </div>

@@ -5,11 +5,11 @@ import {
   useSettingsStore,
   type MicCorner,
 } from '@/store/settingsStore';
-import type { Translation } from '@/services/bible/bibleApi';
 import { VOICE_OPTIONS, type VoiceId } from '@/types/domain';
 import { getPassphrase } from '@/lib/passphrase';
 import { PlaybackSettingsForm } from '@/components/playback/PlaybackSettingsForm';
 import { SegmentedControl } from '@/components/common/SegmentedControl';
+import { TranslationList } from '@/components/bible/TranslationList';
 import { factoryReset } from '@/lib/factoryReset';
 import {
   applyUpdate,
@@ -53,37 +53,11 @@ export function SettingsPage() {
       </Section>
 
       <Section title={t('settings.translation')}>
-        <div className="space-y-2">
-          <SegmentedControl
-            value={settings.translation}
-            cols={3}
-            options={[
-              { value: 'ESV', label: 'ESV', title: 'English Standard Version' },
-              { value: 'KJV', label: 'KJV', title: 'King James Version' },
-              { value: 'NKJV', label: 'NKJV', title: 'New King James Version' },
-            ]}
-            onChange={(v) => settings.setTranslation(v as Translation)}
-          />
-          <SegmentedControl
-            value={settings.translation}
-            cols={3}
-            options={[
-              { value: 'S00', label: 'Schlachter', title: 'Schlachter 2000' },
-              { value: 'LUT', label: 'Luther', title: 'Luther 1912' },
-              { value: 'HFA', label: 'Hoffnung', title: 'Hoffnung für Alle' },
-            ]}
-            onChange={(v) => settings.setTranslation(v as Translation)}
-          />
-          <SegmentedControl
-            value={settings.translation}
-            cols={2}
-            options={[
-              { value: 'S51', label: 'SCH 1951', title: 'Schlachter 1951 (mit Strong)' },
-              { value: 'ELB', label: 'Elberfelder', title: 'Elberfelder 1905 (mit Strong)' },
-            ]}
-            onChange={(v) => settings.setTranslation(v as Translation)}
-          />
-        </div>
+        <TranslationList
+          value={settings.translation}
+          onChange={(code) => settings.setTranslation(code, true)}
+          className="rounded-xl border border-navy-soft/40 overflow-hidden py-1"
+        />
       </Section>
 
       <Section title={t('settings.openaiKey.title')}>
