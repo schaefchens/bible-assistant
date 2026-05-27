@@ -64,7 +64,12 @@
       "open": "Buch und Kapitel auswählen",
       "title": "Kapitel lesen",
       "oldTestament": "Altes Testament",
-      "newTestament": "Neues Testament"
+      "newTestament": "Neues Testament",
+      "translations": "Übersetzungen",
+      "changeTranslation": "Übersetzung wechseln",
+      "back": "Zurück",
+      "languageEn": "Englisch",
+      "languageDe": "Deutsch"
     }
   },
   "playback": {

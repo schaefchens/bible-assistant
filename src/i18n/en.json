@@ -64,7 +64,12 @@
       "open": "Pick book and chapter",
       "title": "Read a chapter",
       "oldTestament": "Old Testament",
-      "newTestament": "New Testament"
+      "newTestament": "New Testament",
+      "translations": "Translations",
+      "changeTranslation": "Change translation",
+      "back": "Back",
+      "languageEn": "English",
+      "languageDe": "German"
     }
   },
   "playback": {
