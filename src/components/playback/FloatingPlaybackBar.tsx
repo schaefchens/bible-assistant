@@ -99,7 +99,14 @@ export function FloatingPlaybackBar() {
       <MicSnapTargets visible={dragState.dragging} activeCorner={dragState.activeCorner} />
 
       <div
-        style={{ ...dragStyle, zIndex: 49, touchAction: 'none' }}
+        style={{
+          ...dragStyle,
+          zIndex: 49,
+          touchAction: 'none',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          WebkitTouchCallout: 'none',
+        }}
         onPointerDown={bindings.onPointerDown}
         onContextMenu={bindings.onContextMenu}
         onClickCapture={(e) => {

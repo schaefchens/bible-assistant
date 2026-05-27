@@ -58,6 +58,9 @@ export function GlobalMicButton() {
           ...dragStyle,
           zIndex: 50,
           touchAction: 'none',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          WebkitTouchCallout: 'none',
         }}
         onClick={async (e) => {
           if (bindings.consumeClickIfDragged()) {

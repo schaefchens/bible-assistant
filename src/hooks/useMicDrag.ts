@@ -81,10 +81,25 @@ export function useCornerDrag(onDrop: (corner: MicCorner) => void): {
     window.addEventListener('pointermove', onMove, { passive: false });
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
+
+    // Lock iOS's native long-press behaviours page-wide for the duration of
+    // the drag: the gesture that starts the drag is the same one Safari uses
+    // to select text / raise the callout, and the finger sweeps across chat
+    // text on its way to a corner. Clear any selection the press may have
+    // already begun, then disable selection + callout until drop.
+    const body = document.body;
+    body.style.setProperty('user-select', 'none');
+    body.style.setProperty('-webkit-user-select', 'none');
+    body.style.setProperty('-webkit-touch-callout', 'none');
+    window.getSelection?.()?.removeAllRanges();
+
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
+      body.style.removeProperty('user-select');
+      body.style.removeProperty('-webkit-user-select');
+      body.style.removeProperty('-webkit-touch-callout');
     };
   }, [state.dragging, cleanup]);
 
