@@ -36,7 +36,11 @@ export function getMicAnchor(opts: {
 
   // On the chat route, the composer also lives above the nav. Lift bottom corners
   // above it so floaters don't cover the send button.
-  if (opts.route === '/' && (corner === 'br' || corner === 'bl')) {
+  if (
+    opts.route === '/' &&
+    opts.composerHeight > 0 &&
+    (corner === 'br' || corner === 'bl')
+  ) {
     bottom += opts.composerHeight - 4;
   }
 
