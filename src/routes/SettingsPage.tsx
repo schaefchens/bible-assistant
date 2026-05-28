@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   hasActivePersonalKey,
@@ -9,7 +9,9 @@ import { VOICE_OPTIONS, type VoiceId } from '@/types/domain';
 import { getPassphrase } from '@/lib/passphrase';
 import { PlaybackSettingsForm } from '@/components/playback/PlaybackSettingsForm';
 import { SegmentedControl } from '@/components/common/SegmentedControl';
-import { TranslationList } from '@/components/bible/TranslationList';
+import { TranslationPickerSheet } from '@/components/bible/TranslationPickerSheet';
+import { getTranslationInfo } from '@/services/bible/translationCatalog';
+import clsx from 'clsx';
 import { factoryReset } from '@/lib/factoryReset';
 import {
   applyUpdate,
@@ -26,6 +28,8 @@ export function SettingsPage() {
   const words = passphrase.split(' ');
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [translationPickerOpen, setTranslationPickerOpen] = useState(false);
+  const currentTranslation = getTranslationInfo(settings.translation);
 
   const onCopy = async () => {
     try {
@@ -53,16 +57,59 @@ export function SettingsPage() {
       </Section>
 
       <Section title={t('settings.translation')}>
-        <TranslationList
-          value={settings.translation}
-          onChange={(code) => settings.setTranslation(code, true)}
-          className="rounded-xl border border-navy-soft/40 overflow-hidden py-1"
-        />
+        <button
+          type="button"
+          onClick={() => setTranslationPickerOpen(true)}
+          aria-label={t('chat.bookPicker.changeTranslation') as string}
+          className={clsx(
+            'w-full flex items-center gap-3 rounded-xl px-3 py-2.5',
+            'bg-navy/60 border border-gold/30 hover:border-gold/60 hover:bg-navy/80',
+            'transition-colors text-left',
+          )}
+        >
+          <span
+            className={clsx(
+              'shrink-0 inline-flex items-center justify-center',
+              'min-w-[3rem] px-2 py-0.5 rounded-md text-xs font-mono tracking-wide',
+              'border border-gold/60 text-gold bg-gold/10',
+            )}
+          >
+            {currentTranslation.code}
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block font-serif text-gold text-sm leading-tight truncate">
+              {currentTranslation.name}
+            </span>
+            <span className="block text-xs text-cream-dim/80 mt-0.5">
+              {currentTranslation.year} ·{' '}
+              {currentTranslation.language === 'de'
+                ? t('chat.bookPicker.languageDe')
+                : t('chat.bookPicker.languageEn')}
+            </span>
+          </span>
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-cream-dim shrink-0"
+            aria-hidden="true"
+          >
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
       </Section>
 
-      <Section title={t('settings.openaiKey.title')}>
-        <OpenAiKeySection />
-      </Section>
+      <TranslationPickerSheet
+        open={translationPickerOpen}
+        value={settings.translation}
+        onChange={(code) => settings.setTranslation(code, true)}
+        onClose={() => setTranslationPickerOpen(false)}
+      />
 
       <Section title={t('settings.voice')}>
         <VoiceSelect
@@ -137,6 +184,10 @@ export function SettingsPage() {
 
       <PlaybackSettingsForm />
 
+      <Section title={t('settings.openaiKey.title')}>
+        <OpenAiKeySection />
+      </Section>
+
       <Section title={t('settings.identity')}>
         <p className="text-xs text-cream-dim mb-2">{t('settings.identityHint')}</p>
         {!revealed ? (
@@ -180,6 +231,41 @@ export function SettingsPage() {
 
 function Imprint() {
   const [revealed, setRevealed] = useState(false);
+  const [sheep, setSheep] = useState(false);
+  const sheepTimer = useRef<number | null>(null);
+  const revealTimer = useRef<number | null>(null);
+
+  const clearTimers = () => {
+    if (sheepTimer.current !== null) {
+      window.clearTimeout(sheepTimer.current);
+      sheepTimer.current = null;
+    }
+    if (revealTimer.current !== null) {
+      window.clearTimeout(revealTimer.current);
+      revealTimer.current = null;
+    }
+  };
+
+  // Sheep at 1s as visual confirmation that the long-press is registering;
+  // reveal at 3s. Releasing early aborts both. § 5 TMG still calls for
+  // imprint disclosure, but a Diener des Herrn doesn't make it easy ;)
+  const onPressStart = () => {
+    if (revealed) return;
+    clearTimers();
+    sheepTimer.current = window.setTimeout(() => setSheep(true), 1000);
+    revealTimer.current = window.setTimeout(() => {
+      setRevealed(true);
+      setSheep(false);
+    }, 3000);
+  };
+
+  const onPressEnd = () => {
+    clearTimers();
+    setSheep(false);
+  };
+
+  useEffect(() => () => clearTimers(), []);
+
   return (
     <section className="mt-10 pt-6 border-t border-navy-soft/50 text-center text-xs text-cream-dim">
       <h3 className="font-serif text-gold/80 text-sm tracking-wide">
@@ -207,13 +293,28 @@ function Imprint() {
             </a>
           </address>
         ) : (
-          <button
-            type="button"
-            onClick={() => setRevealed(true)}
-            className="text-cream underline decoration-dotted underline-offset-4 hover:text-gold transition-colors"
-          >
-            einem Diener des Herrn
-          </button>
+          <>
+            <button
+              type="button"
+              onPointerDown={onPressStart}
+              onPointerUp={onPressEnd}
+              onPointerLeave={onPressEnd}
+              onPointerCancel={onPressEnd}
+              onContextMenu={(e) => e.preventDefault()}
+              className="text-cream underline decoration-dotted underline-offset-4 hover:text-gold transition-colors select-none"
+              style={{ WebkitTouchCallout: 'none' }}
+            >
+              einem Diener des Herrn
+            </button>
+            {sheep && (
+              <div
+                aria-hidden="true"
+                className="text-6xl leading-none mt-2 select-none pointer-events-none"
+              >
+                🐑
+              </div>
+            )}
+          </>
         )}
         <p className="pt-2 italic text-cream-dim/80 font-serif">
           „Mit der Gnade Gottes und Claude"
