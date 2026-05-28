@@ -11,7 +11,7 @@ import {
   togglePlayOrStart,
 } from '@/hooks/usePlaybackTransport';
 import { playZoneTick, type ZoneSound } from '@/lib/clickTick';
-import { speakLabel } from '@/lib/speakLabel';
+import { speakLabel, primeSpeechSynthesis } from '@/lib/speakLabel';
 import { playLastReading } from '@/lib/playLastReading';
 
 const LONG_PRESS_MS = 500;
@@ -184,6 +184,10 @@ function ZoneButton({
       navigator.vibrate(15);
     }
     playZoneTick(zone);
+    // Unlock speechSynthesis inside this user gesture so the
+    // long-press-triggered speak() (fired from a timer) isn't blocked
+    // by iOS Safari's gesture rule.
+    primeSpeechSynthesis();
     window.setTimeout(() => setPressed(false), 150);
 
     clearLongPress();
@@ -225,6 +229,7 @@ function ZoneButton({
       onPointerLeave={handleCancel}
       onPointerCancel={handleCancel}
       onClick={handleClick}
+      onContextMenu={(e) => e.preventDefault()}
       className={clsx(
         // min-w-0 / min-h-0 + overflow-hidden so a wide label can't expand
         // the grid column and push the right zone off-screen.
@@ -237,6 +242,11 @@ function ZoneButton({
       style={{
         touchAction: 'manipulation',
         WebkitTapHighlightColor: 'transparent',
+        // Suppress the long-press text-selection / share / iOS callout
+        // popups that Chrome and Safari show by default.
+        WebkitTouchCallout: 'none',
+        WebkitUserSelect: 'none',
+        userSelect: 'none',
       }}
     >
       <span
