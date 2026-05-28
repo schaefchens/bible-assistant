@@ -2,6 +2,10 @@ import { useChatStore } from '@/store/chatStore';
 import { usePlaybackStore } from '@/store/playbackStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { startPlaybackForVerses, startReadingPlaylist } from '@/lib/startPlayback';
+import {
+  getLastPlayedMessageId,
+  triggerContinuation,
+} from '@/lib/autoPlay';
 import type { ChatMessage } from '@/types/domain';
 
 export const RATE_CYCLE = [0.85, 1.0, 1.15, 1.3] as const;
@@ -20,12 +24,33 @@ export function hasAnyReading(): boolean {
   return bibleMessages(useChatStore.getState().messages).length > 0;
 }
 
+/** Fire the same flow as auto-play's soft-end continuation, but on demand.
+ * Pokes the playback status to 'loading' so the floating bar's PlayButton
+ * pulses while the cold fetch runs (when there's no prefetch hit). */
+function fireContinuationFromTransport(messageId: string): void {
+  const store = usePlaybackStore.getState();
+  if (store.status === 'idle') store.setStatus('loading');
+  void triggerContinuation(messageId);
+}
+
 export function navigateVerse(dir: 1 | -1): void {
   const bibles = bibleMessages(useChatStore.getState().messages);
   if (bibles.length === 0) return;
   const current = usePlaybackStore.getState().current;
 
   if (!current) {
+    // No active playback — if we've played something in this session and
+    // the user taps next, treat that as "continue past where I left off"
+    // rather than restarting the last reading from verse 0 (the play
+    // button already covers restart). Prev-direction keeps the existing
+    // start-from-top behavior.
+    if (dir === 1) {
+      const lastId = getLastPlayedMessageId();
+      if (lastId && bibles.some((m) => m.id === lastId)) {
+        fireContinuationFromTransport(lastId);
+        return;
+      }
+    }
     const target = dir === 1 ? bibles[bibles.length - 1] : bibles[0];
     selectMessageById(target.id);
     void startPlaybackForVerses(target.id, target.verses!, 0);
@@ -53,7 +78,11 @@ export function navigateVerse(dir: 1 | -1): void {
       const nextMsg = bibles[curMsgIdx + 1];
       selectMessageById(nextMsg.id);
       void startPlaybackForVerses(nextMsg.id, nextMsg.verses!, 0);
+      return;
     }
+    // End of everything — fetch and enqueue the next logical chunk
+    // (mirrors the reader panel's Continue button).
+    fireContinuationFromTransport(current.messageId);
     return;
   }
 

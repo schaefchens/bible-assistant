@@ -376,12 +376,37 @@ async function schedulePrefetchFor(messageId: string): Promise<void> {
   }
 }
 
+/** Last messageId whose verses we played. Survives `softEnd()` clearing
+ * the playback store's `current`, so the manual next-button path can
+ * still pick up the conversation thread. Returns null before anything has
+ * played in this session. */
+export function getLastPlayedMessageId(): string | null {
+  return lastPlayedMessageId;
+}
+
+/**
+ * Same flow as the automatic soft-end continuation, exposed so the
+ * floating playback bar's next button can fire it on demand even when
+ * auto-play is off. The `firingContinuation` guard below protects against
+ * double-tap spam.
+ */
+export const triggerContinuation = (messageId: string): Promise<void> =>
+  onSoftEnd(messageId);
+
 async function onSoftEnd(messageId: string): Promise<void> {
   if (firingContinuation) return;
   firingContinuation = true;
   try {
     const next = await computeNextChunk(messageId);
-    if (!next) return;
+    if (!next) {
+      // Nothing to continue with (e.g. end of Bible). If the manual
+      // next-button path poked us into a 'loading' state for instant
+      // feedback, restore idle so the thinking drone and PlayButton pulse
+      // don't get stuck.
+      const ps = usePlaybackStore.getState();
+      if (ps.status === 'loading' && !ps.current) ps.setStatus('idle');
+      return;
+    }
     await enqueueContinuationFor(messageId, next.cont, next.translation);
     // Kick off the next prefetch right after enqueueing.
     void schedulePrefetchFor(messageId);
