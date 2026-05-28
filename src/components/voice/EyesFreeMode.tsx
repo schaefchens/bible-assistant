@@ -268,6 +268,8 @@ function RollingTicker() {
   const verseIndex = usePlaybackStore((s) => s.current?.verseIndex ?? -1);
   const wordIndex = usePlaybackStore((s) => s.current?.currentWordIndex ?? -1);
   const isVerse = usePlaybackStore((s) => s.current?.isVerse ?? false);
+  const status = usePlaybackStore((s) => s.status);
+  const hasTrack = usePlaybackStore((s) => s.current !== null);
 
   const verseText = useChatStore((s) => {
     if (messageId == null || verseIndex < 0) return '';
@@ -280,14 +282,38 @@ function RollingTicker() {
     [verseText],
   );
 
-  if (!isVerse || words.length === 0 || wordIndex < 0) {
+  // Cache the last visible chunk so brief gaps (punctuation, between
+  // tracks, chapter announcements) don't flicker the ticker. Cleared only
+  // when playback fully stops.
+  const lastChunkRef = useRef<{ words: string[]; activeIdx: number } | null>(
+    null,
+  );
+
+  const display = useMemo<{ words: string[]; activeIdx: number } | null>(() => {
+    if (status === 'idle' || !hasTrack) {
+      lastChunkRef.current = null;
+      return null;
+    }
+    if (isVerse && words.length > 0 && wordIndex >= 0) {
+      const chunkIndex = Math.floor(wordIndex / CHUNK_SIZE);
+      const chunkStart = chunkIndex * CHUNK_SIZE;
+      const fresh = {
+        words: words.slice(chunkStart, chunkStart + CHUNK_SIZE),
+        activeIdx: wordIndex - chunkStart,
+      };
+      lastChunkRef.current = fresh;
+      return fresh;
+    }
+    return lastChunkRef.current;
+  }, [status, hasTrack, isVerse, words, wordIndex]);
+
+  if (!display) {
     return <div className="w-full h-full" aria-hidden="true" />;
   }
 
-  const chunkIndex = Math.floor(wordIndex / CHUNK_SIZE);
-  const chunkStart = chunkIndex * CHUNK_SIZE;
-  const chunkWords = words.slice(chunkStart, chunkStart + CHUNK_SIZE);
-  const activeInChunk = wordIndex - chunkStart;
+  const chunkWords = display.words;
+  const activeInChunk = display.activeIdx;
+  const chunkKey = chunkWords.join('|');
 
   return (
     <div
@@ -295,14 +321,14 @@ function RollingTicker() {
       aria-hidden="true"
     >
       <div
-        key={chunkIndex}
+        key={chunkKey}
         className="flex items-baseline justify-center whitespace-nowrap gap-[0.5em] min-w-0"
       >
         {chunkWords.map((w, i) => {
           const active = i === activeInChunk;
           return (
             <span
-              key={chunkStart + i}
+              key={i}
               className={clsx(
                 // Keep font-weight constant so the active word doesn't
                 // change its intrinsic width and shove neighbours around.
