@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useGlobalVoiceStore } from '@/store/globalVoiceStore';
 import { useGlobalVoice } from '@/hooks/useGlobalVoice';
 import { usePlaybackStore } from '@/store/playbackStore';
+import { useChatStore } from '@/store/chatStore';
 import {
   navigateVerse,
   togglePlayOrStart,
@@ -72,7 +73,7 @@ export function EyesFreeMode() {
     <div
       className="fixed inset-0 z-[60] bg-navy-deep grid select-none"
       style={{
-        gridTemplateRows: '16vh minmax(0, 1fr) 20vh',
+        gridTemplateRows: '12vh 14vh minmax(0, 1fr) 18vh',
       }}
     >
       <ZoneButton
@@ -81,10 +82,11 @@ export function EyesFreeMode() {
         ariaLabel={t('eyesFree.exit') as string}
         icon={<ExitIcon />}
         className="w-full h-full pt-safe bg-navy-soft text-cream-dim flex-row gap-3"
-        labelClassName="text-[clamp(1.25rem,5vh,2.25rem)]"
-        iconClassName="w-[clamp(1.5rem,6vh,2.5rem)] h-[clamp(1.5rem,6vh,2.5rem)]"
+        labelClassName="text-[clamp(1.1rem,4vh,2rem)]"
+        iconClassName="w-[clamp(1.25rem,5vh,2.25rem)] h-[clamp(1.25rem,5vh,2.25rem)]"
         onTap={exit}
       />
+      <RollingTicker />
       <div
         className="grid min-h-0"
         style={{ gridTemplateColumns: '1fr minmax(0, 38vw) 1fr' }}
@@ -252,6 +254,72 @@ function ZoneButton({
         {label}
       </span>
     </button>
+  );
+}
+
+// Static word-chunk display. Shows CHUNK_SIZE words at a time, highlights
+// the currently-spoken one in gold, and swaps to the next chunk only when
+// playback crosses a chunk boundary. Avoids per-frame motion that becomes
+// visually noisy in eyes-free use.
+const CHUNK_SIZE = 4;
+
+function RollingTicker() {
+  const messageId = usePlaybackStore((s) => s.current?.messageId ?? null);
+  const verseIndex = usePlaybackStore((s) => s.current?.verseIndex ?? -1);
+  const wordIndex = usePlaybackStore((s) => s.current?.currentWordIndex ?? -1);
+  const isVerse = usePlaybackStore((s) => s.current?.isVerse ?? false);
+
+  const verseText = useChatStore((s) => {
+    if (messageId == null || verseIndex < 0) return '';
+    const msg = s.messages.find((m) => m.id === messageId);
+    return msg?.verses?.[verseIndex]?.text ?? '';
+  });
+
+  const words = useMemo(
+    () => verseText.split(/\s+/).filter(Boolean),
+    [verseText],
+  );
+
+  if (!isVerse || words.length === 0 || wordIndex < 0) {
+    return <div className="bg-navy-soft/30 w-full h-full" aria-hidden="true" />;
+  }
+
+  const chunkIndex = Math.floor(wordIndex / CHUNK_SIZE);
+  const chunkStart = chunkIndex * CHUNK_SIZE;
+  const chunkWords = words.slice(chunkStart, chunkStart + CHUNK_SIZE);
+  const activeInChunk = wordIndex - chunkStart;
+
+  return (
+    <div
+      className="relative overflow-hidden bg-navy-soft/30 w-full h-full flex items-center justify-center px-3"
+      aria-hidden="true"
+    >
+      <div
+        key={chunkIndex}
+        className="flex items-baseline justify-center whitespace-nowrap gap-[0.5em] min-w-0"
+      >
+        {chunkWords.map((w, i) => {
+          const active = i === activeInChunk;
+          return (
+            <span
+              key={chunkStart + i}
+              className={clsx(
+                // Keep font-weight constant so the active word doesn't
+                // change its intrinsic width and shove neighbours around.
+                // Distinction is by colour (and a subtle glow) only.
+                'font-serif font-bold leading-none transition-colors duration-150',
+                active
+                  ? 'text-gold-glow [text-shadow:0_0_18px_rgba(231,201,138,0.55)]'
+                  : 'text-cream-dim/70',
+              )}
+              style={{ fontSize: 'clamp(1.5rem, 6vw, 3rem)' }}
+            >
+              {w}
+            </span>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
