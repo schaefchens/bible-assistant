@@ -31,6 +31,7 @@ type SettingsState = {
    * reading space; floaters drop down as composerHeight goes to 0. */
   hideComposer: boolean;
   micSoundEnabled: boolean;
+  thinkingSoundEnabled: boolean;
   readChapterHeadings: boolean;
   readVerseNumbers: boolean;
   /** 'spoken' → "Verse 16" / "Vers 16"; 'plain' → just "16". */
@@ -65,6 +66,7 @@ type SettingsState = {
   setReadingOnlyView: (v: boolean) => void;
   setHideComposer: (v: boolean) => void;
   setMicSoundEnabled: (v: boolean) => void;
+  setThinkingSoundEnabled: (v: boolean) => void;
   setReadChapterHeadings: (v: boolean) => void;
   setReadVerseNumbers: (v: boolean) => void;
   setVerseNumberStyle: (v: VerseNumberStyle) => void;
@@ -166,6 +168,7 @@ export const useSettingsStore = create<SettingsState>()(
         readingOnlyView: false,
         hideComposer: false,
         micSoundEnabled: true,
+        thinkingSoundEnabled: true,
         readChapterHeadings: false,
         readVerseNumbers: false,
         verseNumberStyle: 'spoken',
@@ -199,6 +202,8 @@ export const useSettingsStore = create<SettingsState>()(
         setReadingOnlyView: (readingOnlyView) => set({ readingOnlyView }),
         setHideComposer: (hideComposer) => set({ hideComposer }),
         setMicSoundEnabled: (micSoundEnabled) => set({ micSoundEnabled }),
+        setThinkingSoundEnabled: (thinkingSoundEnabled) =>
+          set({ thinkingSoundEnabled }),
         setReadChapterHeadings: (readChapterHeadings) =>
           set({ readChapterHeadings }),
         setReadVerseNumbers: (readVerseNumbers) => set({ readVerseNumbers }),
@@ -218,7 +223,7 @@ export const useSettingsStore = create<SettingsState>()(
     },
     {
       name: 'ba.settings',
-      version: 11,
+      version: 12,
       // Don't persist server-derived state — hydrate fresh on every boot.
       // Otherwise an older "hasUserOpenAiKey: true" could outlive a key the
       // server has since cleared.
@@ -305,6 +310,15 @@ export const useSettingsStore = create<SettingsState>()(
           // Existing installs already chose their own settings; don't yank
           // them into the new wizard on first launch after upgrade.
           prev = { ...prev, onboardingComplete: true };
+        }
+        if (version < 12) {
+          prev = {
+            ...prev,
+            thinkingSoundEnabled:
+              typeof prev.thinkingSoundEnabled === 'boolean'
+                ? prev.thinkingSoundEnabled
+                : true,
+          };
         }
         return prev as SettingsState;
       },

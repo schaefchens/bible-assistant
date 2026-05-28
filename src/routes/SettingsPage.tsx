@@ -180,6 +180,14 @@ export function SettingsPage() {
           />
           <span className="text-sm">{t('settings.micSound')}</span>
         </label>
+        <label className="flex items-center gap-2 mt-2">
+          <input
+            type="checkbox"
+            checked={settings.thinkingSoundEnabled}
+            onChange={(e) => settings.setThinkingSoundEnabled(e.target.checked)}
+          />
+          <span className="text-sm">{t('settings.thinkingSound')}</span>
+        </label>
       </Section>
 
       <PlaybackSettingsForm />

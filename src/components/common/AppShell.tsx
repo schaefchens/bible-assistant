@@ -5,6 +5,7 @@ import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useEffect, useState } from 'react';
 import { useChatNavigation } from '@/hooks/useChatNavigation';
+import { useThinkingDrone } from '@/hooks/useThinkingDrone';
 import { getPassphrase } from '@/lib/passphrase';
 import { PassphraseSetup } from '@/components/onboarding/PassphraseSetup';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
@@ -35,6 +36,7 @@ export function AppShell() {
   const pendingOps = useLibraryStore((s) => s.pendingOps);
 
   useChatNavigation();
+  useThinkingDrone();
 
   const ambientEnabled = useSettingsStore((s) => s.ambient.enabled);
   const ambientTrackId = useSettingsStore((s) => s.ambient.trackId);

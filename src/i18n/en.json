@@ -48,6 +48,7 @@
     "reader": {
       "continue": "Continue: {{range}}",
       "context": "Read context: {{range}}",
+      "loading": "Loading {{range}}",
       "playAll": "Play all",
       "repeat": "Repeat verse",
       "rate": "Rate",
@@ -215,6 +216,7 @@
     "microphone": "Microphone",
     "whisperFallback": "Use Whisper when speech recognition unavailable",
     "micSound": "Play a soft cue when recording starts and stops",
+    "thinkingSound": "Play a deep drone while the assistant is thinking",
     "identity": "Recovery passphrase",
     "identityHint": "Write this down. It's the only way to recover your library on another device.",
     "reveal": "Reveal",

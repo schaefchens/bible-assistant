@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useChatStore } from '@/store/chatStore';
@@ -26,6 +26,20 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
   const cont = useContinueReading(message, send);
 
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [pendingAction, setPendingAction] = useState<
+    'prev' | 'context' | 'continue' | null
+  >(null);
+
+  // Clear the morph when the in-flight processing cycle ends (true → false),
+  // so a later request (mic, etc.) doesn't reuse this panel's stale label.
+  useEffect(() => {
+    let prev = useChatStore.getState().isProcessing;
+    return useChatStore.subscribe((state) => {
+      const cur = state.isProcessing;
+      if (prev && !cur) setPendingAction(null);
+      prev = cur;
+    });
+  }, []);
 
   const handleWordTap = useCallback(
     (verseIdx: number, wordIdx: number) => {
@@ -229,16 +243,24 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
+                  setPendingAction('prev');
                   void send(`Read ${prevTarget.reference}`);
                 }}
                 disabled={isProcessing}
                 className={clsx(
                   'flex-1 h-10 text-sm rounded-xl border border-gold/30 text-gold',
                   'hover:bg-gold/10 active:scale-[0.98] transition-all',
-                  isProcessing && 'opacity-50 pointer-events-none',
+                  isProcessing && 'pointer-events-none',
+                  isProcessing && pendingAction !== 'prev' && 'opacity-50',
                 )}
               >
-                ← {prevTarget.label}
+                {pendingAction === 'prev' && isProcessing ? (
+                  <LoadingButtonLabel
+                    text={t('chat.reader.loading', { range: prevTarget.label })}
+                  />
+                ) : (
+                  <>← {prevTarget.label}</>
+                )}
               </button>
             )}
             {contextTarget && (
@@ -246,16 +268,24 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
+                  setPendingAction('context');
                   void send(`Read ${contextTarget.reference}`);
                 }}
                 disabled={isProcessing}
                 className={clsx(
                   'flex-1 h-10 text-sm rounded-xl border border-gold/30 text-gold',
                   'hover:bg-gold/10 active:scale-[0.98] transition-all',
-                  isProcessing && 'opacity-50 pointer-events-none',
+                  isProcessing && 'pointer-events-none',
+                  isProcessing && pendingAction !== 'context' && 'opacity-50',
                 )}
               >
-                {t('chat.reader.context', { range: contextTarget.label })}
+                {pendingAction === 'context' && isProcessing ? (
+                  <LoadingButtonLabel
+                    text={t('chat.reader.loading', { range: contextTarget.label })}
+                  />
+                ) : (
+                  t('chat.reader.context', { range: contextTarget.label })
+                )}
               </button>
             )}
             {cont.canContinue && (
@@ -263,16 +293,24 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
+                  setPendingAction('continue');
                   cont.sendNext();
                 }}
                 disabled={isProcessing}
                 className={clsx(
                   'flex-1 h-10 text-sm rounded-xl border border-gold/30 text-gold',
                   'hover:bg-gold/10 active:scale-[0.98] transition-all',
-                  isProcessing && 'opacity-50 pointer-events-none',
+                  isProcessing && 'pointer-events-none',
+                  isProcessing && pendingAction !== 'continue' && 'opacity-50',
                 )}
               >
-                {t('chat.reader.continue', { range: cont.nextLabel })} →
+                {pendingAction === 'continue' && isProcessing ? (
+                  <LoadingButtonLabel
+                    text={t('chat.reader.loading', { range: cont.nextLabel })}
+                  />
+                ) : (
+                  <>{t('chat.reader.continue', { range: cont.nextLabel })} →</>
+                )}
               </button>
             )}
           </div>
@@ -296,5 +334,27 @@ function DotsIcon() {
       <circle cx="12" cy="12" r="1.6" />
       <circle cx="19" cy="12" r="1.6" />
     </svg>
+  );
+}
+
+function LoadingButtonLabel({ text }: { text: string }) {
+  return (
+    <span className="inline-flex items-center justify-center gap-2">
+      <span className="inline-flex gap-1" aria-hidden>
+        <PulseDot delay="0ms" />
+        <PulseDot delay="160ms" />
+        <PulseDot delay="320ms" />
+      </span>
+      <span>{text}</span>
+    </span>
+  );
+}
+
+function PulseDot({ delay }: { delay: string }) {
+  return (
+    <span
+      className="w-1.5 h-1.5 rounded-full bg-gold/80 animate-pulse-soft"
+      style={{ animationDelay: delay }}
+    />
   );
 }

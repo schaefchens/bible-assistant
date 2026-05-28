@@ -48,6 +48,7 @@
     "reader": {
       "continue": "Weiterlesen: {{range}}",
       "context": "Kontext lesen: {{range}}",
+      "loading": "Lade {{range}}",
       "playAll": "Alle abspielen",
       "repeat": "Vers wiederholen",
       "rate": "Tempo",
@@ -215,6 +216,7 @@
     "microphone": "Mikrofon",
     "whisperFallback": "Whisper nutzen, wenn Spracherkennung nicht verfügbar",
     "micSound": "Sanften Ton bei Aufnahmestart und -ende abspielen",
+    "thinkingSound": "Tiefen Klang abspielen, während der Assistent nachdenkt",
     "identity": "Wiederherstellungs-Passphrase",
     "identityHint": "Notiere dir das. Es ist die einzige Möglichkeit, deine Bibliothek auf einem anderen Gerät wiederherzustellen.",
     "reveal": "Anzeigen",
