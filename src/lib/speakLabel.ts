@@ -16,12 +16,16 @@ let primed = false;
 // from a setTimeout, so it doesn't qualify. Call this synchronously
 // inside pointerdown to "unlock" the API; subsequent timer-deferred
 // speak() calls then work for the rest of the page lifetime.
+//
+// iOS specifically wants a non-empty utterance with audible volume and
+// no overridden language to count as a real "speak" event for the
+// gesture lock. Empty strings or volume-0 utterances were observed to
+// silently no-op without unlocking.
 export function primeSpeechSynthesis(): void {
   if (primed) return;
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
   try {
-    const warmup = new SpeechSynthesisUtterance('');
-    warmup.volume = 0;
+    const warmup = new SpeechSynthesisUtterance(' ');
     window.speechSynthesis.speak(warmup);
     primed = true;
   } catch {
@@ -33,7 +37,10 @@ export function speakLabel(text: string): void {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
   if (!text) return;
   try {
+    // iOS sometimes leaves the queue paused after cancel(); resume()
+    // is a no-op when already running and recovers when it isn't.
     window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
     const utterance = new SpeechSynthesisUtterance(text);
     const locale = useSettingsStore.getState().locale;
     utterance.lang = locale === 'de' ? 'de-DE' : 'en-US';
