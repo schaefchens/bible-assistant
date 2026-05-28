@@ -73,7 +73,7 @@ export function EyesFreeMode() {
     <div
       className="fixed inset-0 z-[60] bg-navy-deep grid select-none"
       style={{
-        gridTemplateRows: '12vh 14vh minmax(0, 1fr) 18vh',
+        gridTemplateRows: '8vh 14vh minmax(0, 1fr) 18vh',
       }}
     >
       <ZoneButton
@@ -81,9 +81,9 @@ export function EyesFreeMode() {
         label={t('eyesFree.exit') as string}
         ariaLabel={t('eyesFree.exit') as string}
         icon={<ExitIcon />}
-        className="w-full h-full pt-safe bg-navy-soft text-cream-dim flex-row gap-3"
-        labelClassName="text-[clamp(1.1rem,4vh,2rem)]"
-        iconClassName="w-[clamp(1.25rem,5vh,2.25rem)] h-[clamp(1.25rem,5vh,2.25rem)]"
+        className="w-full h-full pt-safe bg-navy-soft text-cream-dim flex-row gap-2"
+        labelClassName="text-[clamp(0.85rem,2.5vh,1.25rem)]"
+        iconClassName="w-[clamp(1rem,3.5vh,1.75rem)] h-[clamp(1rem,3.5vh,1.75rem)]"
         onTap={exit}
       />
       <RollingTicker />
@@ -281,7 +281,7 @@ function RollingTicker() {
   );
 
   if (!isVerse || words.length === 0 || wordIndex < 0) {
-    return <div className="bg-navy-soft/30 w-full h-full" aria-hidden="true" />;
+    return <div className="w-full h-full" aria-hidden="true" />;
   }
 
   const chunkIndex = Math.floor(wordIndex / CHUNK_SIZE);
@@ -291,7 +291,7 @@ function RollingTicker() {
 
   return (
     <div
-      className="relative overflow-hidden bg-navy-soft/30 w-full h-full flex items-center justify-center px-3"
+      className="relative overflow-hidden w-full h-full flex items-center justify-center px-3"
       aria-hidden="true"
     >
       <div
