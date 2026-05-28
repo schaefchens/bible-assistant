@@ -47,6 +47,7 @@ export async function playLastReading(): Promise<boolean> {
     text: '',
     verses: summaries,
     headingWholeChapter: false,
+    createdAt: Date.now(),
   };
   useChatStore.getState().appendMessage(message);
   await startReadingPlaylist(messageId, summaries, 0);
