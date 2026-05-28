@@ -19,6 +19,7 @@ import { useChatStore } from '@/store/chatStore';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useRibbonsStore, type RibbonColor, RIBBON_COLORS } from '@/store/ribbonsStore';
+import { useGlobalVoiceStore } from '@/store/globalVoiceStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { browserTts } from '@/lib/browserTts';
 import {
@@ -123,6 +124,12 @@ export async function dispatchTool(
           args as ToolArgs['continue_from_ribbon'],
           ctx,
         );
+      case 'enter_eyes_free_mode':
+        useGlobalVoiceStore.getState().setEyesFreeMode(true);
+        return { ok: true };
+      case 'exit_eyes_free_mode':
+        useGlobalVoiceStore.getState().setEyesFreeMode(false);
+        return { ok: true };
       default:
         return { ok: false, error: `unknown tool: ${name}` };
     }

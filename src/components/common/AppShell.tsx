@@ -9,6 +9,7 @@ import { getPassphrase } from '@/lib/passphrase';
 import { PassphraseSetup } from '@/components/onboarding/PassphraseSetup';
 import { GlobalMicButton } from '@/components/voice/GlobalMicButton';
 import { VoiceOverlay } from '@/components/voice/VoiceOverlay';
+import { EyesFreeMode } from '@/components/voice/EyesFreeMode';
 import { FloatingPlaybackBar } from '@/components/playback/FloatingPlaybackBar';
 import { UpdateBanner } from '@/components/common/UpdateBanner';
 import { KeyFailureBanner } from '@/components/common/KeyFailureBanner';
@@ -19,6 +20,9 @@ import {
 } from '@/store/settingsStore';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
+import { usePlaybackStore } from '@/store/playbackStore';
+import { useChatStore } from '@/store/chatStore';
+import { useLastReadingStore } from '@/store/lastReadingStore';
 
 export function AppShell() {
   const { t } = useTranslation();
@@ -39,6 +43,34 @@ export function AppShell() {
   // gesture.
   useEffect(() => {
     audioPlayback.stop();
+  }, []);
+
+  // Persist a "last reading" slot whenever the active verse advances, so a
+  // fresh app load (or cleared chat) can still resume what the user was
+  // hearing. Guards on (messageId, verseIndex) since the playbackStore
+  // subscription also fires per-frame on currentWordIndex ticks.
+  useEffect(() => {
+    let prevKey = '';
+    const unsub = usePlaybackStore.subscribe((state) => {
+      const cur = state.current;
+      if (!cur) return;
+      const key = `${cur.messageId}:${cur.verseIndex}`;
+      if (key === prevKey) return;
+      prevKey = key;
+      const msg = useChatStore
+        .getState()
+        .messages.find((m) => m.id === cur.messageId);
+      const v = msg?.verses?.[cur.verseIndex];
+      if (!v) return;
+      useLastReadingStore.getState().setSlot({
+        translation: v.translation,
+        bookId: v.bookId,
+        chapter: v.chapter,
+        verse: v.verse,
+        savedAt: Date.now(),
+      });
+    });
+    return unsub;
   }, []);
 
   useEffect(() => {
@@ -128,6 +160,7 @@ export function AppShell() {
       <GlobalMicButton />
       <FloatingPlaybackBar />
       <VoiceOverlay />
+      <EyesFreeMode />
     </div>
   );
 }

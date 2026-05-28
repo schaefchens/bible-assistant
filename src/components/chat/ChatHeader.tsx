@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useChatStore } from '@/store/chatStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useGlobalVoiceStore } from '@/store/globalVoiceStore';
 import { useUpdateStore, applyUpdate } from '@/lib/pwaUpdate';
 import { cancelAllActivity } from '@/hooks/useCommandPipeline';
 import { MessageActionsMenu, type MessageActionItem } from './MessageActionsMenu';
@@ -16,6 +17,8 @@ export function ChatHeader() {
   const setReadingOnly = useSettingsStore((s) => s.setReadingOnlyView);
   const hideComposer = useSettingsStore((s) => s.hideComposer);
   const setHideComposer = useSettingsStore((s) => s.setHideComposer);
+  const eyesFree = useGlobalVoiceStore((s) => s.eyesFreeMode);
+  const setEyesFree = useGlobalVoiceStore((s) => s.setEyesFreeMode);
   const needRefresh = useUpdateStore((s) => s.needRefresh);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
 
@@ -100,6 +103,21 @@ export function ChatHeader() {
           </button>
           <button
             type="button"
+            aria-label={t('chat.eyesFree') as string}
+            title={t('chat.eyesFree') as string}
+            aria-pressed={eyesFree}
+            onClick={() => setEyesFree(!eyesFree)}
+            className={clsx(
+              'px-2 py-1 rounded-lg transition-colors',
+              eyesFree
+                ? 'text-gold bg-gold/15'
+                : 'text-cream-dim hover:text-cream',
+            )}
+          >
+            <EyesFreeIcon active={eyesFree} />
+          </button>
+          <button
+            type="button"
             aria-label={t('chat.clear')}
             disabled={messageCount === 0}
             onClick={(e) => {
@@ -149,6 +167,30 @@ function ReadingViewIcon({ active }: { active: boolean }) {
           <line x1="14.5" y1="9" x2="17.5" y2="9" />
         </>
       )}
+    </svg>
+  );
+}
+
+// Target / "tap me anywhere" glyph for the hands-free toggle: a ring with
+// four radial ticks and a filled center dot when the mode is active.
+function EyesFreeIcon({ active }: { active: boolean }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="3" fill={active ? 'currentColor' : 'none'} />
+      <circle cx="12" cy="12" r="7" />
+      <line x1="12" y1="2" x2="12" y2="4" />
+      <line x1="12" y1="20" x2="12" y2="22" />
+      <line x1="2" y1="12" x2="4" y2="12" />
+      <line x1="20" y1="12" x2="22" y2="12" />
     </svg>
   );
 }

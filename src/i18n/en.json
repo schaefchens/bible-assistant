@@ -32,6 +32,7 @@
     "readingView": "Reading view only",
     "readingViewEmpty": "No readings yet — ask for a passage to see it here.",
     "hideComposer": "Hide text input",
+    "eyesFree": "Hands-free mode",
     "scrollToBottom": "Scroll to latest",
     "thinkingFetching": "Fetching passage…",
     "thinkingCards": "Working on your library…",
@@ -82,6 +83,14 @@
     "next": "Next",
     "close": "Close",
     "loading": "Loading audio…"
+  },
+  "eyesFree": {
+    "exit": "Exit",
+    "prev": "Prev",
+    "next": "Next",
+    "play": "Play",
+    "mic": "Mic",
+    "micOn": "Listening"
   },
   "cards": {
     "title": "Cards",

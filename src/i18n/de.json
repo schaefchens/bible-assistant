@@ -32,6 +32,7 @@
     "readingView": "Nur Lesemodus",
     "readingViewEmpty": "Noch keine Lesungen — frag nach einer Bibelstelle.",
     "hideComposer": "Texteingabe ausblenden",
+    "eyesFree": "Freihändig-Modus",
     "scrollToBottom": "Zum neuesten Eintrag",
     "thinkingFetching": "Hole Bibelstelle…",
     "thinkingCards": "Bearbeite Bibliothek…",
@@ -82,6 +83,14 @@
     "next": "Weiter",
     "close": "Schließen",
     "loading": "Lade Audio…"
+  },
+  "eyesFree": {
+    "exit": "Beenden",
+    "prev": "Zurück",
+    "next": "Weiter",
+    "play": "Start",
+    "mic": "Mikro",
+    "micOn": "Hört zu"
   },
   "cards": {
     "title": "Karten",
