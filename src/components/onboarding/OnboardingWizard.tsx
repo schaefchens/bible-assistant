@@ -68,8 +68,8 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="flex flex-col h-full pt-safe pb-safe bg-navy text-cream">
-      <div className="flex-1 overflow-y-auto px-6 py-6 flex flex-col">
-        <div className="max-w-md mx-auto w-full flex flex-col flex-1">
+      <div className="flex-1 min-h-0 px-6 py-6 flex flex-col">
+        <div className="max-w-md mx-auto w-full flex flex-col flex-1 min-h-0">
           <header className="flex items-center justify-between gap-4 mb-8">
             <Progress idx={idx} total={steps.length} />
             <button
@@ -81,7 +81,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
             </button>
           </header>
 
-          <div className="flex-1 flex flex-col justify-center">
+          <div className="flex-1 min-h-0 flex flex-col justify-center">
             {step === 'language' && <LanguageStep />}
             {step === 'translation' && <TranslationStep />}
             {step === 'music' && <MusicStep />}
@@ -169,12 +169,12 @@ function TranslationStep() {
   const translation = useSettingsStore((s) => s.translation);
   const setTranslation = useSettingsStore((s) => s.setTranslation);
   return (
-    <div className="flex flex-col">
+    <div className="flex-1 min-h-0 flex flex-col">
       <StepHeading
         title={t('onboarding.wizard.translation.title')}
         subtitle={t('onboarding.wizard.translation.subtitle')}
       />
-      <div className="rounded-xl border border-navy-soft/40 overflow-hidden py-1 max-h-[60vh] overflow-y-auto">
+      <div className="flex-1 min-h-0 rounded-xl border border-navy-soft/40 overflow-y-auto py-1">
         <TranslationList
           value={translation}
           onChange={(code) => setTranslation(code, true)}
