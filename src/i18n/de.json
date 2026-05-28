@@ -282,7 +282,62 @@
     "activate": "Aktivieren",
     "recoverTitle": "Gib deine Passphrase ein",
     "recoverHint": "Tippe oder füge deine 12 Wörter, durch Leerzeichen getrennt, ein.",
-    "invalidPassphrase": "Diese Passphrase ist ungültig. Prüfe auf Tippfehler oder fehlende Wörter."
+    "invalidPassphrase": "Diese Passphrase ist ungültig. Prüfe auf Tippfehler oder fehlende Wörter.",
+    "wizard": {
+      "skip": "Überspringen",
+      "back": "Zurück",
+      "continue": "Weiter",
+      "done": "Fertig",
+      "language": {
+        "title": "Welche Sprache?",
+        "subtitle": "Wähle die Sprache für Menüs und Assistent."
+      },
+      "translation": {
+        "title": "Wähle eine Bibelübersetzung",
+        "subtitle": "Du kannst sie jederzeit in den Einstellungen ändern."
+      },
+      "music": {
+        "title": "Musik beim Lesen?",
+        "subtitle": "Eine leise Hintergrundmusik kann unter der Lesestimme spielen.",
+        "enable": "Musik beim Lesen abspielen",
+        "pickTrack": "Musiktitel",
+        "pickTrackPlaceholder": "— Titel wählen —",
+        "loadingTracks": "Titel werden geladen…",
+        "noTracks": "Keine Titel verfügbar",
+        "preview": "Vorhören",
+        "stop": "Stopp"
+      },
+      "announcements": {
+        "title": "Was soll vorgelesen werden?",
+        "subtitle": "Überschriften geben Kontext; Versnummern helfen beim Mitlesen.",
+        "heading": "Kapitelüberschrift vorlesen",
+        "verseNumbers": "Versnummern vorlesen"
+      },
+      "pauses": {
+        "title": "Wie viel Pause?",
+        "subtitle": "Kurze Pausen lassen das Lesen ruhiger wirken.",
+        "betweenVerses": "Pause zwischen Versen",
+        "betweenChapters": "Pause zwischen Kapiteln"
+      },
+      "apiKey": {
+        "title": "OpenAI-Schlüssel hinzufügen?",
+        "subtitle": "Optional — schaltet alle Lese- und Assistenzstimmen sowie den Sprachstil frei. Du kannst das auch später in den Einstellungen erledigen.",
+        "placeholder": "sk-…",
+        "save": "Schlüssel speichern",
+        "saving": "Wird geprüft…",
+        "saved": "Schlüssel gespeichert",
+        "invalid": "Dieser Schlüssel konnte nicht validiert werden."
+      },
+      "voices": {
+        "title": "Wähle deine Stimmen",
+        "subtitle": "Tippe auf Vorhören, um die Stimme zu testen.",
+        "readerLabel": "Lesestimme",
+        "assistantLabel": "Assistenzstimme",
+        "preview": "Vorhören",
+        "stop": "Stopp",
+        "previewText": "Und Gott sprach: Es werde Licht."
+      }
+    }
   },
   "common": {
     "back": "Zurück",

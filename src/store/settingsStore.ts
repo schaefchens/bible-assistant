@@ -47,6 +47,10 @@ type SettingsState = {
   /** Set when the user opts to fall back to the shared server key for this
    * session after their personal key failed. Transient — clears on reload. */
   sessionPreferSharedKey: boolean;
+  /** True once the user has finished (or skipped) the first-run settings
+   * wizard. Greenfield boots start at false; the v10→v11 migration
+   * backfills true for existing installs so they never see the wizard. */
+  onboardingComplete: boolean;
   setLocale: (locale: Locale) => void;
   setTranslation: (translation: Translation, fromUser?: boolean) => void;
   setVoice: (voice: VoiceId) => void;
@@ -69,6 +73,7 @@ type SettingsState = {
   setAutoPlayReading: (v: boolean) => void;
   setUserOpenAiKeyStatus: (hasKey: boolean, masked: string | null) => void;
   setSessionPreferSharedKey: (v: boolean) => void;
+  setOnboardingComplete: (v: boolean) => void;
 };
 
 /** Whether the user is currently using their own OpenAI key (server has it
@@ -170,6 +175,7 @@ export const useSettingsStore = create<SettingsState>()(
         hasUserOpenAiKey: false,
         userOpenAiKeyMasked: null,
         sessionPreferSharedKey: false,
+        onboardingComplete: false,
         setLocale: (locale) =>
           set((s) => ({
             locale,
@@ -206,11 +212,13 @@ export const useSettingsStore = create<SettingsState>()(
           set({ hasUserOpenAiKey: hasKey, userOpenAiKeyMasked: masked }),
         setSessionPreferSharedKey: (sessionPreferSharedKey) =>
           set({ sessionPreferSharedKey }),
+        setOnboardingComplete: (onboardingComplete) =>
+          set({ onboardingComplete }),
       };
     },
     {
       name: 'ba.settings',
-      version: 10,
+      version: 11,
       // Don't persist server-derived state — hydrate fresh on every boot.
       // Otherwise an older "hasUserOpenAiKey: true" could outlive a key the
       // server has since cleared.
@@ -292,6 +300,11 @@ export const useSettingsStore = create<SettingsState>()(
             hideComposer:
               typeof prev.hideComposer === 'boolean' ? prev.hideComposer : false,
           };
+        }
+        if (version < 11) {
+          // Existing installs already chose their own settings; don't yank
+          // them into the new wizard on first launch after upgrade.
+          prev = { ...prev, onboardingComplete: true };
         }
         return prev as SettingsState;
       },

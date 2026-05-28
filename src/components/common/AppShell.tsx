@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { useLibraryStore } from '@/store/libraryStore';
@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { useChatNavigation } from '@/hooks/useChatNavigation';
 import { getPassphrase } from '@/lib/passphrase';
 import { PassphraseSetup } from '@/components/onboarding/PassphraseSetup';
+import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { GlobalMicButton } from '@/components/voice/GlobalMicButton';
 import { VoiceOverlay } from '@/components/voice/VoiceOverlay';
 import { EyesFreeMode } from '@/components/voice/EyesFreeMode';
@@ -26,6 +27,7 @@ import { useLastReadingStore } from '@/store/lastReadingStore';
 
 export function AppShell() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [hasPassphrase, setHasPassphrase] = useState(() => !!getPassphrase());
   const init = useLibraryStore((s) => s.init);
   const setOnline = useLibraryStore((s) => s.setOnline);
@@ -36,6 +38,8 @@ export function AppShell() {
 
   const ambientEnabled = useSettingsStore((s) => s.ambient.enabled);
   const ambientTrackId = useSettingsStore((s) => s.ambient.trackId);
+  const onboardingComplete = useSettingsStore((s) => s.onboardingComplete);
+  const setOnboardingComplete = useSettingsStore((s) => s.setOnboardingComplete);
 
   // Defensive: if an iOS PWA was suspended (not killed) the previous audio
   // session can still be alive when we boot. Tear down all buses once at
@@ -130,6 +134,17 @@ export function AppShell() {
 
   if (!hasPassphrase) {
     return <PassphraseSetup onDone={() => setHasPassphrase(true)} />;
+  }
+
+  if (!onboardingComplete) {
+    return (
+      <OnboardingWizard
+        onDone={() => {
+          setOnboardingComplete(true);
+          navigate('/', { replace: true });
+        }}
+      />
+    );
   }
 
   return (

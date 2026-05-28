@@ -282,7 +282,62 @@
     "activate": "Activate",
     "recoverTitle": "Enter your passphrase",
     "recoverHint": "Type or paste your 12 words separated by spaces.",
-    "invalidPassphrase": "That passphrase isn't valid. Check for typos or missing words."
+    "invalidPassphrase": "That passphrase isn't valid. Check for typos or missing words.",
+    "wizard": {
+      "skip": "Skip setup",
+      "back": "Back",
+      "continue": "Continue",
+      "done": "Done",
+      "language": {
+        "title": "Which language?",
+        "subtitle": "Choose the language for menus and the assistant."
+      },
+      "translation": {
+        "title": "Pick a Bible translation",
+        "subtitle": "You can change it any time from Settings."
+      },
+      "music": {
+        "title": "Music while you read?",
+        "subtitle": "A soft instrumental can play under the reading voice.",
+        "enable": "Play music while reading verses",
+        "pickTrack": "Music track",
+        "pickTrackPlaceholder": "— Pick a track —",
+        "loadingTracks": "Loading tracks…",
+        "noTracks": "No tracks available",
+        "preview": "Preview",
+        "stop": "Stop"
+      },
+      "announcements": {
+        "title": "What should be read out loud?",
+        "subtitle": "Headings give context; verse numbers help you follow along.",
+        "heading": "Read the chapter heading",
+        "verseNumbers": "Read each verse number"
+      },
+      "pauses": {
+        "title": "How much breathing room?",
+        "subtitle": "Short pauses make the reading feel less rushed.",
+        "betweenVerses": "Pause between verses",
+        "betweenChapters": "Pause between chapters"
+      },
+      "apiKey": {
+        "title": "Add your OpenAI key?",
+        "subtitle": "Optional — unlocks all reading and assistant voices, plus voice style. You can also do this later in Settings.",
+        "placeholder": "sk-…",
+        "save": "Save key",
+        "saving": "Validating…",
+        "saved": "Key saved",
+        "invalid": "Could not validate this key."
+      },
+      "voices": {
+        "title": "Choose your voices",
+        "subtitle": "Tap Preview to hear how each voice sounds.",
+        "readerLabel": "Reading voice",
+        "assistantLabel": "Assistant voice",
+        "preview": "Preview",
+        "stop": "Stop",
+        "previewText": "And God said, let there be light."
+      }
+    }
   },
   "common": {
     "back": "Back",

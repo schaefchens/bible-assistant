@@ -754,6 +754,21 @@ class AudioPlaybackManager {
 
   async _ambientLoad(url: string): Promise<void> {
     if (this.ambientUrl === url && this.ambientBuffer) return;
+    // Track switching: tear down the live source synchronously so the next
+    // _ambientPlay() can spin up the new buffer instead of short-circuiting
+    // on the existing (old-track) source.
+    if (this.ambientSource) {
+      if (this.ambientStopTimer !== null) {
+        clearTimeout(this.ambientStopTimer);
+        this.ambientStopTimer = null;
+      }
+      try {
+        this.ambientSource.stop();
+      } catch {
+        /* may already be stopped */
+      }
+      this.ambientSource = null;
+    }
     const cached = this.ambientDecodeCache.get(url);
     if (cached) {
       this.ambientBuffer = cached;
