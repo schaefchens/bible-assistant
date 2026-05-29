@@ -4,6 +4,7 @@ import type { Alignment } from '@/types/domain';
 import { findCurrentWordIndex, fetchAlignment } from './alignment';
 import { browserTts } from './browserTts';
 import { cancelAutoPlayPrefetch } from './autoPlay';
+import { AmbientAudioBus } from './ambientAudioBus';
 
 export type PlaybackTrack = {
   messageId: string;
@@ -24,28 +25,6 @@ type LoadedTrack = PlaybackTrack & {
   alignment: Alignment;
 };
 
-class AmbientBus {
-  private parent: AudioPlaybackManager;
-  constructor(parent: AudioPlaybackManager) {
-    this.parent = parent;
-  }
-  async load(url: string): Promise<void> {
-    await this.parent._ambientLoad(url);
-  }
-  play(): void {
-    this.parent._ambientPlay();
-  }
-  pause(): void {
-    this.parent._ambientPause();
-  }
-  setVolume(v: number): void {
-    this.parent._ambientSetVolume(v);
-  }
-  isPlaying(): boolean {
-    return this.parent._ambientIsPlaying();
-  }
-}
-
 class SpeechBus {
   private parent: AudioPlaybackManager;
   constructor(parent: AudioPlaybackManager) {
@@ -65,19 +44,13 @@ class SpeechBus {
  *   2. Speech queue: scheduling & playback — playQueue/enqueue/playCurrent/handleEnded/tick
  *   3. Transport — pause/resume/stop/next/softEnd
  *   4. Seek & playback rate — word-level seeking, rate, loop
- *   5. Ambient music bus — a parallel buffer source on its own gain (see `ambient`)
- *
- * NOTE: a planned refactor (see CLAUDE.md / the refactor roadmap) splits the
- * ambient bus into `ambientAudioBus.ts` and the queue scheduling into
- * `playbackQueueScheduler.ts`. That change rewires the audio graph and must be
- * verified with real on-device audio (ducking, iOS resume, seek) — it is
- * intentionally NOT done as part of the comment-only navigability pass.
+ *   5. Ambient music bus — extracted to `ambientAudioBus.ts`; this owns the
+ *      shared graph + speech queue and routes ducking to the bus.
  */
 class AudioPlaybackManager {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private ttsGain: GainNode | null = null;
-  private ambientGain: GainNode | null = null;
 
   private source: AudioBufferSourceNode | null = null;
   private queue: PlaybackTrack[] = [];
@@ -110,14 +83,29 @@ class AudioPlaybackManager {
   private readonly DUCK_FACTOR = 0;
   private readonly DUCK_RAMP_SEC = 0.15;
 
-  // ambient
-  private ambientSource: AudioBufferSourceNode | null = null;
-  private ambientBuffer: AudioBuffer | null = null;
-  private ambientUrl: string | null = null;
-  private ambientDecodeCache = new Map<string, AudioBuffer>();
-  private ambientStopTimer: number | null = null;
-  private readonly AMBIENT_FADE_SEC = 2;
-  readonly ambient = new AmbientBus(this);
+  // Ambient music runs on its own bus (created with the context). The public
+  // `ambient` facade tolerates calls before the context exists (e.g. a volume
+  // change with nothing playing yet) by persisting to settings.
+  private ambientBus: AmbientAudioBus | null = null;
+  readonly ambient = {
+    load: (url: string): Promise<void> => {
+      this.ensureContext();
+      return this.ambientBus!.load(url);
+    },
+    play: (): void => {
+      this.ensureContext();
+      this.ambientBus!.play();
+    },
+    pause: (): void => {
+      if (this.ambientBus) this.ambientBus.pause();
+      else usePlaybackStore.getState().setAmbientPlaying(false);
+    },
+    setVolume: (v: number): void => {
+      if (this.ambientBus) this.ambientBus.setVolume(v);
+      else useSettingsStore.getState().setAmbient({ volume: Math.max(0, Math.min(1, v)) });
+    },
+    isPlaying: (): boolean => this.ambientBus?.isPlaying() ?? false,
+  };
   readonly speech = new SpeechBus(this);
 
   // ─── 1. AudioContext graph + ducking ─────────────────────────────────
@@ -172,7 +160,8 @@ class AudioPlaybackManager {
       node.gain.linearRampToValueAtTime(target, now + ramp);
     };
     rampGain(this.ttsGain, settings.speechVolume * factor);
-    rampGain(this.ambientGain, settings.ambient.volume * factor);
+    // The ambient bus owns its own gain; let it apply the same duck factor.
+    this.ambientBus?.setDuckFactor(factor);
   }
 
   /** Must be called inside a user gesture handler on iOS. */
@@ -192,9 +181,10 @@ class AudioPlaybackManager {
       this.ttsGain = this.ctx.createGain();
       this.ttsGain.gain.value = useSettingsStore.getState().speechVolume;
       this.ttsGain.connect(this.master);
-      this.ambientGain = this.ctx.createGain();
-      this.ambientGain.gain.value = useSettingsStore.getState().ambient.volume;
-      this.ambientGain.connect(this.master);
+      // Ambient runs on its own bus, parallel to the speech gain into master.
+      this.ambientBus = new AmbientAudioBus(this.ctx, this.master, () =>
+        this.maybeSuspendContext(),
+      );
       // When iOS resumes the context after a suspend (mic capture or
       // backgrounding), re-assert the current gain targets. A ramp scheduled
       // while suspended can be dropped; without this, audio could stay muted
@@ -535,7 +525,7 @@ class AudioPlaybackManager {
       this.softEndTimer = null;
     }
     this.resetQueue();
-    this._ambientPause();
+    this.ambient.pause();
     usePlaybackStore.getState().setStatus('idle');
     usePlaybackStore.getState().setCurrent(null);
     this.maybeSuspendContext();
@@ -552,7 +542,7 @@ class AudioPlaybackManager {
   private maybeSuspendContext(): void {
     if (!this.ctx || this.ctx.state !== 'running') return;
     if (this.tickHandle !== null) return;
-    if (this.ambientSource) return;
+    if (this.ambientBus?.isPlaying()) return;
     if (usePlaybackStore.getState().status !== 'idle') return;
     void this.ctx.suspend();
   }
@@ -787,132 +777,7 @@ class AudioPlaybackManager {
     return al;
   }
 
-  // ─── 5. Ambient music bus (called via this.ambient) ──────────────────
-
-  async _ambientLoad(url: string): Promise<void> {
-    if (this.ambientUrl === url && this.ambientBuffer) return;
-    // Track switching: tear down the live source synchronously so the next
-    // _ambientPlay() can spin up the new buffer instead of short-circuiting
-    // on the existing (old-track) source.
-    if (this.ambientSource) {
-      if (this.ambientStopTimer !== null) {
-        clearTimeout(this.ambientStopTimer);
-        this.ambientStopTimer = null;
-      }
-      try {
-        this.ambientSource.stop();
-      } catch {
-        /* may already be stopped */
-      }
-      this.ambientSource = null;
-    }
-    const cached = this.ambientDecodeCache.get(url);
-    if (cached) {
-      this.ambientBuffer = cached;
-      this.ambientUrl = url;
-      return;
-    }
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`ambient fetch failed: ${res.status}`);
-    const arr = await res.arrayBuffer();
-    const ctx = this.ensureContext();
-    const buf = await ctx.decodeAudioData(arr.slice(0));
-    this.ambientDecodeCache.set(url, buf);
-    this.ambientBuffer = buf;
-    this.ambientUrl = url;
-  }
-
-  _ambientPlay(): void {
-    if (!this.ambientBuffer) return;
-    const ctx = this.ensureContext();
-
-    // Cancel any pending stop (e.g. user re-played during fade-out).
-    if (this.ambientStopTimer !== null) {
-      clearTimeout(this.ambientStopTimer);
-      this.ambientStopTimer = null;
-    }
-
-    if (!this.ambientSource) {
-      const src = ctx.createBufferSource();
-      src.buffer = this.ambientBuffer;
-      src.loop = true;
-      src.connect(this.ambientGain ?? ctx.destination);
-      src.start(0);
-      this.ambientSource = src;
-      // Begin silent so the upcoming ramp acts as a fade-in.
-      if (this.ambientGain) {
-        this.ambientGain.gain.cancelScheduledValues(ctx.currentTime);
-        this.ambientGain.gain.setValueAtTime(0, ctx.currentTime);
-      }
-    }
-
-    if (this.ambientGain) {
-      const target = useSettingsStore.getState().ambient.volume;
-      const now = ctx.currentTime;
-      this.ambientGain.gain.cancelScheduledValues(now);
-      this.ambientGain.gain.setValueAtTime(this.ambientGain.gain.value, now);
-      this.ambientGain.gain.linearRampToValueAtTime(
-        target,
-        now + this.AMBIENT_FADE_SEC,
-      );
-    }
-    usePlaybackStore.getState().setAmbientPlaying(true);
-  }
-
-  _ambientPause(): void {
-    if (!this.ambientSource) {
-      usePlaybackStore.getState().setAmbientPlaying(false);
-      return;
-    }
-    const src = this.ambientSource;
-
-    if (this.ctx && this.ambientGain) {
-      const now = this.ctx.currentTime;
-      this.ambientGain.gain.cancelScheduledValues(now);
-      this.ambientGain.gain.setValueAtTime(this.ambientGain.gain.value, now);
-      this.ambientGain.gain.linearRampToValueAtTime(
-        0,
-        now + this.AMBIENT_FADE_SEC,
-      );
-    }
-
-    if (this.ambientStopTimer !== null) {
-      clearTimeout(this.ambientStopTimer);
-    }
-    this.ambientStopTimer = window.setTimeout(() => {
-      try {
-        src.stop();
-      } catch {
-        /* ignore */
-      }
-      if (this.ambientSource === src) {
-        this.ambientSource = null;
-      }
-      this.ambientStopTimer = null;
-      // Ambient was the last thing holding the context open — let it suspend.
-      this.maybeSuspendContext();
-    }, this.AMBIENT_FADE_SEC * 1000 + 50);
-
-    usePlaybackStore.getState().setAmbientPlaying(false);
-  }
-
-  _ambientSetVolume(v: number): void {
-    const clamped = Math.max(0, Math.min(1, v));
-    if (!this.ctx || !this.ambientGain) {
-      useSettingsStore.getState().setAmbient({ volume: clamped });
-      return;
-    }
-    const factor = this.ducked ? this.DUCK_FACTOR : 1;
-    const now = this.ctx.currentTime;
-    this.ambientGain.gain.cancelScheduledValues(now);
-    this.ambientGain.gain.setValueAtTime(this.ambientGain.gain.value, now);
-    this.ambientGain.gain.linearRampToValueAtTime(clamped * factor, now + 0.15);
-    useSettingsStore.getState().setAmbient({ volume: clamped });
-  }
-
-  _ambientIsPlaying(): boolean {
-    return this.ambientSource !== null;
-  }
+  // ─── Speech-bus volume (ambient bus lives in ambientAudioBus.ts) ─────
 
   _speechSetVolume(v: number): void {
     const clamped = Math.max(0, Math.min(1, v));
