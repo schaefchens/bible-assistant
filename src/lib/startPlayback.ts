@@ -19,7 +19,7 @@ import { localeForTranslation } from './translationLocaleMap';
 /**
  * Fire-and-forget: if the user has ambient music enabled, load the selected
  * track (cached after first run) and start it. Safe to call repeatedly —
- * `_ambientPlay()` no-ops while a source is already running.
+ * `ambient.play()` no-ops while a source is already running.
  */
 export function startAmbientIfEnabled(): void {
   const { ambient } = useSettingsStore.getState();

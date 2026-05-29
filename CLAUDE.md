@@ -7,7 +7,7 @@ This file is the orientation map. When changing code, find the relevant subsyste
 ## Commands
 - `npm run dev` — Vite dev server (the maintainer usually already has this on `localhost:5173`; probe before starting).
 - `npm run build` — `tsc -b && vite build`. **This is the primary correctness gate** — keep it green.
-- `npm run lint` — ESLint. Note: a handful of pre-existing `react-hooks/refs` errors live in `EyesFreeMode.tsx` / `FloatingPlaybackBar.tsx`; don't add new ones.
+- `npm run lint` — ESLint. Note: a handful of pre-existing `react-hooks/refs` errors live in `EyesFreeMode.tsx`, `FloatingPlaybackBar.tsx`, and `CardStack.tsx`; don't add new ones.
 
 ## Entry points
 | Concern | File |
