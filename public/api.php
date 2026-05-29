@@ -181,6 +181,26 @@ function effectiveOpenAiKey(array $ctx, bool $preferShared = false): string {
     return OPENAI_API_KEY;
 }
 
+/**
+ * Run a prepared cURL handle and always close it. Returns a normalized result:
+ *   ['error' => string|null, 'status' => int, 'body' => string, 'contentType' => string]
+ * `error` is non-null only on transport failure (curl_exec === false), in which
+ * case `status` is 0. The three wrappers below build their options then shape
+ * this into their own return contracts.
+ */
+function curlExec(\CurlHandle $ch): array {
+    $body = curl_exec($ch);
+    if ($body === false) {
+        $err = curl_error($ch);
+        curl_close($ch);
+        return ['error' => $err, 'status' => 0, 'body' => '', 'contentType' => ''];
+    }
+    $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $contentType = (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+    curl_close($ch);
+    return ['error' => null, 'status' => $status, 'body' => $body, 'contentType' => $contentType];
+}
+
 function curlJson(string $url, array $payload, array $extraHeaders = [], ?string $apiKey = null): array {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
@@ -193,17 +213,11 @@ function curlJson(string $url, array $payload, array $extraHeaders = [], ?string
             'Authorization: Bearer ' . ($apiKey ?? OPENAI_API_KEY),
         ], $extraHeaders),
     ]);
-    $body = curl_exec($ch);
-    if ($body === false) {
-        $err = curl_error($ch);
-        curl_close($ch);
-        return ['_error' => $err, '_status' => 0];
-    }
-    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    $decoded = json_decode($body, true);
-    if (!is_array($decoded)) return ['_error' => 'invalid response', '_status' => $status, '_raw' => $body];
-    $decoded['_status'] = $status;
+    $r = curlExec($ch);
+    if ($r['error'] !== null) return ['_error' => $r['error'], '_status' => 0];
+    $decoded = json_decode($r['body'], true);
+    if (!is_array($decoded)) return ['_error' => 'invalid response', '_status' => $r['status'], '_raw' => $r['body']];
+    $decoded['_status'] = $r['status'];
     return $decoded;
 }
 
@@ -219,20 +233,13 @@ function curlBinary(string $url, array $payload, ?string $apiKey = null): array 
             'Authorization: Bearer ' . ($apiKey ?? OPENAI_API_KEY),
         ],
     ]);
-    $body = curl_exec($ch);
-    if ($body === false) {
-        $err = curl_error($ch);
-        curl_close($ch);
-        return ['_error' => $err, '_status' => 0];
+    $r = curlExec($ch);
+    if ($r['error'] !== null) return ['_error' => $r['error'], '_status' => 0];
+    if ($r['status'] !== 200) {
+        $decoded = json_decode($r['body'], true);
+        return ['_error' => is_array($decoded) ? json_encode($decoded) : $r['body'], '_status' => $r['status']];
     }
-    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
-    curl_close($ch);
-    if ($status !== 200) {
-        $decoded = json_decode($body, true);
-        return ['_error' => is_array($decoded) ? json_encode($decoded) : $body, '_status' => $status];
-    }
-    return ['_status' => $status, 'audio' => $body, 'contentType' => $contentType];
+    return ['_status' => $r['status'], 'audio' => $r['body'], 'contentType' => $r['contentType']];
 }
 
 function curlMultipart(string $url, array $fields, string $fileField, string $filePath, string $fileName, ?string $apiKey = null): array {
@@ -247,17 +254,11 @@ function curlMultipart(string $url, array $fields, string $fileField, string $fi
             'Authorization: Bearer ' . ($apiKey ?? OPENAI_API_KEY),
         ],
     ]);
-    $body = curl_exec($ch);
-    if ($body === false) {
-        $err = curl_error($ch);
-        curl_close($ch);
-        return ['_error' => $err, '_status' => 0];
-    }
-    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    $decoded = json_decode($body, true);
-    if (!is_array($decoded)) return ['_error' => 'invalid response', '_status' => $status, '_raw' => $body];
-    $decoded['_status'] = $status;
+    $r = curlExec($ch);
+    if ($r['error'] !== null) return ['_error' => $r['error'], '_status' => 0];
+    $decoded = json_decode($r['body'], true);
+    if (!is_array($decoded)) return ['_error' => 'invalid response', '_status' => $r['status'], '_raw' => $r['body']];
+    $decoded['_status'] = $r['status'];
     return $decoded;
 }
 
