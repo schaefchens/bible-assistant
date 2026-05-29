@@ -1,6 +1,7 @@
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { Translation } from '@/services/bible/bibleApi';
+import { bcp47ForTranslation } from './translationLocaleMap';
 
 export type BrowserTtsItem = {
   messageId: string;
@@ -22,8 +23,7 @@ function isSupported(): boolean {
 
 function langForTranslation(t: Translation | undefined, fallback: string): string {
   if (!t) return fallback;
-  if (t === 'S00' || t === 'LUT' || t === 'HFA' || t === 'S51' || t === 'ELB') return 'de-DE';
-  return 'en-US';
+  return bcp47ForTranslation(t);
 }
 
 function pickVoice(targetLang: string): SpeechSynthesisVoice | null {

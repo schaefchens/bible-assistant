@@ -107,7 +107,12 @@ export const CARD_COLORS: CardColor[] = [
   'sky',
 ];
 
-export type CardVerseRange = { start: number; end: number };
+/** A contiguous verse interval [start..end] (1-based, inclusive). Canonical
+ * shape shared by parsed references and card references. */
+export type VerseRange = { start: number; end: number };
+
+/** @deprecated Alias of {@link VerseRange}; kept for card-reference call sites. */
+export type CardVerseRange = VerseRange;
 
 /**
  * A verse reference attached to a card. Stored structurally as numbers

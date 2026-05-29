@@ -1,20 +1,12 @@
 import { useMemo, useRef, useState } from 'react';
 import { useLibraryStore } from '@/store/libraryStore';
+import { normalizeTag } from '@/utils/tagUtils';
 
 type Props = {
   value: string[];
   onChange: (next: string[]) => void;
   placeholder?: string;
 };
-
-function normalizeTag(raw: string): string {
-  return raw
-    .trim()
-    .toLowerCase()
-    .replace(/^#+/, '')
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-_]/g, '');
-}
 
 export function TagInput({ value, onChange, placeholder }: Props) {
   const allCards = useLibraryStore((s) => s.cards);

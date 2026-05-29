@@ -13,8 +13,7 @@ import {
 import { playZoneTick, type ZoneSound } from '@/lib/clickTick';
 import { speakLabel, primeSpeechSynthesis } from '@/lib/speakLabel';
 import { playLastReading } from '@/lib/playLastReading';
-
-const LONG_PRESS_MS = 500;
+import { LONG_PRESS_MS } from '@/lib/gestureConstants';
 
 export function EyesFreeMode() {
   const open = useGlobalVoiceStore((s) => s.eyesFreeMode);

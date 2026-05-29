@@ -2,6 +2,7 @@ import i18n from '@/i18n';
 import { getBookById } from '@/services/bible/bookCatalog';
 import type { Translation } from '@/services/bible/bibleApi';
 import type { Locale, VerseSummary } from '@/types/domain';
+import { localeForTranslation } from './translationLocaleMap';
 
 export type PlanItem =
   | {
@@ -48,14 +49,6 @@ export type PlaybackPlanOptions = {
    * the actual verse(s) being read so the listener knows the scope. */
   wholeChapter?: boolean;
 };
-
-/** Spoken language for a Bible translation — drives both the announcement
- * text (book name, "chapter X" / "Kapitel X") and the browser TTS voice. */
-export function localeForTranslation(t: Translation): Locale {
-  return t === 'S00' || t === 'LUT' || t === 'HFA' || t === 'S51' || t === 'ELB'
-    ? 'de'
-    : 'en';
-}
 
 type ChapterRun = {
   bookId: number;

@@ -11,10 +11,10 @@ import {
 import { isBrowserVoice, type OpenAiVoiceId, type VerseSummary } from '@/types/domain';
 import {
   buildPlaybackPlan,
-  localeForTranslation,
   sliceFromVerseIndex,
   type PlanItem,
 } from './playbackPlan';
+import { localeForTranslation } from './translationLocaleMap';
 
 /**
  * Fire-and-forget: if the user has ambient music enabled, load the selected

@@ -8,7 +8,7 @@ import { getAmbientTracks, type AmbientTrack } from '@/services/api/ambient';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { setOpenAiKey } from '@/services/api/auth';
 import { postTtsSpeak } from '@/services/api/tts';
-import { ApiError } from '@/services/api/client';
+import { extractErrorDetail } from '@/lib/extractErrorDetail';
 import {
   OPENAI_VOICE_OPTIONS,
   type OpenAiVoiceId,
@@ -435,15 +435,6 @@ function ApiKeyStep() {
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
     </div>
   );
-}
-
-function extractErrorDetail(e: unknown): string | null {
-  if (e instanceof ApiError && e.body && typeof e.body === 'object') {
-    const body = e.body as { detail?: unknown; error?: unknown };
-    if (typeof body.detail === 'string' && body.detail) return body.detail;
-    if (typeof body.error === 'string' && body.error) return body.error;
-  }
-  return e instanceof Error ? e.message : null;
 }
 
 function VoicesStep() {

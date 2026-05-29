@@ -20,6 +20,11 @@ import {
 } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
 import type { Card } from '@/types/domain';
+import {
+  DRAG_MOVE_THRESHOLD_PX,
+  LONG_PRESS_MS,
+  MOVE_TOLERANCE_PX,
+} from '@/lib/gestureConstants';
 import { CardFace } from './CardFace';
 import { CardBack } from './CardBack';
 
@@ -36,9 +41,6 @@ type Props = {
 const PEEK_PX = 96;
 const PEEK_JITTER_PX = 10;
 const X_JITTER_PX = 10;
-const LONG_PRESS_MS = 500;
-const MOVE_TOLERANCE_PX = 6;
-const DRAG_MOVE_THRESHOLD_PX = 8;
 
 export function CardStack({
   cards,

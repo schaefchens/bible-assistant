@@ -31,6 +31,21 @@ export type ToolName =
   | 'enter_eyes_free_mode'
   | 'exit_eyes_free_mode';
 
+/** The tools whose effect is "read Bible text aloud". The command pipeline
+ * treats these specially (the verse audio IS the reply, so chat text is
+ * suppressed; repeated reads of the same passage in one turn are deduped).
+ * Single source of truth so adding a reading tool can't silently desync the
+ * pipeline's hardcoded checks. */
+export const READ_TOOL_NAMES: ReadonlySet<ToolName> = new Set<ToolName>([
+  'read_verses',
+  'random_verse',
+  'continue_from_ribbon',
+]);
+
+export function isReadTool(name: ToolName): boolean {
+  return READ_TOOL_NAMES.has(name);
+}
+
 export type ToolArgs = {
   read_verses: { reference: string; translation?: Translation };
   lookup_verses: { reference: string; translation?: Translation };

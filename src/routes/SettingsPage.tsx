@@ -18,7 +18,7 @@ import {
   checkForUpdates,
   useUpdateStore,
 } from '@/lib/pwaUpdate';
-import { ApiError } from '@/services/api/client';
+import { extractErrorDetail } from '@/lib/extractErrorDetail';
 import { clearOpenAiKey, setOpenAiKey } from '@/services/api/auth';
 
 export function SettingsPage() {
@@ -558,15 +558,6 @@ function OpenAiKeySection() {
       {error && <p className="text-xs text-red-400">{error}</p>}
     </div>
   );
-}
-
-function extractErrorDetail(e: unknown): string | null {
-  if (e instanceof ApiError && e.body && typeof e.body === 'object') {
-    const body = e.body as { detail?: unknown; error?: unknown };
-    if (typeof body.detail === 'string' && body.detail) return body.detail;
-    if (typeof body.error === 'string' && body.error) return body.error;
-  }
-  return e instanceof Error ? e.message : null;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
