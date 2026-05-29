@@ -154,22 +154,25 @@ class AudioPlaybackManager {
 
   private applyDuckedGains(): void {
     if (!this.ctx) return;
+    // iOS suspends the AudioContext while the mic is open (getUserMedia). A
+    // gain ramp scheduled against a suspended context's frozen clock never
+    // completes — which left verse/ambient audio stuck quiet *after talking*
+    // until a later foreground event happened to advance the clock. Resume
+    // first so the ramp runs now; the onstatechange handler in ensureContext
+    // re-asserts these gains if the resume lands after this call.
+    if (this.ctx.state === 'suspended') void this.ctx.resume();
     const settings = useSettingsStore.getState();
     const factor = this.ducked ? this.DUCK_FACTOR : 1;
     const now = this.ctx.currentTime;
     const ramp = this.DUCK_RAMP_SEC;
-    if (this.ttsGain) {
-      const target = settings.speechVolume * factor;
-      this.ttsGain.gain.cancelScheduledValues(now);
-      this.ttsGain.gain.setValueAtTime(this.ttsGain.gain.value, now);
-      this.ttsGain.gain.linearRampToValueAtTime(target, now + ramp);
-    }
-    if (this.ambientGain) {
-      const target = settings.ambient.volume * factor;
-      this.ambientGain.gain.cancelScheduledValues(now);
-      this.ambientGain.gain.setValueAtTime(this.ambientGain.gain.value, now);
-      this.ambientGain.gain.linearRampToValueAtTime(target, now + ramp);
-    }
+    const rampGain = (node: GainNode | null, target: number): void => {
+      if (!node) return;
+      node.gain.cancelScheduledValues(now);
+      node.gain.setValueAtTime(node.gain.value, now);
+      node.gain.linearRampToValueAtTime(target, now + ramp);
+    };
+    rampGain(this.ttsGain, settings.speechVolume * factor);
+    rampGain(this.ambientGain, settings.ambient.volume * factor);
   }
 
   /** Must be called inside a user gesture handler on iOS. */
@@ -192,6 +195,13 @@ class AudioPlaybackManager {
       this.ambientGain = this.ctx.createGain();
       this.ambientGain.gain.value = useSettingsStore.getState().ambient.volume;
       this.ambientGain.connect(this.master);
+      // When iOS resumes the context after a suspend (mic capture or
+      // backgrounding), re-assert the current gain targets. A ramp scheduled
+      // while suspended can be dropped; without this, audio could stay muted
+      // after talking until some later foreground re-render fixed it.
+      this.ctx.onstatechange = () => {
+        if (this.ctx?.state === 'running') this.applyDuckedGains();
+      };
     }
     if (this.ctx.state === 'suspended') {
       void this.ctx.resume();
