@@ -4,6 +4,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { RATE_CYCLE } from '@/hooks/usePlaybackTransport';
 import { getAmbientTracks, type AmbientTrack } from '@/services/api/ambient';
+import { MsSlider } from '@/components/common/MsSlider';
 
 export function PlaybackSettingsForm() {
   const { t } = useTranslation();
@@ -343,32 +344,3 @@ function VolumeSlider({
   );
 }
 
-function MsSlider({
-  label,
-  value,
-  max,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  max: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div>
-      <label className="flex items-center justify-between text-xs text-cream-dim mb-1">
-        <span>{label}</span>
-        <span className="font-mono tabular-nums">{(value / 1000).toFixed(1)}s</span>
-      </label>
-      <input
-        type="range"
-        min={0}
-        max={max}
-        step={100}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-gold"
-      />
-    </div>
-  );
-}

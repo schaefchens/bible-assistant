@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { useSettingsStore } from '@/store/settingsStore';
 import { SegmentedControl } from '@/components/common/SegmentedControl';
+import { MsSlider } from '@/components/common/MsSlider';
 import { TranslationList } from '@/components/bible/TranslationList';
 import { getAmbientTracks, type AmbientTrack } from '@/services/api/ambient';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
@@ -575,34 +576,4 @@ function usePreviewVoice() {
   };
 
   return { previewing, preview, stop };
-}
-
-function MsSlider({
-  label,
-  value,
-  max,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  max: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div>
-      <label className="flex items-center justify-between text-xs text-cream-dim mb-1">
-        <span>{label}</span>
-        <span className="font-mono tabular-nums">{(value / 1000).toFixed(1)}s</span>
-      </label>
-      <input
-        type="range"
-        min={0}
-        max={max}
-        step={100}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-gold"
-      />
-    </div>
-  );
 }
