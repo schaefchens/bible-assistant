@@ -7,6 +7,10 @@
     "types": ["vite/client", "vite-plugin-pwa/client"],
     "skipLibCheck": true,
 
+    /* Type safety: the source was already strict-clean, so this is enforced
+     * rather than aspirational. Keep it green. */
+    "strict": true,
+
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
