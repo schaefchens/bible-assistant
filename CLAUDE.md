@@ -53,7 +53,7 @@ All in `src/store/`. `(persist)` = survives reload via `zustand/middleware`.
 | `useGlobalVoiceStore` | Mic listening state, last voice response |
 | `useLastReadingStore` *(persist)* | Resume point for "play last reading" |
 | `useUiLayoutStore` | Transient layout (composer height, etc.) |
-| `useUpdateStore` (in `lib/pwaUpdate.ts`) | PWA update-available flag *(note: misnamed `use*` — it's a store, scheduled to become `updateStore`)* |
+| `useUpdateStore` (in `lib/pwaUpdate.ts`) | PWA update-available flag *(named `use*` though it's a store, not a hook — a known, intentionally-left naming exception)* |
 
 **Store reads from services/lib go through `src/services/storeAccess.ts`** (the single read contract). React components use the `useXStore(selector)` hooks directly for reactivity.
 
