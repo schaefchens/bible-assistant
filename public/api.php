@@ -264,6 +264,16 @@ function curlMultipart(string $url, array $fields, string $fileField, string $fi
 
 // ---------- auth ------------------------------------------------------------
 
+/**
+ * The per-request context array (`$ctx`) threaded through every handler:
+ *   - userId       string  the authenticated identity (uuid)
+ *   - userDir      string  USERS_DIR/{userId}, where per-user data lives
+ *   - preferShared bool    added by the router: caller opted into the shared
+ *                          OpenAI key for this request (X-Prefer-Shared-Key)
+ *   - openaiKey    string  added by the router for OpenAI actions only: the
+ *                          resolved key (personal unless preferShared/absent)
+ * requireAuth() populates userId + userDir; the router adds the rest.
+ */
 function requireAuth(): array {
     $userId = $_SERVER['HTTP_X_USER_ID'] ?? '';
     $userSecret = $_SERVER['HTTP_X_USER_SECRET'] ?? '';
@@ -393,9 +403,7 @@ function handleChat(array $ctx): void {
 
     $payload = json_encode($obj, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     $resp = curlRawJson('https://api.openai.com/v1/chat/completions', $payload, $ctx['openaiKey']);
-    if (($resp['_status'] ?? 0) !== 200) {
-        failOpenAi($ctx, 'openai chat failed', $resp);
-    }
+    checkOpenAiResponse($ctx, $resp, 'openai chat failed');
     $choice = $resp['choices'][0] ?? null;
     if (!$choice) fail(502, 'no choice returned');
     respond(200, [
@@ -422,6 +430,8 @@ function failOpenAi(array $ctx, string $message, array $resp): void {
     fail(502, $message, ['status' => $status, 'detail' => $detail]);
 }
 
+/** Like curlJson but takes a pre-encoded JSON string (used by handleChat,
+ * which encodes with specific flags to preserve empty `{}` objects). */
 function curlRawJson(string $url, string $payload, ?string $apiKey = null): array {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
@@ -434,17 +444,11 @@ function curlRawJson(string $url, string $payload, ?string $apiKey = null): arra
             'Authorization: Bearer ' . ($apiKey ?? OPENAI_API_KEY),
         ],
     ]);
-    $body = curl_exec($ch);
-    if ($body === false) {
-        $err = curl_error($ch);
-        curl_close($ch);
-        return ['_error' => $err, '_status' => 0];
-    }
-    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    $decoded = json_decode($body, true);
-    if (!is_array($decoded)) return ['_error' => 'invalid response', '_status' => $status, '_raw' => $body];
-    $decoded['_status'] = $status;
+    $r = curlExec($ch);
+    if ($r['error'] !== null) return ['_error' => $r['error'], '_status' => 0];
+    $decoded = json_decode($r['body'], true);
+    if (!is_array($decoded)) return ['_error' => 'invalid response', '_status' => $r['status'], '_raw' => $r['body']];
+    $decoded['_status'] = $r['status'];
     return $decoded;
 }
 
@@ -493,6 +497,92 @@ function cachedAlignmentMatches(string $alignmentFile, string $expectedHash): bo
     return isset($decoded['sourceTextHash']) && $decoded['sourceTextHash'] === $expectedHash;
 }
 
+/**
+ * If an OpenAI response didn't succeed (status !== 200), surface it via
+ * failOpenAi (which tags user_key_failed when the caller's own key was
+ * rejected). No-op on success. Centralizes the status check that every
+ * OpenAI-proxying handler repeated.
+ */
+function checkOpenAiResponse(array $ctx, array $resp, string $label): void {
+    if ((int)($resp['_status'] ?? 0) !== 200) {
+        failOpenAi($ctx, $label, $resp);
+    }
+}
+
+/**
+ * Forced word-level alignment of an existing audio file via the transcription
+ * model (verbose_json + word timestamps). Returns the raw response array
+ * (with `_status`); the caller decides whether a non-200 is fatal. Shared by
+ * the two TTS handlers and the user-recording upload.
+ */
+function forcedAlignment(string $audioFile, string $fileName, ?string $apiKey): array {
+    return curlMultipart(
+        'https://api.openai.com/v1/audio/transcriptions',
+        [
+            'model' => ALIGNMENT_MODEL,
+            'response_format' => 'verbose_json',
+            'timestamp_granularities[]' => 'word',
+        ],
+        'file',
+        $audioFile,
+        $fileName,
+        $apiKey,
+    );
+}
+
+/** Write an alignment JSON file from a successful alignment response, merging
+ * any extra fields (e.g. sourceTextHash for the cache-staleness check). */
+function writeAlignment(string $path, array $align, array $extra = []): void {
+    file_put_contents($path, json_encode(array_merge([
+        'words' => $align['words'] ?? [],
+        'duration' => $align['duration'] ?? null,
+        'text' => $align['text'] ?? null,
+    ], $extra), JSON_UNESCAPED_UNICODE));
+}
+
+/**
+ * Generate audio via OpenAI TTS, persist the mp3, then run forced alignment
+ * and persist the alignment JSON. On TTS failure the request fails (via
+ * failOpenAi); on alignment failure it degrades gracefully by writing an
+ * empty-words alignment so the client still plays the audio. `$alignmentExtra`
+ * is merged into the alignment JSON in both the success and empty-fallback
+ * cases (handleTts uses it to stamp sourceTextHash). Shared by handleTts and
+ * handleTtsSpeak.
+ */
+function synthesizeAndCacheAudio(
+    array $ctx,
+    string $text,
+    string $voice,
+    string $instructions,
+    string $audioFile,
+    string $alignmentFile,
+    array $alignmentExtra = [],
+): void {
+    $payload = [
+        'model' => TTS_MODEL,
+        'voice' => $voice,
+        'input' => $text,
+        'response_format' => 'mp3',
+    ];
+    if ($instructions !== '') {
+        $payload['instructions'] = $instructions;
+    }
+    $tts = curlBinary('https://api.openai.com/v1/audio/speech', $payload, $ctx['openaiKey']);
+    if ((int)($tts['_status'] ?? 0) !== 200 || empty($tts['audio'])) {
+        failOpenAi($ctx, 'tts failed', $tts);
+    }
+    if (file_put_contents($audioFile, $tts['audio']) === false) {
+        fail(500, 'could not write audio file');
+    }
+    $align = forcedAlignment($audioFile, basename($audioFile), $ctx['openaiKey']);
+    if ((int)($align['_status'] ?? 0) !== 200) {
+        // Keep the audio; write an empty alignment so the client falls back gracefully.
+        file_put_contents($alignmentFile, json_encode(array_merge(['words' => []], $alignmentExtra)));
+    } else {
+        writeAlignment($alignmentFile, $align, $alignmentExtra);
+    }
+}
+
 function handleTts(array $ctx): void {
     $body = readJsonBody();
     $text = safeString($body['text'] ?? '');
@@ -521,48 +611,17 @@ function handleTts(array $ctx): void {
         && file_exists($alignmentFile)
         && cachedAlignmentMatches($alignmentFile, $expectedHash);
     if (!$cached) {
-        $ttsPayload = [
-            'model' => TTS_MODEL,
-            'voice' => $voice,
-            'input' => $text,
-            'response_format' => 'mp3',
-            'instructions' => composeTtsInstructions($translation, $voiceStyle),
-        ];
-        $tts = curlBinary('https://api.openai.com/v1/audio/speech', $ttsPayload, $ctx['openaiKey']);
-        if (($tts['_status'] ?? 0) !== 200 || empty($tts['audio'])) {
-            failOpenAi($ctx, 'tts failed', $tts);
-        }
-        if (file_put_contents($audioFile, $tts['audio']) === false) {
-            fail(500, 'could not write audio file');
-        }
-        // Forced word alignment via gpt-4o-transcribe on our freshly-generated audio.
-        $align = curlMultipart(
-            'https://api.openai.com/v1/audio/transcriptions',
-            [
-                'model' => ALIGNMENT_MODEL,
-                'response_format' => 'verbose_json',
-                'timestamp_granularities[]' => 'word',
-            ],
-            'file',
+        // Forced alignment stamps sourceTextHash so a future text change
+        // (e.g. footnote cleanup) marks the cached mp3 stale — see above.
+        synthesizeAndCacheAudio(
+            $ctx,
+            $text,
+            $voice,
+            composeTtsInstructions($translation, $voiceStyle),
             $audioFile,
-            $verse . '.mp3',
-            $ctx['openaiKey'],
+            $alignmentFile,
+            ['sourceTextHash' => $expectedHash],
         );
-        if (($align['_status'] ?? 0) !== 200) {
-            // We still have the audio; write empty alignment so client falls back gracefully.
-            file_put_contents($alignmentFile, json_encode([
-                'words' => [],
-                'sourceTextHash' => $expectedHash,
-            ]));
-        } else {
-            $alignmentBody = [
-                'words' => $align['words'] ?? [],
-                'duration' => $align['duration'] ?? null,
-                'text' => $align['text'] ?? null,
-                'sourceTextHash' => $expectedHash,
-            ];
-            file_put_contents($alignmentFile, json_encode($alignmentBody, JSON_UNESCAPED_UNICODE));
-        }
     }
 
     respond(200, [
@@ -596,45 +655,14 @@ function handleTtsSpeak(array $ctx): void {
 
     $cached = file_exists($audioFile) && file_exists($alignmentFile);
     if (!$cached) {
-        $instructions = composeSpeakInstructions($language, $voiceStyle);
-        $ttsPayload = [
-            'model' => TTS_MODEL,
-            'voice' => $voice,
-            'input' => $text,
-            'response_format' => 'mp3',
-        ];
-        if ($instructions !== '') {
-            $ttsPayload['instructions'] = $instructions;
-        }
-        $tts = curlBinary('https://api.openai.com/v1/audio/speech', $ttsPayload, $ctx['openaiKey']);
-        if (($tts['_status'] ?? 0) !== 200 || empty($tts['audio'])) {
-            failOpenAi($ctx, 'tts failed', $tts);
-        }
-        if (file_put_contents($audioFile, $tts['audio']) === false) {
-            fail(500, 'could not write audio file');
-        }
-        $align = curlMultipart(
-            'https://api.openai.com/v1/audio/transcriptions',
-            [
-                'model' => ALIGNMENT_MODEL,
-                'response_format' => 'verbose_json',
-                'timestamp_granularities[]' => 'word',
-            ],
-            'file',
+        synthesizeAndCacheAudio(
+            $ctx,
+            $text,
+            $voice,
+            composeSpeakInstructions($language, $voiceStyle),
             $audioFile,
-            $key . '.mp3',
-            $ctx['openaiKey'],
+            $alignmentFile,
         );
-        if (($align['_status'] ?? 0) !== 200) {
-            file_put_contents($alignmentFile, json_encode(['words' => []]));
-        } else {
-            $alignmentBody = [
-                'words' => $align['words'] ?? [],
-                'duration' => $align['duration'] ?? null,
-                'text' => $align['text'] ?? null,
-            ];
-            file_put_contents($alignmentFile, json_encode($alignmentBody, JSON_UNESCAPED_UNICODE));
-        }
     }
 
     respond(200, [
@@ -838,9 +866,7 @@ function handleTranscribe(array $ctx): void {
         $name,
         $ctx['openaiKey'],
     );
-    if (($resp['_status'] ?? 0) !== 200) {
-        failOpenAi($ctx, 'transcribe failed', $resp);
-    }
+    checkOpenAiResponse($ctx, $resp, 'transcribe failed');
     respond(200, ['text' => $resp['text'] ?? '']);
 }
 
@@ -966,26 +992,13 @@ function handleRecordingUpload(array $ctx): void {
         fail(500, 'failed to save recording');
     }
 
-    // Word alignment from real recording (also via gpt-4o-transcribe).
-    $align = curlMultipart(
-        'https://api.openai.com/v1/audio/transcriptions',
-        [
-            'model' => ALIGNMENT_MODEL,
-            'response_format' => 'verbose_json',
-            'timestamp_granularities[]' => 'word',
-        ],
-        'file',
-        $dest,
-        "{$verse}.mp3",
-        $ctx['openaiKey'] ?? null,
-    );
+    // Word alignment from the real recording. Non-fatal: the recording is
+    // already saved, so an alignment failure (incl. a rejected key) just skips
+    // the alignment file rather than failing the upload.
+    $align = forcedAlignment($dest, "{$verse}.mp3", $ctx['openaiKey'] ?? null);
     $alignmentPath = "{$dir}/{$verse}.json";
-    if (($align['_status'] ?? 0) === 200) {
-        file_put_contents($alignmentPath, json_encode([
-            'words' => $align['words'] ?? [],
-            'duration' => $align['duration'] ?? null,
-            'text' => $align['text'] ?? null,
-        ], JSON_UNESCAPED_UNICODE));
+    if ((int)($align['_status'] ?? 0) === 200) {
+        writeAlignment($alignmentPath, $align);
     }
 
     respond(200, [
