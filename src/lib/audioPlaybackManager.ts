@@ -56,6 +56,23 @@ class SpeechBus {
   }
 }
 
+/**
+ * The Web Audio engine for OpenAI-TTS verse playback. A singleton (`audioPlayback`)
+ * because it owns one AudioContext and one playback queue for the whole app.
+ *
+ * Five concerns live here, grouped by the section banners below:
+ *   1. AudioContext graph + ducking — node setup, mic-open volume ramps
+ *   2. Speech queue: scheduling & playback — playQueue/enqueue/playCurrent/handleEnded/tick
+ *   3. Transport — pause/resume/stop/next/softEnd
+ *   4. Seek & playback rate — word-level seeking, rate, loop
+ *   5. Ambient music bus — a parallel buffer source on its own gain (see `ambient`)
+ *
+ * NOTE: a planned refactor (see CLAUDE.md / the refactor roadmap) splits the
+ * ambient bus into `ambientAudioBus.ts` and the queue scheduling into
+ * `playbackQueueScheduler.ts`. That change rewires the audio graph and must be
+ * verified with real on-device audio (ducking, iOS resume, seek) — it is
+ * intentionally NOT done as part of the comment-only navigability pass.
+ */
 class AudioPlaybackManager {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -102,6 +119,8 @@ class AudioPlaybackManager {
   private readonly AMBIENT_FADE_SEC = 2;
   readonly ambient = new AmbientBus(this);
   readonly speech = new SpeechBus(this);
+
+  // ─── 1. AudioContext graph + ducking ─────────────────────────────────
 
   /** Read-only access to the shared AudioContext (or null if never
    * created). Callers should use this rather than reaching into private
@@ -179,6 +198,8 @@ class AudioPlaybackManager {
     }
     return this.ctx;
   }
+
+  // ─── 2. Speech queue: scheduling & playback ──────────────────────────
 
   async playQueue(
     tracks: PlaybackTrack[],
@@ -407,6 +428,8 @@ class AudioPlaybackManager {
     this.tickHandle = requestAnimationFrame(tick);
   }
 
+  // ─── 3. Transport: pause / resume / stop / next ──────────────────────
+
   pause(): void {
     if (browserTts.isActive()) {
       browserTts.pause();
@@ -613,6 +636,8 @@ class AudioPlaybackManager {
   }
 
   /** Jump to an absolute word index within the currently-loaded verse. */
+  // ─── 4. Seek & playback rate ─────────────────────────────────────────
+
   seekToWord(wordIndex: number): void {
     if (!this.currentLoaded || !this.ctx) return;
     const { alignment, buffer } = this.currentLoaded;
@@ -730,6 +755,8 @@ class AudioPlaybackManager {
     );
   }
 
+  // ─── Buffer & alignment loaders ──────────────────────────────────────
+
   private async loadBuffer(url: string): Promise<AudioBuffer> {
     const cached = this.decodeCache.get(url);
     if (cached) return cached;
@@ -750,7 +777,7 @@ class AudioPlaybackManager {
     return al;
   }
 
-  // ─── Ambient bus (called via this.ambient) ───────────────────────────
+  // ─── 5. Ambient music bus (called via this.ambient) ──────────────────
 
   async _ambientLoad(url: string): Promise<void> {
     if (this.ambientUrl === url && this.ambientBuffer) return;
