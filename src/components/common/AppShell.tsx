@@ -10,6 +10,7 @@ import { useAppInitialization } from '@/hooks/useAppInitialization';
 import { getPassphrase } from '@/lib/passphrase';
 import { PassphraseSetup } from '@/components/onboarding/PassphraseSetup';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
+import { VoiceController } from '@/components/voice/VoiceController';
 import { GlobalMicButton } from '@/components/voice/GlobalMicButton';
 import { VoiceOverlay } from '@/components/voice/VoiceOverlay';
 import { EyesFreeMode } from '@/components/voice/EyesFreeMode';
@@ -71,6 +72,7 @@ export function AppShell() {
         <NavTab to="/settings" label={t('nav.settings')} icon={<SettingsIcon />} />
       </nav>
 
+      <VoiceController />
       <GlobalMicButton />
       <FloatingPlaybackBar />
       <VoiceOverlay />
