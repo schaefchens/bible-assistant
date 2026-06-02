@@ -155,12 +155,16 @@ function handleSetEyesFree(value: boolean): ToolDispatchResult {
 }
 
 async function handleReadVerses(
-  args: { reference: string; translation?: Translation },
+  args: { reference: string; translation?: Translation; immediate?: boolean },
   ctx: DispatchContext,
   autoplay: boolean,
 ): Promise<ToolDispatchResult> {
   const parsed = parseReference(args.reference);
   if (!parsed) return { ok: false, error: `could not parse reference "${args.reference}"` };
+  // "read X now/sofort/jetzt" → hard-stop whatever is playing and read this
+  // immediately, instead of appending to the queue (only meaningful when we
+  // auto-play; lookup_verses passes autoplay=false).
+  const immediate = autoplay && args.immediate === true;
   const { locale, translation: defaultTrans } = useSettingsStore.getState();
   const voice = effectiveReadingVoice();
   const voiceStyle = effectiveVoiceStyle();
@@ -218,7 +222,10 @@ async function handleReadVerses(
           }));
     if (isBrowserVoice(voice)) {
       if (!ctx.signal?.aborted) {
-        void browserTts.enqueue(planToBrowserItems(plan, ctx.messageId));
+        const items = planToBrowserItems(plan, ctx.messageId);
+        // speakQueue replaces the active playlist (hard stop); enqueue appends.
+        if (immediate) void browserTts.speakQueue(items);
+        else void browserTts.enqueue(items);
       }
     } else {
       const tracks = await planToOpenAiTracks(
@@ -229,7 +236,9 @@ async function handleReadVerses(
         ctx.signal,
       );
       if (tracks.length > 0 && !ctx.signal?.aborted) {
-        void audioPlayback.enqueue(tracks);
+        // playQueue supersedes the current queue (hard stop); enqueue appends.
+        if (immediate) void audioPlayback.playQueue(tracks);
+        else void audioPlayback.enqueue(tracks);
       }
     }
   }

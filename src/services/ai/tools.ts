@@ -47,7 +47,7 @@ export function isReadTool(name: ToolName): boolean {
 }
 
 export type ToolArgs = {
-  read_verses: { reference: string; translation?: Translation };
+  read_verses: { reference: string; translation?: Translation; immediate?: boolean };
   lookup_verses: { reference: string; translation?: Translation };
   random_verse: {
     book?: string;
@@ -122,6 +122,11 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
             type: 'string',
             enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA', 'S51', 'ELB'],
             description: 'Optional override. Defaults to user-selected translation.',
+          },
+          immediate: {
+            type: 'boolean',
+            description:
+              'Set to true ONLY when the user wants this passage RIGHT NOW, interrupting whatever is currently playing — signalled by an urgency word like "now", "immediately", "instantly", "right now", or German "sofort", "jetzt", "gleich" (e.g. "read Genesis 1 now", "lies Galater 5 sofort"). It hard-stops the current reading and plays this one immediately. For a plain "read X" / "lies X" with no such word, OMIT it — the passage then queues after the current reading as usual.',
           },
         },
         required: ['reference'],
