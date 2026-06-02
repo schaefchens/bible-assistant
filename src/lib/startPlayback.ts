@@ -161,6 +161,59 @@ export function planToBrowserItems(plan: PlanItem[], messageId: string): Browser
   }));
 }
 
+// How many verse-TTS requests to generate in parallel. The old sequential
+// loop meant a long passage (e.g. a whole 29-verse chapter) finished its LAST
+// verse's TTS before the FIRST could play — a multi-second silent gap before
+// a continuation, scaling with passage length. A small pool keeps generation
+// well ahead of playback while staying within sane backend/OpenAI concurrency.
+const TTS_BUILD_CONCURRENCY = 4;
+
+async function buildTrack(
+  it: PlanItem,
+  messageId: string,
+  voice: OpenAiVoiceId,
+  voiceStyle: string | undefined,
+  signal?: AbortSignal,
+): Promise<PlaybackTrack | null> {
+  try {
+    const tts =
+      it.kind === 'verse'
+        ? await postTts(
+            {
+              text: it.verse.text,
+              voice,
+              voiceStyle,
+              translation: it.verse.translation,
+              bookId: it.verse.bookId,
+              chapter: it.verse.chapter,
+              verse: it.verse.verse,
+            },
+            { signal },
+          )
+        : await postTtsSpeak(
+            {
+              text: it.text,
+              voice,
+              voiceStyle,
+              language: localeForTranslation(it.translation),
+            },
+            { signal },
+          );
+    return {
+      messageId,
+      verseIndex: it.verseIndex,
+      audioUrl: tts.audioUrl,
+      alignmentUrl: tts.alignmentUrl,
+      pauseAfterMs: it.pauseAfterMs,
+      highlightVerse: it.kind === 'verse',
+    };
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') return null;
+    console.warn('tts failed', it.kind, e);
+    return null;
+  }
+}
+
 export async function planToOpenAiTracks(
   plan: PlanItem[],
   messageId: string,
@@ -168,47 +221,21 @@ export async function planToOpenAiTracks(
   voiceStyle: string | undefined,
   signal?: AbortSignal,
 ): Promise<PlaybackTrack[]> {
-  const tracks: PlaybackTrack[] = [];
-  for (const it of plan) {
-    if (signal?.aborted) break;
-    try {
-      const tts =
-        it.kind === 'verse'
-          ? await postTts(
-              {
-                text: it.verse.text,
-                voice,
-                voiceStyle,
-                translation: it.verse.translation,
-                bookId: it.verse.bookId,
-                chapter: it.verse.chapter,
-                verse: it.verse.verse,
-              },
-              { signal },
-            )
-          : await postTtsSpeak(
-              {
-                text: it.text,
-                voice,
-                voiceStyle,
-                language: localeForTranslation(it.translation),
-              },
-              { signal },
-            );
-      tracks.push({
-        messageId,
-        verseIndex: it.verseIndex,
-        audioUrl: tts.audioUrl,
-        alignmentUrl: tts.alignmentUrl,
-        pauseAfterMs: it.pauseAfterMs,
-        highlightVerse: it.kind === 'verse',
-      });
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') break;
-      console.warn('tts failed', it.kind, e);
+  // Generate with bounded concurrency, preserving plan order via indexed
+  // writes. A failed/aborted item leaves a null hole that is filtered out.
+  const results: (PlaybackTrack | null)[] = new Array(plan.length).fill(null);
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      if (signal?.aborted) return;
+      const i = cursor++;
+      if (i >= plan.length) return;
+      results[i] = await buildTrack(plan[i], messageId, voice, voiceStyle, signal);
     }
-  }
-  return tracks;
+  };
+  const poolSize = Math.min(TTS_BUILD_CONCURRENCY, plan.length);
+  await Promise.all(Array.from({ length: poolSize }, () => worker()));
+  return results.filter((t): t is PlaybackTrack => t !== null);
 }
 
 function itemText(it: PlanItem): string {
