@@ -67,35 +67,39 @@ export function navigateVerse(dir: 1 | -1): void {
 
   const curMsg = bibles[curMsgIdx];
   const verseCount = curMsg.verses!.length;
-  const verseIdx = current.verseIndex;
 
-  if (dir === 1) {
-    if (verseIdx < verseCount - 1) {
-      audioPlayback.next();
+  // Resolve the target (message, verse) coordinate one step in `dir`.
+  let targetMsgIdx = curMsgIdx;
+  let targetVerseIdx = current.verseIndex + dir;
+  if (targetVerseIdx < 0) {
+    // Before this reading's first verse → previous reading's last verse.
+    if (curMsgIdx === 0) return; // already at the very beginning
+    targetMsgIdx = curMsgIdx - 1;
+    targetVerseIdx = bibles[targetMsgIdx].verses!.length - 1;
+  } else if (targetVerseIdx >= verseCount) {
+    // Past this reading's last verse → next reading, else fetch a continuation.
+    if (curMsgIdx >= bibles.length - 1) {
+      fireContinuationFromTransport(current.messageId);
       return;
     }
-    if (curMsgIdx < bibles.length - 1) {
-      const nextMsg = bibles[curMsgIdx + 1];
-      selectMessageById(nextMsg.id);
-      void startPlaybackForVerses(nextMsg.id, nextMsg.verses!, 0);
-      return;
-    }
-    // End of everything — fetch and enqueue the next logical chunk
-    // (mirrors the reader panel's Continue button).
-    fireContinuationFromTransport(current.messageId);
+    targetMsgIdx = curMsgIdx + 1;
+    targetVerseIdx = 0;
+  }
+
+  if (targetMsgIdx === curMsgIdx) {
+    // Same reading: jump within the live queue if the verse is loaded.
+    // Otherwise the queue was sliced (we started mid-message), so reload from
+    // the target verse — this is what lets a backward step reach a verse that
+    // isn't in the current (sliced) queue, including walking back across
+    // earlier separate readings one verse at a time.
+    if (audioPlayback.goToVerseIndex(targetVerseIdx)) return;
+    void startPlaybackForVerses(curMsg.id, curMsg.verses!, targetVerseIdx);
     return;
   }
 
-  if (verseIdx > 0) {
-    audioPlayback.previous();
-    return;
-  }
-  if (curMsgIdx > 0) {
-    const prevMsg = bibles[curMsgIdx - 1];
-    const lastIdx = (prevMsg.verses!.length ?? 1) - 1;
-    selectMessageById(prevMsg.id);
-    void startPlaybackForVerses(prevMsg.id, prevMsg.verses!, lastIdx);
-  }
+  const targetMsg = bibles[targetMsgIdx];
+  selectMessageById(targetMsg.id);
+  void startPlaybackForVerses(targetMsg.id, targetMsg.verses!, targetVerseIdx);
 }
 
 /**

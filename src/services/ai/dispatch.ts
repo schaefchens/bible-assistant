@@ -21,7 +21,7 @@ import { browserTts } from '@/lib/browserTts';
 import {
   startAmbientIfEnabled,
   planToBrowserItems,
-  planToOpenAiTracks,
+  streamReading,
 } from '@/lib/startPlayback';
 import { getAmbientTracks } from '@/services/api/ambient';
 import { buildPlaybackPlan } from '@/lib/playbackPlan';
@@ -228,18 +228,16 @@ async function handleReadVerses(
         else void browserTts.enqueue(items);
       }
     } else {
-      const tracks = await planToOpenAiTracks(
+      // Stream verses in as they're generated so the first plays promptly;
+      // playQueue mode hard-stops for an immediate read, enqueue mode appends.
+      void streamReading(
         plan,
         ctx.messageId,
         voice as OpenAiVoiceId,
         voiceStyle || undefined,
         ctx.signal,
+        { mode: immediate ? 'playQueue' : 'enqueue' },
       );
-      if (tracks.length > 0 && !ctx.signal?.aborted) {
-        // playQueue supersedes the current queue (hard stop); enqueue appends.
-        if (immediate) void audioPlayback.playQueue(tracks);
-        else void audioPlayback.enqueue(tracks);
-      }
     }
   }
 

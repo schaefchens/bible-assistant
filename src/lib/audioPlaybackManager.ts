@@ -83,6 +83,15 @@ class AudioPlaybackManager {
   private readonly DUCK_FACTOR = 0;
   private readonly DUCK_RAMP_SEC = 0.15;
 
+  // Streaming: a reading's verses are generated and appended one-by-one so the
+  // first plays ASAP. `feeding` is true while a stream is still supplying
+  // tracks; `awaitingFeed` means playback drained to the end and is waiting for
+  // the next track. `feedGen` invalidates a stale stream when a new one starts
+  // or playback is stopped (see beginFeed/appendTracks/endFeed).
+  private feeding = false;
+  private awaitingFeed = false;
+  private feedGen = 0;
+
   // Ambient music runs on its own bus (created with the context). The public
   // `ambient` facade tolerates calls before the context exists (e.g. a volume
   // change with nothing playing yet) by persisting to settings.
@@ -225,13 +234,15 @@ class AudioPlaybackManager {
   /** Jump to a specific verse in the current queue, optionally at a word.
    * `verseIdx` is the verse's position in `message.verses`, not the queue
    * index — heading and verse-number announcement tracks sit between
-   * verse tracks, so we have to look up the actual verse track. */
-  goToVerseIndex(verseIdx: number, wordIdx?: number): void {
-    if (verseIdx < 0) return;
+   * verse tracks, so we have to look up the actual verse track. Returns false
+   * when that verse isn't in the current queue (e.g. the queue was sliced to
+   * start mid-message), so the caller can reload it instead. */
+  goToVerseIndex(verseIdx: number, wordIdx?: number): boolean {
+    if (verseIdx < 0) return false;
     const queueIdx = this.queue.findIndex(
       (t) => t.verseIndex === verseIdx && t.highlightVerse !== false,
     );
-    if (queueIdx < 0) return;
+    if (queueIdx < 0) return false;
     if (this.pauseTimer !== null) {
       clearTimeout(this.pauseTimer);
       this.pauseTimer = null;
@@ -239,6 +250,55 @@ class AudioPlaybackManager {
     this.currentIndex = queueIdx;
     if (wordIdx !== undefined) this.pendingSeekWord = wordIdx;
     void this.playCurrent();
+    return true;
+  }
+
+  // ─── Streaming a reading's verses in as they're generated ────────────
+
+  /** Open a streaming session and return its generation token. Bumping the
+   * generation invalidates any prior stream, so an interrupting reading (or a
+   * stop) cleanly supersedes one still in flight. The first track is started
+   * via enqueue/playQueue by the caller; subsequent tracks come through
+   * appendTracks(tracks, gen). */
+  beginFeed(): number {
+    this.feeding = true;
+    this.awaitingFeed = false;
+    return ++this.feedGen;
+  }
+
+  /** True while `gen` is still the active streaming session. */
+  isFeed(gen: number): boolean {
+    return this.feeding && gen === this.feedGen;
+  }
+
+  /** Append streamed tracks to the live queue (no chapter-pause bridge, unlike
+   * enqueue — these are the same reading's later verses). Resumes playback if
+   * it had drained to the end while waiting for them. Ignores stale streams. */
+  appendTracks(tracks: PlaybackTrack[], gen: number): void {
+    if (tracks.length === 0 || gen !== this.feedGen) return;
+    if (this.queue.length === 0) {
+      void this.playQueue(tracks);
+      return;
+    }
+    this.queue = [...this.queue, ...tracks];
+    if (this.awaitingFeed) {
+      // Playback was parked at the end waiting for this; currentIndex already
+      // points at the first freshly-appended track.
+      this.awaitingFeed = false;
+      void this.playCurrent();
+    }
+  }
+
+  /** Close a streaming session. If playback had drained to the end while we
+   * were still generating (awaitingFeed), finalize with a normal soft-end so
+   * auto-continuation can take over. */
+  endFeed(gen: number): void {
+    if (gen !== this.feedGen) return;
+    this.feeding = false;
+    if (this.awaitingFeed) {
+      this.awaitingFeed = false;
+      this.softEnd();
+    }
   }
 
   /**
@@ -381,6 +441,15 @@ class AudioPlaybackManager {
     const justFinished = this.currentLoaded;
     this.currentIndex++;
     if (this.currentIndex >= this.queue.length) {
+      if (this.feeding) {
+        // A reading is still being streamed in (verse N+1's TTS isn't ready
+        // yet); wait for the next appendTracks instead of soft-ending — which
+        // would otherwise hand off to auto-continuation mid-reading. Keep
+        // `current` set so no thinking drone fires during the brief wait.
+        this.awaitingFeed = true;
+        usePlaybackStore.getState().setStatus('loading');
+        return;
+      }
       this.softEnd();
       return;
     }
@@ -516,9 +585,14 @@ class AudioPlaybackManager {
   }
 
   stop(): void {
-    // User-initiated stop also kills any pending auto-play continuation.
+    // User-initiated stop also kills any pending auto-play continuation and
+    // invalidates any in-flight streaming session (bump the generation so its
+    // remaining appendTracks no-op).
     cancelAutoPlayPrefetch();
     browserTts.stop();
+    this.feeding = false;
+    this.awaitingFeed = false;
+    this.feedGen++;
     this.softEnded = false;
     if (this.softEndTimer !== null) {
       clearTimeout(this.softEndTimer);

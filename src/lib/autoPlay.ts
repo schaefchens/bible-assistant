@@ -1,7 +1,7 @@
 import { audioPlayback, type PlaybackTrack } from './audioPlaybackManager';
 import { browserTts, type BrowserTtsItem } from './browserTts';
 import { buildPlaybackPlan } from './playbackPlan';
-import { planToBrowserItems, planToOpenAiTracks } from './startPlayback';
+import { planToBrowserItems, planToOpenAiTracks, streamReading } from './startPlayback';
 import {
   getChapter,
   verseSpeakable,
@@ -287,14 +287,16 @@ async function enqueueContinuationFor(
     return;
   }
 
-  // Prefetched tracks were built against the new message's id ahead of
-  // time (see schedulePrefetchFor); if no prefetch hit, build fresh.
-  let tracks = tracksFromPrefetch;
-  if (tracks) {
-    // Tracks were tagged with the prefetch's reserved messageId — swap to
-    // our actual new message so the WordHighlighter binds correctly.
-    tracks = tracks.map((t) => ({ ...t, messageId: newMessageId }));
+  if (tracksFromPrefetch) {
+    // Prefetch hit: the whole chunk is already built, so enqueue it at once.
+    // (Tracks were tagged with the prefetch's reserved messageId — swap to our
+    // actual new message so the WordHighlighter binds correctly.)
+    const tracks = tracksFromPrefetch.map((t) => ({ ...t, messageId: newMessageId }));
+    if (tracks.length > 0) void audioPlayback.enqueue(tracks);
   } else {
+    // Cold build: stream so the continuation's first verse plays after one TTS
+    // round-trip instead of after the whole (possibly chapter-long) chunk —
+    // this is the fix for the long silent gap before a continuation.
     const plan = buildPlaybackPlan(summaries, {
       locale: settings.locale,
       readChapterHeadings: settings.readChapterHeadings,
@@ -304,16 +306,14 @@ async function enqueueContinuationFor(
       pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
       wholeChapter,
     });
-    tracks = await planToOpenAiTracks(
+    await streamReading(
       plan,
       newMessageId,
       readerVoice as OpenAiVoiceId,
       effectiveVoiceStyle() || undefined,
       undefined,
+      { mode: 'enqueue' },
     );
-  }
-  if (tracks.length > 0) {
-    void audioPlayback.enqueue(tracks);
   }
 }
 
