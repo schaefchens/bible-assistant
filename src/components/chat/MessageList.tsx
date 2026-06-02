@@ -2,6 +2,7 @@ import { useEffect, useRef, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useChatStore } from '@/store/chatStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { usePlaybackStore } from '@/store/playbackStore';
 import { useCommandPipeline } from '@/hooks/useCommandPipeline';
 import { useAutoScrollActiveVerse } from '@/hooks/useAutoScrollActiveVerse';
 import { MessageBubble } from './MessageBubble';
@@ -22,19 +23,27 @@ export function MessageList({ scrollRef }: Props) {
   const highlightedId = useChatStore((s) => s.highlightedMessageId);
   const setHighlightedId = useChatStore((s) => s.setHighlightedMessageId);
   const lastCountRef = useRef(0);
+  const playbackStatus = usePlaybackStore((s) => s.status);
   const { send } = useCommandPipeline();
 
   useAutoScrollActiveVerse(scrollRef);
 
   useEffect(() => {
     if (messages.length > lastCountRef.current && scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: 'smooth',
-      });
+      // While a reading is in progress, keep the user's place: the active-verse
+      // auto-scroll governs the view, so don't yank to the bottom when an
+      // assistant reply or a newly-queued chapter is appended below.
+      const readingInProgress =
+        playbackStatus === 'playing' || playbackStatus === 'paused';
+      if (!readingInProgress) {
+        scrollRef.current.scrollTo({
+          top: scrollRef.current.scrollHeight,
+          behavior: 'smooth',
+        });
+      }
     }
     lastCountRef.current = messages.length;
-  }, [messages.length, scrollRef]);
+  }, [messages.length, playbackStatus, scrollRef]);
 
   // When VoiceOverlay's "Open in chat" highlights a message, scroll it into view
   // and clear the highlight after the gold flash settles.

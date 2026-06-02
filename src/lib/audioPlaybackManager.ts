@@ -92,6 +92,10 @@ class AudioPlaybackManager {
   private awaitingFeed = false;
   private feedGen = 0;
 
+  // One-shot assistant-reply source (see interject) — plays over the speech
+  // bus while the reading is paused, without touching the verse queue.
+  private interjectionSrc: AudioBufferSourceNode | null = null;
+
   // Ambient music runs on its own bus (created with the context). The public
   // `ambient` facade tolerates calls before the context exists (e.g. a volume
   // change with nothing playing yet) by persisting to settings.
@@ -550,6 +554,46 @@ class AudioPlaybackManager {
   }
 
   /**
+   * Play a one-shot utterance (an assistant reply) over the speech bus,
+   * pausing the current reading for its duration and resuming after — without
+   * touching the verse queue. The reply is Web Audio, so it plays cleanly even
+   * when the reading is on the browser-TTS engine (pause()/resume() route to
+   * whichever engine is reading). If nothing is reading, it simply plays.
+   */
+  async interject(audioUrl: string): Promise<void> {
+    let buffer: AudioBuffer;
+    try {
+      buffer = await this.loadBuffer(audioUrl);
+    } catch {
+      return;
+    }
+    const ctx = this.ensureContext();
+    // Pause whatever's reading so the reply has the floor; resume it on end.
+    const reading = usePlaybackStore.getState().status === 'playing';
+    if (reading) this.pause();
+    const resume = (): void => {
+      if (reading) this.resume();
+    };
+    if (this.interjectionSrc) {
+      try {
+        this.interjectionSrc.onended = null;
+        this.interjectionSrc.stop();
+      } catch {
+        /* ignore */
+      }
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(this.ttsGain ?? ctx.destination);
+    src.onended = () => {
+      if (this.interjectionSrc === src) this.interjectionSrc = null;
+      resume();
+    };
+    this.interjectionSrc = src;
+    src.start(0);
+  }
+
+  /**
    * Queue played to completion. Tear down the audio source + tick but
    * preserve queue, currentIndex, and currentLoaded so a follow-up enqueue
    * can bridge into the same playlist. Ambient stays on through the grace
@@ -593,6 +637,15 @@ class AudioPlaybackManager {
     this.feeding = false;
     this.awaitingFeed = false;
     this.feedGen++;
+    if (this.interjectionSrc) {
+      try {
+        this.interjectionSrc.onended = null;
+        this.interjectionSrc.stop();
+      } catch {
+        /* ignore */
+      }
+      this.interjectionSrc = null;
+    }
     this.softEnded = false;
     if (this.softEndTimer !== null) {
       clearTimeout(this.softEndTimer);

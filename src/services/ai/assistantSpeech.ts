@@ -1,6 +1,7 @@
 import { postTtsSpeak } from '@/services/api/tts';
 import { browserTts } from '@/lib/browserTts';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
+import { usePlaybackStore } from '@/store/playbackStore';
 import {
   effectiveAssistantVoice,
   effectiveVoiceStyle,
@@ -17,15 +18,28 @@ export async function speakAssistantReply(text: string, messageId: string): Prom
   const { speakAssistant, locale } = useSettingsStore.getState();
   if (!speakAssistant) return;
   const assistantVoice = effectiveAssistantVoice();
+  // A verse is actively playing → the reply should interject (pause the
+  // reading, speak, resume) rather than queue behind the whole passage.
+  const readingActive = usePlaybackStore.getState().status === 'playing';
+
   if (isBrowserVoice(assistantVoice)) {
-    void browserTts.enqueue([
-      {
-        messageId,
-        verseIndex: 0,
-        text: trimmed,
-        translation: locale === 'de' ? 'S00' : 'ESV',
-      },
-    ]);
+    const lang = locale === 'de' ? 'de-DE' : 'en-US';
+    if (readingActive && !browserTts.isActive()) {
+      // Reading is on the OpenAI/Web-Audio engine: pause it, speak the reply,
+      // resume on end. (A browser-voice reading can't be cleanly interrupted
+      // on the single SpeechSynthesis engine, so that case falls through.)
+      audioPlayback.pause();
+      void browserTts.speakOneShot(trimmed, lang, () => audioPlayback.resume());
+    } else {
+      void browserTts.enqueue([
+        {
+          messageId,
+          verseIndex: 0,
+          text: trimmed,
+          translation: locale === 'de' ? 'S00' : 'ESV',
+        },
+      ]);
+    }
     return;
   }
   const voiceStyle = effectiveVoiceStyle();
@@ -37,14 +51,20 @@ export async function speakAssistantReply(text: string, messageId: string): Prom
       language: locale === 'de' ? 'de' : 'en',
     });
     audioPlayback.ensureContext();
-    void audioPlayback.enqueue([
-      {
-        messageId,
-        verseIndex: 0,
-        audioUrl: tts.audioUrl,
-        alignmentUrl: tts.alignmentUrl,
-      },
-    ]);
+    if (readingActive) {
+      // Interject: pause the reading, play the reply over the speech bus,
+      // resume after — so the answer doesn't wait behind the whole passage.
+      void audioPlayback.interject(tts.audioUrl);
+    } else {
+      void audioPlayback.enqueue([
+        {
+          messageId,
+          verseIndex: 0,
+          audioUrl: tts.audioUrl,
+          alignmentUrl: tts.alignmentUrl,
+        },
+      ]);
+    }
   } catch (e) {
     console.warn('assistant TTS failed', e);
   }

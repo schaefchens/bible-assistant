@@ -161,6 +161,36 @@ class BrowserTtsManager {
     return this.rate;
   }
 
+  /**
+   * Speak a single utterance immediately, OUTSIDE the reading queue (used for
+   * an assistant reply that interjects over a reading). Deliberately does not
+   * set `active`, so the engine isn't treated as "the reading engine" — the
+   * caller pauses/resumes the actual reading around this. Calls onEnd when the
+   * utterance finishes or errors.
+   */
+  async speakOneShot(text: string, lang: string, onEnd: () => void): Promise<void> {
+    if (!isSupported() || !text.trim()) {
+      onEnd();
+      return;
+    }
+    await ensureVoicesReady();
+    const voice = pickVoice(lang);
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = voice?.lang || lang;
+    if (voice) utter.voice = voice;
+    utter.rate = this.rate;
+    utter.volume = useSettingsStore.getState().speechVolume;
+    let done = false;
+    const finish = (): void => {
+      if (done) return;
+      done = true;
+      onEnd();
+    };
+    utter.onend = finish;
+    utter.onerror = finish;
+    window.speechSynthesis.speak(utter);
+  }
+
   async speakQueue(items: BrowserTtsItem[]): Promise<void> {
     if (!isSupported() || items.length === 0) return;
     // stop() already clears softEnded/softEndTimer.

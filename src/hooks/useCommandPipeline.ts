@@ -12,6 +12,7 @@ import { speakAssistantReply } from '@/services/ai/assistantSpeech';
 import { isStopCommand } from '@/services/ai/stopCommand';
 import { useChatStore } from '@/store/chatStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { usePlaybackStore } from '@/store/playbackStore';
 import { useGlobalVoiceStore, type VoiceSource } from '@/store/globalVoiceStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { cancelAutoPlayPrefetch } from '@/lib/autoPlay';
@@ -278,10 +279,14 @@ export function useCommandPipeline() {
           text: finalText,
           historyNote,
         });
+        // A verse playing right now means this is a mid-reading Q&A — surface
+        // the answer in the inline overlay (and speakAssistantReply will pause
+        // the reading to speak it) so the chat doesn't scroll away from the verse.
+        const readingActive = usePlaybackStore.getState().status === 'playing';
         if (!didReadAction && !controller.signal.aborted) {
           void speakAssistantReply(finalText, assistantMsg.id);
         }
-        if (source === 'global') {
+        if (source === 'global' || (!didReadAction && readingActive)) {
           useGlobalVoiceStore.getState().setLastResponse(
             didReadAction
               ? {
