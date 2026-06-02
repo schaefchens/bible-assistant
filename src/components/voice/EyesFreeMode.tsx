@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useGlobalVoiceStore } from '@/store/globalVoiceStore';
-import { useGlobalVoice } from '@/hooks/useGlobalVoice';
+import { voiceControl } from '@/hooks/useGlobalVoice';
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useChatStore } from '@/store/chatStore';
 import {
@@ -13,24 +13,23 @@ import {
 import { playZoneTick, type ZoneSound } from '@/lib/clickTick';
 import { speakLabel, primeSpeechSynthesis } from '@/lib/speakLabel';
 import { playLastReading } from '@/lib/playLastReading';
-
-const LONG_PRESS_MS = 500;
+import { LONG_PRESS_MS } from '@/lib/gestureConstants';
 
 export function EyesFreeMode() {
   const open = useGlobalVoiceStore((s) => s.eyesFreeMode);
   const setOpen = useGlobalVoiceStore((s) => s.setEyesFreeMode);
   const { t } = useTranslation();
-  const voice = useGlobalVoice();
-  const listening = voice.listening;
-  const startVoice = voice.start;
-  const stopVoice = voice.stop;
+  // Eyes-free is a pure controller of the single voice pipeline — it reads mic
+  // state from the store and drives start/stop via voiceControl, rather than
+  // mounting its own speech-recognition/push-to-talk.
+  const listening = useGlobalVoiceStore((s) => s.listening);
   const playbackStatus = usePlaybackStore((s) => s.status);
   const isPlaying = playbackStatus === 'playing';
 
   const exit = useCallback(() => setOpen(false), [setOpen]);
   const toggleMic = useCallback(() => {
-    void (listening ? stopVoice() : startVoice());
-  }, [listening, startVoice, stopVoice]);
+    void (listening ? voiceControl.stop() : voiceControl.start());
+  }, [listening]);
   const playOrResume = useCallback(() => {
     if (togglePlayOrStart()) return;
     void playLastReading();

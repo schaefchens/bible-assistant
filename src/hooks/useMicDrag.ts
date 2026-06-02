@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSettingsStore, type MicCorner } from '@/store/settingsStore';
 import { cornerForPoint } from '@/components/voice/MicAnchor';
-
-const LONG_PRESS_MS = 500;
-const MOVE_TOLERANCE_PX = 6;
+import { LONG_PRESS_MS, MOVE_TOLERANCE_PX } from '@/lib/gestureConstants';
 
 type DragState = {
   dragging: boolean;

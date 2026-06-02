@@ -4,6 +4,7 @@ import type { Alignment } from '@/types/domain';
 import { findCurrentWordIndex, fetchAlignment } from './alignment';
 import { browserTts } from './browserTts';
 import { cancelAutoPlayPrefetch } from './autoPlay';
+import { AmbientAudioBus } from './ambientAudioBus';
 
 export type PlaybackTrack = {
   messageId: string;
@@ -24,28 +25,6 @@ type LoadedTrack = PlaybackTrack & {
   alignment: Alignment;
 };
 
-class AmbientBus {
-  private parent: AudioPlaybackManager;
-  constructor(parent: AudioPlaybackManager) {
-    this.parent = parent;
-  }
-  async load(url: string): Promise<void> {
-    await this.parent._ambientLoad(url);
-  }
-  play(): void {
-    this.parent._ambientPlay();
-  }
-  pause(): void {
-    this.parent._ambientPause();
-  }
-  setVolume(v: number): void {
-    this.parent._ambientSetVolume(v);
-  }
-  isPlaying(): boolean {
-    return this.parent._ambientIsPlaying();
-  }
-}
-
 class SpeechBus {
   private parent: AudioPlaybackManager;
   constructor(parent: AudioPlaybackManager) {
@@ -56,11 +35,22 @@ class SpeechBus {
   }
 }
 
+/**
+ * The Web Audio engine for OpenAI-TTS verse playback. A singleton (`audioPlayback`)
+ * because it owns one AudioContext and one playback queue for the whole app.
+ *
+ * Five concerns live here, grouped by the section banners below:
+ *   1. AudioContext graph + ducking — node setup, mic-open volume ramps
+ *   2. Speech queue: scheduling & playback — playQueue/enqueue/playCurrent/handleEnded/tick
+ *   3. Transport — pause/resume/stop/next/softEnd
+ *   4. Seek & playback rate — word-level seeking, rate, loop
+ *   5. Ambient music bus — extracted to `ambientAudioBus.ts`; this owns the
+ *      shared graph + speech queue and routes ducking to the bus.
+ */
 class AudioPlaybackManager {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private ttsGain: GainNode | null = null;
-  private ambientGain: GainNode | null = null;
 
   private source: AudioBufferSourceNode | null = null;
   private queue: PlaybackTrack[] = [];
@@ -90,18 +80,51 @@ class AudioPlaybackManager {
   // ambient (factor 0) so the speech recognizer hears only the user, not
   // any audio bleeding from the speaker into the mic.
   private ducked = false;
+  // True when ducking paused an in-progress verse reading, so unducking knows
+  // to resume it (rather than leaving it advancing silently behind the mic).
+  private duckPausedReading = false;
   private readonly DUCK_FACTOR = 0;
   private readonly DUCK_RAMP_SEC = 0.15;
 
-  // ambient
-  private ambientSource: AudioBufferSourceNode | null = null;
-  private ambientBuffer: AudioBuffer | null = null;
-  private ambientUrl: string | null = null;
-  private ambientDecodeCache = new Map<string, AudioBuffer>();
-  private ambientStopTimer: number | null = null;
-  private readonly AMBIENT_FADE_SEC = 2;
-  readonly ambient = new AmbientBus(this);
+  // Streaming: a reading's verses are generated and appended one-by-one so the
+  // first plays ASAP. `feeding` is true while a stream is still supplying
+  // tracks; `awaitingFeed` means playback drained to the end and is waiting for
+  // the next track. `feedGen` invalidates a stale stream when a new one starts
+  // or playback is stopped (see beginFeed/appendTracks/endFeed).
+  private feeding = false;
+  private awaitingFeed = false;
+  private feedGen = 0;
+
+  // One-shot assistant-reply source (see interject) — plays over the speech
+  // bus while the reading is paused, without touching the verse queue.
+  private interjectionSrc: AudioBufferSourceNode | null = null;
+
+  // Ambient music runs on its own bus (created with the context). The public
+  // `ambient` facade tolerates calls before the context exists (e.g. a volume
+  // change with nothing playing yet) by persisting to settings.
+  private ambientBus: AmbientAudioBus | null = null;
+  readonly ambient = {
+    load: (url: string): Promise<void> => {
+      this.ensureContext();
+      return this.ambientBus!.load(url);
+    },
+    play: (): void => {
+      this.ensureContext();
+      this.ambientBus!.play();
+    },
+    pause: (): void => {
+      if (this.ambientBus) this.ambientBus.pause();
+      else usePlaybackStore.getState().setAmbientPlaying(false);
+    },
+    setVolume: (v: number): void => {
+      if (this.ambientBus) this.ambientBus.setVolume(v);
+      else useSettingsStore.getState().setAmbient({ volume: Math.max(0, Math.min(1, v)) });
+    },
+    isPlaying: (): boolean => this.ambientBus?.isPlaying() ?? false,
+  };
   readonly speech = new SpeechBus(this);
+
+  // ─── 1. AudioContext graph + ducking ─────────────────────────────────
 
   /** Read-only access to the shared AudioContext (or null if never
    * created). Callers should use this rather than reaching into private
@@ -128,29 +151,47 @@ class AudioPlaybackManager {
   setDucked(ducked: boolean): void {
     if (this.ducked === ducked) return;
     this.ducked = ducked;
+    if (ducked) {
+      // Pause the verse reading so it doesn't keep advancing (silently) while
+      // the mic is open — ducking the gain alone leaves the source playing, so
+      // the user would lose their place. Remember to resume on unduck.
+      // (Browser-voice readings pause via browserTts.duck() below.)
+      this.duckPausedReading =
+        usePlaybackStore.getState().status === 'playing' && this.source !== null;
+      if (this.duckPausedReading) this.pause();
+      browserTts.duck();
+    } else {
+      browserTts.unduck();
+      if (this.duckPausedReading) {
+        this.duckPausedReading = false;
+        this.resume();
+      }
+    }
     this.applyDuckedGains();
-    if (ducked) browserTts.duck();
-    else browserTts.unduck();
   }
 
   private applyDuckedGains(): void {
     if (!this.ctx) return;
+    // iOS suspends the AudioContext while the mic is open (getUserMedia). A
+    // gain ramp scheduled against a suspended context's frozen clock never
+    // completes — which left verse/ambient audio stuck quiet *after talking*
+    // until a later foreground event happened to advance the clock. Resume
+    // first so the ramp runs now; the onstatechange handler in ensureContext
+    // re-asserts these gains if the resume lands after this call.
+    if (this.ctx.state === 'suspended') void this.ctx.resume();
     const settings = useSettingsStore.getState();
     const factor = this.ducked ? this.DUCK_FACTOR : 1;
     const now = this.ctx.currentTime;
     const ramp = this.DUCK_RAMP_SEC;
-    if (this.ttsGain) {
-      const target = settings.speechVolume * factor;
-      this.ttsGain.gain.cancelScheduledValues(now);
-      this.ttsGain.gain.setValueAtTime(this.ttsGain.gain.value, now);
-      this.ttsGain.gain.linearRampToValueAtTime(target, now + ramp);
-    }
-    if (this.ambientGain) {
-      const target = settings.ambient.volume * factor;
-      this.ambientGain.gain.cancelScheduledValues(now);
-      this.ambientGain.gain.setValueAtTime(this.ambientGain.gain.value, now);
-      this.ambientGain.gain.linearRampToValueAtTime(target, now + ramp);
-    }
+    const rampGain = (node: GainNode | null, target: number): void => {
+      if (!node) return;
+      node.gain.cancelScheduledValues(now);
+      node.gain.setValueAtTime(node.gain.value, now);
+      node.gain.linearRampToValueAtTime(target, now + ramp);
+    };
+    rampGain(this.ttsGain, settings.speechVolume * factor);
+    // The ambient bus owns its own gain; let it apply the same duck factor.
+    this.ambientBus?.setDuckFactor(factor);
   }
 
   /** Must be called inside a user gesture handler on iOS. */
@@ -170,15 +211,25 @@ class AudioPlaybackManager {
       this.ttsGain = this.ctx.createGain();
       this.ttsGain.gain.value = useSettingsStore.getState().speechVolume;
       this.ttsGain.connect(this.master);
-      this.ambientGain = this.ctx.createGain();
-      this.ambientGain.gain.value = useSettingsStore.getState().ambient.volume;
-      this.ambientGain.connect(this.master);
+      // Ambient runs on its own bus, parallel to the speech gain into master.
+      this.ambientBus = new AmbientAudioBus(this.ctx, this.master, () =>
+        this.maybeSuspendContext(),
+      );
+      // When iOS resumes the context after a suspend (mic capture or
+      // backgrounding), re-assert the current gain targets. A ramp scheduled
+      // while suspended can be dropped; without this, audio could stay muted
+      // after talking until some later foreground re-render fixed it.
+      this.ctx.onstatechange = () => {
+        if (this.ctx?.state === 'running') this.applyDuckedGains();
+      };
     }
     if (this.ctx.state === 'suspended') {
       void this.ctx.resume();
     }
     return this.ctx;
   }
+
+  // ─── 2. Speech queue: scheduling & playback ──────────────────────────
 
   async playQueue(
     tracks: PlaybackTrack[],
@@ -204,13 +255,15 @@ class AudioPlaybackManager {
   /** Jump to a specific verse in the current queue, optionally at a word.
    * `verseIdx` is the verse's position in `message.verses`, not the queue
    * index — heading and verse-number announcement tracks sit between
-   * verse tracks, so we have to look up the actual verse track. */
-  goToVerseIndex(verseIdx: number, wordIdx?: number): void {
-    if (verseIdx < 0) return;
+   * verse tracks, so we have to look up the actual verse track. Returns false
+   * when that verse isn't in the current queue (e.g. the queue was sliced to
+   * start mid-message), so the caller can reload it instead. */
+  goToVerseIndex(verseIdx: number, wordIdx?: number): boolean {
+    if (verseIdx < 0) return false;
     const queueIdx = this.queue.findIndex(
       (t) => t.verseIndex === verseIdx && t.highlightVerse !== false,
     );
-    if (queueIdx < 0) return;
+    if (queueIdx < 0) return false;
     if (this.pauseTimer !== null) {
       clearTimeout(this.pauseTimer);
       this.pauseTimer = null;
@@ -218,6 +271,55 @@ class AudioPlaybackManager {
     this.currentIndex = queueIdx;
     if (wordIdx !== undefined) this.pendingSeekWord = wordIdx;
     void this.playCurrent();
+    return true;
+  }
+
+  // ─── Streaming a reading's verses in as they're generated ────────────
+
+  /** Open a streaming session and return its generation token. Bumping the
+   * generation invalidates any prior stream, so an interrupting reading (or a
+   * stop) cleanly supersedes one still in flight. The first track is started
+   * via enqueue/playQueue by the caller; subsequent tracks come through
+   * appendTracks(tracks, gen). */
+  beginFeed(): number {
+    this.feeding = true;
+    this.awaitingFeed = false;
+    return ++this.feedGen;
+  }
+
+  /** True while `gen` is still the active streaming session. */
+  isFeed(gen: number): boolean {
+    return this.feeding && gen === this.feedGen;
+  }
+
+  /** Append streamed tracks to the live queue (no chapter-pause bridge, unlike
+   * enqueue — these are the same reading's later verses). Resumes playback if
+   * it had drained to the end while waiting for them. Ignores stale streams. */
+  appendTracks(tracks: PlaybackTrack[], gen: number): void {
+    if (tracks.length === 0 || gen !== this.feedGen) return;
+    if (this.queue.length === 0) {
+      void this.playQueue(tracks);
+      return;
+    }
+    this.queue = [...this.queue, ...tracks];
+    if (this.awaitingFeed) {
+      // Playback was parked at the end waiting for this; currentIndex already
+      // points at the first freshly-appended track.
+      this.awaitingFeed = false;
+      void this.playCurrent();
+    }
+  }
+
+  /** Close a streaming session. If playback had drained to the end while we
+   * were still generating (awaitingFeed), finalize with a normal soft-end so
+   * auto-continuation can take over. */
+  endFeed(gen: number): void {
+    if (gen !== this.feedGen) return;
+    this.feeding = false;
+    if (this.awaitingFeed) {
+      this.awaitingFeed = false;
+      this.softEnd();
+    }
   }
 
   /**
@@ -360,6 +462,15 @@ class AudioPlaybackManager {
     const justFinished = this.currentLoaded;
     this.currentIndex++;
     if (this.currentIndex >= this.queue.length) {
+      if (this.feeding) {
+        // A reading is still being streamed in (verse N+1's TTS isn't ready
+        // yet); wait for the next appendTracks instead of soft-ending — which
+        // would otherwise hand off to auto-continuation mid-reading. Keep
+        // `current` set so no thinking drone fires during the brief wait.
+        this.awaitingFeed = true;
+        usePlaybackStore.getState().setStatus('loading');
+        return;
+      }
       this.softEnd();
       return;
     }
@@ -406,6 +517,8 @@ class AudioPlaybackManager {
     };
     this.tickHandle = requestAnimationFrame(tick);
   }
+
+  // ─── 3. Transport: pause / resume / stop / next ──────────────────────
 
   pause(): void {
     if (browserTts.isActive()) {
@@ -458,6 +571,46 @@ class AudioPlaybackManager {
   }
 
   /**
+   * Play a one-shot utterance (an assistant reply) over the speech bus,
+   * pausing the current reading for its duration and resuming after — without
+   * touching the verse queue. The reply is Web Audio, so it plays cleanly even
+   * when the reading is on the browser-TTS engine (pause()/resume() route to
+   * whichever engine is reading). If nothing is reading, it simply plays.
+   */
+  async interject(audioUrl: string): Promise<void> {
+    let buffer: AudioBuffer;
+    try {
+      buffer = await this.loadBuffer(audioUrl);
+    } catch {
+      return;
+    }
+    const ctx = this.ensureContext();
+    // Pause whatever's reading so the reply has the floor; resume it on end.
+    const reading = usePlaybackStore.getState().status === 'playing';
+    if (reading) this.pause();
+    const resume = (): void => {
+      if (reading) this.resume();
+    };
+    if (this.interjectionSrc) {
+      try {
+        this.interjectionSrc.onended = null;
+        this.interjectionSrc.stop();
+      } catch {
+        /* ignore */
+      }
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(this.ttsGain ?? ctx.destination);
+    src.onended = () => {
+      if (this.interjectionSrc === src) this.interjectionSrc = null;
+      resume();
+    };
+    this.interjectionSrc = src;
+    src.start(0);
+  }
+
+  /**
    * Queue played to completion. Tear down the audio source + tick but
    * preserve queue, currentIndex, and currentLoaded so a follow-up enqueue
    * can bridge into the same playlist. Ambient stays on through the grace
@@ -493,16 +646,30 @@ class AudioPlaybackManager {
   }
 
   stop(): void {
-    // User-initiated stop also kills any pending auto-play continuation.
+    // User-initiated stop also kills any pending auto-play continuation and
+    // invalidates any in-flight streaming session (bump the generation so its
+    // remaining appendTracks no-op).
     cancelAutoPlayPrefetch();
     browserTts.stop();
+    this.feeding = false;
+    this.awaitingFeed = false;
+    this.feedGen++;
+    if (this.interjectionSrc) {
+      try {
+        this.interjectionSrc.onended = null;
+        this.interjectionSrc.stop();
+      } catch {
+        /* ignore */
+      }
+      this.interjectionSrc = null;
+    }
     this.softEnded = false;
     if (this.softEndTimer !== null) {
       clearTimeout(this.softEndTimer);
       this.softEndTimer = null;
     }
     this.resetQueue();
-    this._ambientPause();
+    this.ambient.pause();
     usePlaybackStore.getState().setStatus('idle');
     usePlaybackStore.getState().setCurrent(null);
     this.maybeSuspendContext();
@@ -519,7 +686,7 @@ class AudioPlaybackManager {
   private maybeSuspendContext(): void {
     if (!this.ctx || this.ctx.state !== 'running') return;
     if (this.tickHandle !== null) return;
-    if (this.ambientSource) return;
+    if (this.ambientBus?.isPlaying()) return;
     if (usePlaybackStore.getState().status !== 'idle') return;
     void this.ctx.suspend();
   }
@@ -613,6 +780,8 @@ class AudioPlaybackManager {
   }
 
   /** Jump to an absolute word index within the currently-loaded verse. */
+  // ─── 4. Seek & playback rate ─────────────────────────────────────────
+
   seekToWord(wordIndex: number): void {
     if (!this.currentLoaded || !this.ctx) return;
     const { alignment, buffer } = this.currentLoaded;
@@ -730,6 +899,8 @@ class AudioPlaybackManager {
     );
   }
 
+  // ─── Buffer & alignment loaders ──────────────────────────────────────
+
   private async loadBuffer(url: string): Promise<AudioBuffer> {
     const cached = this.decodeCache.get(url);
     if (cached) return cached;
@@ -750,132 +921,7 @@ class AudioPlaybackManager {
     return al;
   }
 
-  // ─── Ambient bus (called via this.ambient) ───────────────────────────
-
-  async _ambientLoad(url: string): Promise<void> {
-    if (this.ambientUrl === url && this.ambientBuffer) return;
-    // Track switching: tear down the live source synchronously so the next
-    // _ambientPlay() can spin up the new buffer instead of short-circuiting
-    // on the existing (old-track) source.
-    if (this.ambientSource) {
-      if (this.ambientStopTimer !== null) {
-        clearTimeout(this.ambientStopTimer);
-        this.ambientStopTimer = null;
-      }
-      try {
-        this.ambientSource.stop();
-      } catch {
-        /* may already be stopped */
-      }
-      this.ambientSource = null;
-    }
-    const cached = this.ambientDecodeCache.get(url);
-    if (cached) {
-      this.ambientBuffer = cached;
-      this.ambientUrl = url;
-      return;
-    }
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`ambient fetch failed: ${res.status}`);
-    const arr = await res.arrayBuffer();
-    const ctx = this.ensureContext();
-    const buf = await ctx.decodeAudioData(arr.slice(0));
-    this.ambientDecodeCache.set(url, buf);
-    this.ambientBuffer = buf;
-    this.ambientUrl = url;
-  }
-
-  _ambientPlay(): void {
-    if (!this.ambientBuffer) return;
-    const ctx = this.ensureContext();
-
-    // Cancel any pending stop (e.g. user re-played during fade-out).
-    if (this.ambientStopTimer !== null) {
-      clearTimeout(this.ambientStopTimer);
-      this.ambientStopTimer = null;
-    }
-
-    if (!this.ambientSource) {
-      const src = ctx.createBufferSource();
-      src.buffer = this.ambientBuffer;
-      src.loop = true;
-      src.connect(this.ambientGain ?? ctx.destination);
-      src.start(0);
-      this.ambientSource = src;
-      // Begin silent so the upcoming ramp acts as a fade-in.
-      if (this.ambientGain) {
-        this.ambientGain.gain.cancelScheduledValues(ctx.currentTime);
-        this.ambientGain.gain.setValueAtTime(0, ctx.currentTime);
-      }
-    }
-
-    if (this.ambientGain) {
-      const target = useSettingsStore.getState().ambient.volume;
-      const now = ctx.currentTime;
-      this.ambientGain.gain.cancelScheduledValues(now);
-      this.ambientGain.gain.setValueAtTime(this.ambientGain.gain.value, now);
-      this.ambientGain.gain.linearRampToValueAtTime(
-        target,
-        now + this.AMBIENT_FADE_SEC,
-      );
-    }
-    usePlaybackStore.getState().setAmbientPlaying(true);
-  }
-
-  _ambientPause(): void {
-    if (!this.ambientSource) {
-      usePlaybackStore.getState().setAmbientPlaying(false);
-      return;
-    }
-    const src = this.ambientSource;
-
-    if (this.ctx && this.ambientGain) {
-      const now = this.ctx.currentTime;
-      this.ambientGain.gain.cancelScheduledValues(now);
-      this.ambientGain.gain.setValueAtTime(this.ambientGain.gain.value, now);
-      this.ambientGain.gain.linearRampToValueAtTime(
-        0,
-        now + this.AMBIENT_FADE_SEC,
-      );
-    }
-
-    if (this.ambientStopTimer !== null) {
-      clearTimeout(this.ambientStopTimer);
-    }
-    this.ambientStopTimer = window.setTimeout(() => {
-      try {
-        src.stop();
-      } catch {
-        /* ignore */
-      }
-      if (this.ambientSource === src) {
-        this.ambientSource = null;
-      }
-      this.ambientStopTimer = null;
-      // Ambient was the last thing holding the context open — let it suspend.
-      this.maybeSuspendContext();
-    }, this.AMBIENT_FADE_SEC * 1000 + 50);
-
-    usePlaybackStore.getState().setAmbientPlaying(false);
-  }
-
-  _ambientSetVolume(v: number): void {
-    const clamped = Math.max(0, Math.min(1, v));
-    if (!this.ctx || !this.ambientGain) {
-      useSettingsStore.getState().setAmbient({ volume: clamped });
-      return;
-    }
-    const factor = this.ducked ? this.DUCK_FACTOR : 1;
-    const now = this.ctx.currentTime;
-    this.ambientGain.gain.cancelScheduledValues(now);
-    this.ambientGain.gain.setValueAtTime(this.ambientGain.gain.value, now);
-    this.ambientGain.gain.linearRampToValueAtTime(clamped * factor, now + 0.15);
-    useSettingsStore.getState().setAmbient({ volume: clamped });
-  }
-
-  _ambientIsPlaying(): boolean {
-    return this.ambientSource !== null;
-  }
+  // ─── Speech-bus volume (ambient bus lives in ambientAudioBus.ts) ─────
 
   _speechSetVolume(v: number): void {
     const clamped = Math.max(0, Math.min(1, v));

@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import clsx from 'clsx';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -24,15 +24,18 @@ export function VoiceOverlay() {
   const transcript = useGlobalVoiceStore((s) => s.transcript);
   const lastResponse = useGlobalVoiceStore((s) => s.lastResponse);
   const setOverlayOpen = useGlobalVoiceStore((s) => s.setOverlayOpen);
+  const setLastResponse = useGlobalVoiceStore((s) => s.setLastResponse);
   const reset = useGlobalVoiceStore((s) => s.reset);
 
   const status = usePlaybackStore((s) => s.status);
+  const onChat = location.pathname === '/';
 
   const dismiss = useCallback(() => {
-    // Only clear lastResponse + overlay; preserve listening so an in-flight
+    // Clear the inline reply + overlay; preserve listening so an in-flight
     // recording keeps recording.
     setOverlayOpen(false);
-  }, [setOverlayOpen]);
+    setLastResponse(null);
+  }, [setOverlayOpen, setLastResponse]);
 
   const openInChat = useCallback(() => {
     const messageId = lastResponse?.messageId ?? null;
@@ -43,9 +46,24 @@ export function VoiceOverlay() {
     reset();
   }, [lastResponse, navigate, reset]);
 
-  // Hide while on chat or when explicitly closed.
-  if (location.pathname === '/' || !overlayOpen) return null;
-  if (!listening && !transcript && !lastResponse) return null;
+  // On chat, the inline reply auto-dismisses after a while so it doesn't linger
+  // over the conversation.
+  useEffect(() => {
+    if (!onChat || lastResponse?.kind !== 'reply') return;
+    const id = window.setTimeout(() => setLastResponse(null), 12000);
+    return () => window.clearTimeout(id);
+  }, [onChat, lastResponse, setLastResponse]);
+
+  if (onChat) {
+    // On the chat screen we only surface a textual reply that arrived during a
+    // reading — so the answer is visible without the chat scrolling away from
+    // the verse. Listening/transcript stay off-overlay here (the composer
+    // handles those).
+    if (lastResponse?.kind !== 'reply') return null;
+  } else {
+    if (!overlayOpen) return null;
+    if (!listening && !transcript && !lastResponse) return null;
+  }
 
   // Anchor near mic — opposite vertical side stays the same, just nudge the
   // overlay inward from the mic.
@@ -108,7 +126,7 @@ export function VoiceOverlay() {
         </p>
       )}
 
-      {lastResponse && (
+      {lastResponse && !onChat && (
         <button
           type="button"
           onClick={openInChat}

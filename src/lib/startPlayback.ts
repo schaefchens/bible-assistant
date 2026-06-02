@@ -11,15 +11,15 @@ import {
 import { isBrowserVoice, type OpenAiVoiceId, type VerseSummary } from '@/types/domain';
 import {
   buildPlaybackPlan,
-  localeForTranslation,
   sliceFromVerseIndex,
   type PlanItem,
 } from './playbackPlan';
+import { localeForTranslation } from './translationLocaleMap';
 
 /**
  * Fire-and-forget: if the user has ambient music enabled, load the selected
  * track (cached after first run) and start it. Safe to call repeatedly —
- * `_ambientPlay()` no-ops while a source is already running.
+ * `ambient.play()` no-ops while a source is already running.
  */
 export function startAmbientIfEnabled(): void {
   const { ambient } = useSettingsStore.getState();
@@ -66,24 +66,19 @@ export async function startPlaybackForVerses(
     return;
   }
 
-  const tracks = await planToOpenAiTracks(
+  // Stream so the requested verse starts playing after one TTS round-trip;
+  // startWordIndex only applies when the first plan item is a verse track.
+  // Awaited so startReadingPlaylist sequences subsequent readings AFTER this
+  // one's stream rather than letting their feeds supersede it mid-build.
+  const firstIsVerse = plan[0]?.kind === 'verse';
+  await streamReading(
     plan,
     messageId,
     readerVoice as OpenAiVoiceId,
     effectiveVoiceStyle() || undefined,
     undefined,
+    { mode: 'playQueue', startWordIndex: firstIsVerse ? startWordIndex : undefined },
   );
-  if (tracks.length > 0) {
-    // The plan's first item is the requested start verse (or its
-    // announcement) so the queue starts at index 0; startWordIndex only
-    // applies if that first item is a verse track.
-    const firstIsVerse = plan[0]?.kind === 'verse';
-    void audioPlayback.playQueue(
-      tracks,
-      0,
-      firstIsVerse ? startWordIndex : undefined,
-    );
-  }
 }
 
 /**
@@ -138,16 +133,14 @@ async function enqueueReadingForMessage(
     void browserTts.enqueue(planToBrowserItems(plan, messageId));
     return;
   }
-  const tracks = await planToOpenAiTracks(
+  await streamReading(
     plan,
     messageId,
     readerVoice as OpenAiVoiceId,
     effectiveVoiceStyle() || undefined,
     undefined,
+    { mode: 'enqueue' },
   );
-  if (tracks.length > 0) {
-    void audioPlayback.enqueue(tracks);
-  }
 }
 
 export function planToBrowserItems(plan: PlanItem[], messageId: string): BrowserTtsItem[] {
@@ -161,6 +154,59 @@ export function planToBrowserItems(plan: PlanItem[], messageId: string): Browser
   }));
 }
 
+// How many verse-TTS requests to generate in parallel. The old sequential
+// loop meant a long passage (e.g. a whole 29-verse chapter) finished its LAST
+// verse's TTS before the FIRST could play — a multi-second silent gap before
+// a continuation, scaling with passage length. A small pool keeps generation
+// well ahead of playback while staying within sane backend/OpenAI concurrency.
+const TTS_BUILD_CONCURRENCY = 4;
+
+async function buildTrack(
+  it: PlanItem,
+  messageId: string,
+  voice: OpenAiVoiceId,
+  voiceStyle: string | undefined,
+  signal?: AbortSignal,
+): Promise<PlaybackTrack | null> {
+  try {
+    const tts =
+      it.kind === 'verse'
+        ? await postTts(
+            {
+              text: it.verse.text,
+              voice,
+              voiceStyle,
+              translation: it.verse.translation,
+              bookId: it.verse.bookId,
+              chapter: it.verse.chapter,
+              verse: it.verse.verse,
+            },
+            { signal },
+          )
+        : await postTtsSpeak(
+            {
+              text: it.text,
+              voice,
+              voiceStyle,
+              language: localeForTranslation(it.translation),
+            },
+            { signal },
+          );
+    return {
+      messageId,
+      verseIndex: it.verseIndex,
+      audioUrl: tts.audioUrl,
+      alignmentUrl: tts.alignmentUrl,
+      pauseAfterMs: it.pauseAfterMs,
+      highlightVerse: it.kind === 'verse',
+    };
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') return null;
+    console.warn('tts failed', it.kind, e);
+    return null;
+  }
+}
+
 export async function planToOpenAiTracks(
   plan: PlanItem[],
   messageId: string,
@@ -168,47 +214,73 @@ export async function planToOpenAiTracks(
   voiceStyle: string | undefined,
   signal?: AbortSignal,
 ): Promise<PlaybackTrack[]> {
-  const tracks: PlaybackTrack[] = [];
-  for (const it of plan) {
-    if (signal?.aborted) break;
-    try {
-      const tts =
-        it.kind === 'verse'
-          ? await postTts(
-              {
-                text: it.verse.text,
-                voice,
-                voiceStyle,
-                translation: it.verse.translation,
-                bookId: it.verse.bookId,
-                chapter: it.verse.chapter,
-                verse: it.verse.verse,
-              },
-              { signal },
-            )
-          : await postTtsSpeak(
-              {
-                text: it.text,
-                voice,
-                voiceStyle,
-                language: localeForTranslation(it.translation),
-              },
-              { signal },
-            );
-      tracks.push({
-        messageId,
-        verseIndex: it.verseIndex,
-        audioUrl: tts.audioUrl,
-        alignmentUrl: tts.alignmentUrl,
-        pauseAfterMs: it.pauseAfterMs,
-        highlightVerse: it.kind === 'verse',
-      });
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') break;
-      console.warn('tts failed', it.kind, e);
+  // Generate with bounded concurrency, preserving plan order via indexed
+  // writes. A failed/aborted item leaves a null hole that is filtered out.
+  const results: (PlaybackTrack | null)[] = new Array(plan.length).fill(null);
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      if (signal?.aborted) return;
+      const i = cursor++;
+      if (i >= plan.length) return;
+      results[i] = await buildTrack(plan[i], messageId, voice, voiceStyle, signal);
     }
+  };
+  const poolSize = Math.min(TTS_BUILD_CONCURRENCY, plan.length);
+  await Promise.all(Array.from({ length: poolSize }, () => worker()));
+  return results.filter((t): t is PlaybackTrack => t !== null);
+}
+
+type StreamStart =
+  | { mode: 'playQueue'; startWordIndex?: number }
+  | { mode: 'enqueue' };
+
+/**
+ * Stream a reading into playback: build each verse's TTS in order and start the
+ * FIRST as soon as it's ready (so the user hears verse 1 in ~one round-trip
+ * instead of after the whole passage is generated), appending the rest as they
+ * build. This is what keeps a long reading — or an auto-play continuation into
+ * a whole chapter — from sitting silent while every verse is generated up front
+ * (and it works even on a single-threaded backend).
+ *
+ * `start.mode` picks how the first track begins: `playQueue` hard-starts
+ * (interrupt / tap-to-play), `enqueue` appends after the current playlist.
+ * The feed is opened only once the first track is ready, so a previous
+ * reading ending during the build still soft-ends (and auto-continues) normally.
+ */
+export async function streamReading(
+  plan: PlanItem[],
+  messageId: string,
+  voice: OpenAiVoiceId,
+  voiceStyle: string | undefined,
+  signal: AbortSignal | undefined,
+  start: StreamStart,
+): Promise<void> {
+  if (plan.length === 0) return;
+  let gen = -1;
+  let started = false;
+  try {
+    for (const it of plan) {
+      if (signal?.aborted) break;
+      if (started && !audioPlayback.isFeed(gen)) break; // superseded / stopped
+      const track = await buildTrack(it, messageId, voice, voiceStyle, signal);
+      if (!track) continue;
+      if (signal?.aborted) break;
+      if (!started) {
+        started = true;
+        gen = audioPlayback.beginFeed();
+        if (start.mode === 'playQueue') {
+          void audioPlayback.playQueue([track], 0, start.startWordIndex);
+        } else {
+          void audioPlayback.enqueue([track]);
+        }
+      } else {
+        audioPlayback.appendTracks([track], gen);
+      }
+    }
+  } finally {
+    if (started) audioPlayback.endFeed(gen);
   }
-  return tracks;
 }
 
 function itemText(it: PlanItem): string {

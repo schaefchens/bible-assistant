@@ -5,7 +5,8 @@ import { useChatStore } from '@/store/chatStore';
 import { usePlaybackStore } from '@/store/playbackStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { startReadingPlaylist } from '@/lib/startPlayback';
-import { useCommandPipeline, useContinueReading } from '@/hooks/useCommandPipeline';
+import { useCommandPipeline } from '@/hooks/useCommandPipeline';
+import { useContinueReading } from '@/hooks/useContinueReading';
 import { WordHighlighter } from '@/components/playback/WordHighlighter';
 import { getBookById } from '@/services/bible/bookCatalog';
 import { MessageActionsMenu, type MessageActionItem } from './MessageActionsMenu';
@@ -248,7 +249,7 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
                 }}
                 disabled={isProcessing}
                 className={clsx(
-                  'flex-1 h-10 text-sm rounded-xl border border-gold/30 text-gold',
+                  'flex-1 min-w-0 h-10 px-1 text-[11px] leading-tight sm:text-sm rounded-xl border border-gold/30 text-gold',
                   'hover:bg-gold/10 active:scale-[0.98] transition-all',
                   isProcessing && 'pointer-events-none',
                   isProcessing && pendingAction !== 'prev' && 'opacity-50',
@@ -273,7 +274,7 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
                 }}
                 disabled={isProcessing}
                 className={clsx(
-                  'flex-1 h-10 text-sm rounded-xl border border-gold/30 text-gold',
+                  'flex-1 min-w-0 h-10 px-1 text-[11px] leading-tight sm:text-sm rounded-xl border border-gold/30 text-gold',
                   'hover:bg-gold/10 active:scale-[0.98] transition-all',
                   isProcessing && 'pointer-events-none',
                   isProcessing && pendingAction !== 'context' && 'opacity-50',
@@ -298,7 +299,7 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
                 }}
                 disabled={isProcessing}
                 className={clsx(
-                  'flex-1 h-10 text-sm rounded-xl border border-gold/30 text-gold',
+                  'flex-1 min-w-0 h-10 px-1 text-[11px] leading-tight sm:text-sm rounded-xl border border-gold/30 text-gold',
                   'hover:bg-gold/10 active:scale-[0.98] transition-all',
                   isProcessing && 'pointer-events-none',
                   isProcessing && pendingAction !== 'continue' && 'opacity-50',

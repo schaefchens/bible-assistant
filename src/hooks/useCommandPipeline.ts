@@ -1,71 +1,27 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback } from 'react';
 import { postChat, type ChatRequestMessage } from '@/services/api/chat';
-import { postTtsSpeak } from '@/services/api/tts';
 import {
   TOOL_DEFINITIONS,
+  isReadTool,
   playbackStatePrompt,
   systemPrompt,
   type ToolName,
 } from '@/services/ai/tools';
 import { dispatchTool } from '@/services/ai/dispatch';
+import { speakAssistantReply } from '@/services/ai/assistantSpeech';
+import { isStopCommand } from '@/services/ai/stopCommand';
 import { useChatStore } from '@/store/chatStore';
-import {
-  effectiveAssistantVoice,
-  effectiveVoiceStyle,
-  useSettingsStore,
-} from '@/store/settingsStore';
+import { useSettingsStore } from '@/store/settingsStore';
+import { usePlaybackStore } from '@/store/playbackStore';
 import { useGlobalVoiceStore, type VoiceSource } from '@/store/globalVoiceStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
-import { browserTts } from '@/lib/browserTts';
 import { cancelAutoPlayPrefetch } from '@/lib/autoPlay';
+import { parseJsonSafe } from '@/lib/json';
 import { getAmbientTracks } from '@/services/api/ambient';
-import { getChapter, type Translation } from '@/services/bible/bibleApi';
-import { formatReference, getBookById } from '@/services/bible/bookCatalog';
 import { parseReference } from '@/services/bible/referenceParser';
-import { isBrowserVoice, type ChatMessage, type ToolCallSummary, type VerseSummary } from '@/types/domain';
+import type { ChatMessage, ToolCallSummary } from '@/types/domain';
 
 const MAX_TOOL_LOOPS = 6;
-
-// Voice/text phrases that map to "stop everything happening right now".
-// Normalized to lower-case and trimmed of trailing punctuation before lookup.
-const STOP_PHRASES = new Set([
-  // English
-  'stop',
-  'stop it',
-  'stop now',
-  'stop reading',
-  'stop playing',
-  'stop playback',
-  'cancel',
-  'cancel that',
-  'halt',
-  'quiet',
-  'silence',
-  'be quiet',
-  'shut up',
-  'enough',
-  'quit',
-  'end',
-  // German
-  'stopp',
-  'stoppen',
-  'halt an',
-  'anhalten',
-  'ruhe',
-  'leise',
-  'still',
-  'abbrechen',
-  'ende',
-  'aufhören',
-  'hör auf',
-  'hör auf damit',
-  'hör bitte auf',
-]);
-
-function isStopCommand(text: string): boolean {
-  const normalized = text.toLowerCase().replace(/[.!?,]+$/g, '').trim();
-  return STOP_PHRASES.has(normalized);
-}
 
 /**
  * In-flight pipeline so a follow-up "stop" command can abort it. Only one
@@ -241,10 +197,7 @@ export function useCommandPipeline() {
           for (const tc of choice.tool_calls) {
             if (controller.signal.aborted) break;
             const name = tc.function.name as ToolName;
-            const isRead =
-              name === 'read_verses' ||
-              name === 'random_verse' ||
-              name === 'continue_from_ribbon';
+            const isRead = isReadTool(name);
             if (isRead) didReadAction = true;
 
             // Skip a `read_verses` whose reference matches one already played
@@ -252,7 +205,7 @@ export function useCommandPipeline() {
             // read X" follow-up after `random_verse`, without limiting how many
             // distinct verses the user can request.
             if (name === 'read_verses') {
-              const parsedArgs = safeJson(tc.function.arguments) as {
+              const parsedArgs = parseJsonSafe(tc.function.arguments) as {
                 reference?: unknown;
               };
               const refStr = typeof parsedArgs.reference === 'string' ? parsedArgs.reference : '';
@@ -295,7 +248,7 @@ export function useCommandPipeline() {
             summaries.push({
               id: tc.id,
               name: tc.function.name,
-              args: safeJson(tc.function.arguments),
+              args: parseJsonSafe(tc.function.arguments),
               result: result.ok ? result.data : undefined,
               error: result.ok ? undefined : result.error,
             });
@@ -326,10 +279,14 @@ export function useCommandPipeline() {
           text: finalText,
           historyNote,
         });
+        // A verse playing right now means this is a mid-reading Q&A — surface
+        // the answer in the inline overlay (and speakAssistantReply will pause
+        // the reading to speak it) so the chat doesn't scroll away from the verse.
+        const readingActive = usePlaybackStore.getState().status === 'playing';
         if (!didReadAction && !controller.signal.aborted) {
           void speakAssistantReply(finalText, assistantMsg.id);
         }
-        if (source === 'global') {
+        if (source === 'global' || (!didReadAction && readingActive)) {
           useGlobalVoiceStore.getState().setLastResponse(
             didReadAction
               ? {
@@ -356,192 +313,4 @@ export function useCommandPipeline() {
   }, []);
 
   return { send };
-}
-
-function safeJson(s: string): Record<string, unknown> {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return { raw: s };
-  }
-}
-
-async function speakAssistantReply(text: string, messageId: string): Promise<void> {
-  const trimmed = stripMarkdownForSpeech(text);
-  if (!trimmed) return;
-  const { speakAssistant, locale } = useSettingsStore.getState();
-  if (!speakAssistant) return;
-  const assistantVoice = effectiveAssistantVoice();
-  if (isBrowserVoice(assistantVoice)) {
-    void browserTts.enqueue([
-      {
-        messageId,
-        verseIndex: 0,
-        text: trimmed,
-        translation: locale === 'de' ? 'S00' : 'ESV',
-      },
-    ]);
-    return;
-  }
-  const voiceStyle = effectiveVoiceStyle();
-  try {
-    const tts = await postTtsSpeak({
-      text: trimmed,
-      voice: assistantVoice,
-      voiceStyle: voiceStyle || undefined,
-      language: locale === 'de' ? 'de' : 'en',
-    });
-    audioPlayback.ensureContext();
-    void audioPlayback.enqueue([
-      {
-        messageId,
-        verseIndex: 0,
-        audioUrl: tts.audioUrl,
-        alignmentUrl: tts.alignmentUrl,
-      },
-    ]);
-  } catch (e) {
-    console.warn('assistant TTS failed', e);
-  }
-}
-
-// Strip the lightweight markdown the assistant may emit so the TTS engine
-// doesn't read out asterisks, hashes, or link syntax.
-function stripMarkdownForSpeech(text: string): string {
-  return text
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/^\s*#{1,6}\s+/gm, '')
-    .replace(/(\*\*|__)(.*?)\1/g, '$2')
-    .replace(/(\*|_)(.*?)\1/g, '$2')
-    .replace(/^\s*[-*+]\s+/gm, '')
-    .replace(/^\s*>\s?/gm, '')
-    .trim();
-}
-
-// ─── Continue Reading helper ──────────────────────────────────────────
-
-type ContinueReading = {
-  canContinue: boolean;
-  nextLabel: string;
-  sendNext: () => void;
-};
-
-const CHUNK_SIZE = 5;
-
-function computeNextRange(
-  last: VerseSummary,
-  chapterEndVerse: number | null,
-  nextChapterMax: number | null,
-  wholeChapter: boolean,
-): { reference: string; translation: Translation; label: string } | null {
-  const book = getBookById(last.bookId);
-  if (!book) return null;
-  if (wholeChapter) {
-    if (last.chapter >= book.chapters) return null;
-    const nextChapter = last.chapter + 1;
-    return {
-      reference: `${book.nameEn} ${nextChapter}`,
-      translation: last.translation,
-      label: `${book.nameEn} ${nextChapter}`,
-    };
-  }
-  if (chapterEndVerse !== null && last.verse < chapterEndVerse) {
-    const start = last.verse + 1;
-    const end = Math.min(start + CHUNK_SIZE - 1, chapterEndVerse);
-    return {
-      reference: `${book.nameEn} ${last.chapter}:${start}-${end}`,
-      translation: last.translation,
-      label: `${book.nameEn} ${last.chapter}:${start}-${end}`,
-    };
-  }
-  if (last.chapter < book.chapters) {
-    const nextChapter = last.chapter + 1;
-    const end =
-      nextChapterMax !== null ? Math.min(CHUNK_SIZE, nextChapterMax) : CHUNK_SIZE;
-    return {
-      reference: `${book.nameEn} ${nextChapter}:1-${end}`,
-      translation: last.translation,
-      label: `${book.nameEn} ${nextChapter}:1-${end}`,
-    };
-  }
-  return null;
-}
-
-export function useContinueReading(
-  message: ChatMessage,
-  send: (text: string, opts?: SendOpts) => void | Promise<void>,
-): ContinueReading {
-  const last = useMemo(() => {
-    const verses = message.verses;
-    if (!verses || verses.length === 0) return null;
-    return verses[verses.length - 1];
-  }, [message.verses]);
-
-  const [chapterEndVerse, setChapterEndVerse] = useState<number | null>(null);
-  const [nextChapterMax, setNextChapterMax] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!last) return;
-    let cancelled = false;
-    void getChapter(last.translation, last.bookId, last.chapter)
-      .then((verses) => {
-        if (cancelled || verses.length === 0) return;
-        setChapterEndVerse(verses[verses.length - 1].verse);
-      })
-      .catch(() => {});
-    const book = getBookById(last.bookId);
-    if (book && last.chapter < book.chapters) {
-      void getChapter(last.translation, last.bookId, last.chapter + 1)
-        .then((verses) => {
-          if (cancelled || verses.length === 0) return;
-          setNextChapterMax(verses[verses.length - 1].verse);
-        })
-        .catch(() => {});
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [last]);
-
-  if (!last) {
-    return { canContinue: false, nextLabel: '', sendNext: () => {} };
-  }
-
-  const next = computeNextRange(
-    last,
-    chapterEndVerse,
-    nextChapterMax,
-    message.headingWholeChapter === true,
-  );
-  if (!next) {
-    return { canContinue: false, nextLabel: '', sendNext: () => {} };
-  }
-
-  const { locale } = useSettingsStore.getState();
-  // Pretty label honors locale formatting (e.g. "Galater 5:23-27" or
-  // "Galater 6" for a whole-chapter continuation).
-  const hasVerseRange = next.reference.includes(':');
-  const chapterMatch = next.reference.match(/(\d+)(?::|$)/)?.[1];
-  const chapterNum = chapterMatch ? parseInt(chapterMatch, 10) : last.chapter;
-  let label: string;
-  if (hasVerseRange) {
-    const startVerse = next.reference.split(':')[1]?.split('-')[0];
-    const endVerse = next.reference.split('-')[1];
-    const startNum = startVerse ? parseInt(startVerse, 10) : last.verse + 1;
-    const endNum = endVerse ? parseInt(endVerse, 10) : startNum;
-    label = formatReference(last.bookId, chapterNum, startNum, endNum, locale);
-  } else {
-    label = formatReference(last.bookId, chapterNum, undefined, undefined, locale);
-  }
-
-  return {
-    canContinue: true,
-    nextLabel: label,
-    sendNext: () => {
-      void send(`Read ${next.reference}`);
-    },
-  };
 }

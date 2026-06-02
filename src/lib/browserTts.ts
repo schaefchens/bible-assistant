@@ -1,6 +1,7 @@
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { Translation } from '@/services/bible/bibleApi';
+import { bcp47ForTranslation } from './translationLocaleMap';
 
 export type BrowserTtsItem = {
   messageId: string;
@@ -22,8 +23,7 @@ function isSupported(): boolean {
 
 function langForTranslation(t: Translation | undefined, fallback: string): string {
   if (!t) return fallback;
-  if (t === 'S00' || t === 'LUT' || t === 'HFA' || t === 'S51' || t === 'ELB') return 'de-DE';
-  return 'en-US';
+  return bcp47ForTranslation(t);
 }
 
 function pickVoice(targetLang: string): SpeechSynthesisVoice | null {
@@ -159,6 +159,36 @@ class BrowserTtsManager {
 
   getRate(): number {
     return this.rate;
+  }
+
+  /**
+   * Speak a single utterance immediately, OUTSIDE the reading queue (used for
+   * an assistant reply that interjects over a reading). Deliberately does not
+   * set `active`, so the engine isn't treated as "the reading engine" — the
+   * caller pauses/resumes the actual reading around this. Calls onEnd when the
+   * utterance finishes or errors.
+   */
+  async speakOneShot(text: string, lang: string, onEnd: () => void): Promise<void> {
+    if (!isSupported() || !text.trim()) {
+      onEnd();
+      return;
+    }
+    await ensureVoicesReady();
+    const voice = pickVoice(lang);
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = voice?.lang || lang;
+    if (voice) utter.voice = voice;
+    utter.rate = this.rate;
+    utter.volume = useSettingsStore.getState().speechVolume;
+    let done = false;
+    const finish = (): void => {
+      if (done) return;
+      done = true;
+      onEnd();
+    };
+    utter.onend = finish;
+    utter.onerror = finish;
+    window.speechSynthesis.speak(utter);
   }
 
   async speakQueue(items: BrowserTtsItem[]): Promise<void> {

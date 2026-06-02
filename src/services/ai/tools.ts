@@ -31,8 +31,23 @@ export type ToolName =
   | 'enter_eyes_free_mode'
   | 'exit_eyes_free_mode';
 
+/** The tools whose effect is "read Bible text aloud". The command pipeline
+ * treats these specially (the verse audio IS the reply, so chat text is
+ * suppressed; repeated reads of the same passage in one turn are deduped).
+ * Single source of truth so adding a reading tool can't silently desync the
+ * pipeline's hardcoded checks. */
+export const READ_TOOL_NAMES: ReadonlySet<ToolName> = new Set<ToolName>([
+  'read_verses',
+  'random_verse',
+  'continue_from_ribbon',
+]);
+
+export function isReadTool(name: ToolName): boolean {
+  return READ_TOOL_NAMES.has(name);
+}
+
 export type ToolArgs = {
-  read_verses: { reference: string; translation?: Translation };
+  read_verses: { reference: string; translation?: Translation; immediate?: boolean };
   lookup_verses: { reference: string; translation?: Translation };
   random_verse: {
     book?: string;
@@ -107,6 +122,11 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
             type: 'string',
             enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA', 'S51', 'ELB'],
             description: 'Optional override. Defaults to user-selected translation.',
+          },
+          immediate: {
+            type: 'boolean',
+            description:
+              'Set to true ONLY when the user wants this passage RIGHT NOW, interrupting whatever is currently playing — signalled by an urgency word like "now", "immediately", "instantly", "right now", or German "sofort", "jetzt", "gleich" (e.g. "read Genesis 1 now", "lies Galater 5 sofort"). It hard-stops the current reading and plays this one immediately. For a plain "read X" / "lies X" with no such word, OMIT it — the passage then queues after the current reading as usual.',
           },
         },
         required: ['reference'],

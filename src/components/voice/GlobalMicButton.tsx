@@ -3,7 +3,8 @@ import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useUiLayoutStore } from '@/store/uiLayoutStore';
-import { useGlobalVoice } from '@/hooks/useGlobalVoice';
+import { useGlobalVoiceStore } from '@/store/globalVoiceStore';
+import { voiceControl, PTT_HOTKEY } from '@/hooks/useGlobalVoice';
 import { useMicDrag } from '@/hooks/useMicDrag';
 import { getMicAnchor } from './MicAnchor';
 import { MicSnapTargets } from './MicSnapTargets';
@@ -14,10 +15,14 @@ export function GlobalMicButton() {
   const corner = useSettingsStore((s) => s.micCorner);
   const composerHeight = useUiLayoutStore((s) => s.composerHeight);
 
-  const voice = useGlobalVoice();
+  // Pure consumer of the single voice pipeline (mounted by <VoiceController/>).
+  const listening = useGlobalVoiceStore((s) => s.listening);
+  const pttRecording = useGlobalVoiceStore((s) => s.pttRecording);
+  const available = useGlobalVoiceStore((s) => s.available);
+  const error = useGlobalVoiceStore((s) => s.error);
   const { state: dragState, bindings } = useMicDrag();
 
-  if (!voice.available) return null;
+  if (!available) return null;
 
   const anchorStyle = getMicAnchor({
     corner,
@@ -35,10 +40,10 @@ export function GlobalMicButton() {
         }
       : { ...anchorStyle, transition: 'top 150ms ease, bottom 150ms ease, left 150ms ease, right 150ms ease' };
 
-  const isActive = voice.listening || voice.pttRecording;
-  const ariaLabel = voice.listening
+  const isActive = listening || pttRecording;
+  const ariaLabel = listening
     ? (t('chat.listening') as string)
-    : voice.pttRecording
+    : pttRecording
       ? (t('chat.pushToTalk') as string)
       : (t('chat.holdToSpeak') as string);
 
@@ -49,10 +54,10 @@ export function GlobalMicButton() {
         type="button"
         aria-label={ariaLabel}
         title={
-          voice.error ??
+          error ??
           (t('voice.mic.dragHint') as string) +
             ' · ' +
-            (t('chat.pushToTalkHint', { key: voice.pttHotkey }) as string)
+            (t('chat.pushToTalkHint', { key: PTT_HOTKEY }) as string)
         }
         style={{
           ...dragStyle,
@@ -67,10 +72,10 @@ export function GlobalMicButton() {
             e.preventDefault();
             return;
           }
-          if (voice.listening) {
-            await voice.stop();
+          if (listening) {
+            await voiceControl.stop();
           } else {
-            await voice.start();
+            await voiceControl.start();
           }
         }}
         onPointerDown={bindings.onPointerDown}
@@ -81,7 +86,7 @@ export function GlobalMicButton() {
           isActive
             ? 'bg-gold text-navy animate-pulse-soft'
             : 'bg-navy-deep text-gold border border-gold/40',
-          voice.error && !isActive && 'ring-2 ring-red-500/60',
+          error && !isActive && 'ring-2 ring-red-500/60',
         )}
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

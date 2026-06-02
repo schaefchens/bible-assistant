@@ -17,6 +17,11 @@ import { restrictToParentElement } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
 import { useState } from 'react';
 import type { Card } from '@/types/domain';
+import {
+  DRAG_MOVE_THRESHOLD_PX,
+  LONG_PRESS_MS,
+  MOVE_TOLERANCE_PX,
+} from '@/lib/gestureConstants';
 import { CardFace } from './CardFace';
 import { CardBack } from './CardBack';
 import { FlipCard } from './FlipCard';
@@ -28,10 +33,6 @@ type Props = {
   onRemove?: (card: Card) => void;
   emptyLabel?: string;
 };
-
-const LONG_PRESS_MS = 500;
-const MOVE_TOLERANCE_PX = 6;
-const DRAG_MOVE_THRESHOLD_PX = 8;
 
 export function BoardGrid({ cards, onOpen, onReorder, onRemove, emptyLabel }: Props) {
   const { t } = useTranslation();

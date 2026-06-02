@@ -10,14 +10,10 @@ import {
   formatReference,
   getBookById,
 } from '@/services/bible/bookCatalog';
-import {
-  parseCardReferenceLine,
-  formatCardReferenceInput,
-} from '@/services/bible/cardReference';
+import { parseCardReferenceLine } from '@/services/bible/cardReference';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useChatStore } from '@/store/chatStore';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
-import { usePlaybackStore } from '@/store/playbackStore';
 import { useRibbonsStore, type RibbonColor, RIBBON_COLORS } from '@/store/ribbonsStore';
 import { useGlobalVoiceStore } from '@/store/globalVoiceStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
@@ -25,10 +21,22 @@ import { browserTts } from '@/lib/browserTts';
 import {
   startAmbientIfEnabled,
   planToBrowserItems,
-  planToOpenAiTracks,
+  streamReading,
 } from '@/lib/startPlayback';
 import { getAmbientTracks } from '@/services/api/ambient';
 import { buildPlaybackPlan } from '@/lib/playbackPlan';
+import { cryptoRandomInt } from '@/lib/cryptoRandom';
+import { clamp01 } from '@/lib/math';
+import {
+  advanceOneVerse,
+  resolveLastReadVerse,
+  type ResolvedPosition,
+} from '@/services/bible/playbackPosition';
+import {
+  listCardsInUserOrder,
+  resolveBoard,
+  resolveCard,
+} from '@/services/library/cardResolver';
 import {
   isBrowserVoice,
   type Card,
@@ -50,6 +58,50 @@ export type ToolDispatchResult = {
   error?: string;
 };
 
+/** A handler for tool `N`, receiving that tool's typed args and the dispatch
+ * context. May be sync or async. */
+type ToolHandler<N extends ToolName> = (
+  args: ToolArgs[N],
+  ctx: DispatchContext,
+) => ToolDispatchResult | Promise<ToolDispatchResult>;
+
+/**
+ * The single routing table from tool name to handler. The mapped type forces
+ * every {@link ToolName} to have exactly one handler — a missing or misspelled
+ * key is a compile error — and types each handler's `args` to that tool's
+ * schema, replacing the per-case `as` casts the old switch needed.
+ *
+ * To add a tool: declare it in tools.ts (ToolName + ToolArgs +
+ * TOOL_DEFINITIONS), then add one entry here. Nothing else to touch.
+ */
+const TOOL_REGISTRY: { [N in ToolName]: ToolHandler<N> } = {
+  read_verses: (args, ctx) => handleReadVerses(args, ctx, true),
+  lookup_verses: (args, ctx) => handleReadVerses(args, ctx, false),
+  random_verse: (args, ctx) => handleRandomVerse(args, ctx),
+  create_card: (args) => handleCreateCard(args),
+  update_card: (args) => handleUpdateCard(args),
+  delete_card: (args) => handleDeleteCard(args),
+  list_cards: () => ({ ok: true, data: listCardsInUserOrder() }),
+  reorder_cards: (args) => handleReorderCards(args),
+  create_board: (args) => handleCreateBoard(args),
+  delete_board: (args) => handleDeleteBoard(args),
+  add_card_to_board: (args) => handleAddCardToBoard(args),
+  remove_card_from_board: (args) => handleRemoveCardFromBoard(args),
+  list_boards: () => ({ ok: true, data: useLibraryStore.getState().boards }),
+  set_language: (args) => handleSetLanguage(args),
+  set_translation: (args) => handleSetTranslation(args),
+  set_voice: (args) => handleSetVoice(args),
+  set_playback_rate: (args) => handleSetPlaybackRate(args),
+  set_music: (args) => handleSetMusic(args),
+  set_reader_preferences: (args) => handleSetReaderPreferences(args),
+  set_announcements: (args) => handleSetAnnouncements(args),
+  set_mic_position: (args) => handleSetMicPosition(args),
+  save_ribbon: (args) => handleSaveRibbon(args),
+  continue_from_ribbon: (args, ctx) => handleContinueFromRibbon(args, ctx),
+  enter_eyes_free_mode: () => handleSetEyesFree(true),
+  exit_eyes_free_mode: () => handleSetEyesFree(false),
+};
+
 export async function dispatchTool(
   name: ToolName,
   argsJson: string,
@@ -61,90 +113,58 @@ export async function dispatchTool(
   } catch {
     return { ok: false, error: 'invalid JSON arguments' };
   }
+  // The registry's mapped type makes TOOL_REGISTRY[name] a union over all
+  // handlers; widen to a single callable signature for the call. JSON args are
+  // unknown at runtime regardless of the tool's declared arg type.
+  const handler = TOOL_REGISTRY[name] as
+    | ((args: unknown, ctx: DispatchContext) => ToolDispatchResult | Promise<ToolDispatchResult>)
+    | undefined;
+  if (!handler) return { ok: false, error: `unknown tool: ${name}` };
   try {
-    switch (name) {
-      case 'read_verses':
-        return await handleReadVerses(args as ToolArgs['read_verses'], ctx, true);
-      case 'lookup_verses':
-        return await handleReadVerses(args as ToolArgs['lookup_verses'], ctx, false);
-      case 'random_verse':
-        return await handleRandomVerse(args as ToolArgs['random_verse'], ctx);
-      case 'create_card':
-        return await handleCreateCard(args as ToolArgs['create_card']);
-      case 'update_card':
-        return await handleUpdateCard(args as ToolArgs['update_card']);
-      case 'delete_card':
-        return await handleDeleteCard(args as ToolArgs['delete_card']);
-      case 'list_cards':
-        return { ok: true, data: listCardsInUserOrder() };
-      case 'reorder_cards':
-        return await handleReorderCards(args as ToolArgs['reorder_cards']);
-      case 'create_board':
-        return await handleCreateBoard(args as ToolArgs['create_board']);
-      case 'delete_board':
-        return await handleDeleteBoard(args as ToolArgs['delete_board']);
-      case 'add_card_to_board':
-        return await handleAddCardToBoard(args as ToolArgs['add_card_to_board']);
-      case 'remove_card_from_board':
-        return await handleRemoveCardFromBoard(
-          args as ToolArgs['remove_card_from_board'],
-        );
-      case 'list_boards':
-        return { ok: true, data: useLibraryStore.getState().boards };
-      case 'set_language':
-        useSettingsStore.getState().setLocale((args as ToolArgs['set_language']).language);
-        return { ok: true };
-      case 'set_translation':
-        useSettingsStore
-          .getState()
-          .setTranslation((args as ToolArgs['set_translation']).translation, true);
-        return { ok: true };
-      case 'set_voice':
-        useSettingsStore.getState().setVoice((args as ToolArgs['set_voice']).voice);
-        return { ok: true };
-      case 'set_playback_rate':
-        return handleSetPlaybackRate(args as ToolArgs['set_playback_rate']);
-      case 'set_music':
-        return await handleSetMusic(args as ToolArgs['set_music']);
-      case 'set_reader_preferences':
-        return handleSetReaderPreferences(
-          args as ToolArgs['set_reader_preferences'],
-        );
-      case 'set_announcements':
-        return handleSetAnnouncements(args as ToolArgs['set_announcements']);
-      case 'set_mic_position':
-        useSettingsStore
-          .getState()
-          .setMicCorner((args as ToolArgs['set_mic_position']).corner);
-        return { ok: true, data: { corner: (args as ToolArgs['set_mic_position']).corner } };
-      case 'save_ribbon':
-        return await handleSaveRibbon(args as ToolArgs['save_ribbon']);
-      case 'continue_from_ribbon':
-        return await handleContinueFromRibbon(
-          args as ToolArgs['continue_from_ribbon'],
-          ctx,
-        );
-      case 'enter_eyes_free_mode':
-        useGlobalVoiceStore.getState().setEyesFreeMode(true);
-        return { ok: true };
-      case 'exit_eyes_free_mode':
-        useGlobalVoiceStore.getState().setEyesFreeMode(false);
-        return { ok: true };
-      default:
-        return { ok: false, error: `unknown tool: ${name}` };
-    }
+    return await handler(args, ctx);
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
 
+// ─── Simple single-field setters (micro-handlers) ─────────────────────────
+
+function handleSetLanguage(args: ToolArgs['set_language']): ToolDispatchResult {
+  useSettingsStore.getState().setLocale(args.language);
+  return { ok: true };
+}
+
+function handleSetTranslation(args: ToolArgs['set_translation']): ToolDispatchResult {
+  useSettingsStore.getState().setTranslation(args.translation, true);
+  return { ok: true };
+}
+
+function handleSetVoice(args: ToolArgs['set_voice']): ToolDispatchResult {
+  useSettingsStore.getState().setVoice(args.voice);
+  return { ok: true };
+}
+
+function handleSetMicPosition(args: ToolArgs['set_mic_position']): ToolDispatchResult {
+  useSettingsStore.getState().setMicCorner(args.corner);
+  return { ok: true, data: { corner: args.corner } };
+}
+
+function handleSetEyesFree(value: boolean): ToolDispatchResult {
+  useGlobalVoiceStore.getState().setEyesFreeMode(value);
+  return { ok: true };
+}
+
 async function handleReadVerses(
-  args: { reference: string; translation?: Translation },
+  args: { reference: string; translation?: Translation; immediate?: boolean },
   ctx: DispatchContext,
   autoplay: boolean,
 ): Promise<ToolDispatchResult> {
   const parsed = parseReference(args.reference);
   if (!parsed) return { ok: false, error: `could not parse reference "${args.reference}"` };
+  // "read X now/sofort/jetzt" → hard-stop whatever is playing and read this
+  // immediately, instead of appending to the queue (only meaningful when we
+  // auto-play; lookup_verses passes autoplay=false).
+  const immediate = autoplay && args.immediate === true;
   const { locale, translation: defaultTrans } = useSettingsStore.getState();
   const voice = effectiveReadingVoice();
   const voiceStyle = effectiveVoiceStyle();
@@ -202,19 +222,22 @@ async function handleReadVerses(
           }));
     if (isBrowserVoice(voice)) {
       if (!ctx.signal?.aborted) {
-        void browserTts.enqueue(planToBrowserItems(plan, ctx.messageId));
+        const items = planToBrowserItems(plan, ctx.messageId);
+        // speakQueue replaces the active playlist (hard stop); enqueue appends.
+        if (immediate) void browserTts.speakQueue(items);
+        else void browserTts.enqueue(items);
       }
     } else {
-      const tracks = await planToOpenAiTracks(
+      // Stream verses in as they're generated so the first plays promptly;
+      // playQueue mode hard-stops for an immediate read, enqueue mode appends.
+      void streamReading(
         plan,
         ctx.messageId,
         voice as OpenAiVoiceId,
         voiceStyle || undefined,
         ctx.signal,
+        { mode: immediate ? 'playQueue' : 'enqueue' },
       );
-      if (tracks.length > 0 && !ctx.signal?.aborted) {
-        void audioPlayback.enqueue(tracks);
-      }
     }
   }
 
@@ -232,21 +255,6 @@ async function handleReadVerses(
       count: summaries.length,
     },
   };
-}
-
-function cryptoRandomInt(n: number): number {
-  if (n <= 0) return 0;
-  if (n === 1) return 0;
-  const buf = new Uint32Array(1);
-  // rejection sampling — drop values that would bias the modulo
-  const limit = Math.floor(0xffffffff / n) * n;
-  for (let i = 0; i < 16; i++) {
-    crypto.getRandomValues(buf);
-    if (buf[0] < limit) return buf[0] % n;
-  }
-  // pathological fallback (should never trigger for sane n)
-  crypto.getRandomValues(buf);
-  return buf[0] % n;
 }
 
 async function handleRandomVerse(
@@ -294,51 +302,6 @@ async function handleRandomVerse(
     ctx,
     true,
   );
-}
-
-function resolveBoard(ref: string): Board | undefined {
-  const boards = useLibraryStore.getState().boards;
-  const byId = boards.find((b) => b.id === ref);
-  if (byId) return byId;
-  const lower = ref.trim().toLowerCase();
-  return boards.find((b) => b.name.trim().toLowerCase() === lower);
-}
-
-type CardLookup =
-  | { ok: true; card: Card }
-  | { ok: false; error: string };
-
-function resolveCard(ref: string): CardLookup {
-  const cards = useLibraryStore.getState().cards;
-  const byId = cards.find((c) => c.id === ref);
-  if (byId) return { ok: true, card: byId };
-  const lower = ref.trim().toLowerCase();
-  const byTitle = cards.filter((c) => c.title.trim().toLowerCase() === lower);
-  if (byTitle.length === 1) return { ok: true, card: byTitle[0] };
-  if (byTitle.length === 0) return { ok: false, error: `card "${ref}" not found` };
-  return {
-    ok: false,
-    error: `multiple cards titled "${ref}" — use card id instead (${byTitle.map((c) => c.id).join(', ')})`,
-  };
-}
-
-function listCardsInUserOrder(): (Omit<Card, 'references'> & { references: string[] })[] {
-  const { cards, cardOrder } = useLibraryStore.getState();
-  const locale = useSettingsStore.getState().locale;
-  const rank = new Map(cardOrder.map((id, i) => [id, i]));
-  const fallback = cards.length + 1;
-  return cards
-    .slice()
-    .sort((a, b) => {
-      const ra = rank.get(a.id) ?? fallback;
-      const rb = rank.get(b.id) ?? fallback;
-      if (ra !== rb) return ra - rb;
-      return b.updatedAt - a.updatedAt;
-    })
-    .map((c) => ({
-      ...c,
-      references: c.references.map((r) => formatCardReferenceInput(r, locale)),
-    }));
 }
 
 async function handleCreateCard(args: ToolArgs['create_card']): Promise<ToolDispatchResult> {
@@ -444,67 +407,6 @@ async function handleAddCardToBoard(
     .getState()
     .upsertBoard({ ...board, cardIds: [...board.cardIds, cardId] });
   return { ok: true, data: { boardId: board.id, boardName: board.name, cardId, cardTitle: cardLookup.card.title } };
-}
-
-type ResolvedPosition = {
-  translation: Translation;
-  bookId: number;
-  chapter: number;
-  verse: number;
-};
-
-function resolveLastReadVerse(): ResolvedPosition | null {
-  // Prefer the live playback position; fall back to the most recent reading
-  // message in chat history (in case playback ended a few seconds ago).
-  const cur = usePlaybackStore.getState().current;
-  const messages = useChatStore.getState().messages;
-  if (cur) {
-    const msg = messages.find((m) => m.id === cur.messageId);
-    const v = msg?.verses?.[cur.verseIndex];
-    if (v) {
-      return {
-        translation: v.translation,
-        bookId: v.bookId,
-        chapter: v.chapter,
-        verse: v.verse,
-      };
-    }
-  }
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i];
-    if (m.role === 'assistant' && m.verses && m.verses.length > 0) {
-      const v = m.verses[m.verses.length - 1];
-      return {
-        translation: v.translation,
-        bookId: v.bookId,
-        chapter: v.chapter,
-        verse: v.verse,
-      };
-    }
-  }
-  return null;
-}
-
-async function advanceOneVerse(p: ResolvedPosition): Promise<ResolvedPosition> {
-  // Advance within the current chapter if a next verse exists.
-  try {
-    const verses = await getChapter(p.translation, p.bookId, p.chapter);
-    if (verses.length > 0) {
-      const endVerse = verses[verses.length - 1].verse;
-      if (p.verse < endVerse) {
-        return { ...p, verse: p.verse + 1 };
-      }
-    }
-  } catch {
-    /* fall through to chapter roll-over */
-  }
-  // Else roll into the start of the next chapter.
-  const book = getBookById(p.bookId);
-  if (book && p.chapter < book.chapters) {
-    return { ...p, chapter: p.chapter + 1, verse: 1 };
-  }
-  // End of book — keep the same verse so save still succeeds.
-  return p;
 }
 
 async function handleSaveRibbon(
@@ -627,11 +529,6 @@ async function handleRemoveCardFromBoard(
     .getState()
     .upsertBoard({ ...board, cardIds: board.cardIds.filter((id) => id !== cardId) });
   return { ok: true, data: { boardId: board.id, boardName: board.name, cardId, cardTitle: cardLookup.card.title } };
-}
-
-function clamp01(v: number): number {
-  if (!Number.isFinite(v)) return 0;
-  return Math.max(0, Math.min(1, v));
 }
 
 function handleSetPlaybackRate(

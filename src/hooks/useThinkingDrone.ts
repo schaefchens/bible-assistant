@@ -14,7 +14,11 @@ import { startThinkingDrone, stopThinkingDrone } from '@/lib/thinkingDrone';
  *     first track of a brand-new reading). Between-verse loads keep
  *     `current` set, so this doesn't fire on those transitions.
  *
- * Suppressed while the mic is open — that path already ducks all audio.
+ * Suppressed while the mic is open — that path already ducks all audio — and
+ * while a reading is actively playing: if the user asks for something (or the
+ * next chunk is being fetched/TTS'd) mid-reading, they're still listening to
+ * the current verse and aren't waiting on a silent gap, so the hum would just
+ * talk over the reading.
  */
 export function useThinkingDrone(): void {
   const isProcessing = useChatStore((s) => s.isProcessing);
@@ -23,7 +27,9 @@ export function useThinkingDrone(): void {
   const hasCurrent = usePlaybackStore((s) => s.current !== null);
 
   const waitingForPlayback = playbackStatus === 'loading' && !hasCurrent;
-  const shouldHum = (isProcessing || waitingForPlayback) && !listening;
+  const readingActive = playbackStatus === 'playing';
+  const shouldHum =
+    (isProcessing || waitingForPlayback) && !listening && !readingActive;
 
   useEffect(() => {
     if (shouldHum) {

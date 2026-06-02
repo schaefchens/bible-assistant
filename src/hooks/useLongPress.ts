@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react';
+import { LONG_PRESS_MS, MOVE_TOLERANCE_PX } from '@/lib/gestureConstants';
 
 export type LongPressHandlers = {
   onPointerDown: (e: React.PointerEvent) => void;
@@ -8,8 +9,6 @@ export type LongPressHandlers = {
   onContextMenu: (e: React.MouseEvent) => void;
 };
 
-const LONG_PRESS_MS = 500;
-const MOVE_TOLERANCE_PX = 6;
 
 /**
  * Long-press detector matching the Cards page pattern (500ms, 6px tolerance).

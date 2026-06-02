@@ -1,138 +1,36 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
+import { useState } from 'react';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { useEffect, useState } from 'react';
 import { useChatNavigation } from '@/hooks/useChatNavigation';
 import { useThinkingDrone } from '@/hooks/useThinkingDrone';
+import { useAppInitialization } from '@/hooks/useAppInitialization';
 import { getPassphrase } from '@/lib/passphrase';
 import { PassphraseSetup } from '@/components/onboarding/PassphraseSetup';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
+import { VoiceController } from '@/components/voice/VoiceController';
 import { GlobalMicButton } from '@/components/voice/GlobalMicButton';
 import { VoiceOverlay } from '@/components/voice/VoiceOverlay';
 import { EyesFreeMode } from '@/components/voice/EyesFreeMode';
 import { FloatingPlaybackBar } from '@/components/playback/FloatingPlaybackBar';
 import { UpdateBanner } from '@/components/common/UpdateBanner';
 import { KeyFailureBanner } from '@/components/common/KeyFailureBanner';
-import { getOpenAiKeyStatus } from '@/services/api/auth';
-import {
-  effectiveAssistantVoice,
-  effectiveReadingVoice,
-} from '@/store/settingsStore';
-import { getAmbientTrackUrl } from '@/services/api/ambient';
-import { audioPlayback } from '@/lib/audioPlaybackManager';
-import { usePlaybackStore } from '@/store/playbackStore';
-import { useChatStore } from '@/store/chatStore';
-import { useLastReadingStore } from '@/store/lastReadingStore';
 
 export function AppShell() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [hasPassphrase, setHasPassphrase] = useState(() => !!getPassphrase());
-  const init = useLibraryStore((s) => s.init);
-  const setOnline = useLibraryStore((s) => s.setOnline);
   const online = useLibraryStore((s) => s.online);
   const pendingOps = useLibraryStore((s) => s.pendingOps);
 
   useChatNavigation();
   useThinkingDrone();
+  useAppInitialization(hasPassphrase);
 
-  const ambientEnabled = useSettingsStore((s) => s.ambient.enabled);
-  const ambientTrackId = useSettingsStore((s) => s.ambient.trackId);
   const onboardingComplete = useSettingsStore((s) => s.onboardingComplete);
   const setOnboardingComplete = useSettingsStore((s) => s.setOnboardingComplete);
-
-  // Defensive: if an iOS PWA was suspended (not killed) the previous audio
-  // session can still be alive when we boot. Tear down all buses once at
-  // start so nothing keeps playing into a fresh session without a user
-  // gesture.
-  useEffect(() => {
-    audioPlayback.stop();
-  }, []);
-
-  // Persist a "last reading" slot whenever the active verse advances, so a
-  // fresh app load (or cleared chat) can still resume what the user was
-  // hearing. Guards on (messageId, verseIndex) since the playbackStore
-  // subscription also fires per-frame on currentWordIndex ticks.
-  useEffect(() => {
-    let prevKey = '';
-    const unsub = usePlaybackStore.subscribe((state) => {
-      const cur = state.current;
-      if (!cur) return;
-      const key = `${cur.messageId}:${cur.verseIndex}`;
-      if (key === prevKey) return;
-      prevKey = key;
-      const msg = useChatStore
-        .getState()
-        .messages.find((m) => m.id === cur.messageId);
-      const v = msg?.verses?.[cur.verseIndex];
-      if (!v) return;
-      useLastReadingStore.getState().setSlot({
-        translation: v.translation,
-        bookId: v.bookId,
-        chapter: v.chapter,
-        verse: v.verse,
-        savedAt: Date.now(),
-      });
-    });
-    return unsub;
-  }, []);
-
-  useEffect(() => {
-    if (!hasPassphrase) return;
-    void init();
-    const onUp = () => setOnline(true);
-    const onDown = () => setOnline(false);
-    window.addEventListener('online', onUp);
-    window.addEventListener('offline', onDown);
-    return () => {
-      window.removeEventListener('online', onUp);
-      window.removeEventListener('offline', onDown);
-    };
-  }, [init, setOnline, hasPassphrase]);
-
-  // Hydrate the personal-OpenAI-key status from the server. On hasKey=false,
-  // call the effective-voice helpers once so previously-stored non-allowed
-  // values (reading or assistant voice) get force-reset to their locked
-  // defaults before the first playback / chat reply.
-  useEffect(() => {
-    if (!hasPassphrase) return;
-    let cancelled = false;
-    const prune = () => {
-      effectiveReadingVoice();
-      effectiveAssistantVoice();
-    };
-    void getOpenAiKeyStatus()
-      .then((s) => {
-        if (cancelled) return;
-        useSettingsStore.getState().setUserOpenAiKeyStatus(!!s.hasKey, s.masked ?? null);
-        prune();
-      })
-      .catch(() => {
-        if (!cancelled) prune();
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [hasPassphrase]);
-
-  useEffect(() => {
-    if (!hasPassphrase) return;
-    if (!ambientEnabled || !ambientTrackId) return;
-    let cancelled = false;
-    void getAmbientTrackUrl(ambientTrackId)
-      .then((url) => {
-        if (cancelled || !url) return;
-        return audioPlayback.ambient.load(url);
-      })
-      .catch((e) => {
-        console.warn('ambient prefetch failed', e);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [hasPassphrase, ambientEnabled, ambientTrackId]);
 
   if (!hasPassphrase) {
     return <PassphraseSetup onDone={() => setHasPassphrase(true)} />;
@@ -174,6 +72,7 @@ export function AppShell() {
         <NavTab to="/settings" label={t('nav.settings')} icon={<SettingsIcon />} />
       </nav>
 
+      <VoiceController />
       <GlobalMicButton />
       <FloatingPlaybackBar />
       <VoiceOverlay />

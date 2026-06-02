@@ -1,6 +1,7 @@
 import { findBookByName, getBookById } from './bookCatalog';
+import type { VerseRange } from '@/types/domain';
 
-export type VerseRange = { start: number; end: number };
+export type { VerseRange };
 
 export type ParsedReference = {
   bookId: number;

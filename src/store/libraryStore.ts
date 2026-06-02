@@ -1,8 +1,15 @@
 import { create } from 'zustand';
-import { db, type SyncOp } from '@/db/dexie';
+import { db } from '@/db/dexie';
 import type { Card, Board } from '@/types/domain';
-import { apiGetJson, apiPostJson, ApiError } from '@/services/api/client';
+import { apiGetJson, apiPostJson } from '@/services/api/client';
 import { normalizeCardReferences } from '@/services/bible/cardReference';
+import { reconcileOrder, reorderInArray } from '@/utils/orderingUtils';
+import {
+  enqueueOrderSync,
+  persistOrder,
+  readStoredOrder,
+  shouldDropSyncOp,
+} from './syncQueueManager';
 
 type LibraryState = {
   cards: Card[];
@@ -34,73 +41,8 @@ const CARD_ORDER_KEY = 'cardOrder';
 const BOARD_ORDER_KEY = 'boardOrder';
 const ACTIVE_BOARD_KEY = 'activeBoardId';
 
-type StoredOrder = { order: string[]; updatedAt: number };
-
 function nowId(): string {
   return crypto.randomUUID();
-}
-
-async function persistOrder(prefKey: string, order: string[], updatedAt: number): Promise<void> {
-  await db.preferences.put({
-    key: prefKey,
-    value: { order, updatedAt } satisfies StoredOrder,
-  });
-}
-
-// Order syncs as a whole-array set. Multiple pending sets collapse to the
-// latest one — only the most recent order matters.
-async function enqueueOrderSync(
-  op: Extract<SyncOp['op'], 'cardOrder.set' | 'boardOrder.set'>,
-  order: string[],
-  updatedAt: number,
-): Promise<void> {
-  const pending = await db.syncQueue
-    .where('op')
-    .equals(op)
-    .primaryKeys();
-  if (pending.length > 0) {
-    await db.syncQueue.bulkDelete(pending);
-  }
-  await db.syncQueue.add({
-    op,
-    payload: { order, updatedAt },
-    createdAt: Date.now(),
-    attempts: 0,
-  });
-}
-
-function reconcileOrder(order: string[], items: { id: string }[]): string[] {
-  const known = new Set(items.map((c) => c.id));
-  const seen = new Set<string>();
-  const kept = order.filter((id) => {
-    if (!known.has(id) || seen.has(id)) return false;
-    seen.add(id);
-    return true;
-  });
-  for (const c of items) {
-    if (!seen.has(c.id)) {
-      kept.push(c.id);
-      seen.add(c.id);
-    }
-  }
-  return kept;
-}
-
-function readStoredOrder(raw: unknown): StoredOrder {
-  if (Array.isArray(raw)) {
-    // Legacy shape (pre-sync): bare string[]. Adopt with a low timestamp so
-    // the first remote pull on another device can override.
-    return { order: raw.filter((v): v is string => typeof v === 'string'), updatedAt: 0 };
-  }
-  if (raw && typeof raw === 'object') {
-    const obj = raw as Partial<StoredOrder>;
-    const order = Array.isArray(obj.order)
-      ? obj.order.filter((v): v is string => typeof v === 'string')
-      : [];
-    const updatedAt = typeof obj.updatedAt === 'number' ? obj.updatedAt : 0;
-    return { order, updatedAt };
-  }
-  return { order: [], updatedAt: 0 };
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
@@ -214,15 +156,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   reorderCards: async (fromId, toId) => {
-    if (fromId === toId) return;
-    const order = get().cardOrder;
-    const fromIdx = order.indexOf(fromId);
-    const toIdx = order.indexOf(toId);
-    if (fromIdx === -1 || toIdx === -1) return;
-    const next = order.slice();
-    const [moved] = next.splice(fromIdx, 1);
-    next.splice(toIdx, 0, moved);
-    await get().setCardOrder(next);
+    // setCardOrder bails when the reconciled order is unchanged, so a no-op
+    // move (same id / missing id) returning the original array is harmless.
+    await get().setCardOrder(reorderInArray(get().cardOrder, fromId, toId));
   },
 
   setCardOrder: async (order) => {
@@ -301,15 +237,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   reorderBoards: async (fromId, toId) => {
-    if (fromId === toId) return;
-    const order = get().boardOrder;
-    const fromIdx = order.indexOf(fromId);
-    const toIdx = order.indexOf(toId);
-    if (fromIdx === -1 || toIdx === -1) return;
-    const next = order.slice();
-    const [moved] = next.splice(fromIdx, 1);
-    next.splice(toIdx, 0, moved);
-    await get().setBoardOrder(next);
+    await get().setBoardOrder(reorderInArray(get().boardOrder, fromId, toId));
   },
 
   setBoardOrder: async (order) => {
@@ -371,13 +299,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         await db.syncQueue.delete(op.id!);
         set((s) => ({ pendingOps: Math.max(0, s.pendingOps - 1) }));
       } catch (e) {
-        if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 401) {
-          // permanent failure — drop op
+        if (shouldDropSyncOp(e)) {
+          // permanent client error (4xx except 401) — drop op
           await db.syncQueue.delete(op.id!);
           set((s) => ({ pendingOps: Math.max(0, s.pendingOps - 1) }));
           continue;
         }
-        // network/server error — stop, retry later
+        // network/server error (401, 5xx, offline) — stop, retry later
         break;
       }
     }
