@@ -80,6 +80,9 @@ class AudioPlaybackManager {
   // ambient (factor 0) so the speech recognizer hears only the user, not
   // any audio bleeding from the speaker into the mic.
   private ducked = false;
+  // True when ducking paused an in-progress verse reading, so unducking knows
+  // to resume it (rather than leaving it advancing silently behind the mic).
+  private duckPausedReading = false;
   private readonly DUCK_FACTOR = 0;
   private readonly DUCK_RAMP_SEC = 0.15;
 
@@ -148,9 +151,23 @@ class AudioPlaybackManager {
   setDucked(ducked: boolean): void {
     if (this.ducked === ducked) return;
     this.ducked = ducked;
+    if (ducked) {
+      // Pause the verse reading so it doesn't keep advancing (silently) while
+      // the mic is open — ducking the gain alone leaves the source playing, so
+      // the user would lose their place. Remember to resume on unduck.
+      // (Browser-voice readings pause via browserTts.duck() below.)
+      this.duckPausedReading =
+        usePlaybackStore.getState().status === 'playing' && this.source !== null;
+      if (this.duckPausedReading) this.pause();
+      browserTts.duck();
+    } else {
+      browserTts.unduck();
+      if (this.duckPausedReading) {
+        this.duckPausedReading = false;
+        this.resume();
+      }
+    }
     this.applyDuckedGains();
-    if (ducked) browserTts.duck();
-    else browserTts.unduck();
   }
 
   private applyDuckedGains(): void {
