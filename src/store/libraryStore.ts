@@ -288,18 +288,36 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     for (const op of ops) {
       try {
         switch (op.op) {
-          case 'card.upsert':
+          case 'card.upsert': {
             await apiPostJson('cards.upsert', { card: op.payload });
+            // Mark the local row clean once synced, so future pulls can adopt
+            // remote edits (last-write-wins). Guard on updatedAt so a newer
+            // local edit made since this op was enqueued stays dirty.
+            const c = op.payload as Card;
+            const cur = await db.cards.get(c.id);
+            if (cur && cur.updatedAt === c.updatedAt) {
+              await db.cards.update(c.id, { dirty: 0 });
+            }
             break;
+          }
           case 'card.delete':
             await apiPostJson('cards.delete', op.payload);
             break;
           case 'cardOrder.set':
             await apiPostJson('cards.order.set', op.payload);
             break;
-          case 'board.upsert':
+          case 'board.upsert': {
             await apiPostJson('boards.upsert', { board: op.payload });
+            // Mark clean once synced so future pulls can adopt remote edits
+            // (otherwise a device that has ever edited a board never pulls in
+            // another device's changes to it — e.g. a background URL).
+            const b = op.payload as Board;
+            const cur = await db.boards.get(b.id);
+            if (cur && cur.updatedAt === b.updatedAt) {
+              await db.boards.update(b.id, { dirty: 0 });
+            }
             break;
+          }
           case 'board.delete':
             await apiPostJson('boards.delete', op.payload);
             break;
@@ -336,16 +354,31 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const remoteCards = cardsResp.cards ?? [];
     const remoteBoards = boardsResp.boards ?? [];
 
+    // A local row should only block adopting a newer remote if it has a
+    // genuinely pending upsert in the queue. A leftover dirty flag with no
+    // pending op is stale (its edit already synced) and must NOT freeze the
+    // row forever — otherwise a device that has ever edited a board never
+    // pulls in another device's changes to it (e.g. a background URL).
+    const queued = await db.syncQueue.toArray();
+    const pendingCardIds = new Set(
+      queued.filter((o) => o.op === 'card.upsert').map((o) => (o.payload as Card).id),
+    );
+    const pendingBoardIds = new Set(
+      queued.filter((o) => o.op === 'board.upsert').map((o) => (o.payload as Board).id),
+    );
+
     await db.transaction('rw', db.cards, db.boards, async () => {
       for (const c of remoteCards) {
         const local = await db.cards.get(c.id);
-        if (!local || (!local.dirty && c.updatedAt > local.updatedAt)) {
+        const blocked = local?.dirty === 1 && pendingCardIds.has(c.id);
+        if (!local || (!blocked && c.updatedAt > local.updatedAt)) {
           await db.cards.put({ ...c, dirty: 0, deleted: 0 });
         }
       }
       for (const b of remoteBoards) {
         const local = await db.boards.get(b.id);
-        if (!local || (!local.dirty && b.updatedAt > local.updatedAt)) {
+        const blocked = local?.dirty === 1 && pendingBoardIds.has(b.id);
+        if (!local || (!blocked && b.updatedAt > local.updatedAt)) {
           await db.boards.put({ ...b, dirty: 0, deleted: 0 });
         }
       }

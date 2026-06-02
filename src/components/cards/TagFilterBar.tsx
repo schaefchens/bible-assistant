@@ -7,16 +7,24 @@ type Props = {
   onClear: () => void;
 };
 
+// Transparent so a board's background image shows through the filter bar right
+// up to the tab separation line; a text-shadow keeps the bare label legible
+// over bright images (the chips/buttons carry their own solid backgrounds).
+const LABEL_SHADOW = { textShadow: '0 1px 2px rgba(0,0,0,0.7)' };
+
 export function TagFilterBar({ allTags, selected, onToggle, onClear }: Props) {
   const { t } = useTranslation();
   return (
     <div className="px-3 pt-1 pb-2">
       <div className="no-scrollbar flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 min-h-[30px]">
-        <span className="shrink-0 text-[10px] uppercase tracking-wide text-gold-dim">
+        <span
+          className="shrink-0 text-[10px] uppercase tracking-wide text-gold-dim"
+          style={LABEL_SHADOW}
+        >
           {t('cards.filterByTags')}
         </span>
         {allTags.length === 0 && (
-          <span className="shrink-0 text-xs text-cream-dim italic">
+          <span className="shrink-0 text-xs text-cream-dim italic" style={LABEL_SHADOW}>
             {t('cards.noTagsYet')}
           </span>
         )}

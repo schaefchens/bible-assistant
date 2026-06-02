@@ -127,6 +127,9 @@
       "sage": "Sage",
       "sky": "Sky"
     },
+    "textSize": "Text size",
+    "textSizeSmaller": "Smaller text",
+    "textSizeLarger": "Larger text",
     "flip": "Flip",
     "front": "Front"
   },
@@ -137,6 +140,11 @@
     "boardName": "Board name",
     "cardCount": "{{count}} cards",
     "addCards": "Add cards",
+    "editLayout": "Arrange",
+    "doneEditing": "Done",
+    "toggleOrientation": "Portrait / landscape",
+    "background": "Background image URL",
+    "backgroundClear": "Clear background",
     "reorder": "Reorder",
     "doneReordering": "Done",
     "movePrev": "Move backward",

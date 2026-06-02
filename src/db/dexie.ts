@@ -69,8 +69,9 @@ class BibleAssistantDb extends Dexie {
       syncQueue: '++id, op, createdAt',
       preferences: '&key',
     });
-    // v6 adds the optional `freeform` layout map on Board (per-card position/
-    // size/rotation for the corkboard view). Not indexed; schema unchanged.
+    // v6 adds the optional `freeform` layout map and `orientation` on Board
+    // (corkboard per-card position/size/rotation + portrait/landscape).
+    // Not indexed; schema string unchanged.
     this.version(6).stores({
       cards: 'id, title, updatedAt, dirty',
       boards: 'id, name, updatedAt, dirty',

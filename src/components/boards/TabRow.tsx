@@ -20,10 +20,10 @@ import {
   LONG_PRESS_MS,
   MOVE_TOLERANCE_PX,
 } from '@/lib/gestureConstants';
-import type { Board, CardColor } from '@/types/domain';
+import type { Board, BoardOrientation, CardColor } from '@/types/domain';
 import { CARD_COLORS } from '@/types/domain';
 
-export type BoardValues = { name: string; emoji?: string; color?: CardColor };
+export type BoardValues = { name: string; emoji?: string; color?: CardColor; background?: string };
 
 type MenuMode = null | 'root' | 'new' | 'rename';
 
@@ -39,6 +39,12 @@ export function TabRow({
   onDelete,
   onReorder,
   onRequestAddCards,
+  showEditToggle = false,
+  editMode = false,
+  onToggleEditMode,
+  orientation,
+  onToggleOrientation,
+  solidBackdrop = false,
 }: {
   boards: Board[];
   activeBoardId: string | null;
@@ -48,6 +54,18 @@ export function TabRow({
   onDelete: () => Promise<void>;
   onReorder: (fromId: string, toId: string) => Promise<void>;
   onRequestAddCards: () => void;
+  /** Show the corkboard arrange/view toggle (only meaningful in freeform view). */
+  showEditToggle?: boolean;
+  editMode?: boolean;
+  onToggleEditMode?: () => void;
+  /** Active board's corkboard orientation; the flip button shows only while
+   * arranging (editMode). */
+  orientation?: BoardOrientation;
+  onToggleOrientation?: () => void;
+  /** Give the header a solid backdrop so a board's background image stays
+   * confined to the content area below the tabs (instead of bleeding over the
+   * tab strip). */
+  solidBackdrop?: boolean;
 }) {
   const { t } = useTranslation();
   const [menu, setMenu] = useState<MenuMode>(null);
@@ -107,7 +125,10 @@ export function TabRow({
   const railBorder = railBorderClass(activeBoard?.color);
 
   return (
-    <div className={`relative border-b-2 ${railBorder}`} ref={wrapperRef}>
+    <div
+      className={`relative border-b-2 ${railBorder}${solidBackdrop ? ' bg-navy' : ''}`}
+      ref={wrapperRef}
+    >
       <div className="flex items-stretch">
         <div className="no-scrollbar flex-1 overflow-x-auto whitespace-nowrap flex items-end gap-1 px-2 pt-2">
           <DndContext
@@ -140,7 +161,32 @@ export function TabRow({
             </button>
           )}
         </div>
-        <div className="flex items-center px-2">
+        <div className="flex items-center px-2 gap-1">
+          {showEditToggle && editMode && onToggleOrientation && (
+            <button
+              type="button"
+              onClick={onToggleOrientation}
+              aria-label={t('boards.toggleOrientation') as string}
+              title={t('boards.toggleOrientation') as string}
+              className="btn-ghost text-cream-dim text-lg leading-none w-9 h-9 inline-flex items-center justify-center"
+            >
+              {orientation === 'landscape' ? '▭' : '▯'}
+            </button>
+          )}
+          {showEditToggle && (
+            <button
+              type="button"
+              onClick={onToggleEditMode}
+              aria-pressed={editMode}
+              aria-label={t(editMode ? 'boards.doneEditing' : 'boards.editLayout') as string}
+              className={[
+                'text-lg leading-none w-9 h-9 inline-flex items-center justify-center rounded-full transition-colors',
+                editMode ? 'bg-gold/90 text-navy-deep' : 'btn-ghost text-cream-dim',
+              ].join(' ')}
+            >
+              ✎
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setMenu((m) => (m ? null : 'root'))}
@@ -202,6 +248,7 @@ export function TabRow({
             name: activeBoard.name,
             emoji: activeBoard.emoji,
             color: activeBoard.color,
+            background: activeBoard.background,
           }}
           onCancel={() => setMenu(null)}
           onSubmit={async (values) => {
@@ -319,7 +366,8 @@ function BoardEditor({
   const [name, setName] = useState(initial?.name ?? '');
   const [emoji, setEmoji] = useState(initial?.emoji ?? '');
   const [color, setColor] = useState<CardColor>(initial?.color ?? 'none');
-  const submit = () => void onSubmit({ name, emoji, color });
+  const [background, setBackground] = useState(initial?.background ?? '');
+  const submit = () => void onSubmit({ name, emoji, color, background });
   return (
     <div className="absolute right-2 top-full mt-1 z-30 bg-navy-soft rounded-xl shadow-lg border border-navy-soft/70 p-3 w-80 max-w-[calc(100vw-1rem)] space-y-3">
       <div className="text-xs uppercase tracking-wider text-cream-dim">{title}</div>
@@ -372,6 +420,36 @@ function BoardEditor({
               />
             );
           })}
+        </div>
+      </div>
+      <div>
+        <div className="text-xs text-cream-dim mb-1.5">{t('boards.background')}</div>
+        <div className="flex gap-2">
+          <input
+            type="url"
+            inputMode="url"
+            maxLength={2048}
+            value={background}
+            onChange={(e) => setBackground(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submit();
+              else if (e.key === 'Escape') onCancel();
+            }}
+            placeholder="https://…"
+            aria-label={t('boards.background') as string}
+            className="flex-1 min-w-0 bg-navy rounded-lg px-3 py-1.5 text-cream outline-none focus:ring-2 focus:ring-gold/60 text-sm"
+          />
+          {background.trim() !== '' && (
+            <button
+              type="button"
+              onClick={() => setBackground('')}
+              aria-label={t('boards.backgroundClear') as string}
+              title={t('boards.backgroundClear') as string}
+              className="btn-ghost text-sm px-2 shrink-0"
+            >
+              ✕
+            </button>
+          )}
         </div>
       </div>
       <div className="flex justify-end gap-2 pt-1">

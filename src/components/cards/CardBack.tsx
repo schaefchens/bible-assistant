@@ -10,7 +10,8 @@ type Props = {
 export function CardBack({ card, emptyLabel, isActive = false }: Props) {
   const c = colorClasses(card.color);
   const notes = card.notes?.trim();
-  const notesSize = isActive ? 'text-base' : 'text-sm';
+  // em-based so notes scale off the root font-size (card.textScale).
+  const notesSize = isActive ? 'text-[1em]' : 'text-[0.875em]';
 
   return (
     <div
@@ -19,6 +20,7 @@ export function CardBack({ card, emptyLabel, isActive = false }: Props) {
         c.fg,
         'card-paper card-back-ruled rounded-2xl shadow-md w-full h-full px-4 py-3 flex flex-col gap-2 overflow-y-auto',
       ].join(' ')}
+      style={{ fontSize: `${card.textScale ?? 1}em` }}
     >
       <div className={['text-[10px] uppercase tracking-wide', c.fgDim].join(' ')}>
         {card.title || '—'}

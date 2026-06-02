@@ -7,7 +7,12 @@ import {
 } from '@/services/bible/cardReference';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { Card, CardColor } from '@/types/domain';
-import { CARD_COLORS } from '@/types/domain';
+import {
+  CARD_COLORS,
+  TEXT_SCALE_MIN,
+  TEXT_SCALE_MAX,
+  TEXT_SCALE_STEP,
+} from '@/types/domain';
 import { colorClasses } from './cardColors';
 import { TagInput } from './TagInput';
 
@@ -32,9 +37,15 @@ export function CardEditor({ card, onClose }: Props) {
   const [notes, setNotes] = useState(card.notes ?? '');
   const [tags, setTags] = useState<string[]>(card.tags ?? []);
   const [color, setColor] = useState<CardColor>(card.color ?? 'none');
+  const [textScale, setTextScale] = useState(card.textScale ?? 1);
   const [boardIds, setBoardIds] = useState<string[]>(
     boards.filter((b) => b.cardIds.includes(card.id)).map((b) => b.id),
   );
+
+  const adjustTextScale = (delta: number) =>
+    setTextScale((s) =>
+      Math.round(Math.min(TEXT_SCALE_MAX, Math.max(TEXT_SCALE_MIN, s + delta)) * 100) / 100,
+    );
 
   const save = async () => {
     const refs = referencesText
@@ -51,6 +62,7 @@ export function CardEditor({ card, onClose }: Props) {
       notes: notes.trim(),
       tags,
       color,
+      textScale: textScale === 1 ? undefined : textScale,
     });
 
     for (const b of boards) {
@@ -171,6 +183,40 @@ export function CardEditor({ card, onClose }: Props) {
               />
             );
           })}
+        </div>
+      </Field>
+
+      <Field label={t('cards.textSize')}>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => adjustTextScale(-TEXT_SCALE_STEP)}
+              disabled={textScale <= TEXT_SCALE_MIN}
+              aria-label={t('cards.textSizeSmaller') as string}
+              className="w-9 h-9 rounded-lg bg-navy-soft text-cream font-serif text-xs inline-flex items-center justify-center disabled:opacity-40 hover:bg-navy"
+            >
+              A
+            </button>
+            <span className="w-14 text-center text-sm text-cream-dim tabular-nums">
+              {Math.round(textScale * 100)}%
+            </span>
+            <button
+              type="button"
+              onClick={() => adjustTextScale(TEXT_SCALE_STEP)}
+              disabled={textScale >= TEXT_SCALE_MAX}
+              aria-label={t('cards.textSizeLarger') as string}
+              className="w-9 h-9 rounded-lg bg-navy-soft text-cream font-serif text-xl inline-flex items-center justify-center disabled:opacity-40 hover:bg-navy"
+            >
+              A
+            </button>
+          </div>
+          <span
+            className="flex-1 min-w-0 truncate font-serif text-cream"
+            style={{ fontSize: `${textScale}em` }}
+          >
+            {title.trim() || (t('cards.cardTitle') as string)}
+          </span>
         </div>
       </Field>
 

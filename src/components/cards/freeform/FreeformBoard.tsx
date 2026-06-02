@@ -2,8 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Board, Card, FreeformCardLayout } from '@/types/domain';
 import {
-  BOARD_W,
-  BOARD_H,
+  boardDims,
   effectiveLayout,
   moveCard,
   resizeRotatedBox,
@@ -14,6 +13,7 @@ import {
 } from '@/lib/freeformLayout';
 import { DRAG_MOVE_THRESHOLD_PX } from '@/lib/gestureConstants';
 import { useBoardViewport, type Viewport } from '@/hooks/useBoardViewport';
+import { cssUrl } from '@/utils/cssUrl';
 import { FreeformCardItem } from './FreeformCardItem';
 
 type Props = {
@@ -22,6 +22,10 @@ type Props = {
   onOpen: (card: Card) => void;
   /** Persist one card's layout. Called ONCE per finished manipulation. */
   onLayoutCommit: (cardId: string, layout: FreeformCardLayout) => void;
+  /** View mode (false): tap selects + raises transiently, drag pans, nothing
+   * persisted. Edit mode (true): drag/resize/rotate, committed. Owned by the
+   * parent so the toggle can live in the page header. */
+  editMode: boolean;
 };
 
 /** Forced z so the selected card + its handles sit above everything without
@@ -30,6 +34,7 @@ const SELECTED_Z = 100000;
 
 type Mode =
   | 'pendingCard'
+  | 'pendingCardView'
   | 'pendingBg'
   | 'moveCard'
   | 'pan'
@@ -58,20 +63,46 @@ function frac(clientX: number, clientY: number, rect: DOMRect) {
   return { x: (clientX - rect.left) / rect.width, y: (clientY - rect.top) / rect.height };
 }
 
-export function FreeformBoard({ board, cards, onOpen, onLayoutCommit }: Props) {
+export function FreeformBoard({ board, cards, onOpen, onLayoutCommit, editMode }: Props) {
   const { t } = useTranslation();
   const noNotesLabel = t('cards.noNotes');
+
+  // Board design dimensions for the current orientation. Layout fractions are
+  // relative to these, so flipping orientation reshapes the canvas and cards
+  // keep their fractional position.
+  const { w: bw, h: bh } = boardDims(board.orientation);
+
+  // The A4 sheet surface: the board's background image (cover) when set,
+  // otherwise the default cork texture.
+  const boardBg = board.background?.trim();
+  const sheetBg: React.CSSProperties = boardBg
+    ? {
+        backgroundColor: '#4f3b27',
+        backgroundImage: cssUrl(boardBg),
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+      }
+    : {
+        backgroundColor: '#4f3b27',
+        backgroundImage: 'radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1.4px)',
+        backgroundSize: '8px 8px',
+      };
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const boardLayerRef = useRef<HTMLDivElement>(null);
   const { viewport, vpRef, clampVp, applyLive, commit } = useBoardViewport(
     viewportRef,
     boardLayerRef,
-    BOARD_W,
-    BOARD_H,
+    bw,
+    bh,
   );
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Distraction-free fullscreen (view mode only): the board covers the whole
+  // screen, hiding tabs, the view switcher, the nav, and floating controls.
+  // Toggled by tapping empty board area when nothing is selected.
+  const [fullscreen, setFullscreen] = useState(false);
 
   const layouts = useMemo(
     () => cards.map((c, i) => effectiveLayout(board, c.id, i)),
@@ -89,10 +120,10 @@ export function FreeformBoard({ board, cards, onOpen, onLayoutCommit }: Props) {
   // Latest callbacks/state for the window listeners (which are bound once) and
   // for the pointer-down routers. Updated after each render — event handlers
   // only fire after effects have run, so reads always see current values.
-  const cbRef = useRef({ onOpen, onLayoutCommit, cards, selectedId });
+  const cbRef = useRef({ onOpen, onLayoutCommit, cards, selectedId, editMode, bw, bh });
   useEffect(() => {
     layoutsByIdRef.current = new Map(cards.map((c, i) => [c.id, layouts[i]]));
-    cbRef.current = { onOpen, onLayoutCommit, cards, selectedId };
+    cbRef.current = { onOpen, onLayoutCommit, cards, selectedId, editMode, bw, bh };
   });
 
   const gestureRef = useRef<Gesture | null>(null);
@@ -102,33 +133,40 @@ export function FreeformBoard({ board, cards, onOpen, onLayoutCommit }: Props) {
   const writeCardStyle = useCallback((cardId: string, l: FreeformCardLayout) => {
     const el = elsRef.current.get(cardId);
     if (!el) return;
-    el.style.left = `${l.x * BOARD_W}px`;
-    el.style.top = `${l.y * BOARD_H}px`;
-    el.style.width = `${l.w * BOARD_W}px`;
-    el.style.height = `${l.h * BOARD_H}px`;
+    const { bw: w, bh: h } = cbRef.current;
+    el.style.left = `${l.x * w}px`;
+    el.style.top = `${l.y * h}px`;
+    el.style.width = `${l.w * w}px`;
+    el.style.height = `${l.h * h}px`;
     el.style.transform = `rotate(${l.rotation}deg)`;
   }, []);
 
   // ── pointer-down routers (bound to elements) ──────────────────────────────
 
-  const onCardPointerDown = useCallback((e: React.PointerEvent, cardId: string) => {
-    e.stopPropagation();
-    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (gestureRef.current) return; // ignore a 2nd finger on a card
-    const rect = boardLayerRef.current?.getBoundingClientRect() ?? null;
-    const start = layoutsByIdRef.current.get(cardId);
-    if (!rect || !start) return;
-    gestureRef.current = {
-      mode: 'pendingCard',
-      pointerId: e.pointerId,
-      startX: e.clientX,
-      startY: e.clientY,
-      cardId,
-      startLayout: start,
-      boardRect: rect,
-    };
-    liveRef.current = { ...start };
-  }, []);
+  const onCardPointerDown = useCallback(
+    (e: React.PointerEvent, cardId: string) => {
+      e.stopPropagation();
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (gestureRef.current) return; // ignore a 2nd finger on a card
+      const rect = boardLayerRef.current?.getBoundingClientRect() ?? null;
+      const start = layoutsByIdRef.current.get(cardId);
+      if (!rect || !start) return;
+      const editing = cbRef.current.editMode;
+      gestureRef.current = {
+        // View mode: a card press taps-to-select or (on drag) pans the board.
+        mode: editing ? 'pendingCard' : 'pendingCardView',
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        cardId,
+        startLayout: start,
+        boardRect: rect,
+        startVp: editing ? undefined : { ...vpRef.current },
+      };
+      liveRef.current = editing ? { ...start } : null;
+    },
+    [vpRef],
+  );
 
   const onHandlePointerDown = useCallback(
     (e: React.PointerEvent, cardId: string, handle: HandleId) => {
@@ -139,7 +177,9 @@ export function FreeformBoard({ board, cards, onOpen, onLayoutCommit }: Props) {
       const start = layoutsByIdRef.current.get(cardId);
       if (!rect || !start) return;
       const grabAngle =
-        handle === 'rotate' ? angleToCenter(start, frac(e.clientX, e.clientY, rect)) : 0;
+        handle === 'rotate'
+          ? angleToCenter(start, frac(e.clientX, e.clientY, rect), cbRef.current.bw, cbRef.current.bh)
+          : 0;
       gestureRef.current = {
         mode: handle === 'rotate' ? 'rotate' : 'resize',
         pointerId: e.pointerId,
@@ -205,7 +245,7 @@ export function FreeformBoard({ board, cards, onOpen, onLayoutCommit }: Props) {
       }
 
       // Promote pending → active once past the drag threshold.
-      if (g.mode === 'pendingCard' || g.mode === 'pendingBg') {
+      if (g.mode === 'pendingCard' || g.mode === 'pendingBg' || g.mode === 'pendingCardView') {
         const moved = Math.hypot(e.clientX - g.startX, e.clientY - g.startY);
         if (moved < DRAG_MOVE_THRESHOLD_PX) return;
         if (g.mode === 'pendingCard') {
@@ -219,7 +259,9 @@ export function FreeformBoard({ board, cards, onOpen, onLayoutCommit }: Props) {
             el.style.zIndex = String(SELECTED_Z);
           }
         } else {
+          // pendingBg or (view-mode) pendingCardView → pan the board.
           g.mode = 'pan';
+          if (!g.startVp) g.startVp = { ...vpRef.current };
         }
       }
 
@@ -239,7 +281,13 @@ export function FreeformBoard({ board, cards, onOpen, onLayoutCommit }: Props) {
           if (e.cancelable) e.preventDefault();
           if (!g.boardRect || !g.startLayout || !g.cardId || !g.handle) break;
           const pf = frac(e.clientX, e.clientY, g.boardRect);
-          const r = resizeRotatedBox(g.startLayout, g.handle as Exclude<HandleId, 'rotate'>, pf);
+          const r = resizeRotatedBox(
+            g.startLayout,
+            g.handle as Exclude<HandleId, 'rotate'>,
+            pf,
+            cbRef.current.bw,
+            cbRef.current.bh,
+          );
           const live = { ...g.startLayout, ...r };
           liveRef.current = live;
           writeCardStyle(g.cardId, live);
@@ -249,7 +297,7 @@ export function FreeformBoard({ board, cards, onOpen, onLayoutCommit }: Props) {
           if (e.cancelable) e.preventDefault();
           if (!g.boardRect || !g.startLayout || !g.cardId) break;
           const pf = frac(e.clientX, e.clientY, g.boardRect);
-          const ang = angleToCenter(g.startLayout, pf);
+          const ang = angleToCenter(g.startLayout, pf, cbRef.current.bw, cbRef.current.bh);
           const rotation = rotateCard(g.startLayout.rotation, g.grabAngle ?? 0, ang, e.shiftKey);
           const live = { ...g.startLayout, rotation };
           liveRef.current = live;
@@ -326,7 +374,11 @@ export function FreeformBoard({ board, cards, onOpen, onLayoutCommit }: Props) {
       }
 
       switch (g.mode) {
-        case 'pendingCard': {
+        case 'pendingCard':
+        case 'pendingCardView': {
+          // Tap a card: open it if already selected, else select + raise it.
+          // In view mode the raise is transient (SELECTED_Z render override);
+          // nothing is persisted, so leaving the board changes nothing.
           const card = cbRef.current.cards.find((c) => c.id === g.cardId);
           if (cbRef.current.selectedId === g.cardId) {
             if (card) cbRef.current.onOpen(card);
@@ -336,7 +388,14 @@ export function FreeformBoard({ board, cards, onOpen, onLayoutCommit }: Props) {
           break;
         }
         case 'pendingBg':
-          setSelectedId(null);
+          // Tap empty board area: first clears any selection; tapping again
+          // with nothing selected toggles distraction-free fullscreen (view
+          // mode only — edit mode just deselects).
+          if (cbRef.current.selectedId) {
+            setSelectedId(null);
+          } else if (!cbRef.current.editMode) {
+            setFullscreen((f) => !f);
+          }
           break;
         case 'moveCard':
         case 'resize':
@@ -357,28 +416,64 @@ export function FreeformBoard({ board, cards, onOpen, onLayoutCommit }: Props) {
       const g = gestureRef.current;
       pointersRef.current.delete(e.pointerId);
       if (!g) return;
-      if (g.cardId) {
-        const committed = layoutsByIdRef.current.get(g.cardId);
-        if (committed) writeCardStyle(g.cardId, committed);
-        const el = elsRef.current.get(g.cardId);
-        if (el) el.style.willChange = '';
+      // Keep the in-progress result rather than snapping back to origin — an
+      // interrupted drag/resize/rotate commits where it currently is; pan/pinch
+      // commits the viewport. Pending taps have no movement to keep.
+      switch (g.mode) {
+        case 'moveCard':
+        case 'resize':
+        case 'rotate':
+          endCardGesture(g);
+          if (g.cardId) setSelectedId(g.cardId);
+          break;
+        case 'pan':
+        case 'pinch':
+          commit(vpRef.current);
+          break;
       }
       gestureRef.current = null;
       liveRef.current = null;
     };
 
+    // iOS Safari ignores preventDefault on pointermove for scrolling; a
+    // non-passive touchmove preventDefault is what actually stops it. While a
+    // board gesture owns the touch (gestureRef set on pointerdown), suppress
+    // the browser's scroll/overscroll so iOS can't steal the drag (which would
+    // fire pointercancel and interrupt the gesture).
+    const onTouchMove = (e: TouchEvent) => {
+      if (gestureRef.current && e.cancelable) e.preventDefault();
+    };
+
     window.addEventListener('pointermove', onMove, { passive: false });
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
+      window.removeEventListener('touchmove', onTouchMove);
     };
   }, [applyLive, commit, clampVp, vpRef, writeCardStyle]);
 
+  // Escape always exits fullscreen (so it can't trap the user).
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFullscreen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [fullscreen]);
+
   return (
-    <div className="flex-1 min-h-0 relative overflow-hidden bg-navy-deep">
+    <div
+      className={
+        fullscreen
+          ? 'fixed inset-0 z-50 overflow-hidden bg-navy-deep'
+          : 'flex-1 min-h-0 relative overflow-hidden bg-navy-deep'
+      }
+    >
       <div
         ref={viewportRef}
         className="absolute inset-0 overflow-hidden touch-none select-none"
@@ -388,15 +483,14 @@ export function FreeformBoard({ board, cards, onOpen, onLayoutCommit }: Props) {
       >
         <div
           ref={boardLayerRef}
-          className="absolute left-0 top-0 shadow-2xl"
+          className="absolute left-0 top-0 shadow-2xl ring-1 ring-black/40"
           style={{
-            width: BOARD_W,
-            height: BOARD_H,
+            width: bw,
+            height: bh,
             transformOrigin: '0 0',
             transform: `translate(${viewport.tx}px, ${viewport.ty}px) scale(${viewport.scale})`,
             willChange: 'transform',
-            background:
-              'repeating-linear-gradient(45deg, #cdb38b 0 12px, #c7ab80 12px 24px)',
+            ...sheetBg,
           }}
         >
           {cards.map((card, i) => {
@@ -408,6 +502,9 @@ export function FreeformBoard({ board, cards, onOpen, onLayoutCommit }: Props) {
                 card={card}
                 layout={selected ? { ...layout, z: SELECTED_Z } : layout}
                 selected={selected}
+                editMode={editMode}
+                boardW={bw}
+                boardH={bh}
                 scale={viewport.scale}
                 noNotesLabel={noNotesLabel}
                 registerEl={registerEl}

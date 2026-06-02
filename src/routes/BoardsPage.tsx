@@ -15,7 +15,17 @@ import {
   withCardInBoard,
   withoutCardInBoard,
 } from '@/lib/boardOperations';
+import { cssUrl } from '@/utils/cssUrl';
 import type { Board, BoardViewMode, Card } from '@/types/domain';
+
+/** Cap a board background URL length so a pasted multi-megabyte data: URI
+ * can't bloat the synced board record (re-uploaded on every board edit and
+ * every freeform layout commit). Empty/oversized → undefined (no background). */
+const MAX_BG_URL = 2048;
+function normalizeBackground(v?: string): string | undefined {
+  const t = v?.trim();
+  return t && t.length <= MAX_BG_URL ? t : undefined;
+}
 
 export function BoardsPage() {
   const { t } = useTranslation();
@@ -96,10 +106,14 @@ export function BoardsPage() {
   // Reset tag filter when the active board changes — React's in-render
   // reset pattern (https://react.dev/learn/you-might-not-need-an-effect).
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  // Corkboard arrange/view mode. Lifted here so the toggle can live in the
+  // header (TabRow). Resets to view mode when the active board changes.
+  const [freeformEdit, setFreeformEdit] = useState(false);
   const [tagsBoardId, setTagsBoardId] = useState<string | null>(activeBoardId);
   if (tagsBoardId !== activeBoardId) {
     setTagsBoardId(activeBoardId);
     setSelectedTags([]);
+    setFreeformEdit(false);
   }
 
   const visibleCards = useMemo(() => {
@@ -152,6 +166,7 @@ export function BoardsPage() {
       cardIds: [],
       color,
       emoji,
+      background: normalizeBackground(values.background),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -165,7 +180,13 @@ export function BoardsPage() {
     if (!trimmed) return;
     const emoji = values.emoji?.trim() || undefined;
     const color = values.color && values.color !== 'none' ? values.color : undefined;
-    await upsertBoard({ ...activeBoard, name: trimmed, emoji, color });
+    await upsertBoard({
+      ...activeBoard,
+      name: trimmed,
+      emoji,
+      color,
+      background: normalizeBackground(values.background),
+    });
   };
 
   const removeBoard = async () => {
@@ -188,9 +209,29 @@ export function BoardsPage() {
   };
   const openCard = (c: Card) => navigate(`/cards/${c.id}`);
   const showViewToggle = Boolean(activeBoard) && !showBoardEmptyCta;
+  // Board background image. The corkboard paints it on its own A4 sheet
+  // (FreeformBoard), so the page-level backdrop is only for the other views.
+  const boardBg = activeBoard?.background?.trim();
+  // Full-brightness image (matching the corkboard sheet); the header/filter
+  // chrome is frosted instead of darkening the whole image, and cards are
+  // opaque. A failed/empty image just falls back to the normal app background.
+  const showPageBg = Boolean(boardBg) && viewMode !== 'freeform';
+  const pageStyle = showPageBg
+    ? {
+        backgroundImage: cssUrl(boardBg as string),
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+      }
+    : undefined;
+  const toggleOrientation = async () => {
+    if (!activeBoard) return;
+    const next = (activeBoard.orientation ?? 'portrait') === 'portrait' ? 'landscape' : 'portrait';
+    await upsertBoard({ ...activeBoard, orientation: next });
+  };
 
   return (
-    <div className="flex-1 overflow-y-auto pb-3 flex flex-col">
+    <div className="flex-1 overflow-y-auto pb-3 flex flex-col" style={pageStyle}>
       <TabRow
         boards={boards}
         activeBoardId={activeBoard?.id ?? null}
@@ -200,6 +241,12 @@ export function BoardsPage() {
         onDelete={removeBoard}
         onReorder={reorderBoards}
         onRequestAddCards={() => setAddPickerOpen(true)}
+        showEditToggle={viewMode === 'freeform' && !showBoardEmptyCta}
+        editMode={freeformEdit}
+        onToggleEditMode={() => setFreeformEdit((v) => !v)}
+        orientation={activeBoard?.orientation}
+        onToggleOrientation={() => void toggleOrientation()}
+        solidBackdrop={showPageBg}
       />
 
       {boards.length === 0 ? (
@@ -213,8 +260,10 @@ export function BoardsPage() {
           />
         ) : viewMode === 'freeform' ? (
           <FreeformBoard
+            key={activeBoard.id}
             board={activeBoard}
             cards={boardCards}
+            editMode={freeformEdit}
             onOpen={openCard}
             onLayoutCommit={(cardId, layout) =>
               void setCardLayout(activeBoard.id, cardId, layout)

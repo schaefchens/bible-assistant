@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useChatNavigation } from '@/hooks/useChatNavigation';
@@ -24,6 +24,21 @@ export function AppShell() {
   const [hasPassphrase, setHasPassphrase] = useState(() => !!getPassphrase());
   const online = useLibraryStore((s) => s.online);
   const pendingOps = useLibraryStore((s) => s.pendingOps);
+
+  // Show the bottom status bar immediately when offline, but debounce the
+  // "pending" indicator: routine mutations (e.g. switching a board's view)
+  // bump pendingOps to 1 and flush within milliseconds, which would otherwise
+  // flash the bar for a frame. Only surface pending work that actually lingers.
+  const pendingWhileOnline = online && pendingOps > 0;
+  const [pendingLingered, setPendingLingered] = useState(false);
+  // Reset during render (no effect) once there's nothing pending to linger on.
+  if (!pendingWhileOnline && pendingLingered) setPendingLingered(false);
+  useEffect(() => {
+    if (!pendingWhileOnline) return;
+    const id = window.setTimeout(() => setPendingLingered(true), 600);
+    return () => window.clearTimeout(id);
+  }, [pendingWhileOnline]);
+  const showStatusBar = !online || (pendingOps > 0 && pendingLingered);
 
   useChatNavigation();
   useThinkingDrone();
@@ -55,7 +70,7 @@ export function AppShell() {
         <Outlet />
       </main>
 
-      {(!online || pendingOps > 0) && (
+      {showStatusBar && (
         <div className="px-4 py-1 text-xs text-cream-dim flex items-center gap-2 border-t border-navy-soft bg-navy/90">
           <span className={clsx('h-2 w-2 rounded-full', online ? 'bg-emerald-500' : 'bg-amber-500')} />
           {online ? t('common.online') : t('common.offline')}

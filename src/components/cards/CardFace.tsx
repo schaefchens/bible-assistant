@@ -16,8 +16,10 @@ export function CardFace({ card, size: _size, isActive = false }: Props) {
   const c = colorClasses(card.color);
   void _size;
   const showTags = card.tags && card.tags.length > 0;
-  const titleSize = isActive ? 'text-lg sm:text-xl' : 'text-base sm:text-lg';
-  const emojiSize = isActive ? 'text-xl sm:text-2xl' : 'text-lg sm:text-xl';
+  // Text sizes are em-based so the whole card's text scales off the root
+  // font-size below (driven by card.textScale).
+  const titleSize = isActive ? 'text-[1.125em] sm:text-[1.25em]' : 'text-[1em] sm:text-[1.125em]';
+  const emojiSize = isActive ? 'text-[1.25em] sm:text-[1.5em]' : 'text-[1.125em] sm:text-[1.25em]';
 
   return (
     <div
@@ -26,6 +28,7 @@ export function CardFace({ card, size: _size, isActive = false }: Props) {
         c.fg,
         'card-paper rounded-2xl shadow-md w-full h-full px-4 py-3 flex flex-col gap-2 overflow-hidden',
       ].join(' ')}
+      style={{ fontSize: `${card.textScale ?? 1}em` }}
     >
       <div className="shrink-0 flex items-start gap-2">
         {card.emoji && (
@@ -75,14 +78,14 @@ function VerseBlock({
 }) {
   const locale = useSettingsStore((s) => s.locale);
   const text = useVerseText(reference);
-  const verseSize = isActive ? 'text-lg sm:text-xl' : 'text-base sm:text-lg';
+  const verseSize = isActive ? 'text-[1.125em] sm:text-[1.25em]' : 'text-[1em] sm:text-[1.125em]';
   return (
     <div>
-      <div className={['font-sans text-xs uppercase tracking-wide', dimClass].join(' ')}>
+      <div className={['font-sans text-[0.75em] uppercase tracking-wide', dimClass].join(' ')}>
         {formatCardReferenceHeading(reference, locale)}
       </div>
       {reference.label && (
-        <div className={['font-serif italic text-sm mt-0.5 leading-snug line-clamp-2 break-words', dimClass].join(' ')}>
+        <div className={['font-serif italic text-[0.875em] mt-0.5 leading-snug line-clamp-2 break-words', dimClass].join(' ')}>
           {reference.label}
         </div>
       )}

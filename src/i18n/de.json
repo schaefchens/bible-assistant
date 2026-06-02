@@ -127,6 +127,9 @@
       "sage": "Salbei",
       "sky": "Himmel"
     },
+    "textSize": "Textgröße",
+    "textSizeSmaller": "Kleinerer Text",
+    "textSizeLarger": "Größerer Text",
     "flip": "Umdrehen",
     "front": "Vorderseite"
   },
@@ -137,6 +140,11 @@
     "boardName": "Tafel-Name",
     "cardCount": "{{count}} Karten",
     "addCards": "Karten hinzufügen",
+    "editLayout": "Anordnen",
+    "doneEditing": "Fertig",
+    "toggleOrientation": "Hoch- / Querformat",
+    "background": "Hintergrundbild-URL",
+    "backgroundClear": "Hintergrund entfernen",
     "reorder": "Umsortieren",
     "doneReordering": "Fertig",
     "movePrev": "Nach vorne",

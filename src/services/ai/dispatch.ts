@@ -38,15 +38,22 @@ import {
   resolveCard,
 } from '@/services/library/cardResolver';
 import { withoutCardInBoard } from '@/lib/boardOperations';
-import { autoPlaceCard } from '@/lib/freeformLayout';
+import { autoPlaceCard, clamp } from '@/lib/freeformLayout';
 import {
   isBrowserVoice,
+  TEXT_SCALE_MIN,
+  TEXT_SCALE_MAX,
   type Card,
   type Board,
   type FreeformCardLayout,
   type OpenAiVoiceId,
   type VerseSummary,
 } from '@/types/domain';
+
+/** Clamp an AI-supplied text scale to the card's allowed range. */
+function clampTextScale(v: number): number {
+  return clamp(v, TEXT_SCALE_MIN, TEXT_SCALE_MAX);
+}
 
 type DispatchContext = {
   messageId: string;
@@ -322,6 +329,7 @@ async function handleCreateCard(args: ToolArgs['create_card']): Promise<ToolDisp
     references: args.references.map(parseCardReferenceLine),
     notes: args.notes,
     color: 'yellow',
+    textScale: args.textScale !== undefined ? clampTextScale(args.textScale) : undefined,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -366,6 +374,8 @@ async function handleUpdateCard(args: ToolArgs['update_card']): Promise<ToolDisp
       ? args.references.map(parseCardReferenceLine)
       : lookup.card.references,
     notes: args.notes ?? lookup.card.notes,
+    textScale:
+      args.textScale !== undefined ? clampTextScale(args.textScale) : lookup.card.textScale,
     updatedAt: Date.now(),
   };
   await useLibraryStore.getState().upsertCard(updated);

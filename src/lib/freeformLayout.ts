@@ -1,4 +1,4 @@
-import type { Board, FreeformCardLayout } from '@/types/domain';
+import type { Board, FreeformCardLayout, BoardOrientation } from '@/types/domain';
 
 /** Design dimensions of the A4 corkboard, in px (210×297mm @ 96dpi). All
  * layout fractions are relative to these, so the board can be rendered at any
@@ -10,6 +10,13 @@ export const BOARD_H = 1123;
  * finger-sized handle so handles never overlap into uselessness. */
 export const MIN_W_PX = 64;
 export const MIN_H_PX = 64;
+
+/** Design dimensions of the board for a given orientation. Landscape swaps the
+ * A4 sides. Layout fractions are relative to these, so a card keeps its
+ * fractional position when the board is flipped. */
+export function boardDims(orientation?: BoardOrientation): { w: number; h: number } {
+  return orientation === 'landscape' ? { w: BOARD_H, h: BOARD_W } : { w: BOARD_W, h: BOARD_H };
+}
 
 /** Default card footprint for an un-placed card, as board fractions. */
 const DEFAULT_W = 0.24;
@@ -109,14 +116,16 @@ export function resizeRotatedBox(
   start: FreeformCardLayout,
   handle: Exclude<HandleId, 'rotate'>,
   pointerFrac: Vec,
+  bw: number,
+  bh: number,
 ): { x: number; y: number; w: number; h: number } {
   const theta = deg2rad(start.rotation);
-  const W0 = start.w * BOARD_W;
-  const H0 = start.h * BOARD_H;
-  const x0 = start.x * BOARD_W;
-  const y0 = start.y * BOARD_H;
+  const W0 = start.w * bw;
+  const H0 = start.h * bh;
+  const x0 = start.x * bw;
+  const y0 = start.y * bh;
   const C0: Vec = { x: x0 + W0 / 2, y: y0 + H0 / 2 };
-  const Pm: Vec = { x: pointerFrac.x * BOARD_W, y: pointerFrac.y * BOARD_H };
+  const Pm: Vec = { x: pointerFrac.x * bw, y: pointerFrac.y * bh };
 
   // Which local axes this handle drives, and the anchor (opposite) signs.
   let signX = 0;
@@ -139,8 +148,8 @@ export function resizeRotatedBox(
 
   // New dimensions: distance from anchor to pointer along each driven axis.
   // Axes the handle doesn't drive keep their starting size.
-  const newW = signX !== 0 ? clamp(signX * local.x, MIN_W_PX, BOARD_W) : W0;
-  const newH = signY !== 0 ? clamp(signY * local.y, MIN_H_PX, BOARD_H) : H0;
+  const newW = signX !== 0 ? clamp(signX * local.x, MIN_W_PX, bw) : W0;
+  const newH = signY !== 0 ? clamp(signY * local.y, MIN_H_PX, bh) : H0;
 
   // New center, keeping the anchor fixed: step half the new box away from it
   // along the (rotated) driven axes.
@@ -151,20 +160,25 @@ export function resizeRotatedBox(
   const C: Vec = { x: A.x + offset.x, y: A.y + offset.y };
 
   return {
-    x: (C.x - newW / 2) / BOARD_W,
-    y: (C.y - newH / 2) / BOARD_H,
-    w: newW / BOARD_W,
-    h: newH / BOARD_H,
+    x: (C.x - newW / 2) / bw,
+    y: (C.y - newH / 2) / bh,
+    w: newW / bw,
+    h: newH / bh,
   };
 }
 
 /** Screen-space angle (radians) from a card's center to a board point. The
  * caller captures this once at grab time, then again on each move; the
  * rotation delta is (now - grab). Scale-invariant (atan2 of differences). */
-export function angleToCenter(layout: FreeformCardLayout, pointerFrac: Vec): number {
-  const cx = (layout.x + layout.w / 2) * BOARD_W;
-  const cy = (layout.y + layout.h / 2) * BOARD_H;
-  return Math.atan2(pointerFrac.y * BOARD_H - cy, pointerFrac.x * BOARD_W - cx);
+export function angleToCenter(
+  layout: FreeformCardLayout,
+  pointerFrac: Vec,
+  bw: number,
+  bh: number,
+): number {
+  const cx = (layout.x + layout.w / 2) * bw;
+  const cy = (layout.y + layout.h / 2) * bh;
+  return Math.atan2(pointerFrac.y * bh - cy, pointerFrac.x * bw - cx);
 }
 
 /** New rotation (degrees) given the start rotation, the angle grabbed at the

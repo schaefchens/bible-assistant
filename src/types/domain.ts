@@ -141,9 +141,17 @@ export type Card = {
   tags?: string[];
   color?: CardColor;
   emoji?: string;
+  /** Text-size multiplier for this card's title / verses / notes. 1 = default
+   * (undefined treated as 1). Clamped to [TEXT_SCALE_MIN, TEXT_SCALE_MAX]. */
+  textScale?: number;
   createdAt: number;
   updatedAt: number;
 };
+
+/** Bounds for {@link Card.textScale}. */
+export const TEXT_SCALE_MIN = 0.7;
+export const TEXT_SCALE_MAX = 2;
+export const TEXT_SCALE_STEP = 0.1;
 
 export type BoardViewMode = 'grid' | 'stack' | 'pile' | 'freeform';
 
@@ -163,6 +171,9 @@ export type FreeformCardLayout = {
   z: number;
 };
 
+/** Corkboard sheet orientation. Defaults to portrait. */
+export type BoardOrientation = 'portrait' | 'landscape';
+
 export type Board = {
   id: string;
   name: string;
@@ -170,6 +181,12 @@ export type Board = {
   color?: CardColor;
   emoji?: string;
   viewMode?: BoardViewMode;
+  /** Corkboard sheet orientation (freeform view). Defaults to portrait. */
+  orientation?: BoardOrientation;
+  /** Optional background image URL for the board. Shown as the corkboard
+   * sheet surface, and behind the cards in the other views. Empty/undefined
+   * = no background. */
+  background?: string;
   /** Freeform-view placement, keyed by cardId. Sparse — cards in `cardIds`
    * with no entry are auto-placed deterministically (see lib/freeformLayout).
    * Per-board by construction, so the same card on two boards has independent
