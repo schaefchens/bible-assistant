@@ -37,10 +37,13 @@ import {
   resolveBoard,
   resolveCard,
 } from '@/services/library/cardResolver';
+import { withoutCardInBoard } from '@/lib/boardOperations';
+import { autoPlaceCard } from '@/lib/freeformLayout';
 import {
   isBrowserVoice,
   type Card,
   type Board,
+  type FreeformCardLayout,
   type OpenAiVoiceId,
   type VerseSummary,
 } from '@/types/domain';
@@ -87,6 +90,7 @@ const TOOL_REGISTRY: { [N in ToolName]: ToolHandler<N> } = {
   delete_board: (args) => handleDeleteBoard(args),
   add_card_to_board: (args) => handleAddCardToBoard(args),
   remove_card_from_board: (args) => handleRemoveCardFromBoard(args),
+  arrange_card: (args) => handleArrangeCard(args),
   list_boards: () => ({ ok: true, data: useLibraryStore.getState().boards }),
   set_language: (args) => handleSetLanguage(args),
   set_translation: (args) => handleSetTranslation(args),
@@ -525,10 +529,48 @@ async function handleRemoveCardFromBoard(
   if (!board.cardIds.includes(cardId)) {
     return { ok: true, data: { boardId: board.id, boardName: board.name, cardId, unchanged: true } };
   }
-  await useLibraryStore
-    .getState()
-    .upsertBoard({ ...board, cardIds: board.cardIds.filter((id) => id !== cardId) });
+  await useLibraryStore.getState().upsertBoard(withoutCardInBoard(board, cardId));
   return { ok: true, data: { boardId: board.id, boardName: board.name, cardId, cardTitle: cardLookup.card.title } };
+}
+
+async function handleArrangeCard(
+  args: ToolArgs['arrange_card'],
+): Promise<ToolDispatchResult> {
+  const board = resolveBoard(args.board);
+  if (!board) return { ok: false, error: `board "${args.board}" not found` };
+  const cardLookup = resolveCard(args.card);
+  if (!cardLookup.ok) return { ok: false, error: cardLookup.error };
+  const cardId = cardLookup.card.id;
+  // Spatial only — never alters membership. The card must already be on the board.
+  if (!board.cardIds.includes(cardId)) {
+    return {
+      ok: false,
+      error: `card "${cardLookup.card.title}" is not on board "${board.name}" — add it first with add_card_to_board`,
+    };
+  }
+  // Base on the existing placement, or the deterministic auto-placement, so a
+  // partial call (e.g. rotation only) leaves the other fields sensible.
+  const base: FreeformCardLayout =
+    board.freeform?.[cardId] ?? autoPlaceCard(cardId, board.cardIds.indexOf(cardId));
+  const next: FreeformCardLayout = {
+    x: args.x !== undefined ? clamp01(args.x) : base.x,
+    y: args.y !== undefined ? clamp01(args.y) : base.y,
+    w: args.width !== undefined ? clamp01(args.width) : base.w,
+    h: args.height !== undefined ? clamp01(args.height) : base.h,
+    rotation: args.rotation !== undefined ? args.rotation : base.rotation,
+    z: base.z,
+  };
+  await useLibraryStore.getState().setCardLayout(board.id, cardId, next);
+  return {
+    ok: true,
+    data: {
+      boardId: board.id,
+      boardName: board.name,
+      cardId,
+      cardTitle: cardLookup.card.title,
+      layout: next,
+    },
+  };
 }
 
 function handleSetPlaybackRate(

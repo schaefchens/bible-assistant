@@ -16,5 +16,12 @@ export function withCardInBoard(board: Board, cardId: string): Board {
 }
 
 export function withoutCardInBoard(board: Board, cardId: string): Board {
-  return { ...board, cardIds: board.cardIds.filter((id) => id !== cardId) };
+  if (!board.cardIds.includes(cardId)) return board;
+  const cardIds = board.cardIds.filter((id) => id !== cardId);
+  if (!board.freeform || !(cardId in board.freeform)) return { ...board, cardIds };
+  // Also drop the card's freeform placement so boards.json doesn't accumulate
+  // stale layout entries.
+  const { [cardId]: _drop, ...freeform } = board.freeform;
+  void _drop;
+  return { ...board, cardIds, freeform };
 }

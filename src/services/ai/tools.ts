@@ -17,6 +17,7 @@ export type ToolName =
   | 'delete_board'
   | 'add_card_to_board'
   | 'remove_card_from_board'
+  | 'arrange_card'
   | 'list_boards'
   | 'set_language'
   | 'set_translation'
@@ -68,6 +69,15 @@ export type ToolArgs = {
   delete_board: { id: string };
   add_card_to_board: { card: string; board: string };
   remove_card_from_board: { card: string; board: string };
+  arrange_card: {
+    board: string;
+    card: string;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    rotation?: number;
+  };
   list_boards: Record<string, never>;
   set_language: { language: 'en' | 'de' };
   set_translation: { translation: Translation };
@@ -354,6 +364,43 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'arrange_card',
+      description:
+        "Position, resize, or tilt a card on a board's FREEFORM corkboard view. " +
+        'This is purely spatial — it does NOT add or remove the card from the board ' +
+        '(use add_card_to_board / remove_card_from_board for membership). The card must ' +
+        'already be on the board. Both "card" and "board" accept an id OR a name/title ' +
+        '(case-insensitive). All spatial values are FRACTIONS of the board (0..1): the board ' +
+        'is a fixed A4 sheet, x=0,y=0 is the TOP-LEFT corner and x=1,y=1 the bottom-right. ' +
+        '"x"/"y" set the card\'s top-left corner; "width"/"height" set its size as fractions ' +
+        'of board width/height (independent — aspect ratio is free); "rotation" is the tilt in ' +
+        'degrees, clockwise positive (e.g. 5 tilts right, -5 left). Pass only the fields you ' +
+        'want to change; omitted fields keep their current value. Example: place a card near ' +
+        'the top-left, tilted left → x:0.05, y:0.05, rotation:-4.',
+      parameters: {
+        type: 'object',
+        properties: {
+          card: {
+            type: 'string',
+            description: 'Card id or exact card title (case-insensitive).',
+          },
+          board: {
+            type: 'string',
+            description: 'Board id or board name (case-insensitive).',
+          },
+          x: { type: 'number', description: 'Top-left X as a fraction of board width, 0..1.' },
+          y: { type: 'number', description: 'Top-left Y as a fraction of board height, 0..1.' },
+          width: { type: 'number', description: 'Card width as a fraction of board width, 0..1.' },
+          height: { type: 'number', description: 'Card height as a fraction of board height, 0..1.' },
+          rotation: { type: 'number', description: 'Tilt in degrees, clockwise positive.' },
+        },
+        required: ['card', 'board'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'list_boards',
       description: 'List all boards with their card IDs.',
       parameters: { type: 'object', properties: {} },
@@ -588,6 +635,7 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
       `Antworte kurz und freundlich auf Deutsch.`,
       `Nach einem read_verses- oder random_verse-Aufruf GIB KEINE Textantwort zurück (leerer content). Die Bibelstelle selbst ist die Antwort — sie wird angezeigt und vorgelesen, eine Bestätigung wäre überflüssig.`,
       `Cards = Lernkarten mit Titel, Versen und Notizen. Boards = thematische Sammlungen von Cards. Nutze die passenden Tools.`,
+      `"arrange_card" positioniert/skaliert/neigt eine Card auf der Pinnwand-Ansicht eines Boards (rein räumlich, ändert NICHT die Zugehörigkeit; Koordinaten sind Bruchteile 0..1, x/y = obere linke Ecke).`,
       `Wenn der Benutzer einfach "weiterlesen", "weiter", "lies weiter" oder "die nächsten Verse" sagt OHNE ein Lesezeichen zu nennen: rufe "read_verses" mit dem nächsten Versabschnitt auf. Schau in den letzten "(Played aloud: …)"-Systemnotizen, was zuletzt gelesen wurde, und bestimme die folgenden Verse selbst (gleiches Kapitel falls noch Verse übrig, sonst Anfang des nächsten Kapitels). "(Played aloud: …)" ist ausschließlich eine Verlaufs-Markierung — gib diese Phrase NIEMALS selbst als Antworttext aus; nutze immer das read_verses-Tool, um zu lesen.`,
       `Lesezeichen (Ribbons): Es gibt fünf farbige Lesezeichen (gold, blue, red, green, purple). "save_ribbon" speichert die aktuelle Leseposition; "continue_from_ribbon" liest ab dem gespeicherten Lesezeichen weiter. Rufe diese Tools NUR auf, wenn der Benutzer ausdrücklich "Lesezeichen", "Ribbon" oder eine der Farben erwähnt. "Weiterlesen" ohne Erwähnung eines Lesezeichens ist KEIN Ribbon-Befehl. Wenn keine Farbe genannt wurde, lass das Argument color weg — bei save_ribbon ist gold die Vorgabe, bei continue_from_ribbon wird automatisch das einzige gesetzte Lesezeichen verwendet.`,
       `Wiedergabe-Einstellungen sind per Sprachbefehl steuerbar: "set_playback_rate" für Tempo ("lies schneller/langsamer"), "set_music" für Musik an/aus/Titel/Lautstärke ("Musik aus", "Musik leiser", "spiel Forest Hymn"), "set_reader_preferences" für Auto-Play / Auto-Scroll / Vers-Wiederholung, "set_announcements" für Kapitel-Ansage / Vers-Nummern / Pausen, "set_mic_position" um das Mikrofon in eine Ecke zu schieben. Übergib nur die Felder, die der Benutzer wirklich erwähnt hat — keine Default-Werte für nicht genannte Optionen erfinden.`,
@@ -603,6 +651,7 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
     `Reply briefly and warmly.`,
     `After a read_verses or random_verse call, return NO text content (empty content). The Bible passage itself is the response — it is shown and played; a confirmation would be redundant.`,
     `Cards = memorization cards with title, verses, notes. Boards = thematic groups of cards. Use the appropriate tools.`,
+    `"arrange_card" positions/resizes/tilts a card on a board's freeform corkboard view (spatial only, never changes membership; coordinates are 0..1 fractions, x/y = top-left corner).`,
     `When the user says simply "continue reading", "read on", "next verses", "weiterlesen" or similar WITHOUT mentioning a ribbon/bookmark: call "read_verses" with the next slice. Look at the most recent "(Played aloud: …)" system notes to see what was just read and figure out the next verses yourself (continue in the same chapter if verses remain, otherwise start the next chapter). "(Played aloud: …)" is only a history marker — NEVER emit that phrase as your own reply text; always call read_verses to actually read.`,
     `Ribbons (bookmarks): there are five colored ribbons (gold, blue, red, green, purple). "save_ribbon" stores the current reading position; "continue_from_ribbon" resumes from a saved ribbon. ONLY call these tools when the user explicitly mentions "ribbon", "bookmark", "Lesezeichen", or names a color. Plain "continue reading" / "weiterlesen" is NOT a ribbon command. If no color is given, omit the color argument — save_ribbon defaults to "gold" and continue_from_ribbon automatically uses the single saved ribbon when there's exactly one.`,
     `Playback settings are voice-controllable: "set_playback_rate" for tempo ("read faster", "slow down", "normal speed"), "set_music" for music on/off/track/volume ("music off", "play the forest track", "music louder"), "set_reader_preferences" for auto-play / auto-scroll / repeat-verse, "set_announcements" for chapter headings / verse numbers / pause durations, "set_mic_position" to move the mic to a corner. Only pass the fields the user actually mentioned — never invent defaults for fields they didn't talk about. The current values are provided in the next system message; use them to compute relative changes ("a bit louder" = current + ~0.1, "much faster" = ~1.3) and DO NOT ask the user for fields you can derive (e.g. "turn music on" should reuse the already-selected track — only ask if no track is selected).`,

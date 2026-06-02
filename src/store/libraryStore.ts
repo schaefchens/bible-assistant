@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { db } from '@/db/dexie';
-import type { Card, Board } from '@/types/domain';
+import type { Card, Board, FreeformCardLayout } from '@/types/domain';
 import { apiGetJson, apiPostJson } from '@/services/api/client';
 import { normalizeCardReferences } from '@/services/bible/cardReference';
 import { reconcileOrder, reorderInArray } from '@/utils/orderingUtils';
@@ -28,6 +28,7 @@ type LibraryState = {
   reorderCards: (fromId: string, toId: string) => Promise<void>;
   setCardOrder: (order: string[]) => Promise<void>;
   upsertBoard: (board: Board) => Promise<void>;
+  setCardLayout: (boardId: string, cardId: string, layout: FreeformCardLayout) => Promise<void>;
   deleteBoard: (id: string) => Promise<void>;
   reorderBoards: (fromId: string, toId: string) => Promise<void>;
   setBoardOrder: (order: string[]) => Promise<void>;
@@ -203,6 +204,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       pendingOps: isNew ? s.pendingOps + 2 : s.pendingOps + 1,
     }));
     if (get().online) void get().flushQueue();
+  },
+
+  setCardLayout: async (boardId, cardId, layout) => {
+    const board = get().boards.find((b) => b.id === boardId);
+    // Spatial only — never create an orphan layout for a non-member card.
+    if (!board || !board.cardIds.includes(cardId)) return;
+    await get().upsertBoard({
+      ...board,
+      freeform: { ...(board.freeform ?? {}), [cardId]: layout },
+    });
   },
 
   deleteBoard: async (id) => {

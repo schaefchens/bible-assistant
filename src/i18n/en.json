@@ -168,6 +168,7 @@
       "grid": "Grid",
       "stack": "Stack",
       "pile": "Pile",
+      "freeform": "Corkboard",
       "switchTo": "Switch view"
     }
   },

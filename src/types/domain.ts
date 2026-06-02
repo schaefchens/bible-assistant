@@ -145,7 +145,23 @@ export type Card = {
   updatedAt: number;
 };
 
-export type BoardViewMode = 'grid' | 'stack' | 'pile';
+export type BoardViewMode = 'grid' | 'stack' | 'pile' | 'freeform';
+
+/** One card's placement on a freeform corkboard. All spatial values are
+ * FRACTIONS of the (fixed A4) board, so they're resolution-independent and
+ * survive pan/zoom.
+ *   x, y      top-left corner, 0..1 of board width/height (unrotated frame)
+ *   w, h      size, 0..1 of board width/height (free aspect ratio)
+ *   rotation  tilt in degrees, clockwise positive, about the card CENTER
+ *   z         stacking order; higher renders on top */
+export type FreeformCardLayout = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rotation: number;
+  z: number;
+};
 
 export type Board = {
   id: string;
@@ -154,6 +170,11 @@ export type Board = {
   color?: CardColor;
   emoji?: string;
   viewMode?: BoardViewMode;
+  /** Freeform-view placement, keyed by cardId. Sparse — cards in `cardIds`
+   * with no entry are auto-placed deterministically (see lib/freeformLayout).
+   * Per-board by construction, so the same card on two boards has independent
+   * placement. Stale entries (card removed/deleted) are harmless. */
+  freeform?: Record<string, FreeformCardLayout>;
   createdAt: number;
   updatedAt: number;
 };

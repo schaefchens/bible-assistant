@@ -5,6 +5,7 @@ import { useLibraryStore, nowId } from '@/store/libraryStore';
 import { BoardGrid } from '@/components/cards/BoardGrid';
 import { CardStack } from '@/components/cards/CardStack';
 import { CardPile } from '@/components/cards/CardPile';
+import { FreeformBoard } from '@/components/cards/freeform/FreeformBoard';
 import { BoardViewToggle } from '@/components/cards/BoardViewToggle';
 import { TagFilterBar } from '@/components/cards/TagFilterBar';
 import { TabRow, type BoardValues } from '@/components/boards/TabRow';
@@ -27,6 +28,7 @@ export function BoardsPage() {
   const activeBoardId = useLibraryStore((s) => s.activeBoardId);
   const setActiveBoardId = useLibraryStore((s) => s.setActiveBoardId);
   const upsertBoard = useLibraryStore((s) => s.upsertBoard);
+  const setCardLayout = useLibraryStore((s) => s.setCardLayout);
   const deleteBoard = useLibraryStore((s) => s.deleteBoard);
   const reorderBoards = useLibraryStore((s) => s.reorderBoards);
   const initialized = useLibraryStore((s) => s.initialized);
@@ -208,6 +210,15 @@ export function BoardsPage() {
             text={t('boards.emptyBoard')}
             ctaLabel={t('boards.addCards')}
             onCta={() => setAddPickerOpen(true)}
+          />
+        ) : viewMode === 'freeform' ? (
+          <FreeformBoard
+            board={activeBoard}
+            cards={boardCards}
+            onOpen={openCard}
+            onLayoutCommit={(cardId, layout) =>
+              void setCardLayout(activeBoard.id, cardId, layout)
+            }
           />
         ) : (
           <>

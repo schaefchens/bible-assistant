@@ -10,6 +10,7 @@ const MODES: { mode: BoardViewMode; glyph: string }[] = [
   { mode: 'grid', glyph: '▦' },
   { mode: 'stack', glyph: '▤' },
   { mode: 'pile', glyph: '▢' },
+  { mode: 'freeform', glyph: '📌' },
 ];
 
 export function BoardViewToggle({ mode, onChange }: Props) {
