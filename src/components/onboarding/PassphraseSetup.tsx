@@ -5,6 +5,7 @@ import {
   setPassphrase,
   validatePassphrase,
 } from '@/lib/passphrase';
+import { copyText } from '@/lib/nativeBridge';
 
 type View = 'choice' | 'create' | 'recover';
 
@@ -12,7 +13,7 @@ export function PassphraseSetup({ onDone }: { onDone: () => void }) {
   const [view, setView] = useState<View>('choice');
 
   return (
-    <div className="flex flex-col h-full pt-safe pb-safe bg-navy text-cream">
+    <div className="flex flex-col h-full pt-safe pb-safe px-safe bg-navy text-cream">
       <div className="flex-1 overflow-y-auto px-6 py-8 flex flex-col">
         {view === 'choice' && <ChoiceView onCreate={() => setView('create')} onRecover={() => setView('recover')} />}
         {view === 'create' && <CreateView onDone={onDone} onBack={() => setView('choice')} />}
@@ -48,17 +49,17 @@ function CreateView({ onDone, onBack }: { onDone: () => void; onBack: () => void
   const [copied, setCopied] = useState(false);
 
   const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(mnemonic);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    } catch {
-      /* ignore */
-    }
+    // Only flash "copied" if it actually landed — this is the one string the
+    // user cannot recover if it's lost.
+    if (!(await copyText(mnemonic))) return;
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
   };
 
-  const onContinue = () => {
-    setPassphrase(mnemonic);
+  // Await the write before advancing: the user has just been told this phrase
+  // is saved, and it's the one value they cannot recover if the app dies here.
+  const onContinue = async () => {
+    await setPassphrase(mnemonic);
     onDone();
   };
 
@@ -90,7 +91,7 @@ function CreateView({ onDone, onBack }: { onDone: () => void; onBack: () => void
         type="button"
         className="btn-primary w-full py-3 mt-6 disabled:opacity-40 disabled:cursor-not-allowed"
         disabled={!confirmed}
-        onClick={onContinue}
+        onClick={() => void onContinue()}
       >
         {t('onboarding.continue')}
       </button>
@@ -103,12 +104,12 @@ function RecoverView({ onDone, onBack }: { onDone: () => void; onBack: () => voi
   const [value, setValue] = useState('');
   const [error, setError] = useState(false);
 
-  const onActivate = () => {
+  const onActivate = async () => {
     if (!validatePassphrase(value)) {
       setError(true);
       return;
     }
-    setPassphrase(value);
+    await setPassphrase(value);
     onDone();
   };
 
@@ -143,7 +144,7 @@ function RecoverView({ onDone, onBack }: { onDone: () => void; onBack: () => voi
         type="button"
         className="btn-primary w-full py-3 mt-6 disabled:opacity-40 disabled:cursor-not-allowed"
         disabled={value.trim().length === 0}
-        onClick={onActivate}
+        onClick={() => void onActivate()}
       >
         {t('onboarding.activate')}
       </button>

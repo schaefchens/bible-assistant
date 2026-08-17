@@ -1,5 +1,6 @@
 import Dexie from 'dexie';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
+import { clearPassphrase } from '@/lib/passphrase';
 
 // Wipes every piece of persisted state so the next load is a clean install:
 // localStorage keys under `ba.*`, sessionStorage, the Dexie database, all
@@ -23,6 +24,15 @@ export async function factoryReset(): Promise<void> {
     // ignore
   }
 
+  // The mnemonic now lives in durable native storage, which the localStorage
+  // sweep above doesn't touch — without this a "factory reset" would leave the
+  // identity behind and the app would boot straight back into it.
+  try {
+    await clearPassphrase();
+  } catch {
+    // ignore
+  }
+
   try {
     sessionStorage.clear();
   } catch {
@@ -30,7 +40,18 @@ export async function factoryReset(): Promise<void> {
   }
 
   try {
+    // Cards, boards, sync queue, preferences, and the media cache.
     await Dexie.delete('bible-assistant');
+  } catch {
+    // ignore
+  }
+
+  try {
+    // Downloaded Bible packs live in their own database, so the delete above
+    // does not touch them — without this a "factory reset" would leave tens of
+    // MB of offline Bibles behind and the picker would still show them as
+    // installed while the app treated itself as a clean install.
+    await Dexie.delete('bible-assistant-packs');
   } catch {
     // ignore
   }
