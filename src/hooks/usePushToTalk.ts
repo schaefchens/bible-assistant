@@ -5,6 +5,11 @@ import { describeMicError, micConstraints, pickMicMime } from '@/lib/micRecord';
 import { playMicCue } from '@/lib/micCue';
 import { nudgeIosPlaybackRouting } from '@/lib/iosAudioRouting';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
+import {
+  nativeSpeechSupported,
+  startNativeSpeech,
+  stopNativeSpeech,
+} from '@/lib/nativeSpeech';
 
 const HOTKEY_CODE = 'Backquote';
 
@@ -33,11 +38,51 @@ export function usePushToTalk(onTranscript: (text: string) => void) {
   const chunksRef = useRef<Blob[]>([]);
   const startingRef = useRef(false);
 
+  /** True while a native recognition session is running (rather than a
+   * MediaRecorder), so stop() knows which engine to address. */
+  const nativeSessionRef = useRef(false);
+
   const start = useCallback(async () => {
     if (startingRef.current) return;
+    if (nativeSessionRef.current) return;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       return;
     }
+
+    // On native, use the same on-device recogniser the mic button uses: no
+    // upload, and no getUserMedia — which is what drags in the iOS
+    // audio-session workarounds below.
+    if (nativeSpeechSupported()) {
+      startingRef.current = true;
+      try {
+        const ok = await startNativeSpeech({
+          language: locale === 'de' ? 'de-DE' : 'en-US',
+          onPartial: () => {},
+          onFinal: (text) => {
+            const trimmed = text.trim();
+            if (trimmed) onTranscriptRef.current(trimmed);
+          },
+          onError: (msg) => console.warn('push-to-talk recognition failed', msg),
+          onEnd: () => {
+            nativeSessionRef.current = false;
+            setRecording(false);
+            audioPlayback.setDucked(false);
+            playMicCue('stop');
+          },
+        });
+        if (ok) {
+          nativeSessionRef.current = true;
+          setRecording(true);
+          audioPlayback.setDucked(true);
+          playMicCue('start');
+          return;
+        }
+        // Unavailable or refused — fall through to the Whisper path below.
+      } finally {
+        startingRef.current = false;
+      }
+    }
+
     startingRef.current = true;
     let stream: MediaStream | null = null;
     try {
@@ -87,6 +132,12 @@ export function usePushToTalk(onTranscript: (text: string) => void) {
   }, [locale]);
 
   const stop = useCallback(() => {
+    if (nativeSessionRef.current) {
+      // The plugin reports the stop through its listeningState listener, which
+      // is what clears `recording`, unducks and plays the stop cue.
+      void stopNativeSpeech();
+      return;
+    }
     const mr = mediaRecorderRef.current;
     if (mr && mr.state !== 'inactive') {
       mr.stop();

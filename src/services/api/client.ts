@@ -1,9 +1,8 @@
 import { requireIdentity } from '@/lib/identity';
 import { useSettingsStore } from '@/store/settingsStore';
-
-// import.meta.env.BASE_URL is the value of `base` in vite.config.ts ('/assistant/' here),
-// so the SPA can be served from any subpath without code changes.
-const API_BASE = `${import.meta.env.BASE_URL}api.php`;
+// Resolves to the same '/assistant/api.php' on the web build; on the native
+// build it carries the absolute backend origin, which the WebView can't infer.
+import { API_BASE } from './origin';
 
 export class ApiError extends Error {
   status: number;

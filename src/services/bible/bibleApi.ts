@@ -1,5 +1,7 @@
 import type { ParsedReference } from './referenceParser';
-import { apiPostJson } from '@/services/api/client';
+// chapterSources imports only *types* from this module, so there's no runtime
+// cycle despite the apparent circularity.
+import { resolveChapter } from './chapterSources';
 
 export type Translation =
   | 'S00'
@@ -28,6 +30,10 @@ export type BibleVerse = {
 };
 
 const chapterCache = new Map<string, BibleVerse[]>();
+/** In-flight requests, so concurrent callers share one fetch. autoPlay and
+ * useContinueReading both prefetch the same next chapter today and each used
+ * to issue its own POST. */
+const inflight = new Map<string, Promise<BibleVerse[]>>();
 
 export async function getChapter(
   translation: Translation,
@@ -37,13 +43,34 @@ export async function getChapter(
   const key = `${translation}:${bookId}:${chapter}`;
   const cached = chapterCache.get(key);
   if (cached) return cached;
+  const pending = inflight.get(key);
+  if (pending) return pending;
 
-  const resp = await apiPostJson<{ verses: BibleVerse[]; cached: boolean }>(
-    'bible.chapter',
-    { translation, bookId, chapter },
-  );
-  chapterCache.set(key, resp.verses);
-  return resp.verses;
+  // resolveChapter walks bundled packs then the network — see chapterSources.
+  const p = resolveChapter(translation, bookId, chapter)
+    .then((verses) => {
+      chapterCache.set(key, verses);
+      return verses;
+    })
+    .finally(() => {
+      inflight.delete(key);
+    });
+  inflight.set(key, p);
+  return p;
+}
+
+/**
+ * Drop memoized chapters — call after deleting or upgrading a downloaded pack,
+ * otherwise the in-memory cache keeps serving the old text until restart.
+ */
+export function invalidateChapterCache(translation?: Translation): void {
+  if (!translation) {
+    chapterCache.clear();
+    return;
+  }
+  for (const k of chapterCache.keys()) {
+    if (k.startsWith(`${translation}:`)) chapterCache.delete(k);
+  }
 }
 
 export async function getVerses(

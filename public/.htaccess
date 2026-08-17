@@ -1,19 +1,23 @@
 # SPA fallback for Apache shared hosting (Hetzner).
-# Any path under /assistant/ that doesn't resolve to a real file or to
-# api.php / storage/ is rewritten to index.html so React Router can take over.
+# Any path that doesn't resolve to a real file or to api.php / storage/ /
+# bible-packs/ is rewritten to index.html so React Router can take over.
+#
+# The app is served from the root of its own subdomain
+# (https://bibleassistant.apps.schaefchens.de/), so RewriteBase is /.
 
 <IfModule mod_rewrite.c>
   RewriteEngine On
-  RewriteBase /assistant/
+  RewriteBase /
 
   # Don't rewrite real files or directories
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
-  # Pass through PHP and storage paths
+  # Pass through PHP, storage and Bible-pack paths
   RewriteRule ^api\.php$ - [L]
   RewriteRule ^storage/ - [L]
+  RewriteRule ^bible-packs/ - [L]
 
   # Everything else → index.html
   RewriteRule ^ index.html [L]
@@ -26,5 +30,17 @@
   </FilesMatch>
   <FilesMatch "^(index\.html|sw\.js|registerSW\.js|manifest\.webmanifest)$">
     Header set Cache-Control "no-cache"
+  </FilesMatch>
+
+  # Verse audio (.mp3) and word-alignment (.json) under storage/ are pulled
+  # with fetch() -> arrayBuffer -> decodeAudioData from the native WebView
+  # (capacitor://localhost / https://localhost), not via <audio src>, so they
+  # are fully CORS-governed. Plain GETs with no custom headers => no preflight,
+  # so the response header alone is enough. These files are already publicly
+  # readable by URL, so "*" exposes nothing new. `always` so 304s carry it too.
+  # NB: this belongs here, not in storage/.htaccess — that file is gitignored
+  # and gets auto-recreated by api.php with only "Options -Indexes".
+  <FilesMatch "\.(?:mp3|json)$">
+    Header always set Access-Control-Allow-Origin "*"
   </FilesMatch>
 </IfModule>

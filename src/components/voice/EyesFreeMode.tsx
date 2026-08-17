@@ -14,6 +14,7 @@ import { playZoneTick, type ZoneSound } from '@/lib/clickTick';
 import { speakLabel, primeSpeechSynthesis } from '@/lib/speakLabel';
 import { playLastReading } from '@/lib/playLastReading';
 import { LONG_PRESS_MS } from '@/lib/gestureConstants';
+import { hapticTap, hapticNotify, ImpactStyle } from '@/lib/nativeBridge';
 
 export function EyesFreeMode() {
   const open = useGlobalVoiceStore((s) => s.eyesFreeMode);
@@ -179,9 +180,7 @@ function ZoneButton({
   const handleDown = () => {
     longPressFired.current = false;
     setPressed(true);
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      navigator.vibrate(15);
-    }
+    hapticTap(ImpactStyle.Medium);
     playZoneTick(zone);
     // Unlock speechSynthesis inside this user gesture so the
     // long-press-triggered speak() (fired from a timer) isn't blocked
@@ -193,9 +192,7 @@ function ZoneButton({
     longPressTimer.current = window.setTimeout(() => {
       longPressFired.current = true;
       longPressTimer.current = null;
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate([20, 35, 20]);
-      }
+      hapticNotify();
       speakLabel(label);
     }, LONG_PRESS_MS);
   };

@@ -1,8 +1,13 @@
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english.js';
-import { setIdentity, type Identity } from './identity';
+import { clearIdentity, setIdentity, type Identity } from './identity';
+import { secureRemove, secureSet } from './secureStore';
 
-const PASSPHRASE_KEY = 'ba.passphrase';
+export const PASSPHRASE_KEY = 'ba.passphrase';
+
+/** Mirrors the durable copy so getPassphrase() can stay synchronous — see
+ * identity.ts for why. Populated by hydrateIdentity() at boot. */
+let cachedPassphrase: string | null = null;
 
 function normalize(mnemonic: string): string {
   return mnemonic.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -37,15 +42,34 @@ export function deriveIdentityFromPassphrase(mnemonic: string): Identity {
 }
 
 export function getPassphrase(): string | null {
-  return localStorage.getItem(PASSPHRASE_KEY);
+  return cachedPassphrase;
 }
 
-export function setPassphrase(mnemonic: string): void {
+/**
+ * Populate the in-memory caches from an already-known mnemonic. Used by boot
+ * hydration; does not write to storage.
+ */
+export function adoptPassphrase(mnemonic: string): void {
   const norm = normalize(mnemonic);
-  localStorage.setItem(PASSPHRASE_KEY, norm);
+  cachedPassphrase = norm;
   setIdentity(deriveIdentityFromPassphrase(norm));
 }
 
-export function clearPassphrase(): void {
-  localStorage.removeItem(PASSPHRASE_KEY);
+/**
+ * Persist the mnemonic and derive the identity from it.
+ *
+ * Async because durable native storage is — callers MUST await this before
+ * navigating on, or the app can be killed in the gap after telling the user
+ * their passphrase is saved.
+ */
+export async function setPassphrase(mnemonic: string): Promise<void> {
+  const norm = normalize(mnemonic);
+  adoptPassphrase(norm);
+  await secureSet(PASSPHRASE_KEY, norm);
+}
+
+export async function clearPassphrase(): Promise<void> {
+  cachedPassphrase = null;
+  clearIdentity();
+  await secureRemove(PASSPHRASE_KEY);
 }

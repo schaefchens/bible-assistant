@@ -296,10 +296,59 @@ function requireAuth(): array {
     return ['userId' => $userId, 'userDir' => $userDir];
 }
 
+// ---------- CORS ------------------------------------------------------------
+
+/**
+ * The native builds run in a WebView whose origin is capacitor://localhost
+ * (iOS) or https://localhost (Android), so every api.php call is cross-origin.
+ * The client sends X-User-Id / X-User-Secret on every request — headers that
+ * aren't CORS-safelisted — so all of them are preflighted, GETs included.
+ *
+ * Auth here is header-only (no cookies, no sessions), so we never send
+ * Access-Control-Allow-Credentials and the allow-list can stay tight.
+ */
+const CORS_ALLOWED_ORIGINS = [
+    'capacitor://localhost', // iOS WKWebView   (server.iosScheme)
+    'https://localhost',     // Android WebView (server.androidScheme)
+    'http://localhost',      // Android if androidScheme is switched to http
+];
+
+function corsOriginAllowed(string $origin): bool {
+    if (in_array($origin, CORS_ALLOWED_ORIGINS, true)) return true;
+    // Vite dev server, including from a phone on the LAN (npm run dev -- --host).
+    return (bool) preg_match(
+        '#^https?://(localhost|127\.0\.0\.1|\[::1\]|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?$#',
+        $origin,
+    );
+}
+
 // ---------- routing ---------------------------------------------------------
 
 // Skip the router when included by a CLI test harness (no HTTP request).
 if (PHP_SAPI === 'cli' && !defined('BIBLE_API_RUN_ROUTER')) return;
+
+// Emit CORS headers before anything can fail(), so even 401s and 500s carry
+// them — otherwise a cross-origin caller sees an opaque "Failed to fetch"
+// instead of the real status.
+$corsOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if ($corsOrigin !== '') {
+    // Vary even when the origin is rejected, so no proxy caches one origin's
+    // ACAO (or its absence) for another.
+    header('Vary: Origin');
+    if (corsOriginAllowed($corsOrigin)) {
+        header('Access-Control-Allow-Origin: ' . $corsOrigin);
+        header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type, X-User-Id, X-User-Secret, X-Prefer-Shared-Key, X-Base-Path');
+        header('Access-Control-Max-Age: 86400');
+    }
+}
+
+// Answer the preflight before the ?action / requireAuth() gauntlet below —
+// OPTIONS carries no custom headers, so it would otherwise 401.
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
+    http_response_code(204);
+    exit;
+}
 
 $action = $_GET['action'] ?? '';
 if (!is_string($action) || $action === '') fail(400, 'missing action');

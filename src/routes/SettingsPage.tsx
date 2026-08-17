@@ -15,6 +15,7 @@ import { UpdatesSection } from '@/components/settings/UpdatesSection';
 import { DangerZone } from '@/components/settings/DangerZone';
 import { ImprintFooter } from '@/components/settings/ImprintFooter';
 import { getTranslationInfo } from '@/services/bible/translationCatalog';
+import { copyText } from '@/lib/nativeBridge';
 import clsx from 'clsx';
 
 export function SettingsPage() {
@@ -28,13 +29,9 @@ export function SettingsPage() {
   const currentTranslation = getTranslationInfo(settings.translation);
 
   const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(passphrase);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    } catch {
-      /* ignore */
-    }
+    if (!(await copyText(passphrase))) return;
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
   };
 
   return (

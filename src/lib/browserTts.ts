@@ -2,6 +2,7 @@ import { usePlaybackStore } from '@/store/playbackStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { Translation } from '@/services/bible/bibleApi';
 import { bcp47ForTranslation } from './translationLocaleMap';
+import { cancelNative, nativeTtsSupported, speakNative } from './nativeTts';
 
 export type BrowserTtsItem = {
   messageId: string;
@@ -17,8 +18,21 @@ export type BrowserTtsItem = {
   isVerse?: boolean;
 };
 
-function isSupported(): boolean {
+/** True when the web SpeechSynthesis API exists. It does NOT in either native
+ * WebView — measured: `speechSynthesis` is undefined in the Android WebView —
+ * which is why the native engine below exists. */
+function webSpeechSupported(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window;
+}
+
+/** Native builds drive the system TTS plugin instead. (Not named use* — that
+ * is reserved for React hooks, and ESLint rightly enforces it.) */
+function nativeEngine(): boolean {
+  return nativeTtsSupported();
+}
+
+function isSupported(): boolean {
+  return nativeEngine() || webSpeechSupported();
 }
 
 function langForTranslation(t: Translation | undefined, fallback: string): string {
@@ -46,7 +60,8 @@ function pickVoice(targetLang: string): SpeechSynthesisVoice | null {
 // (notably Chrome). Resolve once at least one voice is available.
 function ensureVoicesReady(timeoutMs = 1500): Promise<void> {
   return new Promise((resolve) => {
-    if (!isSupported()) return resolve();
+    // The plugin manages its own voice list; nothing to wait for.
+    if (nativeEngine() || !webSpeechSupported()) return resolve();
     if (window.speechSynthesis.getVoices().length > 0) return resolve();
     const onChange = () => {
       window.speechSynthesis.removeEventListener('voiceschanged', onChange);
@@ -76,6 +91,13 @@ class BrowserTtsManager {
   // change mid-flight, so ducking pauses the engine; unduck resumes only
   // if it was actually playing when we ducked.
   private ducked = false;
+  /** Identifies the in-flight native utterance, so a completion that arrives
+   * after a stop/pause/supersede can be discarded. The native engine has no
+   * utterance object to compare against the way the web one does. */
+  private nativeSeq = 0;
+  /** Native TTS has no pause, so paused-ness is tracked here and resume()
+   * re-speaks the current item. */
+  private nativePaused = false;
   private wasSpeakingWhenDucked = false;
 
   /** True while the engine owns playback (running, paused, OR soft-ended
@@ -98,6 +120,11 @@ class BrowserTtsManager {
   duck(): void {
     if (this.ducked || !isSupported()) return;
     this.ducked = true;
+    if (nativeEngine()) {
+      this.wasSpeakingWhenDucked = this.active && !this.nativePaused;
+      if (this.wasSpeakingWhenDucked) this.pause();
+      return;
+    }
     this.wasSpeakingWhenDucked =
       window.speechSynthesis.speaking && !window.speechSynthesis.paused;
     if (this.wasSpeakingWhenDucked) {
@@ -113,6 +140,11 @@ class BrowserTtsManager {
     if (!this.ducked) return;
     this.ducked = false;
     if (this.wasSpeakingWhenDucked && isSupported()) {
+      if (nativeEngine()) {
+        this.resume();
+        this.wasSpeakingWhenDucked = false;
+        return;
+      }
       try {
         window.speechSynthesis.resume();
       } catch {
@@ -174,18 +206,37 @@ class BrowserTtsManager {
       return;
     }
     await ensureVoicesReady();
-    const voice = pickVoice(lang);
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = voice?.lang || lang;
-    if (voice) utter.voice = voice;
-    utter.rate = this.rate;
-    utter.volume = useSettingsStore.getState().speechVolume;
     let done = false;
     const finish = (): void => {
       if (done) return;
       done = true;
       onEnd();
     };
+
+    if (nativeEngine()) {
+      // Note: the plugin speaks one utterance at a time, so this necessarily
+      // supersedes any in-flight reading utterance (speakNative bumps a shared
+      // token). That's safe only because callers pause the reading before
+      // interjecting and resume it from `onEnd` — see assistantSpeech.ts. Don't
+      // call this while a reading is actively speaking.
+      speakNative(
+        text,
+        {
+          lang,
+          rate: this.rate,
+          volume: useSettingsStore.getState().speechVolume,
+        },
+        finish,
+      );
+      return;
+    }
+
+    const voice = pickVoice(lang);
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = voice?.lang || lang;
+    if (voice) utter.voice = voice;
+    utter.rate = this.rate;
+    utter.volume = useSettingsStore.getState().speechVolume;
     utter.onend = finish;
     utter.onerror = finish;
     window.speechSynthesis.speak(utter);
@@ -258,20 +309,12 @@ class BrowserTtsManager {
     const { locale, speechVolume } = useSettingsStore.getState();
     const fallbackLang = locale === 'de' ? 'de-DE' : 'en-US';
     const lang = langForTranslation(item.translation, fallbackLang);
-    const voice = pickVoice(lang);
 
-    const utter = new SpeechSynthesisUtterance(item.text);
-    utter.lang = voice?.lang || lang;
-    if (voice) utter.voice = voice;
-    utter.rate = this.rate;
-    utter.volume = speechVolume;
-    const advance = () => {
-      // Only advance if this is still the active utterance — stop() nulls it.
-      if (this.current !== utter) return;
+    const advanceFrom = (startIdx: number) => {
       // Re-read from the queue so a mid-flight enqueue that patched our
       // pauseAfterMs (to bridge two readings) is honored.
-      const gap = this.queue[startedAt]?.pauseAfterMs ?? 0;
-      this.currentIndex = startedAt + 1;
+      const gap = this.queue[startIdx]?.pauseAfterMs ?? 0;
+      this.currentIndex = startIdx + 1;
       if (gap > 0 && this.currentIndex < this.queue.length) {
         if (this.pauseTimer !== null) clearTimeout(this.pauseTimer);
         this.pauseTimer = window.setTimeout(() => {
@@ -282,26 +325,66 @@ class BrowserTtsManager {
         this.playCurrent();
       }
     };
+
+    const publish = () => {
+      usePlaybackStore.getState().setCurrent({
+        messageId: item.messageId,
+        verseIndex: item.verseIndex,
+        totalVerses: this.queue.length,
+        audioUrl: '',
+        position: 0,
+        duration: 0,
+        currentWordIndex: -1,
+        isVerse: item.isVerse !== false,
+      });
+      usePlaybackStore.getState().setStatus('playing');
+    };
+
+    if (nativeEngine()) {
+      // No utterance object to hang state off, so `nativeSeq` plays the role
+      // `this.current` plays for the web engine: it identifies which utterance
+      // a completion belongs to.
+      const seq = ++this.nativeSeq;
+      this.current = null;
+      speakNative(item.text, { lang, rate: this.rate, volume: speechVolume }, () => {
+        if (seq !== this.nativeSeq) return; // stopped, ducked, or superseded
+        advanceFrom(startedAt);
+      });
+      publish();
+      return;
+    }
+
+    const voice = pickVoice(lang);
+    const utter = new SpeechSynthesisUtterance(item.text);
+    utter.lang = voice?.lang || lang;
+    if (voice) utter.voice = voice;
+    utter.rate = this.rate;
+    utter.volume = speechVolume;
+    const advance = () => {
+      // Only advance if this is still the active utterance — stop() nulls it.
+      if (this.current !== utter) return;
+      advanceFrom(startedAt);
+    };
     utter.onend = advance;
     utter.onerror = advance;
     this.current = utter;
     window.speechSynthesis.speak(utter);
-
-    usePlaybackStore.getState().setCurrent({
-      messageId: item.messageId,
-      verseIndex: item.verseIndex,
-      totalVerses: this.queue.length,
-      audioUrl: '',
-      position: 0,
-      duration: 0,
-      currentWordIndex: -1,
-      isVerse: item.isVerse !== false,
-    });
-    usePlaybackStore.getState().setStatus('playing');
+    publish();
   }
 
   pause(): void {
     if (!isSupported() || !this.active) return;
+    if (nativeEngine()) {
+      // The plugin has no pause. Stop, and remember that we're mid-item so
+      // resume() can re-speak it. Items are per-verse, so the cost is
+      // repeating one verse rather than losing the reading's place.
+      if (this.nativePaused) return;
+      this.nativePaused = true;
+      this.nativeSeq++; // invalidate the in-flight completion
+      cancelNative();
+      usePlaybackStore.getState().setStatus('paused');
+      return;
+    }
     if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
       window.speechSynthesis.pause();
       usePlaybackStore.getState().setStatus('paused');
@@ -310,6 +393,13 @@ class BrowserTtsManager {
 
   resume(): void {
     if (!isSupported() || !this.active) return;
+    if (nativeEngine()) {
+      if (!this.nativePaused) return;
+      this.nativePaused = false;
+      // Re-speak the item we were on.
+      this.playCurrent();
+      return;
+    }
     if (window.speechSynthesis.paused) {
       window.speechSynthesis.resume();
       usePlaybackStore.getState().setStatus('playing');
@@ -318,6 +408,11 @@ class BrowserTtsManager {
 
   toggle(): void {
     if (!this.active) return;
+    if (nativeEngine()) {
+      if (this.nativePaused) this.resume();
+      else this.pause();
+      return;
+    }
     if (window.speechSynthesis.paused) this.resume();
     else this.pause();
   }
@@ -338,7 +433,11 @@ class BrowserTtsManager {
     this.current = null;
     this.queue = [];
     this.currentIndex = 0;
-    if (isSupported()) {
+    this.nativePaused = false;
+    if (nativeEngine()) {
+      this.nativeSeq++;
+      cancelNative();
+    } else if (webSpeechSupported()) {
       try {
         window.speechSynthesis.cancel();
       } catch {

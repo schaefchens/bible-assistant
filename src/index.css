@@ -7,6 +7,16 @@
     color-scheme: dark;
     -webkit-text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
+
+    /* Capacitor's SystemBars plugin (insetsHandling: 'css') sets these same
+       four names as inline styles on <html>, because Android WebView < 140
+       reports wrong env() values. Inline styles win, so what's declared here
+       is the iOS / web fallback. Keep the names exactly as Capacitor writes
+       them — src/components/voice/MicAnchor.ts measures these. */
+    --safe-area-inset-top: env(safe-area-inset-top, 0px);
+    --safe-area-inset-right: env(safe-area-inset-right, 0px);
+    --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-inset-left: env(safe-area-inset-left, 0px);
   }
 
   html,
@@ -21,12 +31,18 @@
     overscroll-behavior: none;
   }
 
-  /* iOS safe-area helpers */
+  /* Safe-area helpers. These read the custom properties rather than env()
+     directly so Capacitor's Android overrides apply to them too. */
   .pt-safe {
-    padding-top: env(safe-area-inset-top);
+    padding-top: var(--safe-area-inset-top);
   }
   .pb-safe {
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: var(--safe-area-inset-bottom);
+  }
+  /* Landscape on a notched phone puts the cutout on one side. */
+  .px-safe {
+    padding-left: var(--safe-area-inset-left);
+    padding-right: var(--safe-area-inset-right);
   }
 }
 

@@ -253,7 +253,8 @@
       "check": "Check for updates",
       "checking": "Checking…",
       "upToDate": "Up to date",
-      "found": "Update found — reloading…"
+      "found": "Update found — reloading…",
+      "nativeHint": "Installed app — install a new build to update."
     },
     "dangerZone": {
       "title": "Danger zone",
@@ -368,5 +369,16 @@
     "title": "Playback",
     "readingTitle": "Reading",
     "announcementsTitle": "Announcements"
+  },
+  "bible": {
+    "packs": {
+      "included": "Included",
+      "installed": "Offline",
+      "deleteConfirm": "Delete?",
+      "download": "Download",
+      "resume": "Resume",
+      "cancel": "Cancel download",
+      "unavailable": "Unavailable"
+    }
   }
 }
