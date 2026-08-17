@@ -1,0 +1,39 @@
+# Bible pack serving.
+#
+# buildPacks.mjs writes a pre-compressed <name>.json.gz next to every
+# downloadable pack, so Apache hands over the compressed bytes directly
+# instead of running mod_deflate on each request. Shared hosting CPU is the
+# scarce resource here, not disk.
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTP:Accept-Encoding} gzip
+  RewriteCond %{REQUEST_FILENAME}.gz -f
+  RewriteRule ^(.*)\.json$ $1.json.gz [L]
+</IfModule>
+
+<IfModule mod_headers.c>
+  <FilesMatch "\.json\.gz$">
+    Header set Content-Encoding gzip
+    Header append Vary Accept-Encoding
+    ForceType application/json
+  </FilesMatch>
+
+  # The pack version is part of the path, so a given URL's bytes never change.
+  <FilesMatch "\.json(\.gz)?$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+
+  # Downloaded cross-origin by the native app (capacitor://localhost).
+  <FilesMatch "\.json(\.gz)?$">
+    Header always set Access-Control-Allow-Origin "*"
+  </FilesMatch>
+</IfModule>
+
+# manifest.json is the kill switch for individual translations — it must never
+# be served stale.
+<Files "manifest.json">
+  <IfModule mod_headers.c>
+    Header set Cache-Control "no-cache, must-revalidate"
+  </IfModule>
+</Files>

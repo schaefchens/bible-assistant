@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import {
@@ -6,6 +6,8 @@ import {
   type TranslationInfo,
 } from '@/services/bible/translationCatalog';
 import type { Translation } from '@/services/bible/bibleApi';
+import { PackActionButton } from './PackActionButton';
+import { useBiblePacksStore } from '@/store/biblePacksStore';
 
 type Props = {
   value: Translation;
@@ -23,6 +25,15 @@ export function TranslationList({ value, onChange, className }: Props) {
   const { t, i18n } = useTranslation();
   const lang: 'en' | 'de' = (i18n.language || 'en').startsWith('de') ? 'de' : 'en';
 
+  // Hydrate offline-pack state whenever the list is shown. init() re-reads the
+  // manifest, which is also how a server-side availability change reaches the
+  // UI without an app update.
+  const initPacks = useBiblePacksStore((s) => s.init);
+  const packStatus = useBiblePacksStore((s) => s.status);
+  useEffect(() => {
+    void initPacks();
+  }, [initPacks]);
+
   const { enTrans, deTrans } = useMemo(
     () => ({
       enTrans: TRANSLATIONS.filter((tr) => tr.language === 'en'),
@@ -37,44 +48,58 @@ export function TranslationList({ value, onChange, className }: Props) {
       tr.language === 'de'
         ? t('chat.bookPicker.languageDe')
         : t('chat.bookPicker.languageEn');
+    // A withdrawn translation stays visible but can't be selected — silently
+    // hiding it would strand anyone whose cards reference it.
+    const unavailable = packStatus[tr.code] === 'unavailable';
     return (
-      <button
+      // A row is two independent controls (select the translation / manage its
+      // offline copy), so the wrapper is a div — a <button> inside a <button>
+      // is invalid HTML and React warns about it.
+      <div
         key={tr.code}
-        type="button"
-        onClick={() => onChange(tr.code)}
         className={clsx(
-          'w-full text-left px-4 py-3 transition-colors border-l-2 flex items-start gap-3',
-          selected
-            ? 'bg-gold/15 border-gold'
-            : 'hover:bg-gold/5 border-transparent',
+          'w-full transition-colors border-l-2 flex items-start gap-3 pr-3',
+          unavailable && 'opacity-50',
+          selected ? 'bg-gold/15 border-gold' : 'hover:bg-gold/5 border-transparent',
         )}
       >
-        <span
+        <button
+          type="button"
+          onClick={() => onChange(tr.code)}
+          disabled={unavailable}
           className={clsx(
-            'shrink-0 mt-0.5 inline-flex items-center justify-center',
-            'min-w-[3rem] px-2 py-0.5 rounded-md text-xs font-mono tracking-wide',
-            'border',
-            selected
-              ? 'border-gold/60 text-gold bg-gold/10'
-              : 'border-navy-soft/60 text-cream-dim bg-navy/40',
+            'flex-1 min-w-0 text-left px-4 py-3 flex items-start gap-3',
+            unavailable && 'cursor-not-allowed',
           )}
         >
-          {tr.code}
-        </span>
-        <span className="flex-1 min-w-0">
           <span
             className={clsx(
-              'block font-serif text-sm leading-tight',
-              selected ? 'text-gold' : 'text-cream',
+              'shrink-0 mt-0.5 inline-flex items-center justify-center',
+              'min-w-[3rem] px-2 py-0.5 rounded-md text-xs font-mono tracking-wide',
+              'border',
+              selected
+                ? 'border-gold/60 text-gold bg-gold/10'
+                : 'border-navy-soft/60 text-cream-dim bg-navy/40',
             )}
           >
-            {tr.name}
+            {tr.code}
           </span>
-          <span className="block text-xs text-cream-dim/80 mt-0.5">
-            {tr.year} · {langLabel} · {tr.blurb[lang]}
+          <span className="flex-1 min-w-0">
+            <span
+              className={clsx(
+                'block font-serif text-sm leading-tight',
+                selected ? 'text-gold' : 'text-cream',
+              )}
+            >
+              {tr.name}
+            </span>
+            <span className="block text-xs text-cream-dim/80 mt-0.5">
+              {tr.year} · {langLabel} · {tr.blurb[lang]}
+            </span>
           </span>
-        </span>
-      </button>
+        </button>
+        <PackActionButton code={tr.code} />
+      </div>
     );
   };
 

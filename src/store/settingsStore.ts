@@ -133,8 +133,16 @@ const DEFAULT_AMBIENT: AmbientSettings = {
   volume: 0.3,
 };
 
+/**
+ * Defaults to the two translations that ship inside the app, so a fresh
+ * install can read scripture with no network and no download. Both are public
+ * domain, which is also why they're the ones we're allowed to bundle.
+ *
+ * Existing users keep whatever they persisted — this only affects first run.
+ * S00 / ESV remain one tap away in the translation picker.
+ */
 function defaultTranslationFor(locale: Locale): Translation {
-  return locale === 'de' ? 'S00' : 'ESV';
+  return locale === 'de' ? 'LUT' : 'KJV';
 }
 
 function detectLocale(): Locale {
