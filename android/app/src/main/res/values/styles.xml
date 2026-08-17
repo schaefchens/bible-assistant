@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Base application theme.
+         The Capacitor template ships Theme.AppCompat.Light, whose white window
+         background shows through behind the status and navigation bars — on a
+         dark app that reads as two white bands top and bottom. This is a dark
+         app, so the base theme is dark and the window background is navy. -->
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.DarkActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+        <item name="android:windowBackground">@color/navy</item>
+    </style>
+
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowBackground">@color/navy</item>
+
+        <!-- Measured, not assumed: Capacitor 8 does NOT put this WebView
+             edge-to-edge. innerHeight is 867 against a 915px screen, and the
+             injected safe-area-inset-top CSS var is 0px — the WebView sits
+             below the status bar and the window shows through above it.
+
+             So these colours very much still apply, and transparent was wrong:
+             it let the light window background through as a white band. Paint
+             them navy to match the app. -->
+        <item name="android:statusBarColor">@color/navy</item>
+        <item name="android:navigationBarColor">@color/navy</item>
+
+        <!-- Light glyphs, because what's behind them is navy. -->
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="android:background">@drawable/splash</item>
+        <item name="android:windowBackground">@color/navy</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+        <item name="android:statusBarColor">@color/navy</item>
+        <item name="android:navigationBarColor">@color/navy</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

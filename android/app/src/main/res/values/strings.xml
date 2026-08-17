@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Bible Assistant</string>
+    <string name="title_activity_main">Bible Assistant</string>
+    <string name="package_name">de.schaefchens.apps.bibleassistant</string>
+    <string name="custom_url_scheme">de.schaefchens.apps.bibleassistant</string>
+</resources>

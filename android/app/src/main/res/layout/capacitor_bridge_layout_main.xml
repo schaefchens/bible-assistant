@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Overrides the identical layout in @capacitor/android (app resources win over
+  library resources of the same name). The only change is android:background.
+
+  Why: on Android 15+ Capacitor's SystemBars plugin insets the WebView by
+  padding *this* CoordinatorLayout (SystemBars.java, initWindowInsetsListener →
+  v.setPadding(...)) rather than letting the WebView draw edge-to-edge. The
+  padded strip therefore belongs to this view, and Capacitor's copy sets no
+  background on it — so it rendered as a white band under the status bar on a
+  navy app.
+
+  Neither android:statusBarColor nor android:windowBackground can reach it
+  (verified on an Android 16 emulator: the strip stayed rgb(255,255,255) even
+  with windowBackground set to pure red). Colouring this view is what actually
+  fills the space.
+-->
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/navy"
+    tools:context="com.getcapacitor.BridgeActivity">
+
+    <com.getcapacitor.CapacitorWebView
+        android:id="@+id/webview"
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent" />
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
