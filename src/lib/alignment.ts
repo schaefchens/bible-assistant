@@ -1,4 +1,5 @@
 import type { Alignment, WordTimestamp } from '@/types/domain';
+import { fetchCachedJson } from './mediaCache';
 
 /**
  * OpenAI gpt-4o-transcribe returns `words: [{ word, start, end }, …]` when
@@ -46,8 +47,12 @@ export function findCurrentWordIndex(alignment: Alignment, t: number): number {
 }
 
 export async function fetchAlignment(url: string): Promise<Alignment> {
-  const res = await fetch(url);
-  if (!res.ok) return { words: [] };
-  const raw = await res.json();
-  return parseAlignment(raw);
+  try {
+    // Cached alongside the mp3 it belongs to — highlighting must work offline
+    // too, otherwise a cached verse plays with a dead ticker.
+    return parseAlignment(await fetchCachedJson(url));
+  } catch {
+    // Alignment is optional: a verse without it just plays unhighlighted.
+    return { words: [] };
+  }
 }

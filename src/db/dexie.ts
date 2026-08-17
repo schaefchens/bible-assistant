@@ -27,11 +27,24 @@ export type SyncOp = {
 
 export type Preference = { key: string; value: unknown };
 
+/** One cached media file (verse mp3 or word-alignment json), keyed by its
+ * absolute URL. See src/lib/mediaCache.ts. */
+export type CachedMedia = {
+  url: string;
+  body: ArrayBuffer;
+  contentType: string;
+  size: number;
+  createdAt: number;
+  /** Drives LRU eviction. */
+  lastUsedAt: number;
+};
+
 class BibleAssistantDb extends Dexie {
   cards!: Table<LocalCard, string>;
   boards!: Table<LocalBoard, string>;
   syncQueue!: Table<SyncOp, number>;
   preferences!: Table<Preference, string>;
+  mediaCache!: Table<CachedMedia, string>;
 
   constructor() {
     super('bible-assistant');
@@ -77,6 +90,18 @@ class BibleAssistantDb extends Dexie {
       boards: 'id, name, updatedAt, dirty',
       syncQueue: '++id, op, createdAt',
       preferences: '&key',
+    });
+    // v7 adds a persistent media cache. The native builds have no service
+    // worker, so Workbox's CacheFirst rule on /storage/audio/* — previously
+    // the app's ONLY persistent audio cache — is gone there. Without this,
+    // every verse re-downloads on each cold start and offline reading is
+    // impossible. Keyed by absolute URL, LRU-evicted on lastUsedAt.
+    this.version(7).stores({
+      cards: 'id, title, updatedAt, dirty',
+      boards: 'id, name, updatedAt, dirty',
+      syncQueue: '++id, op, createdAt',
+      preferences: '&key',
+      mediaCache: '&url, lastUsedAt',
     });
   }
 }

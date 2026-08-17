@@ -1,145 +1,136 @@
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { fetchCached } from './mediaCache';
 
-const AMBIENT_FADE_SEC = 2;
-const VOLUME_RAMP_SEC = 0.15;
+const AMBIENT_FADE_MS = 2000;
+const VOLUME_RAMP_MS = 150;
+const FADE_STEP_MS = 50;
 
 /**
- * The ambient-music bus: one looping AudioBufferSource on its own gain node,
- * running parallel to the verse/TTS bus through the shared master gain. Fades
- * in/out over AMBIENT_FADE_SEC, honors the mic-duck factor (0 = muted while the
+ * The ambient-music bus: one looping HTMLAudioElement running parallel to the
+ * verse track. Fades in/out, honors the mic-duck factor (0 = muted while the
  * mic is open), and persists the chosen volume to settings.
  *
- * Extracted from AudioPlaybackManager so the engine's music path and speech
- * path are reasoned about separately. The bus owns its gain node; the manager
- * routes ducking through {@link setDuckFactor} and supplies an `onIdle`
- * callback (called once the fade-out finishes) so it can suspend the shared
- * AudioContext when nothing else is playing.
+ * It used to be a looping AudioBufferSource on a GainNode. It moved to a media
+ * element for the same measured reason verse playback did: WebKit suspends the
+ * AudioContext when the page hides, so Web Audio goes silent the moment the app
+ * is backgrounded or the screen locks. Music under a reading has to survive
+ * exactly that. See elementTrackPlayer.ts for the measurement.
+ *
+ * Elements have no AudioParam automation, so the gain ramps became small
+ * interval-driven fades. That also makes them immune to the frozen-clock bug
+ * that used to strand ramps mid-fade when iOS suspended the context.
  */
 export class AmbientAudioBus {
-  private readonly ctx: AudioContext;
-  private readonly gain: GainNode;
   private readonly onIdle: () => void;
-  private source: AudioBufferSourceNode | null = null;
-  private buffer: AudioBuffer | null = null;
+  private el: HTMLAudioElement;
   private url: string | null = null;
-  private readonly decodeCache = new Map<string, AudioBuffer>();
-  private stopTimer: number | null = null;
+  private objectUrl: string | null = null;
   private duckFactor = 1;
+  private fadeTimer: number | null = null;
+  private playing = false;
 
-  constructor(ctx: AudioContext, destination: AudioNode, onIdle: () => void) {
-    this.ctx = ctx;
+  constructor(onIdle: () => void) {
     this.onIdle = onIdle;
-    this.gain = ctx.createGain();
-    this.gain.gain.value = useSettingsStore.getState().ambient.volume;
-    this.gain.connect(destination);
+    this.el = new Audio();
+    this.el.loop = true;
+    this.el.preload = 'auto';
+    this.el.setAttribute('playsinline', 'true');
+    this.el.volume = 0;
+    // In the document for the same reason the verse player is — WebKit treats
+    // in-document media more consistently for background playback.
+    if (typeof document !== 'undefined') {
+      this.el.dataset.baAudio = 'ambient';
+      this.el.style.display = 'none';
+      const mount = () => document.body?.appendChild(this.el);
+      if (document.body) mount();
+      else document.addEventListener('DOMContentLoaded', mount, { once: true });
+    }
   }
 
   async load(url: string): Promise<void> {
-    if (this.url === url && this.buffer) return;
-    // Track switching: tear down the live source synchronously so the next
-    // play() spins up the new buffer instead of short-circuiting on the old one.
-    if (this.source) {
-      if (this.stopTimer !== null) {
-        clearTimeout(this.stopTimer);
-        this.stopTimer = null;
-      }
-      try {
-        this.source.stop();
-      } catch {
-        /* may already be stopped */
-      }
-      this.source = null;
-    }
-    const cached = this.decodeCache.get(url);
-    if (cached) {
-      this.buffer = cached;
-      this.url = url;
-      return;
-    }
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`ambient fetch failed: ${res.status}`);
-    const arr = await res.arrayBuffer();
-    const buf = await this.ctx.decodeAudioData(arr.slice(0));
-    this.decodeCache.set(url, buf);
-    this.buffer = buf;
+    if (this.url === url && this.el.src) return;
+    this.cancelFade();
+    const bytes = await fetchCached(url);
+    if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
+    this.objectUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' }));
+    this.el.src = this.objectUrl;
     this.url = url;
   }
 
+  private cancelFade(): void {
+    if (this.fadeTimer !== null) {
+      clearInterval(this.fadeTimer);
+      this.fadeTimer = null;
+    }
+  }
+
+  /** Linear volume fade, replacing the old linearRampToValueAtTime. */
+  private fadeTo(target: number, durationMs: number, onDone?: () => void): void {
+    this.cancelFade();
+    const from = this.el.volume;
+    const clampedTarget = Math.max(0, Math.min(1, target));
+    if (durationMs <= 0 || from === clampedTarget) {
+      this.el.volume = clampedTarget;
+      onDone?.();
+      return;
+    }
+    const steps = Math.max(1, Math.round(durationMs / FADE_STEP_MS));
+    let step = 0;
+    this.fadeTimer = window.setInterval(() => {
+      step++;
+      const t = Math.min(1, step / steps);
+      this.el.volume = Math.max(0, Math.min(1, from + (clampedTarget - from) * t));
+      if (t >= 1) {
+        this.cancelFade();
+        onDone?.();
+      }
+    }, FADE_STEP_MS);
+  }
+
   play(): void {
-    if (!this.buffer) return;
-    // Cancel any pending stop (e.g. user re-played during fade-out).
-    if (this.stopTimer !== null) {
-      clearTimeout(this.stopTimer);
-      this.stopTimer = null;
+    if (!this.el.src) return;
+    this.cancelFade();
+    if (this.el.paused) {
+      this.el.volume = 0; // so the ramp below reads as a fade-in
+      void this.el.play().catch(() => {
+        /* autoplay refused; the caller's state handling covers it */
+      });
     }
-    if (!this.source) {
-      const src = this.ctx.createBufferSource();
-      src.buffer = this.buffer;
-      src.loop = true;
-      src.connect(this.gain);
-      src.start(0);
-      this.source = src;
-      // Begin silent so the upcoming ramp acts as a fade-in.
-      this.gain.gain.cancelScheduledValues(this.ctx.currentTime);
-      this.gain.gain.setValueAtTime(0, this.ctx.currentTime);
-    }
+    this.playing = true;
     const target = useSettingsStore.getState().ambient.volume * this.duckFactor;
-    const now = this.ctx.currentTime;
-    this.gain.gain.cancelScheduledValues(now);
-    this.gain.gain.setValueAtTime(this.gain.gain.value, now);
-    this.gain.gain.linearRampToValueAtTime(target, now + AMBIENT_FADE_SEC);
+    this.fadeTo(target, AMBIENT_FADE_MS);
     usePlaybackStore.getState().setAmbientPlaying(true);
   }
 
   pause(): void {
-    if (!this.source) {
+    if (this.el.paused && !this.playing) {
       usePlaybackStore.getState().setAmbientPlaying(false);
       return;
     }
-    const src = this.source;
-    const now = this.ctx.currentTime;
-    this.gain.gain.cancelScheduledValues(now);
-    this.gain.gain.setValueAtTime(this.gain.gain.value, now);
-    this.gain.gain.linearRampToValueAtTime(0, now + AMBIENT_FADE_SEC);
-
-    if (this.stopTimer !== null) clearTimeout(this.stopTimer);
-    this.stopTimer = window.setTimeout(() => {
-      try {
-        src.stop();
-      } catch {
-        /* ignore */
-      }
-      if (this.source === src) this.source = null;
-      this.stopTimer = null;
+    this.playing = false;
+    this.fadeTo(0, AMBIENT_FADE_MS, () => {
+      this.el.pause();
       // Ambient was potentially the last thing holding the context open.
       this.onIdle();
-    }, AMBIENT_FADE_SEC * 1000 + 50);
-
+    });
     usePlaybackStore.getState().setAmbientPlaying(false);
   }
 
   setVolume(v: number): void {
     const clamped = Math.max(0, Math.min(1, v));
-    const now = this.ctx.currentTime;
-    this.gain.gain.cancelScheduledValues(now);
-    this.gain.gain.setValueAtTime(this.gain.gain.value, now);
-    this.gain.gain.linearRampToValueAtTime(clamped * this.duckFactor, now + VOLUME_RAMP_SEC);
+    if (this.playing) this.fadeTo(clamped * this.duckFactor, VOLUME_RAMP_MS);
     useSettingsStore.getState().setAmbient({ volume: clamped });
   }
 
-  /** Scale the bus by the mic-duck factor (1 normal, 0 ducked); ramps the live
-   * gain to `settingsVolume * factor`. Called by the manager's ducking. */
+  /** Scale the bus by the mic-duck factor (1 normal, 0 ducked). */
   setDuckFactor(factor: number): void {
     this.duckFactor = factor;
-    const target = useSettingsStore.getState().ambient.volume * factor;
-    const now = this.ctx.currentTime;
-    this.gain.gain.cancelScheduledValues(now);
-    this.gain.gain.setValueAtTime(this.gain.gain.value, now);
-    this.gain.gain.linearRampToValueAtTime(target, now + VOLUME_RAMP_SEC);
+    if (!this.playing) return;
+    this.fadeTo(useSettingsStore.getState().ambient.volume * factor, VOLUME_RAMP_MS);
   }
 
   isPlaying(): boolean {
-    return this.source !== null;
+    return this.playing;
   }
 }

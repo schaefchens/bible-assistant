@@ -5,6 +5,7 @@ import { findCurrentWordIndex, fetchAlignment } from './alignment';
 import { browserTts } from './browserTts';
 import { cancelAutoPlayPrefetch } from './autoPlay';
 import { AmbientAudioBus } from './ambientAudioBus';
+import { ElementTrackPlayer } from './elementTrackPlayer';
 
 export type PlaybackTrack = {
   messageId: string;
@@ -21,7 +22,8 @@ export type PlaybackTrack = {
 };
 
 type LoadedTrack = PlaybackTrack & {
-  buffer: AudioBuffer;
+  /** Seconds. Was the decoded AudioBuffer's duration; now the media element's. */
+  duration: number;
   alignment: Alignment;
 };
 
@@ -36,8 +38,17 @@ class SpeechBus {
 }
 
 /**
- * The Web Audio engine for OpenAI-TTS verse playback. A singleton (`audioPlayback`)
- * because it owns one AudioContext and one playback queue for the whole app.
+ * The engine for OpenAI-TTS verse playback. A singleton (`audioPlayback`)
+ * because it owns one playback queue for the whole app.
+ *
+ * Verse audio plays through an HTMLAudioElement (`ElementTrackPlayer`), not
+ * Web Audio. That is a measured requirement, not a style choice: WebKit
+ * suspends the AudioContext the moment the page is hidden, so
+ * AudioBufferSourceNode playback dies when the app backgrounds or the screen
+ * locks. See elementTrackPlayer.ts for the measurement.
+ *
+ * The AudioContext is still here — it drives the UI cues (tick, mic chirp,
+ * thinking drone), which are foreground-only and so unaffected by suspension.
  *
  * Five concerns live here, grouped by the section banners below:
  *   1. AudioContext graph + ducking — node setup, mic-open volume ramps
@@ -52,16 +63,17 @@ class AudioPlaybackManager {
   private master: GainNode | null = null;
   private ttsGain: GainNode | null = null;
 
-  private source: AudioBufferSourceNode | null = null;
+  /** Verse playback. Replaces the old AudioBufferSourceNode. */
+  private player = new ElementTrackPlayer('verse');
+  /** True once a track is attached and playing/paused — the old `source != null`. */
+  private hasTrack = false;
   private queue: PlaybackTrack[] = [];
   private currentIndex = 0;
   private currentLoaded: LoadedTrack | null = null;
-  private currentStartTime = 0; // ctx.currentTime when source started
-  private currentOffset = 0; // audio-time (seconds into the buffer) when we started
+  private currentOffset = 0; // seconds into the track; used to restore on resume
   private currentRate = 1;
   private loopCurrent = false;
   private tickHandle: number | null = null;
-  private decodeCache = new Map<string, AudioBuffer>();
   private alignmentCache = new Map<string, Alignment>();
   // When set, the next track to finish loading will start at the given word
   // index instead of from the beginning. Consumed (cleared) on use.
@@ -95,34 +107,60 @@ class AudioPlaybackManager {
   private awaitingFeed = false;
   private feedGen = 0;
 
-  // One-shot assistant-reply source (see interject) — plays over the speech
-  // bus while the reading is paused, without touching the verse queue.
-  private interjectionSrc: AudioBufferSourceNode | null = null;
+  // One-shot assistant-reply player (see interject) — plays while the reading
+  // is paused, without touching the verse queue. Its own element so it can
+  // never disturb the verse track's src/position.
+  private interjection = new ElementTrackPlayer('reply');
 
-  // Ambient music runs on its own bus (created with the context). The public
-  // `ambient` facade tolerates calls before the context exists (e.g. a volume
-  // change with nothing playing yet) by persisting to settings.
-  private ambientBus: AmbientAudioBus | null = null;
+  // Ambient music runs on its own media element. It no longer needs the
+  // AudioContext, so it's constructed eagerly — one less thing gated behind a
+  // user gesture, and it keeps playing when the app backgrounds.
+  private ambientBus = new AmbientAudioBus(() => this.maybeSuspendContext());
   readonly ambient = {
-    load: (url: string): Promise<void> => {
-      this.ensureContext();
-      return this.ambientBus!.load(url);
-    },
-    play: (): void => {
-      this.ensureContext();
-      this.ambientBus!.play();
-    },
-    pause: (): void => {
-      if (this.ambientBus) this.ambientBus.pause();
-      else usePlaybackStore.getState().setAmbientPlaying(false);
-    },
-    setVolume: (v: number): void => {
-      if (this.ambientBus) this.ambientBus.setVolume(v);
-      else useSettingsStore.getState().setAmbient({ volume: Math.max(0, Math.min(1, v)) });
-    },
-    isPlaying: (): boolean => this.ambientBus?.isPlaying() ?? false,
+    load: (url: string): Promise<void> => this.ambientBus.load(url),
+    play: (): void => this.ambientBus.play(),
+    pause: (): void => this.ambientBus.pause(),
+    setVolume: (v: number): void => this.ambientBus.setVolume(v),
+    isPlaying: (): boolean => this.ambientBus.isPlaying(),
   };
   readonly speech = new SpeechBus(this);
+
+  constructor() {
+    // Follow the element rather than assume: when the platform pauses it for a
+    // phone call, Siri, another app, or headphones being unplugged, reflect
+    // that in app state. Without this the UI would keep claiming "playing",
+    // the highlight tick would keep running against a frozen position, and the
+    // user's place would silently drift.
+    this.player.onExternalPause = () => {
+      if (usePlaybackStore.getState().status !== 'playing') return;
+      this.currentOffset = this.player.currentTime;
+      this.stopTick();
+      // A pending inter-verse gap must not fire and start the next verse over
+      // a phone call.
+      if (this.pauseTimer !== null) {
+        clearTimeout(this.pauseTimer);
+        this.pauseTimer = null;
+      }
+      usePlaybackStore.getState().setStatus('paused');
+      this.syncMediaSessionState('paused');
+    };
+
+    // Resumed from outside — a lock-screen or headphone-button play that went
+    // straight to the element instead of through our MediaSession handler.
+    this.player.onExternalPlay = () => {
+      if (usePlaybackStore.getState().status !== 'paused') return;
+      usePlaybackStore.getState().setStatus('playing');
+      this.startTick();
+      this.syncMediaSessionState('playing');
+    };
+  }
+
+  private stopTick(): void {
+    if (this.tickHandle !== null) {
+      cancelAnimationFrame(this.tickHandle);
+      this.tickHandle = null;
+    }
+  }
 
   // ─── 1. AudioContext graph + ducking ─────────────────────────────────
 
@@ -157,7 +195,7 @@ class AudioPlaybackManager {
       // the user would lose their place. Remember to resume on unduck.
       // (Browser-voice readings pause via browserTts.duck() below.)
       this.duckPausedReading =
-        usePlaybackStore.getState().status === 'playing' && this.source !== null;
+        usePlaybackStore.getState().status === 'playing' && this.hasTrack;
       if (this.duckPausedReading) this.pause();
       browserTts.duck();
     } else {
@@ -170,8 +208,24 @@ class AudioPlaybackManager {
     this.applyDuckedGains();
   }
 
+  /** Speech volume with the current duck factor applied, for the elements. */
+  private effectiveSpeechVolume(): number {
+    const factor = this.ducked ? this.DUCK_FACTOR : 1;
+    return Math.max(0, Math.min(1, useSettingsStore.getState().speechVolume * factor));
+  }
+
   private applyDuckedGains(): void {
-    if (!this.ctx) return;
+    // Verse + interjection playback now runs on media elements, whose volume
+    // is a plain property — no AudioContext clock involved, so this works even
+    // while the context is suspended (which is exactly when the old gain-ramp
+    // approach silently failed).
+    this.player.setVolume(this.effectiveSpeechVolume());
+    this.interjection.setVolume(this.effectiveSpeechVolume());
+    if (!this.ctx) {
+      // Ambient still needs the duck factor even with no context yet.
+      this.ambientBus?.setDuckFactor(this.ducked ? this.DUCK_FACTOR : 1);
+      return;
+    }
     // iOS suspends the AudioContext while the mic is open (getUserMedia). A
     // gain ramp scheduled against a suspended context's frozen clock never
     // completes — which left verse/ambient audio stuck quiet *after talking*
@@ -196,6 +250,11 @@ class AudioPlaybackManager {
 
   /** Must be called inside a user gesture handler on iOS. */
   ensureContext(): AudioContext {
+    // Every caller of this is already a user-gesture path, which makes it the
+    // natural place to also unlock the media elements — iOS only lets them
+    // start from a gesture, and by the time a verse is ready to play the
+    // gesture has long since lapsed behind the chat/TTS round-trip.
+    this.player.prime();
     if (!this.ctx) {
       const Ctor =
         (window as typeof window & {
@@ -211,10 +270,6 @@ class AudioPlaybackManager {
       this.ttsGain = this.ctx.createGain();
       this.ttsGain.gain.value = useSettingsStore.getState().speechVolume;
       this.ttsGain.connect(this.master);
-      // Ambient runs on its own bus, parallel to the speech gain into master.
-      this.ambientBus = new AmbientAudioBus(this.ctx, this.master, () =>
-        this.maybeSuspendContext(),
-      );
       // When iOS resumes the context after a suspend (mic capture or
       // backgrounding), re-assert the current gain targets. A ramp scheduled
       // while suspended can be dropped; without this, audio could stay muted
@@ -390,14 +445,14 @@ class AudioPlaybackManager {
     const track = this.queue[this.currentIndex];
     usePlaybackStore.getState().setStatus('loading');
 
-    const [buffer, alignment] = await Promise.all([
-      this.loadBuffer(track.audioUrl),
+    const [handle, alignment] = await Promise.all([
+      this.player.load(track.audioUrl),
       track.alignmentUrl
         ? this.loadAlignment(track.alignmentUrl)
         : Promise.resolve({ words: [] } as Alignment),
     ]);
 
-    this.currentLoaded = { ...track, buffer, alignment };
+    this.currentLoaded = { ...track, duration: handle.duration, alignment };
 
     // Apply any pending word-seek (e.g. from tap-on-word before the track was loaded).
     let startOffset = 0;
@@ -412,7 +467,7 @@ class AudioPlaybackManager {
     }
 
     this.currentOffset = startOffset;
-    this.startSource(buffer, startOffset);
+    this.startSource(startOffset);
 
     usePlaybackStore.getState().setCurrent({
       messageId: track.messageId,
@@ -421,31 +476,21 @@ class AudioPlaybackManager {
       audioUrl: track.audioUrl,
       alignmentUrl: track.alignmentUrl,
       position: startOffset,
-      duration: buffer.duration,
+      duration: handle.duration,
       currentWordIndex: startWordIdx,
       isVerse: track.highlightVerse !== false,
     });
     usePlaybackStore.getState().setStatus('playing');
+    this.publishMediaSession(handle.duration, startOffset);
   }
 
-  private startSource(buffer: AudioBuffer, offset: number): void {
-    const ctx = this.ensureContext();
-    if (this.source) {
-      try {
-        this.source.onended = null;
-        this.source.stop();
-      } catch {
-        /* ignore */
-      }
-    }
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    src.playbackRate.value = this.currentRate;
-    src.connect(this.ttsGain ?? ctx.destination);
-    src.onended = () => this.handleEnded();
-    src.start(0, offset);
-    this.source = src;
-    this.currentStartTime = ctx.currentTime;
+  /** Start (or restart) the already-loaded track at `offset` seconds. */
+  private startSource(offset: number): void {
+    this.player.onEnded = () => this.handleEnded();
+    this.player.setRate(this.currentRate);
+    this.player.setVolume(this.effectiveSpeechVolume());
+    this.player.start(offset);
+    this.hasTrack = true;
     this.currentOffset = offset;
     this.startTick();
   }
@@ -455,7 +500,7 @@ class AudioPlaybackManager {
     if (this.loopCurrent && this.currentLoaded) {
       // Replay the same verse from the start.
       this.currentOffset = 0;
-      this.startSource(this.currentLoaded.buffer, 0);
+      this.startSource(0);
       usePlaybackStore.getState().patchCurrent({ position: 0, currentWordIndex: -1 });
       return;
     }
@@ -490,7 +535,7 @@ class AudioPlaybackManager {
   private startTick(): void {
     if (this.tickHandle !== null) return;
     const tick = () => {
-      if (!this.ctx || !this.currentLoaded) {
+      if (!this.currentLoaded) {
         this.tickHandle = null;
         return;
       }
@@ -498,9 +543,10 @@ class AudioPlaybackManager {
         this.tickHandle = null;
         return;
       }
-      const elapsed =
-        (this.ctx.currentTime - this.currentStartTime) * this.currentRate +
-        this.currentOffset;
+      // Straight off the media element now — no more deriving position from
+      // ctx.currentTime deltas, which also removes the drift that rate changes
+      // and suspend/resume used to introduce.
+      const elapsed = this.player.currentTime;
       // Heading/verse-number tracks share their alignment with the
       // announcement audio (e.g. "Verse 16"), NOT the rendered verse text.
       // Skip the lookup so the WordHighlighter doesn't underline the wrong
@@ -525,20 +571,13 @@ class AudioPlaybackManager {
       browserTts.pause();
       return;
     }
-    if (!this.source || !this.ctx) return;
+    if (!this.hasTrack) return;
     if (usePlaybackStore.getState().status !== 'playing') return;
-    const elapsed =
-      (this.ctx.currentTime - this.currentStartTime) * this.currentRate +
-      this.currentOffset;
-    try {
-      this.source.onended = null;
-      this.source.stop();
-    } catch {
-      /* ignore */
-    }
-    this.source = null;
-    this.currentOffset = elapsed;
+    // Pausing the element preserves currentTime, so resume is exact.
+    this.currentOffset = this.player.currentTime;
+    this.player.pause();
     usePlaybackStore.getState().setStatus('paused');
+    this.syncMediaSessionState('paused');
     if (this.tickHandle !== null) {
       cancelAnimationFrame(this.tickHandle);
       this.tickHandle = null;
@@ -556,8 +595,13 @@ class AudioPlaybackManager {
     }
     if (!this.currentLoaded) return;
     if (usePlaybackStore.getState().status !== 'paused') return;
-    this.startSource(this.currentLoaded.buffer, this.currentOffset);
+    // The element still holds the track and its position — just resume, rather
+    // than tearing down and recreating a source the way Web Audio required.
+    this.player.resume();
+    this.hasTrack = true;
+    this.startTick();
     usePlaybackStore.getState().setStatus('playing');
+    this.syncMediaSessionState('playing');
   }
 
   toggle(): void {
@@ -578,36 +622,20 @@ class AudioPlaybackManager {
    * whichever engine is reading). If nothing is reading, it simply plays.
    */
   async interject(audioUrl: string): Promise<void> {
-    let buffer: AudioBuffer;
     try {
-      buffer = await this.loadBuffer(audioUrl);
+      await this.interjection.load(audioUrl);
     } catch {
       return;
     }
-    const ctx = this.ensureContext();
     // Pause whatever's reading so the reply has the floor; resume it on end.
     const reading = usePlaybackStore.getState().status === 'playing';
     if (reading) this.pause();
-    const resume = (): void => {
+    this.interjection.onEnded = () => {
+      this.interjection.onEnded = null;
       if (reading) this.resume();
     };
-    if (this.interjectionSrc) {
-      try {
-        this.interjectionSrc.onended = null;
-        this.interjectionSrc.stop();
-      } catch {
-        /* ignore */
-      }
-    }
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    src.connect(this.ttsGain ?? ctx.destination);
-    src.onended = () => {
-      if (this.interjectionSrc === src) this.interjectionSrc = null;
-      resume();
-    };
-    this.interjectionSrc = src;
-    src.start(0);
+    this.interjection.setVolume(this.effectiveSpeechVolume());
+    this.interjection.start(0);
   }
 
   /**
@@ -618,15 +646,10 @@ class AudioPlaybackManager {
    * SOFT_END_GRACE_MS so music doesn't play indefinitely.
    */
   private softEnd(): void {
-    if (this.source) {
-      try {
-        this.source.onended = null;
-        this.source.stop();
-      } catch {
-        /* ignore */
-      }
-      this.source = null;
-    }
+    this.player.onEnded = null;
+    this.player.stop();
+    this.hasTrack = false;
+    this.clearMediaSession();
     if (this.tickHandle !== null) {
       cancelAnimationFrame(this.tickHandle);
       this.tickHandle = null;
@@ -654,15 +677,8 @@ class AudioPlaybackManager {
     this.feeding = false;
     this.awaitingFeed = false;
     this.feedGen++;
-    if (this.interjectionSrc) {
-      try {
-        this.interjectionSrc.onended = null;
-        this.interjectionSrc.stop();
-      } catch {
-        /* ignore */
-      }
-      this.interjectionSrc = null;
-    }
+    this.interjection.onEnded = null;
+    this.interjection.stop();
     this.softEnded = false;
     if (this.softEndTimer !== null) {
       clearTimeout(this.softEndTimer);
@@ -693,15 +709,10 @@ class AudioPlaybackManager {
 
   /** Tear down the TTS queue without touching ambient or playback-store state. */
   private resetQueue(): void {
-    if (this.source) {
-      try {
-        this.source.onended = null;
-        this.source.stop();
-      } catch {
-        /* ignore */
-      }
-      this.source = null;
-    }
+    this.player.onEnded = null;
+    this.player.stop();
+    this.hasTrack = false;
+    this.clearMediaSession();
     if (this.tickHandle !== null) {
       cancelAnimationFrame(this.tickHandle);
       this.tickHandle = null;
@@ -783,35 +794,25 @@ class AudioPlaybackManager {
   // ─── 4. Seek & playback rate ─────────────────────────────────────────
 
   seekToWord(wordIndex: number): void {
-    if (!this.currentLoaded || !this.ctx) return;
-    const { alignment, buffer } = this.currentLoaded;
+    if (!this.currentLoaded) return;
+    const { alignment } = this.currentLoaded;
     if (wordIndex < 0 || wordIndex >= alignment.words.length) return;
     const targetTime = alignment.words[wordIndex].start;
-    const wasPlaying = usePlaybackStore.getState().status === 'playing';
-    if (this.source) {
-      try {
-        this.source.onended = null;
-        this.source.stop();
-      } catch {
-        /* ignore */
-      }
-      this.source = null;
-    }
-    if (wasPlaying) {
-      this.startSource(buffer, targetTime);
-    } else {
-      this.currentOffset = targetTime;
-      usePlaybackStore.getState().patchCurrent({
-        position: targetTime,
-        currentWordIndex: wordIndex,
-      });
-    }
+    // A media element seeks in place — no need to tear the source down and
+    // rebuild it, which is what Web Audio forced.
+    this.player.seek(targetTime);
+    this.currentOffset = targetTime;
+    usePlaybackStore.getState().patchCurrent({
+      position: targetTime,
+      currentWordIndex: wordIndex,
+    });
+    this.syncMediaSessionState();
   }
 
   /** Jump backward/forward by `delta` words within the current verse. */
   seekByWord(delta: number): void {
-    if (!this.currentLoaded || !this.ctx) return;
-    const { alignment, buffer } = this.currentLoaded;
+    if (!this.currentLoaded) return;
+    const { alignment } = this.currentLoaded;
     if (alignment.words.length === 0) return;
 
     const position = this.getCurrentPosition();
@@ -829,25 +830,13 @@ class AudioPlaybackManager {
     const target = Math.max(0, Math.min(alignment.words.length - 1, idx + delta));
     const targetTime = alignment.words[target].start;
 
-    const wasPlaying = usePlaybackStore.getState().status === 'playing';
-    if (this.source) {
-      try {
-        this.source.onended = null;
-        this.source.stop();
-      } catch {
-        /* ignore */
-      }
-      this.source = null;
-    }
-    if (wasPlaying) {
-      this.startSource(buffer, targetTime);
-    } else {
-      this.currentOffset = targetTime;
-      usePlaybackStore.getState().patchCurrent({
-        position: targetTime,
-        currentWordIndex: target,
-      });
-    }
+    this.player.seek(targetTime);
+    this.currentOffset = targetTime;
+    usePlaybackStore.getState().patchCurrent({
+      position: targetTime,
+      currentWordIndex: target,
+    });
+    this.syncMediaSessionState();
   }
 
   /** Change playback rate without losing position. */
@@ -858,14 +847,9 @@ class AudioPlaybackManager {
       this.currentRate = clamped;
       return;
     }
-    if (this.ctx && this.source && usePlaybackStore.getState().status === 'playing') {
-      const now = this.ctx.currentTime;
-      const elapsed =
-        (now - this.currentStartTime) * this.currentRate + this.currentOffset;
-      this.currentOffset = elapsed;
-      this.currentStartTime = now;
-      this.source.playbackRate.value = clamped;
-    }
+    // The element keeps its own position, so changing rate no longer needs the
+    // start-time/offset bookkeeping the Web Audio path required.
+    this.player.setRate(clamped);
     this.currentRate = clamped;
   }
 
@@ -882,12 +866,7 @@ class AudioPlaybackManager {
   }
 
   private getCurrentPosition(): number {
-    if (!this.ctx) return this.currentOffset;
-    if (!this.source) return this.currentOffset;
-    return (
-      (this.ctx.currentTime - this.currentStartTime) * this.currentRate +
-      this.currentOffset
-    );
+    return this.hasTrack ? this.player.currentTime : this.currentOffset;
   }
 
   isPlaying(messageId: string): boolean {
@@ -899,19 +878,109 @@ class AudioPlaybackManager {
     );
   }
 
-  // ─── Buffer & alignment loaders ──────────────────────────────────────
+  // ─── MediaSession: lock screen / Control Center / headphone buttons ──
+  //
+  // Only works because playback moved to a media element — iOS attaches
+  // now-playing info and remote commands to media elements, never to Web
+  // Audio. Registering the handlers is also what lets headphone and Bluetooth
+  // transport buttons reach the app.
 
-  private async loadBuffer(url: string): Promise<AudioBuffer> {
-    const cached = this.decodeCache.get(url);
-    if (cached) return cached;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`audio fetch failed: ${res.status}`);
-    const arr = await res.arrayBuffer();
-    const ctx = this.ensureContext();
-    const buf = await ctx.decodeAudioData(arr.slice(0));
-    this.decodeCache.set(url, buf);
-    return buf;
+  private mediaSessionReady = false;
+
+  private ensureMediaSessionHandlers(): void {
+    if (this.mediaSessionReady || !('mediaSession' in navigator)) return;
+    this.mediaSessionReady = true;
+    const ms = navigator.mediaSession;
+    const set = (action: MediaSessionAction, handler: () => void) => {
+      try {
+        ms.setActionHandler(action, handler);
+      } catch {
+        // Unsupported action on this platform — skip it rather than abort the
+        // rest of the handlers.
+      }
+    };
+    set('play', () => this.resume());
+    set('pause', () => this.pause());
+    set('stop', () => this.stop());
+    set('nexttrack', () => this.next());
+    set('previoustrack', () => this.previous());
   }
+
+  /** Publish now-playing metadata for the track that just started. */
+  private publishMediaSession(duration: number, position: number): void {
+    if (!('mediaSession' in navigator)) return;
+    this.ensureMediaSessionHandlers();
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: this.mediaTitle ?? 'Bible Assistant',
+        artist: this.mediaArtist ?? '',
+        album: 'Bible Assistant',
+      });
+    } catch {
+      /* MediaMetadata unavailable */
+    }
+    this.syncMediaSessionState('playing', position, duration);
+  }
+
+  /** Title/subtitle shown on the lock screen; set by the reading pipeline. */
+  private mediaTitle: string | null = null;
+  private mediaArtist: string | null = null;
+
+  /** Called when a reading starts so the lock screen shows the reference. */
+  setNowPlaying(title: string, subtitle?: string): void {
+    this.mediaTitle = title;
+    this.mediaArtist = subtitle ?? '';
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title,
+        artist: this.mediaArtist,
+        album: 'Bible Assistant',
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private syncMediaSessionState(
+    state?: 'playing' | 'paused',
+    position?: number,
+    duration?: number,
+  ): void {
+    if (!('mediaSession' in navigator)) return;
+    const ms = navigator.mediaSession;
+    if (state) ms.playbackState = state;
+    const dur = duration ?? this.currentLoaded?.duration ?? 0;
+    const pos = position ?? this.player.currentTime;
+    // setPositionState throws if position > duration, which can happen for a
+    // frame around track transitions.
+    if (dur > 0 && pos <= dur) {
+      try {
+        ms.setPositionState({ duration: dur, position: pos, playbackRate: this.currentRate });
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  private clearMediaSession(): void {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.playbackState = 'none';
+      navigator.mediaSession.metadata = null;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Unlock the media elements inside a user gesture (iOS autoplay policy). */
+  primeForPlayback(): void {
+    this.player.prime();
+  }
+
+  // ─── Alignment loader ────────────────────────────────────────────────
+  // (Audio bytes are loaded by ElementTrackPlayer, which reads through the
+  // same persistent media cache.)
 
   private async loadAlignment(url: string): Promise<Alignment> {
     const cached = this.alignmentCache.get(url);
@@ -925,11 +994,14 @@ class AudioPlaybackManager {
 
   _speechSetVolume(v: number): void {
     const clamped = Math.max(0, Math.min(1, v));
+    // Elements first — they're the ones actually producing verse audio now.
+    const factor = this.ducked ? this.DUCK_FACTOR : 1;
+    this.player.setVolume(clamped * factor);
+    this.interjection.setVolume(clamped * factor);
     if (!this.ctx || !this.ttsGain) {
       useSettingsStore.getState().setSpeechVolume(clamped);
       return;
     }
-    const factor = this.ducked ? this.DUCK_FACTOR : 1;
     const now = this.ctx.currentTime;
     this.ttsGain.gain.cancelScheduledValues(now);
     this.ttsGain.gain.setValueAtTime(this.ttsGain.gain.value, now);

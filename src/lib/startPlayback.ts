@@ -15,6 +15,7 @@ import {
   type PlanItem,
 } from './playbackPlan';
 import { localeForTranslation } from './translationLocaleMap';
+import { getTranslationInfo } from '@/services/bible/translationCatalog';
 
 /**
  * Fire-and-forget: if the user has ambient music enabled, load the selected
@@ -36,6 +37,24 @@ export function startAmbientIfEnabled(): void {
     });
 }
 
+/**
+ * Set what the lock screen / Control Center shows for this reading:
+ * "Galatians 5:22" for a single verse, "Galatians 5:22–26" for a range, with
+ * the translation as the subtitle.
+ *
+ * Called from both reading entry points — `startPlaybackForVerses` (taps, the
+ * transport, resume-last-reading) and `streamReading` (the AI `read_verses`
+ * tool, which builds tracks from a plan and never goes through the former).
+ */
+export function publishNowPlaying(verses: VerseSummary[], startIndex = 0): void {
+  const first = verses[startIndex] ?? verses[0];
+  if (!first) return;
+  const last = verses[verses.length - 1];
+  const label =
+    last && last !== first ? `${first.display}–${last.verse}` : first.display;
+  audioPlayback.setNowPlaying(label, getTranslationInfo(first.translation).name);
+}
+
 export async function startPlaybackForVerses(
   messageId: string,
   verses: VerseSummary[],
@@ -46,6 +65,8 @@ export async function startPlaybackForVerses(
   const settings = useSettingsStore.getState();
   audioPlayback.ensureContext();
   startAmbientIfEnabled();
+
+  publishNowPlaying(verses, startIndex);
 
   const msg = useChatStore.getState().messages.find((m) => m.id === messageId);
   const fullPlan = buildPlaybackPlan(verses, {
@@ -257,6 +278,11 @@ export async function streamReading(
   start: StreamStart,
 ): Promise<void> {
   if (plan.length === 0) return;
+  // The AI read path never goes through startPlaybackForVerses, so the
+  // lock-screen label has to be published here too. The verses live on the
+  // chat message this reading belongs to.
+  const readingMsg = useChatStore.getState().messages.find((m) => m.id === messageId);
+  if (readingMsg?.verses?.length) publishNowPlaying(readingMsg.verses);
   let gen = -1;
   let started = false;
   try {
