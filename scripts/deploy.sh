@@ -8,6 +8,7 @@
 #     --with-secrets   also upload secrets.php (see the warning below)
 #     --with-bibles    also upload public/bibles/*.xml   (~59 MB, rarely changes)
 #     --with-packs     also upload build/bible-packs/    (~88 MB, downloadable Bibles)
+#     --with-ambient   also upload storage/ambient/*.mp3 (~77 MB, the music tracks)
 #     --dry-run        print the transfer plan and exit
 #
 # Credentials come from ./sftp.env (gitignored):
@@ -28,13 +29,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 
-BUILD=1 WITH_SECRETS=0 WITH_BIBLES=0 WITH_PACKS=0 DRY_RUN=0
+BUILD=1 WITH_SECRETS=0 WITH_BIBLES=0 WITH_PACKS=0 WITH_AMBIENT=0 DRY_RUN=0
 for arg in "$@"; do
   case "$arg" in
     --no-build)     BUILD=0 ;;
     --with-secrets) WITH_SECRETS=1 ;;
     --with-bibles)  WITH_BIBLES=1 ;;
     --with-packs)   WITH_PACKS=1 ;;
+    --with-ambient) WITH_AMBIENT=1 ;;
     --dry-run)      DRY_RUN=1 ;;
     -h|--help)      sed -n '2,26p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
@@ -72,9 +74,10 @@ add_tree() {
 }
 
 # The SPA itself
-for f in index.html manifest.webmanifest sw.js registerSW.js favicon.svg icons.svg; do
+for f in index.html manifest.webmanifest sw.js registerSW.js favicon-32.png apple-touch-icon.png; do
   add_file "dist/$f" "$f"
 done
+add_tree dist/icons icons
 while IFS= read -r f; do add_file "$f" "$(basename "$f")"; done < <(find dist -maxdepth 1 -name 'workbox-*.js')
 add_tree dist/assets assets
 
@@ -89,6 +92,13 @@ add_tree dist/bible-packs bible-packs
 [ "$WITH_BIBLES" = 1 ]  && add_tree public/bibles bibles
 [ "$WITH_SECRETS" = 1 ] && add_file public/secrets.php secrets.php
 
+# Ambient music. This is the ONE part of storage/ that is content rather than
+# user data, and ?action=ambient.list just scans this directory — so with it
+# empty the music dropdown is silently blank. Scoped to ambient/ alone: never
+# storage/users/ (cards, boards, secret.txt) and never storage/audio/ (the
+# server-side TTS cache, which the server rebuilds on demand).
+[ "$WITH_AMBIENT" = 1 ] && add_tree public/storage/ambient storage/ambient
+
 FILE_COUNT=$(wc -l < "$PLAN" | tr -d ' ')
 BYTES=$(awk -F'\t' '{print $1}' "$PLAN" | xargs -I{} stat -f%z {} 2>/dev/null | awk '{s+=$1} END {print s+0}')
 
@@ -98,6 +108,7 @@ echo "▸ files  : $FILE_COUNT  ($(echo "scale=1; $BYTES/1048576" | bc) MB)"
 [ "$WITH_PACKS" = 1 ]   && echo "▸ incl.  : downloadable Bible packs"
 [ "$WITH_BIBLES" = 1 ]  && echo "▸ incl.  : Bible XML sources"
 [ "$WITH_SECRETS" = 1 ] && echo "▸ incl.  : secrets.php  (overwrites the server's OpenAI key!)"
+[ "$WITH_AMBIENT" = 1 ] && echo "▸ incl.  : ambient music tracks"
 echo "▸ never  : storage/ (live user data), and anything not listed above"
 echo
 
@@ -137,9 +148,28 @@ check() {
   if [ "$code" = "$expect" ]; then printf '   ✓ %-34s %s\n' "$label" "$code"
   else printf '   ✗ %-34s got %s, expected %s\n' "$label" "$code" "$expect"; fi
 }
+
+# Status code alone is NOT enough for asset paths. The SPA-fallback rewrite in
+# .htaccess turns every missing file into a 200 serving index.html, so a
+# forgotten asset looks perfectly healthy. This asserts the content-type too —
+# which is how a batch of missing icons slipped through as five green 200s.
+check_asset() {
+  local path="$1" expect_ct="$2" label="$3"
+  local ct
+  ct=$(curl -sI --max-time 20 "$PUBLIC_URL$path" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print $2}')
+  case "$ct" in
+    "$expect_ct"*) printf '   ✓ %-34s %s\n' "$label" "$ct" ;;
+    text/html*)    printf '   ✗ %-34s SPA fallback — file is MISSING on the server\n' "$label" ;;
+    *)             printf '   ✗ %-34s unexpected content-type: %s\n' "$label" "${ct:-none}" ;;
+  esac
+}
 check "/"                                200 "SPA index"
 check "/manifest.webmanifest"            200 "PWA manifest"
 check "/bible-packs/manifest.json"       200 "Bible pack manifest"
+check_asset "/icons/icon-512.png"        "image/png"   "PWA icon 512"
+check_asset "/icons/icon-192.png"        "image/png"   "PWA icon 192"
+check_asset "/apple-touch-icon.png"      "image/png"   "apple-touch-icon"
+check_asset "/favicon-32.png"            "image/png"   "favicon"
 # No identity headers -> api.php should reject with 401, which proves PHP is
 # executing rather than serving the source, and that routing works.
 check "/api.php?action=ambient.list"     401 "api.php (401 = PHP alive)"

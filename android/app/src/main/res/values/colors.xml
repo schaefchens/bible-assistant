@@ -2,9 +2,9 @@
 <resources>
     <!-- Matches the navy in tailwind.config.js / the theme-color meta tag. -->
     <color name="navy">#1a1a2e</color>
-    <color name="gold">#c9a961</color>
+    <color name="gold">#c8a96e</color>
 
     <color name="colorPrimary">#1a1a2e</color>
     <color name="colorPrimaryDark">#12121f</color>
-    <color name="colorAccent">#c9a961</color>
+    <color name="colorAccent">#c8a96e</color>
 </resources>

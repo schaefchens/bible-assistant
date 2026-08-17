@@ -17,14 +17,14 @@ const WEB_BASE = process.env.WEB_BASE ?? '/';
 const NATIVE_OUT_DIR = 'dist-native';
 
 /**
- * `public/` is a minefield for a native build: alongside favicon.svg it holds
+ * `public/` is a minefield for a native build: alongside the icons it holds
  * api.php, secrets.php (a live OPENAI_API_KEY), 59 MB of Bible XML, and
  * storage/ with every user's secret.txt. Vite copies publicDir verbatim, and
  * `cap copy` would then bundle all of it into the .ipa/.apk — an APK is a zip
  * anyone can open. So the native build turns publicDir OFF and copies an
  * explicit allow-list instead.
  */
-const NATIVE_PUBLIC_ASSETS = ['favicon.svg', 'icons.svg', 'bible-packs'];
+const NATIVE_PUBLIC_ASSETS = ['favicon-32.png', 'apple-touch-icon.png', 'icons', 'bible-packs'];
 
 /** Anything matching these anywhere in the tree fails the build. Server-side
  * config and secrets have no business inside an app binary. */
@@ -135,7 +135,7 @@ export default defineConfig(({ mode }) => {
         // needRefresh simply never becomes true and the update UI stays hidden.
         disable: isNative,
         registerType: 'prompt',
-        includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+        includeAssets: ['favicon-32.png', 'apple-touch-icon.png', 'icons/*.png'],
         manifest: {
           name: 'Bible Assistant',
           short_name: 'Bible',
@@ -147,11 +147,19 @@ export default defineConfig(({ mode }) => {
           start_url: WEB_BASE,
           scope: WEB_BASE,
           icons: [
+            { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+            { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+            // `maskable` is declared separately and only on the large size:
+            // the artwork sits inside the central ~66% of the square, so a
+            // circular or squircle mask can't clip the dove's wings or the
+            // book. Declaring `any maskable` on one entry (as this did while
+            // pointing at the old placeholder favicon) lets a browser use the
+            // same bitmap for both, which is what causes over-cropped icons.
             {
-              src: 'favicon.svg',
-              sizes: 'any',
-              type: 'image/svg+xml',
-              purpose: 'any maskable',
+              src: 'icons/icon-512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable',
             },
           ],
         },
