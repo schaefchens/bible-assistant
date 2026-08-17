@@ -1,0 +1,11 @@
+# The Zefania XML sources are read by api.php straight off the filesystem —
+# nothing ever needs to fetch them over HTTP. Without this they are world-
+# downloadable, which for esv.xml / nkjv.xml / s00.xml / hfa.xml means handing
+# out complete copies of copyrighted translations.
+
+Require all denied
+
+<IfModule !mod_authz_core.c>
+  Order deny,allow
+  Deny from all
+</IfModule>
