@@ -7,6 +7,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useChatNavigation } from '@/hooks/useChatNavigation';
 import { useThinkingDrone } from '@/hooks/useThinkingDrone';
 import { useAppInitialization } from '@/hooks/useAppInitialization';
+import { useNativeShell } from '@/hooks/useNativeShell';
 import { getPassphrase } from '@/lib/passphrase';
 import { PassphraseSetup } from '@/components/onboarding/PassphraseSetup';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
@@ -43,6 +44,7 @@ export function AppShell() {
   useChatNavigation();
   useThinkingDrone();
   useAppInitialization(hasPassphrase);
+  useNativeShell();
 
   const onboardingComplete = useSettingsStore((s) => s.onboardingComplete);
   const setOnboardingComplete = useSettingsStore((s) => s.setOnboardingComplete);
@@ -63,7 +65,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex flex-col h-full pt-safe">
+    <div className="flex flex-col h-full pt-safe px-safe">
       <UpdateBanner />
       <KeyFailureBanner />
       <main className="flex-1 min-h-0 flex flex-col">

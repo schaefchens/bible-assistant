@@ -10,6 +10,7 @@ import { useContinueReading } from '@/hooks/useContinueReading';
 import { WordHighlighter } from '@/components/playback/WordHighlighter';
 import { getBookById } from '@/services/bible/bookCatalog';
 import { MessageActionsMenu, type MessageActionItem } from './MessageActionsMenu';
+import { copyText, shareText } from '@/lib/nativeBridge';
 import type { ChatMessage } from '@/types/domain';
 
 type Props = {
@@ -126,7 +127,7 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
         const text = verses
           .map((v) => `${v.verse} ${v.text}`)
           .join('\n');
-        if (text) void navigator.clipboard?.writeText(text);
+        if (text) void copyText(text);
       },
     },
     {
@@ -134,11 +135,8 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
       label: t('chat.actions.share'),
       onClick: () => {
         const text = verses.map((v) => `${v.display}\n${v.text}`).join('\n\n');
-        if (navigator.share) {
-          void navigator.share({ text });
-        } else if (text) {
-          void navigator.clipboard?.writeText(text);
-        }
+        // Falls back to a clipboard copy when there's no share sheet.
+        if (text) void shareText(text);
       },
     },
     {

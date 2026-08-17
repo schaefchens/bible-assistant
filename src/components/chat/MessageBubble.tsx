@@ -7,6 +7,7 @@ import { useChatStore } from '@/store/chatStore';
 import type { ChatMessage } from '@/types/domain';
 import { MessageActionsMenu, type MessageActionItem } from './MessageActionsMenu';
 import { useLongPress } from '@/hooks/useLongPress';
+import { copyText } from '@/lib/nativeBridge';
 
 type Props = {
   message: ChatMessage;
@@ -29,7 +30,7 @@ export function MessageBubble({ message, selected, onSelect, onReask }: Props) {
       key: 'copy',
       label: t('chat.actions.copy'),
       onClick: () => {
-        if (message.text) void navigator.clipboard?.writeText(message.text);
+        if (message.text) void copyText(message.text);
       },
     },
     {

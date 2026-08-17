@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSettingsStore, type MicCorner } from '@/store/settingsStore';
 import { cornerForPoint } from '@/components/voice/MicAnchor';
 import { LONG_PRESS_MS, MOVE_TOLERANCE_PX } from '@/lib/gestureConstants';
+import { hapticTap, ImpactStyle } from '@/lib/nativeBridge';
 
 type DragState = {
   dragging: boolean;
@@ -71,7 +72,7 @@ export function useCornerDrag(onDrop: (corner: MicCorner) => void): {
         height: window.innerHeight,
       });
       onDropRef.current(corner);
-      if (navigator.vibrate) navigator.vibrate(8);
+      hapticTap();
       draggedThisCycleRef.current = true;
       cleanup();
     };
@@ -134,7 +135,8 @@ export function useCornerDrag(onDrop: (corner: MicCorner) => void): {
       window.removeEventListener('pointerup', onPreUp);
       if (!startRef.current) return;
       draggingRef.current = true;
-      if (navigator.vibrate) navigator.vibrate(10);
+      // Drag engaged — a touch firmer than the drop tap.
+      hapticTap(ImpactStyle.Medium);
       setState({
         dragging: true,
         ghost: { x: startRef.current.x, y: startRef.current.y },

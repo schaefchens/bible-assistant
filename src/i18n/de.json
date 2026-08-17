@@ -253,7 +253,8 @@
       "check": "Nach Updates suchen",
       "checking": "Suche…",
       "upToDate": "Aktuell",
-      "found": "Update gefunden — lade neu…"
+      "found": "Update gefunden — lade neu…",
+      "nativeHint": "Installierte App — für Updates eine neue Version installieren."
     },
     "dangerZone": {
       "title": "Gefahrenzone",
@@ -368,5 +369,16 @@
     "title": "Wiedergabe",
     "readingTitle": "Lesen",
     "announcementsTitle": "Ansagen"
+  },
+  "bible": {
+    "packs": {
+      "included": "Enthalten",
+      "installed": "Offline",
+      "deleteConfirm": "Löschen?",
+      "download": "Laden",
+      "resume": "Fortsetzen",
+      "cancel": "Download abbrechen",
+      "unavailable": "Nicht verfügbar"
+    }
   }
 }

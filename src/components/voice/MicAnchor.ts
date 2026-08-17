@@ -11,15 +11,46 @@ export type AnchorStyle = {
   right?: number;
 };
 
+const PADDING_PROP = {
+  top: 'paddingTop',
+  right: 'paddingRight',
+  bottom: 'paddingBottom',
+  left: 'paddingLeft',
+} as const;
+
+/** Hidden element whose paddings resolve the safe-area variables for us. */
+let probe: HTMLDivElement | null = null;
+
+function ensureProbe(): HTMLDivElement {
+  if (probe?.isConnected) return probe;
+  probe = document.createElement('div');
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.cssText =
+    'position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;pointer-events:none;' +
+    'padding-top:var(--safe-area-inset-top,0px);' +
+    'padding-right:var(--safe-area-inset-right,0px);' +
+    'padding-bottom:var(--safe-area-inset-bottom,0px);' +
+    'padding-left:var(--safe-area-inset-left,0px);';
+  document.body.appendChild(probe);
+  return probe;
+}
+
+/**
+ * Safe-area inset in CSS pixels.
+ *
+ * This used to read the custom property directly and always returned 0 — the
+ * variable it looked for (`--safe-area-*`) was never defined anywhere, and
+ * even with the right name, getComputedStyle on a *custom property* is not
+ * required to resolve the env() inside it. Reading back a real `padding`
+ * always yields a used px value, so we measure instead of parse.
+ *
+ * Re-read on every call, so rotation and Capacitor's Android overrides are
+ * picked up without any listener.
+ */
 export function safeAreaInset(side: 'top' | 'right' | 'bottom' | 'left'): number {
-  if (typeof window === 'undefined') return 0;
-  const val = getComputedStyle(document.documentElement)
-    .getPropertyValue(`--safe-area-${side}`);
-  const n = parseFloat(val);
-  if (!isNaN(n)) return n;
-  // Fallback: read env() via a hidden probe — modern browsers expose
-  // env(safe-area-inset-*) only inside CSS, so we approximate using 0.
-  return 0;
+  if (typeof document === 'undefined' || !document.body) return 0;
+  const n = parseFloat(getComputedStyle(ensureProbe())[PADDING_PROP[side]]);
+  return Number.isFinite(n) ? n : 0;
 }
 
 export function getMicAnchor(opts: {

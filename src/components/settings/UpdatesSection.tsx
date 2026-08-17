@@ -1,9 +1,15 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Capacitor } from '@capacitor/core';
 import { applyUpdate, checkForUpdates, useUpdateStore } from '@/lib/pwaUpdate';
 
-/** Settings tile showing the running build (commit + date) and a button to
- * check for a PWA update; auto-applies one if found. */
+/** Settings tile showing the running build (commit + date) and — on the web
+ * build only — a button to check for a PWA update, auto-applying one if found.
+ *
+ * There is no service worker in the native builds, so `checkForUpdates()` is a
+ * silent no-op there and the button would always claim "up to date". The build
+ * stamp stays on both: when you're sideloading APKs, "which build is this?" is
+ * exactly the question you need answered. */
 export function UpdatesSection() {
   const { t, i18n } = useTranslation();
   const needRefresh = useUpdateStore((s) => s.needRefresh);
@@ -55,14 +61,18 @@ export function UpdatesSection() {
           date: buildDate,
         })}
       </p>
-      <button
-        type="button"
-        className="btn-ghost text-xs"
-        onClick={() => void onCheck()}
-        disabled={status === 'checking' || status === 'found'}
-      >
-        {label}
-      </button>
+      {Capacitor.isNativePlatform() ? (
+        <p className="text-xs text-cream-dim">{t('settings.updates.nativeHint')}</p>
+      ) : (
+        <button
+          type="button"
+          className="btn-ghost text-xs"
+          onClick={() => void onCheck()}
+          disabled={status === 'checking' || status === 'found'}
+        >
+          {label}
+        </button>
+      )}
     </div>
   );
 }
