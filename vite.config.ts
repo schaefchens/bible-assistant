@@ -1,10 +1,75 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'node:path';
+import fs from 'node:fs';
 import { execSync } from 'node:child_process';
 
-const BASE = '/assistant/';
+/**
+ * Path the web build is served from.
+ *
+ * The app now lives at the root of its own subdomain
+ * (https://bibleassistant.apps.schaefchens.de/), not under the old
+ * '/assistant/' subpath — the SFTP account's root *is* the web root. Override
+ * with WEB_BASE=/subpath/ if it ever moves back under a prefix.
+ */
+const WEB_BASE = process.env.WEB_BASE ?? '/';
+const NATIVE_OUT_DIR = 'dist-native';
+
+/**
+ * `public/` is a minefield for a native build: alongside favicon.svg it holds
+ * api.php, secrets.php (a live OPENAI_API_KEY), 59 MB of Bible XML, and
+ * storage/ with every user's secret.txt. Vite copies publicDir verbatim, and
+ * `cap copy` would then bundle all of it into the .ipa/.apk — an APK is a zip
+ * anyone can open. So the native build turns publicDir OFF and copies an
+ * explicit allow-list instead.
+ */
+const NATIVE_PUBLIC_ASSETS = ['favicon.svg', 'icons.svg', 'bible-packs'];
+
+/** Anything matching these anywhere in the tree fails the build. Server-side
+ * config and secrets have no business inside an app binary. */
+const NATIVE_FORBIDDEN = [/^\.htaccess$/, /\.php$/i, /\.xml$/i, /^secrets\b/i];
+/** Directory names that must never appear in the bundle at any depth. */
+const NATIVE_FORBIDDEN_DIRS = new Set(['storage', 'bibles']);
+
+function assertNoServerFiles(dir: string, outDir: string, rel = ''): void {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const here = rel ? `${rel}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      if (NATIVE_FORBIDDEN_DIRS.has(entry.name)) {
+        throw new Error(`[native build] refusing to ship ${outDir}/${here}/ — server-side directory`);
+      }
+      assertNoServerFiles(path.join(dir, entry.name), outDir, here);
+      continue;
+    }
+    if (NATIVE_FORBIDDEN.some((re) => re.test(entry.name))) {
+      throw new Error(`[native build] refusing to ship ${outDir}/${here} — server-side file`);
+    }
+  }
+}
+
+function nativePublicAssets(outDir: string): Plugin {
+  return {
+    name: 'native-public-assets',
+    apply: 'build',
+    closeBundle() {
+      const out = path.resolve(__dirname, outDir);
+      for (const name of NATIVE_PUBLIC_ASSETS) {
+        const src = path.resolve(__dirname, 'public', name);
+        if (!fs.existsSync(src)) continue;
+        fs.cpSync(src, path.join(out, name), {
+          recursive: true,
+          // .htaccess only means something to Apache; in an app bundle it's
+          // dead weight that would also trip the assertion below.
+          filter: (s) => path.basename(s) !== '.htaccess',
+        });
+      }
+      // Belt and braces: fail the build rather than ship a leak. Recursive,
+      // because a top-level-only check would miss public/anything/secrets.php.
+      assertNoServerFiles(out, outDir);
+    },
+  };
+}
 
 const GIT_COMMIT = (() => {
   try {
@@ -17,84 +82,90 @@ const GIT_COMMIT = (() => {
 })();
 const BUILD_TIME = new Date().toISOString();
 
-export default defineConfig({
-  base: BASE,
-  define: {
-    __GIT_COMMIT__: JSON.stringify(GIT_COMMIT),
-    __BUILD_TIME__: JSON.stringify(BUILD_TIME),
-  },
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
+export default defineConfig(({ mode }) => {
+  // `vite build --mode capacitor` produces the native bundle; everything else
+  // is the /assistant/ web deploy. One config so the two can't drift.
+  const isNative = mode === 'capacitor';
+
+  return {
+    // Native assets are served from the root of capacitor://localhost, so the
+    // '/assistant/' base would 404 every chunk.
+    base: isNative ? './' : WEB_BASE,
+    publicDir: isNative ? false : 'public',
+    build: {
+      // A separate outDir makes it impossible for `cap copy` to pick up the
+      // 285 MB web dist/ by accident.
+      outDir: isNative ? NATIVE_OUT_DIR : 'dist',
     },
-  },
-  server: {
-    host: true,
-    proxy: {
-      // The PHP dev server (php -S 0.0.0.0:8000 -t public) serves api.php /
-      // storage at root, so strip the /assistant prefix when forwarding. The
-      // X-Base-Path header tells PHP what prefix the SPA expects in returned
-      // URLs (e.g. cached-audio URLs) so they round-trip correctly.
-      '/assistant/api.php': {
-        target: 'http://localhost:8000',
-        changeOrigin: false,
-        rewrite: (p) => p.replace(/^\/assistant/, ''),
-        headers: { 'X-Base-Path': '/assistant' },
-      },
-      '/assistant/storage': {
-        target: 'http://localhost:8000',
-        changeOrigin: false,
-        rewrite: (p) => p.replace(/^\/assistant/, ''),
+    define: {
+      __GIT_COMMIT__: JSON.stringify(GIT_COMMIT),
+      __BUILD_TIME__: JSON.stringify(BUILD_TIME),
+    },
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './src'),
       },
     },
-  },
-  plugins: [
-    react(),
-    VitePWA({
-      registerType: 'prompt',
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
-      manifest: {
-        name: 'Bible Assistant',
-        short_name: 'Bible',
-        description: 'Voice-controlled Bible reading assistant',
-        theme_color: '#1a1a2e',
-        background_color: '#1a1a2e',
-        display: 'standalone',
-        orientation: 'any',
-        start_url: BASE,
-        scope: BASE,
-        icons: [
-          {
-            src: 'favicon.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
-            purpose: 'any maskable',
-          },
-        ],
+    server: {
+      host: true,
+      proxy: {
+        // The PHP dev server (php -S 0.0.0.0:8000 -t public) serves api.php /
+        // storage at root, so strip the /assistant prefix when forwarding. The
+        // X-Base-Path header tells PHP what prefix the SPA expects in returned
+        // URLs (e.g. cached-audio URLs) so they round-trip correctly.
+        '/assistant/api.php': {
+          target: 'http://localhost:8000',
+          changeOrigin: false,
+          rewrite: (p) => p.replace(/^\/assistant/, ''),
+          headers: { 'X-Base-Path': '/assistant' },
+        },
+        '/assistant/storage': {
+          target: 'http://localhost:8000',
+          changeOrigin: false,
+          rewrite: (p) => p.replace(/^\/assistant/, ''),
+        },
       },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        navigateFallbackDenylist: [/\/api\.php/, /\/storage\//],
-        runtimeCaching: [
-          {
-            urlPattern: /\/storage\/audio\/.*\.(?:mp3|json)$/i,
-            handler: 'CacheFirst',
-            options: {
-              // Bump the cache name to evict pre-XML-migration audio that
-              // baked inline footnote refs ("16", "17") into the mp3. The
-              // new server-side sha256ForCache() check keeps cache honest
-              // going forward; this name bump invalidates clients that
-              // already cached the broken takes.
-              cacheName: 'verse-audio-v2',
-              expiration: {
-                maxEntries: 5000,
-                maxAgeSeconds: 60 * 60 * 24 * 365,
-              },
-              cacheableResponse: { statuses: [0, 200] },
+    },
+    plugins: [
+      react(),
+      VitePWA({
+        // Service workers don't run under the capacitor:// scheme on iOS. With
+        // `disable`, vite-plugin-pwa still resolves `virtual:pwa-register` to a
+        // no-op registerSW stub, so src/lib/pwaUpdate.ts needs no changes —
+        // needRefresh simply never becomes true and the update UI stays hidden.
+        disable: isNative,
+        registerType: 'prompt',
+        includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+        manifest: {
+          name: 'Bible Assistant',
+          short_name: 'Bible',
+          description: 'Voice-controlled Bible reading assistant',
+          theme_color: '#1a1a2e',
+          background_color: '#1a1a2e',
+          display: 'standalone',
+          orientation: 'any',
+          start_url: WEB_BASE,
+          scope: WEB_BASE,
+          icons: [
+            {
+              src: 'favicon.svg',
+              sizes: 'any',
+              type: 'image/svg+xml',
+              purpose: 'any maskable',
             },
-          },
-        ],
-      },
-    }),
-  ],
+          ],
+        },
+        workbox: {
+          globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+          navigateFallbackDenylist: [/\/api\.php/, /\/storage\//, /\/bible-packs\//],
+          // The `verse-audio-v2` CacheFirst route that used to live here is
+          // gone: src/lib/mediaCache.ts now persists verse audio + alignments
+          // in IndexedDB instead. That works in the native builds too, where
+          // there is no service worker at all — and keeping both would mean
+          // web users storing every mp3 twice.
+        },
+      }),
+      ...(isNative ? [nativePublicAssets(NATIVE_OUT_DIR)] : []),
+    ],
+  };
 });
