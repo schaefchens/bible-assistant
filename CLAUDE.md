@@ -13,6 +13,12 @@ This file is the orientation map. When changing code, find the relevant subsyste
 - `npm run dev` — Vite dev server (the maintainer usually already has this on `localhost:5173`; probe before starting).
 - `npm run build` — `tsc -b && vite build`. **This is the primary correctness gate** — keep it green.
 - `npm run build:native` / `npm run sync` — the Capacitor build; `sync` also runs `cap sync`.
+- `npm run icons` — regenerate every app icon from `resources/source/icon.png`
+  (`scripts/icons/buildIcons.mjs`). It owns iOS, Android (legacy + adaptive, all
+  densities, and the adaptive XML), and the web/PWA icons; splash screens are
+  still `capacitor-assets`' job. Sizing is per role — full-bleed surfaces get a
+  large glyph, only genuinely masked ones carry safe-zone padding — so don't
+  "simplify" it back to one shared bitmap.
 - `npm run bible:build` / `bible:verify` — regenerate the offline Bible packs, and diff them
   against golden fixtures from the PHP parser. **Run verify after touching either parser.**
 - `./scripts/deploy.sh [--dry-run]` — deploy the PWA + PHP over SFTP. Uses an explicit

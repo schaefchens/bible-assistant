@@ -159,14 +159,16 @@ export default defineConfig(({ mode }) => {
           icons: [
             { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
             { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-            // `maskable` is declared separately and only on the large size:
-            // the artwork sits inside the central ~66% of the square, so a
-            // circular or squircle mask can't clip the dove's wings or the
-            // book. Declaring `any maskable` on one entry (as this did while
-            // pointing at the old placeholder favicon) lets a browser use the
-            // same bitmap for both, which is what causes over-cropped icons.
+            // `maskable` gets its own bitmap, not a `purpose: 'any maskable'`
+            // on a shared one — a browser may crop a maskable icon to a circle,
+            // and sharing one file is what produces over-cropped launcher icons.
+            //
+            // Two files rather than one is also what lets the icons above fill
+            // the square properly: only this one carries the safe-zone padding
+            // (see FILL in scripts/icons/buildIcons.mjs), instead of every
+            // surface paying for the worst case.
             {
-              src: 'icons/icon-512.png',
+              src: 'icons/icon-512-maskable.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',
