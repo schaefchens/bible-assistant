@@ -14,7 +14,30 @@ import { execSync } from 'node:child_process';
  * with WEB_BASE=/subpath/ if it ever moves back under a prefix.
  */
 const WEB_BASE = process.env.WEB_BASE ?? '/';
+/** WEB_BASE without its trailing slash: '' at the root, '/subpath' under one. */
+const DEV_PREFIX = WEB_BASE.replace(/\/+$/, '');
 const NATIVE_OUT_DIR = 'dist-native';
+
+/**
+ * Dev-only route to the PHP backend (`php -S 0.0.0.0:8000 -t public`), which
+ * serves api.php and storage/ at its own root.
+ *
+ * Derived from WEB_BASE so the dev server always matches however the app is
+ * mounted. At the root that means the paths pass straight through; under a
+ * prefix it is stripped on the way to PHP and handed back via X-Base-Path, so
+ * the audio URLs PHP returns carry the prefix the SPA expects.
+ */
+function phpDevRoute(sendBasePath: boolean) {
+  return {
+    target: 'http://localhost:8000',
+    changeOrigin: false,
+    ...(DEV_PREFIX
+      ? { rewrite: (p: string) => p.slice(DEV_PREFIX.length) || '/' }
+      : {}),
+    // Omitted at the root, where PHP's BASE_PATH must stay empty.
+    ...(sendBasePath && DEV_PREFIX ? { headers: { 'X-Base-Path': DEV_PREFIX } } : {}),
+  };
+}
 
 /**
  * `public/` is a minefield for a native build: alongside the icons it holds
@@ -84,12 +107,12 @@ const BUILD_TIME = new Date().toISOString();
 
 export default defineConfig(({ mode }) => {
   // `vite build --mode capacitor` produces the native bundle; everything else
-  // is the /assistant/ web deploy. One config so the two can't drift.
+  // is the web deploy. One config so the two can't drift.
   const isNative = mode === 'capacitor';
 
   return {
-    // Native assets are served from the root of capacitor://localhost, so the
-    // '/assistant/' base would 404 every chunk.
+    // Native assets are served from the root of capacitor://localhost, so an
+    // absolute base would 404 every chunk.
     base: isNative ? './' : WEB_BASE,
     publicDir: isNative ? false : 'public',
     build: {
@@ -109,21 +132,8 @@ export default defineConfig(({ mode }) => {
     server: {
       host: true,
       proxy: {
-        // The PHP dev server (php -S 0.0.0.0:8000 -t public) serves api.php /
-        // storage at root, so strip the /assistant prefix when forwarding. The
-        // X-Base-Path header tells PHP what prefix the SPA expects in returned
-        // URLs (e.g. cached-audio URLs) so they round-trip correctly.
-        '/assistant/api.php': {
-          target: 'http://localhost:8000',
-          changeOrigin: false,
-          rewrite: (p) => p.replace(/^\/assistant/, ''),
-          headers: { 'X-Base-Path': '/assistant' },
-        },
-        '/assistant/storage': {
-          target: 'http://localhost:8000',
-          changeOrigin: false,
-          rewrite: (p) => p.replace(/^\/assistant/, ''),
-        },
+        [`${DEV_PREFIX}/api.php`]: phpDevRoute(true),
+        [`${DEV_PREFIX}/storage`]: phpDevRoute(false),
       },
     },
     plugins: [
