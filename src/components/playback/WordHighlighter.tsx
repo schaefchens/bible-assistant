@@ -5,13 +5,36 @@ import type { VerseSummary } from '@/types/domain';
 
 
 type Props = {
-  messageId: string;
+  groupId: string;
   verseIndex: number;
   verse: VerseSummary;
   onWordTap?: (verseIndex: number, wordIndex: number) => void;
+  /**
+   * `'block'` (default) gives each verse its own paragraph — the chat reader.
+   * `'inline'` renders it as a `<span>` so several verses flow together into one
+   * paragraph, which is what a print Bible looks like. Inline also switches the
+   * verse number to a superscript.
+   */
+  layout?: 'block' | 'inline';
+  /**
+   * Render this verse's first letter as an oversized initial (the reader uses it
+   * on each chapter's opening verse).
+   *
+   * Decorative only: the initial is nested *inside* the existing first-word span
+   * rather than becoming its own token, so the word index space the TTS alignment
+   * depends on is untouched, and tapping the word still resolves to word 0.
+   */
+  initial?: boolean;
 };
 
-export function WordHighlighter({ messageId, verseIndex, verse, onWordTap }: Props) {
+export function WordHighlighter({
+  groupId,
+  verseIndex,
+  verse,
+  onWordTap,
+  layout = 'block',
+  initial = false,
+}: Props) {
   // Subscribe to primitives rather than the whole `current` object. The
   // playback rAF loop rebuilds `current` ~60×/sec (to advance `position`),
   // so selecting the object would re-render every verse in the chapter every
@@ -19,10 +42,10 @@ export function WordHighlighter({ messageId, verseIndex, verse, onWordTap }: Pro
   // active one, so only the playing verse re-renders, and only when its word
   // index actually changes.
   const isCurrent = usePlaybackStore(
-    (s) => s.current?.messageId === messageId && s.current.verseIndex === verseIndex,
+    (s) => s.current?.groupId === groupId && s.current.verseIndex === verseIndex,
   );
   const activeWordIndex = usePlaybackStore((s) =>
-    s.current?.messageId === messageId && s.current.verseIndex === verseIndex
+    s.current?.groupId === groupId && s.current.verseIndex === verseIndex
       ? s.current.currentWordIndex
       : -1,
   );
@@ -30,44 +53,63 @@ export function WordHighlighter({ messageId, verseIndex, verse, onWordTap }: Pro
   const words = useMemo(() => verse.text.split(/(\s+)/), [verse.text]);
   let wordCounter = -1;
 
+  const inline = layout === 'inline';
+  // Both variants carry `data-verse-key`: it is the contract
+  // useAutoScrollActiveVerse queries to follow the reading.
+  const Tag = inline ? 'span' : 'p';
+
+  const tokens = words.map((token, i) => {
+    if (/^\s+$/.test(token)) return <span key={i}>{token}</span>;
+    wordCounter++;
+    const idx = wordCounter;
+    const active = activeWordIndex === idx;
+    const body =
+      initial && idx === 0 && token.length > 0 ? (
+        <>
+          <span className="chapter-initial">{token[0]}</span>
+          {token.slice(1)}
+        </>
+      ) : (
+        token
+      );
+    const handler = onWordTap
+      ? (e: React.MouseEvent) => {
+          e.stopPropagation();
+          onWordTap(verseIndex, idx);
+        }
+      : undefined;
+    return (
+      <span
+        key={i}
+        role={handler ? 'button' : undefined}
+        tabIndex={handler ? -1 : undefined}
+        onClick={handler}
+        className={clsx('word', active && 'word-active', handler && 'cursor-pointer')}
+      >
+        {body}
+      </span>
+    );
+  });
+
   return (
-    <p
-      data-verse-key={`${messageId}:${verseIndex}`}
+    <Tag
+      data-verse-key={`${groupId}:${verseIndex}`}
       className={clsx(
-        'verse leading-relaxed font-serif text-cream scroll-mt-16',
+        'font-serif text-cream scroll-mt-16',
+        inline ? 'verse-inline' : 'verse leading-relaxed',
         isCurrent && 'verse-current',
       )}
     >
-      <span className="text-gold-dim text-xs font-sans mr-2 align-baseline">
-        {verse.verse}
-      </span>
-      {words.map((token, i) => {
-        if (/^\s+$/.test(token)) return <span key={i}>{token}</span>;
-        wordCounter++;
-        const idx = wordCounter;
-        const active = activeWordIndex === idx;
-        const handler = onWordTap
-          ? (e: React.MouseEvent) => {
-              e.stopPropagation();
-              onWordTap(verseIndex, idx);
-            }
-          : undefined;
-        return (
-          <span
-            key={i}
-            role={handler ? 'button' : undefined}
-            tabIndex={handler ? -1 : undefined}
-            onClick={handler}
-            className={clsx(
-              'word',
-              active && 'word-active',
-              handler && 'cursor-pointer',
-            )}
-          >
-            {token}
-          </span>
-        );
-      })}
-    </p>
+      {inline ? (
+        <sup className="text-gold-dim text-[0.65em] font-sans mr-0.5 select-none">
+          {verse.verse}
+        </sup>
+      ) : (
+        <span className="text-gold-dim text-xs font-sans mr-2 align-baseline">
+          {verse.verse}
+        </span>
+      )}
+      {tokens}
+    </Tag>
   );
 }

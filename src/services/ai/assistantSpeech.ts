@@ -33,7 +33,7 @@ export async function speakAssistantReply(text: string, messageId: string): Prom
     } else {
       void browserTts.enqueue([
         {
-          messageId,
+          groupId: messageId,
           verseIndex: 0,
           text: trimmed,
           translation: locale === 'de' ? 'S00' : 'ESV',
@@ -58,7 +58,7 @@ export async function speakAssistantReply(text: string, messageId: string): Prom
     } else {
       void audioPlayback.enqueue([
         {
-          messageId,
+          groupId: messageId,
           verseIndex: 0,
           audioUrl: tts.audioUrl,
           alignmentUrl: tts.alignmentUrl,

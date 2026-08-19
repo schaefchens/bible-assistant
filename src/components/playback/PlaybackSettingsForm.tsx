@@ -160,6 +160,8 @@ function ReadingSettings() {
   const setAutoScroll = useSettingsStore((s) => s.setAutoScrollReader);
   const autoPlay = useSettingsStore((s) => s.autoPlayReading);
   const setAutoPlay = useSettingsStore((s) => s.setAutoPlayReading);
+  const endless = useSettingsStore((s) => s.readerEndlessScroll);
+  const setEndless = useSettingsStore((s) => s.setReaderEndlessScroll);
 
   // Local mirrors of engine state — initialized on mount and kept in sync via
   // the click handlers below (this form is the only writer for rate/repeat).
@@ -194,6 +196,21 @@ function ReadingSettings() {
           {t('settings.autoScroll')}
           <span className="block text-xs text-cream-dim mt-0.5">
             {t('settings.autoScrollHint')}
+          </span>
+        </span>
+      </label>
+
+      <label className="flex items-start gap-2">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={endless}
+          onChange={(e) => setEndless(e.target.checked)}
+        />
+        <span className="text-sm">
+          {t('settings.reader.endlessScroll')}
+          <span className="block text-xs text-cream-dim mt-0.5">
+            {t('settings.reader.endlessScrollHint')}
           </span>
         </span>
       </label>

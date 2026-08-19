@@ -34,6 +34,8 @@ This file is the orientation map. When changing code, find the relevant subsyste
 | Persistent audio + alignment cache (IndexedDB) | `src/lib/mediaCache.ts` |
 | Native speech recognition | `src/lib/nativeSpeech.ts` (Whisper stays the fallback) |
 | Auto-continuation + prefetch | `src/lib/autoPlay.ts` |
+| Bible reader screen | `src/routes/ReadPage.tsx` + `src/store/readerStore.ts` |
+| Playback ⇄ content seam | `src/lib/readingHosts.ts` |
 | Bible data / references | `src/services/bible/*` |
 | HTTP to backend | `src/services/api/*` (all via `client.ts`) |
 
@@ -54,26 +56,62 @@ mic / text input
 ```
 Reading aloud is the response: pure `read_verses` turns emit **no** chat text, only audio (logged as a `historyNote` so the model can later "continue reading").
 
+### Reading hosts — how playback finds its verses
+
+Every queued track carries a `groupId` (`PlaybackTrack.groupId`,
+`usePlaybackStore.current.groupId`). It is an **opaque playback-group key**, not a chat
+message id — it binds audio to the verses `WordHighlighter` highlights.
+`src/lib/readingHosts.ts` resolves it by namespace prefix:
+
+| id | host | a "reading" is |
+| --- | --- | --- |
+| bare uuid (no `:`) | `chatReadingHost` | an assistant message with `verses` |
+| `reader:<translation>:<book>:<chapter>` | `readerReadingHost` | a loaded chapter |
+
+Anything in the playback path that needs "the verses behind what is playing" goes through
+`readingHosts.getGroup(id)` — the transport, `autoPlay`, `playbackController`, the
+last-reading writer, `startPlayback`, `playbackPosition`. **Never re-introduce a
+`useChatStore.messages.find(...)` in that path**: that assumption is what used to make the
+whole audio pipeline chat-only.
+
+Resolution is per *id*, not per active screen, because both hosts can own live groups at
+once (chat has readings from earlier in the session while the reader has chapters mounted).
+`readingHosts.focus()` is consulted only for "what does Play start when nothing is queued?".
+
+Auto-continuation is host-agnostic: `autoPlay` computes the next chunk from the group's own
+verses and asks the host to `appendReading()` it. Chat materializes a new assistant message
+(with a `historyNote` so the model knows); the reader inserts the chapter into its window.
+A reader group is always a whole chapter, so it always takes `computeNextChunk`'s
+whole-chapter branch — which is why the reader gets endless audio reading, TTS prefetch and
+audio-driven endless scroll from the same mechanism, with no reader special-casing.
+
+Reader group ids are **deterministic**, so scrolling away and back (or replaying) re-binds
+the highlighter to already-queued tracks. `appendReading` must stay idempotent for the same
+reason.
+
 ## Stores (Zustand) — who owns what
 All in `src/store/`. `(persist)` = survives reload via `zustand/middleware`.
 | Store | Owns |
 | --- | --- |
 | `usePlaybackStore` | **Source of truth for audio state**: status, current track, word index (drives `WordHighlighter`), volumes |
 | `useChatStore` | Conversation history, `isProcessing`, `currentTool` |
-| `useSettingsStore` *(persist v12 + migrations)* | User prefs: locale, translation, voices, reading/announcement prefs, ambient, mic corner |
+| `useSettingsStore` *(persist v13 + migrations)* | User prefs: locale, translation, voices, reading/announcement prefs, ambient, mic corner |
 | `useLibraryStore` | Cards + boards + their order + the offline sync queue (flushed to `api.php`) |
 | `useRibbonsStore` *(persist)* | Colored bookmarks ("ribbons") |
 | `useGlobalVoiceStore` | Mic listening state, last voice response |
-| `useLastReadingStore` *(persist)* | Resume point for "play last reading" |
-| `useUiLayoutStore` | Transient layout (composer height, etc.) |
+| `useLastReadingStore` *(persist)* | Resume point for "play last reading" — **audio-owned**, written only from the playback subscription. The reader's scroll position deliberately does not write here, or idle scrolling would move it |
+| `useReaderStore` *(persist v1 — `position` only)* | The reader screen: current chapter, the loaded-chapter cache + the mounted window |
+| `useUiLayoutStore` | Transient layout — `bottomBarHeight`, the height of whichever bar the current page puts above the nav (chat composer, reader pager), so floaters clear it |
 | `useUpdateStore` (in `lib/pwaUpdate.ts`) | PWA update-available flag *(named `use*` though it's a store, not a hook — a known, intentionally-left naming exception)* |
 
-**Store reads from services/lib go through `src/services/storeAccess.ts`** (the single read contract). React components use the `useXStore(selector)` hooks directly for reactivity.
+`lib/` and `services/` read stores directly via `useXStore.getState()`; React components use
+the `useXStore(selector)` hooks for reactivity. The one read path that *is* behind a contract
+is playback-group → verses, via `src/lib/readingHosts.ts` (see above).
 
 ## Layer rules
 - `components/` → call hooks + store selector hooks; presentational.
 - `hooks/` → orchestrate; call `lib/` and `services/`.
-- `lib/` → stateful singletons & logic (audio, gestures, sound cues); read stores via `storeAccess`.
+- `lib/` → stateful singletons & logic (audio, gestures, sound cues); read stores via `getState()`.
 - `services/` → stateless data access. `services/api/*` = HTTP; `services/bible/*` = reference parsing + verse fetch/format; `services/ai/*` = tool contract + dispatch.
 - `store/` → Zustand state. `types/domain.ts` = canonical shared types. `utils/` = pure helpers.
 
@@ -81,6 +119,44 @@ All in `src/store/`. `(persist)` = survives reload via `zustand/middleware`.
 - `use*` is reserved for **React hooks** (`hooks/`) and **Zustand store hooks** (`store/`).
 - `lib/` singletons are camelCase nouns: `audioPlayback`, `browserTts`.
 - `services/` modules export plain functions, not singletons.
+
+## The reader screen (`/read`)
+
+A fifth bottom-bar tab, right of Chat, for reading rather than asking. `src/routes/ReadPage.tsx`
+plus `src/components/reader/*`; the store is `useReaderStore`.
+
+- **Flowing prose, not one verse per line.** `WordHighlighter` takes `layout="inline"` so several
+  verses share a `<p>`, with superscript verse numbers. The "currently reading" tint uses the
+  `.verse-inline` CSS pair (background + `box-decoration-break: clone`) because the block
+  variant's left inset bar and horizontal padding are meaningless on a wrapping span.
+- **Paragraph breaks are computed** (`src/lib/readerParagraphs.ts`). None of the eight source
+  bibles carries paragraph markup — `public/bibles/*.xml` has only `<verse>`/`<chapter>`/`<book>`
+  — so the rule is "break after a verse that ends a sentence, once ≥4 verses have accumulated".
+  Deterministic and never mid-sentence, but not editorial. `MIN_VERSES_PER_PARAGRAPH` is the knob.
+- **Two fields, not one array**: `chapters` is a bounded cache keyed by group id, `visible` is the
+  mounted window (`MAX_VISIBLE = 6`). The cache outlives window trimming so a track queued for a
+  scrolled-away chapter still resolves. `MAX_VISIBLE` is the load-bearing render-cost mitigation
+  (every verse mounts a `WordHighlighter` with two playback selectors, and the rAF loop rewrites
+  `current` ~60×/s) — don't raise it without profiling.
+- **Only `position` is persisted.** Verse text would bloat localStorage and go stale on a pack
+  upgrade, and `getChapter` is memoized + in-flight-deduped so a re-fetch on boot is nearly free.
+  First-ever open seeds from `useLastReadingStore`; after that the two are independent.
+- **Paged vs endless** is `settings.readerEndlessScroll` (default off → prev/next chapter buttons).
+  Endless appends forward from an IntersectionObserver sentinel and prepends backward from an
+  explicit button. Both directions, plus window trimming, re-pin the scroll position in
+  `useEndlessChapters` by **pinning a chapter element**, not by scrollHeight arithmetic — WebKit
+  has no dependable `overflow-anchor` and iOS momentum scrolling fights raw `scrollTop` writes.
+- **Versification gaps are normal, not exotic.** `BookEntry.chapters` is English versification, so
+  the German texts legitimately lack chapters the catalog advertises (LUT's Malachi ends at 3
+  where KJV has 4). A *step* absorbs that and keeps going the way the user was heading — forward
+  rolls into the next book, backward walks down — while an explicit jump still errors. The miss
+  arrives two ways depending on the source, so test it with `isChapterMissing()`
+  (`ChapterUnavailableError` offline, `bible.chapter` 404 online), never `instanceof` alone.
+- Switching translation stops reader audio before reloading: group ids embed the translation, and
+  word counts differ between texts, so letting queued TTS play on would desync the highlight.
+- **Known limitation:** a voice command on `/read` still produces a *chat* reading (audio plays,
+  the page doesn't follow). Same as `/cards` today; routing it into the reader needs a target-host
+  field on `SendOpts`/`DispatchContext`.
 
 ## Backend — `public/api.php`
 Single PHP entry; routes on `?action=`. Per-user data dirs keyed by an identity derived from the user's passphrase. OpenAI actions (`chat`, `tts`, `tts.speak`, `transcribe`, `recording.upload`) require a key — a personal key (sent by the client) or the shared key, selected via the `X-Prefer-Shared-Key` header.
@@ -98,7 +174,7 @@ Bible text is parsed from Zefania XML in `public/bibles/*.xml` (S00, S51, LUT, H
 | `base` | `/` | `./` |
 | outDir | `dist/` | `dist-native/` |
 | `publicDir` | `public/` | **off** — an allow-list is copied instead |
-| Router | `BrowserRouter` | `HashRouter` (Android WebView ≥117 won't change paths on custom schemes) |
+| Router | `BrowserRouter` | `HashRouter` (Android WebView ≥117 won't change paths on custom schemes) — `/read` is `#/read`, and `useLocation().pathname` still reads `/read` |
 | Service worker | yes | none — no SW under `capacitor://` |
 | API origin | same-origin, relative | absolute, from `.env.capacitor` (`src/services/api/origin.ts`) |
 | Bible source | `bible.chapter` POST | bundled LUT/KJV packs first, then downloads, then network |

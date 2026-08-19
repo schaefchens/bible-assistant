@@ -8,6 +8,7 @@ import { useChatNavigation } from '@/hooks/useChatNavigation';
 import { useThinkingDrone } from '@/hooks/useThinkingDrone';
 import { useAppInitialization } from '@/hooks/useAppInitialization';
 import { useNativeShell } from '@/hooks/useNativeShell';
+import { useReadingHostFocus } from '@/hooks/useReadingHostFocus';
 import { getPassphrase } from '@/lib/passphrase';
 import { PassphraseSetup } from '@/components/onboarding/PassphraseSetup';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
@@ -45,6 +46,7 @@ export function AppShell() {
   useThinkingDrone();
   useAppInitialization(hasPassphrase);
   useNativeShell();
+  useReadingHostFocus();
 
   const onboardingComplete = useSettingsStore((s) => s.onboardingComplete);
   const setOnboardingComplete = useSettingsStore((s) => s.setOnboardingComplete);
@@ -82,8 +84,9 @@ export function AppShell() {
         </div>
       )}
 
-      <nav className="pb-safe border-t border-navy-soft bg-navy grid grid-cols-4">
+      <nav className="pb-safe border-t border-navy-soft bg-navy grid grid-cols-5">
         <NavTab to="/" label={t('nav.chat')} icon={<ChatIcon />} />
+        <NavTab to="/read" label={t('nav.read')} icon={<ReadIcon />} />
         <NavTab to="/cards" label={t('nav.cards')} icon={<CardsIcon />} />
         <NavTab to="/boards" label={t('nav.boards')} icon={<BoardsIcon />} />
         <NavTab to="/settings" label={t('nav.settings')} icon={<SettingsIcon />} />
@@ -122,7 +125,9 @@ function NavTab({
       }
     >
       <span className="w-5 h-5">{icon}</span>
-      <span>{label}</span>
+      {/* Five tabs leaves ~64px each on a 320px screen, which "Einstellungen"
+          overruns — truncate rather than let the row reflow. */}
+      <span className="max-w-full truncate px-0.5">{label}</span>
     </NavLink>
   );
 }
@@ -144,6 +149,16 @@ function ChatIcon() {
       <circle cx="8.5" cy="12" r=".6" fill="currentColor" stroke="none" />
       <circle cx="12" cy="12" r=".6" fill="currentColor" stroke="none" />
       <circle cx="15.5" cy="12" r=".6" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+/** An open book — deliberately distinct from BookChapterPicker's closed book. */
+function ReadIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <path d="M12 6.6C10.4 5.1 7.9 4.5 4 4.9v13c3.9-.4 6.4.2 8 1.7 1.6-1.5 4.1-2.1 8-1.7v-13c-3.9-.4-6.4.2-8 1.7z" />
+      <line x1="12" y1="6.6" x2="12" y2="19.6" />
     </svg>
   );
 }

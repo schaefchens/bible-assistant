@@ -1,5 +1,4 @@
 import clsx from 'clsx';
-import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useUiLayoutStore } from '@/store/uiLayoutStore';
@@ -11,9 +10,8 @@ import { MicSnapTargets } from './MicSnapTargets';
 
 export function GlobalMicButton() {
   const { t } = useTranslation();
-  const location = useLocation();
   const corner = useSettingsStore((s) => s.micCorner);
-  const composerHeight = useUiLayoutStore((s) => s.composerHeight);
+  const bottomBarHeight = useUiLayoutStore((s) => s.bottomBarHeight);
 
   // Pure consumer of the single voice pipeline (mounted by <VoiceController/>).
   const listening = useGlobalVoiceStore((s) => s.listening);
@@ -26,8 +24,7 @@ export function GlobalMicButton() {
 
   const anchorStyle = getMicAnchor({
     corner,
-    route: location.pathname,
-    composerHeight,
+    bottomBarHeight,
   });
 
   const dragStyle: React.CSSProperties =

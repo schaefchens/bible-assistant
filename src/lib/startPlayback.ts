@@ -2,7 +2,8 @@ import { audioPlayback, type PlaybackTrack } from './audioPlaybackManager';
 import { browserTts, type BrowserTtsItem } from './browserTts';
 import { postTts, postTtsSpeak } from '@/services/api/tts';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
-import { useChatStore } from '@/store/chatStore';
+import { readingHosts } from './readingHosts';
+import { usePlaybackStore } from '@/store/playbackStore';
 import {
   effectiveReadingVoice,
   effectiveVoiceStyle,
@@ -56,7 +57,7 @@ export function publishNowPlaying(verses: VerseSummary[], startIndex = 0): void 
 }
 
 export async function startPlaybackForVerses(
-  messageId: string,
+  groupId: string,
   verses: VerseSummary[],
   startIndex = 0,
   startWordIndex?: number,
@@ -68,7 +69,7 @@ export async function startPlaybackForVerses(
 
   publishNowPlaying(verses, startIndex);
 
-  const msg = useChatStore.getState().messages.find((m) => m.id === messageId);
+  const group = readingHosts.getGroup(groupId);
   const fullPlan = buildPlaybackPlan(verses, {
     locale: settings.locale,
     readChapterHeadings: settings.readChapterHeadings,
@@ -76,13 +77,13 @@ export async function startPlaybackForVerses(
     verseNumberStyle: settings.verseNumberStyle,
     pauseBetweenVersesMs: settings.pauseBetweenVersesMs,
     pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
-    wholeChapter: msg?.headingWholeChapter ?? false,
+    wholeChapter: group?.wholeChapter ?? false,
   });
   const plan = sliceFromVerseIndex(fullPlan, startIndex);
 
   const readerVoice = effectiveReadingVoice();
   if (isBrowserVoice(readerVoice)) {
-    const items = planToBrowserItems(plan, messageId);
+    const items = planToBrowserItems(plan, groupId);
     void browserTts.speakQueue(items);
     return;
   }
@@ -94,7 +95,7 @@ export async function startPlaybackForVerses(
   const firstIsVerse = plan[0]?.kind === 'verse';
   await streamReading(
     plan,
-    messageId,
+    groupId,
     readerVoice as OpenAiVoiceId,
     effectiveVoiceStyle() || undefined,
     undefined,
@@ -103,43 +104,39 @@ export async function startPlaybackForVerses(
 }
 
 /**
- * Tap-to-play entry point used by the message bubbles. Plays the requested
- * message's verses, then continues into every subsequent message in the
- * chat that has verses — so the user can go back to an earlier reading and
- * the rest of the chat's readings still play in order, as a playlist.
+ * Tap-to-play entry point. Plays the requested group's verses, then continues
+ * into every subsequent group in the *same host* — so in chat the user can go
+ * back to an earlier reading and the rest of the chat's readings still play in
+ * order, and in the reader the following mounted chapters play on.
  *
- * `startIndex` / `startWordIndex` apply only to the primary message.
+ * `startIndex` / `startWordIndex` apply only to the primary group.
  */
 export async function startReadingPlaylist(
-  primaryMessageId: string,
+  primaryGroupId: string,
   primaryVerses: VerseSummary[],
   startIndex = 0,
   startWordIndex?: number,
 ): Promise<void> {
   if (primaryVerses.length === 0) return;
   await startPlaybackForVerses(
-    primaryMessageId,
+    primaryGroupId,
     primaryVerses,
     startIndex,
     startWordIndex,
   );
 
-  const messages = useChatStore.getState().messages;
-  const startMsgIdx = messages.findIndex((m) => m.id === primaryMessageId);
-  if (startMsgIdx < 0) return;
-  for (let i = startMsgIdx + 1; i < messages.length; i++) {
-    const m = messages[i];
-    if (!m.verses || m.verses.length === 0) continue;
-    await enqueueReadingForMessage(m.id, m.verses);
+  for (const group of readingHosts.groupsAfter(primaryGroupId)) {
+    await enqueueReadingForGroup(group.id, group.verses);
   }
 }
 
-async function enqueueReadingForMessage(
-  messageId: string,
+/** Append a group's audio behind whatever is already queued. */
+async function enqueueReadingForGroup(
+  groupId: string,
   verses: VerseSummary[],
 ): Promise<void> {
   const settings = useSettingsStore.getState();
-  const msg = useChatStore.getState().messages.find((m) => m.id === messageId);
+  const group = readingHosts.getGroup(groupId);
   const plan = buildPlaybackPlan(verses, {
     locale: settings.locale,
     readChapterHeadings: settings.readChapterHeadings,
@@ -147,16 +144,16 @@ async function enqueueReadingForMessage(
     verseNumberStyle: settings.verseNumberStyle,
     pauseBetweenVersesMs: settings.pauseBetweenVersesMs,
     pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
-    wholeChapter: msg?.headingWholeChapter ?? false,
+    wholeChapter: group?.wholeChapter ?? false,
   });
   const readerVoice = effectiveReadingVoice();
   if (isBrowserVoice(readerVoice)) {
-    void browserTts.enqueue(planToBrowserItems(plan, messageId));
+    void browserTts.enqueue(planToBrowserItems(plan, groupId));
     return;
   }
   await streamReading(
     plan,
-    messageId,
+    groupId,
     readerVoice as OpenAiVoiceId,
     effectiveVoiceStyle() || undefined,
     undefined,
@@ -164,9 +161,9 @@ async function enqueueReadingForMessage(
   );
 }
 
-export function planToBrowserItems(plan: PlanItem[], messageId: string): BrowserTtsItem[] {
+export function planToBrowserItems(plan: PlanItem[], groupId: string): BrowserTtsItem[] {
   return plan.map((it) => ({
-    messageId,
+    groupId,
     verseIndex: it.verseIndex,
     text: itemText(it),
     translation: it.kind === 'verse' ? it.verse.translation : it.translation,
@@ -184,7 +181,7 @@ const TTS_BUILD_CONCURRENCY = 4;
 
 async function buildTrack(
   it: PlanItem,
-  messageId: string,
+  groupId: string,
   voice: OpenAiVoiceId,
   voiceStyle: string | undefined,
   signal?: AbortSignal,
@@ -214,7 +211,7 @@ async function buildTrack(
             { signal },
           );
     return {
-      messageId,
+      groupId,
       verseIndex: it.verseIndex,
       audioUrl: tts.audioUrl,
       alignmentUrl: tts.alignmentUrl,
@@ -230,7 +227,7 @@ async function buildTrack(
 
 export async function planToOpenAiTracks(
   plan: PlanItem[],
-  messageId: string,
+  groupId: string,
   voice: OpenAiVoiceId,
   voiceStyle: string | undefined,
   signal?: AbortSignal,
@@ -244,7 +241,7 @@ export async function planToOpenAiTracks(
       if (signal?.aborted) return;
       const i = cursor++;
       if (i >= plan.length) return;
-      results[i] = await buildTrack(plan[i], messageId, voice, voiceStyle, signal);
+      results[i] = await buildTrack(plan[i], groupId, voice, voiceStyle, signal);
     }
   };
   const poolSize = Math.min(TTS_BUILD_CONCURRENCY, plan.length);
@@ -271,7 +268,7 @@ type StreamStart =
  */
 export async function streamReading(
   plan: PlanItem[],
-  messageId: string,
+  groupId: string,
   voice: OpenAiVoiceId,
   voiceStyle: string | undefined,
   signal: AbortSignal | undefined,
@@ -279,17 +276,16 @@ export async function streamReading(
 ): Promise<void> {
   if (plan.length === 0) return;
   // The AI read path never goes through startPlaybackForVerses, so the
-  // lock-screen label has to be published here too. The verses live on the
-  // chat message this reading belongs to.
-  const readingMsg = useChatStore.getState().messages.find((m) => m.id === messageId);
-  if (readingMsg?.verses?.length) publishNowPlaying(readingMsg.verses);
+  // lock-screen label has to be published here too.
+  const group = readingHosts.getGroup(groupId);
+  if (group?.verses.length) publishNowPlaying(group.verses);
   let gen = -1;
   let started = false;
   try {
     for (const it of plan) {
       if (signal?.aborted) break;
       if (started && !audioPlayback.isFeed(gen)) break; // superseded / stopped
-      const track = await buildTrack(it, messageId, voice, voiceStyle, signal);
+      const track = await buildTrack(it, groupId, voice, voiceStyle, signal);
       if (!track) continue;
       if (signal?.aborted) break;
       if (!started) {
@@ -311,4 +307,39 @@ export async function streamReading(
 
 function itemText(it: PlanItem): string {
   return it.kind === 'verse' ? it.verse.text : it.text;
+}
+
+/**
+ * Tap-a-word: start (or move) playback to a specific word of a specific verse.
+ * Shared by the chat reader and the reader screen — three cases, cheapest first:
+ *
+ * 1. Already on that verse's track → just seek within it.
+ * 2. Same group, verse still in the live queue → jump to it.
+ * 3. Otherwise → (re)start the group from that verse.
+ *
+ * Browser TTS is checked first because it has no seek and no per-word timing at
+ * all: `seekToWord` / `goToVerseIndex` only ever touch the audioPlayback queue,
+ * so on that engine the honest behaviour is "start at the verse".
+ */
+export function playFromVerseWord(
+  groupId: string,
+  verses: VerseSummary[],
+  verseIndex: number,
+  wordIndex?: number,
+): void {
+  if (verses.length === 0) return;
+
+  if (browserTts.isActive() || isBrowserVoice(effectiveReadingVoice())) {
+    void startPlaybackForVerses(groupId, verses, verseIndex);
+    return;
+  }
+
+  const current = usePlaybackStore.getState().current;
+  const sameGroup = current?.groupId === groupId;
+  if (sameGroup && current.verseIndex === verseIndex && current.isVerse) {
+    if (wordIndex !== undefined) audioPlayback.seekToWord(wordIndex);
+    return;
+  }
+  if (sameGroup && audioPlayback.goToVerseIndex(verseIndex, wordIndex)) return;
+  void startReadingPlaylist(groupId, verses, verseIndex, wordIndex);
 }

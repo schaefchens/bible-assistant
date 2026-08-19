@@ -12,6 +12,7 @@
   },
   "nav": {
     "chat": "Chat",
+    "read": "Lesen",
     "cards": "Karten",
     "boards": "Tafeln",
     "settings": "Einstellungen"
@@ -275,6 +276,10 @@
       "speechVolume": "Lese-Lautstärke",
       "preview": "Vorhören",
       "stop": "Stopp"
+    },
+    "reader": {
+      "endlessScroll": "Endloses Scrollen",
+      "endlessScrollHint": "Nächstes Kapitel beim Scrollen automatisch laden, statt Seiten zu blättern."
     }
   },
   "chatReader": {
@@ -380,5 +385,21 @@
       "cancel": "Download abbrechen",
       "unavailable": "Nicht verfügbar"
     }
+  },
+  "read": {
+    "title": "Lesen",
+    "pickChapter": "Buch und Kapitel wählen",
+    "prevChapter": "Vorheriges Kapitel",
+    "nextChapter": "Nächstes Kapitel",
+    "loadPrevious": "Vorheriges Kapitel laden",
+    "playChapter": "Kapitel vorlesen",
+    "endOfBible": "Du hast das Ende erreicht.",
+    "startOfBible": "Anfang der Bibel",
+    "loading": "Wird geladen…",
+    "unavailable": "{{translation}} enthält {{reference}} nicht.",
+    "unavailableHint": "Lade diese Übersetzung herunter, um sie offline zu lesen, oder wähle eine andere.",
+    "failed": "{{reference}} konnte nicht geladen werden.",
+    "switchTranslation": "Andere Übersetzung wählen",
+    "retry": "Erneut versuchen"
   }
 }

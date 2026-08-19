@@ -8,7 +8,7 @@ import { AmbientAudioBus } from './ambientAudioBus';
 import { ElementTrackPlayer } from './elementTrackPlayer';
 
 export type PlaybackTrack = {
-  messageId: string;
+  groupId: string;
   verseIndex: number;
   audioUrl: string;
   alignmentUrl?: string;
@@ -470,7 +470,7 @@ class AudioPlaybackManager {
     this.startSource(startOffset);
 
     usePlaybackStore.getState().setCurrent({
-      messageId: track.messageId,
+      groupId: track.groupId,
       verseIndex: track.verseIndex,
       totalVerses: this.queue.length,
       audioUrl: track.audioUrl,
@@ -745,18 +745,18 @@ class AudioPlaybackManager {
   }
 
   /**
-   * Replace the contiguous block of upcoming tracks belonging to `messageId`
+   * Replace the contiguous block of upcoming tracks belonging to `groupId`
    * (the block immediately after the currently-playing track) with
    * `newTracks`. Used when settings change mid-playlist so the rest of the
    * current reading honors the new headings / verse-number / pause options.
    *
-   * If no upcoming tracks for `messageId` are found, the new tracks are
+   * If no upcoming tracks for `groupId` are found, the new tracks are
    * inserted right after `currentIndex` (so a freshly-enabled toggle takes
    * effect from the next item).
    */
-  replaceUpcomingFor(messageId: string, newTracks: PlaybackTrack[]): void {
+  replaceUpcomingFor(groupId: string, newTracks: PlaybackTrack[]): void {
     const startIdx = this.queue.findIndex(
-      (t, i) => i > this.currentIndex && t.messageId === messageId,
+      (t, i) => i > this.currentIndex && t.groupId === groupId,
     );
     if (startIdx < 0) {
       this.queue = [
@@ -769,7 +769,7 @@ class AudioPlaybackManager {
     let endIdx = startIdx;
     while (
       endIdx < this.queue.length &&
-      this.queue[endIdx].messageId === messageId
+      this.queue[endIdx].groupId === groupId
     ) {
       endIdx++;
     }
@@ -869,11 +869,11 @@ class AudioPlaybackManager {
     return this.hasTrack ? this.player.currentTime : this.currentOffset;
   }
 
-  isPlaying(messageId: string): boolean {
+  isPlaying(groupId: string): boolean {
     const cur = usePlaybackStore.getState().current;
     return (
       !!cur &&
-      cur.messageId === messageId &&
+      cur.groupId === groupId &&
       usePlaybackStore.getState().status === 'playing'
     );
   }

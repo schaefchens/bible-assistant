@@ -28,7 +28,7 @@ type SettingsState = {
    * a distraction-free reading view. */
   readingOnlyView: boolean;
   /** When true, the chat composer (text input + send) is hidden to free up
-   * reading space; floaters drop down as composerHeight goes to 0. */
+   * reading space; floaters drop down as bottomBarHeight goes to 0. */
   hideComposer: boolean;
   micSoundEnabled: boolean;
   thinkingSoundEnabled: boolean;
@@ -40,6 +40,9 @@ type SettingsState = {
   pauseBetweenChaptersMs: number;
   /** When true, audio continues to the next chunk after a reading ends. */
   autoPlayReading: boolean;
+  /** Reader screen: load the next/previous chapter as you scroll, instead of
+   * turning one chapter at a time with the prev/next buttons. */
+  readerEndlessScroll: boolean;
   /** Whether the server has a personal OpenAI key on file for this user.
    * Hydrated from auth.openaiKey.status on boot; transient (not persisted). */
   hasUserOpenAiKey: boolean;
@@ -73,6 +76,7 @@ type SettingsState = {
   setPauseBetweenVersesMs: (v: number) => void;
   setPauseBetweenChaptersMs: (v: number) => void;
   setAutoPlayReading: (v: boolean) => void;
+  setReaderEndlessScroll: (v: boolean) => void;
   setUserOpenAiKeyStatus: (hasKey: boolean, masked: string | null) => void;
   setSessionPreferSharedKey: (v: boolean) => void;
   setOnboardingComplete: (v: boolean) => void;
@@ -183,6 +187,7 @@ export const useSettingsStore = create<SettingsState>()(
         pauseBetweenVersesMs: 0,
         pauseBetweenChaptersMs: 0,
         autoPlayReading: false,
+        readerEndlessScroll: false,
         hasUserOpenAiKey: false,
         userOpenAiKeyMasked: null,
         sessionPreferSharedKey: false,
@@ -221,6 +226,8 @@ export const useSettingsStore = create<SettingsState>()(
         setPauseBetweenChaptersMs: (v) =>
           set({ pauseBetweenChaptersMs: Math.max(0, Math.min(10000, Math.round(v))) }),
         setAutoPlayReading: (autoPlayReading) => set({ autoPlayReading }),
+        setReaderEndlessScroll: (readerEndlessScroll) =>
+          set({ readerEndlessScroll }),
         setUserOpenAiKeyStatus: (hasKey, masked) =>
           set({ hasUserOpenAiKey: hasKey, userOpenAiKeyMasked: masked }),
         setSessionPreferSharedKey: (sessionPreferSharedKey) =>
@@ -231,7 +238,7 @@ export const useSettingsStore = create<SettingsState>()(
     },
     {
       name: 'ba.settings',
-      version: 12,
+      version: 13,
       // Don't persist server-derived state — hydrate fresh on every boot.
       // Otherwise an older "hasUserOpenAiKey: true" could outlive a key the
       // server has since cleared.
@@ -326,6 +333,15 @@ export const useSettingsStore = create<SettingsState>()(
               typeof prev.thinkingSoundEnabled === 'boolean'
                 ? prev.thinkingSoundEnabled
                 : true,
+          };
+        }
+        if (version < 13) {
+          prev = {
+            ...prev,
+            readerEndlessScroll:
+              typeof prev.readerEndlessScroll === 'boolean'
+                ? prev.readerEndlessScroll
+                : false,
           };
         }
         return prev as SettingsState;

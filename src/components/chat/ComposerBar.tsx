@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCommandPipeline } from '@/hooks/useCommandPipeline';
 import { useChatStore } from '@/store/chatStore';
-import { useUiLayoutStore } from '@/store/uiLayoutStore';
+import { useBottomBarHeight } from '@/hooks/useBottomBarHeight';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 
 export function ComposerBar() {
@@ -11,20 +11,7 @@ export function ComposerBar() {
   const isProcessing = useChatStore((s) => s.isProcessing);
   const { send } = useCommandPipeline();
   const containerRef = useRef<HTMLFormElement>(null);
-  const setComposerHeight = useUiLayoutStore((s) => s.setComposerHeight);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const update = () => setComposerHeight(el.getBoundingClientRect().height);
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => {
-      ro.disconnect();
-      setComposerHeight(0);
-    };
-  }, [setComposerHeight]);
+  useBottomBarHeight(containerRef);
 
   const submit = (override?: string) => {
     const value = (override ?? text).trim();

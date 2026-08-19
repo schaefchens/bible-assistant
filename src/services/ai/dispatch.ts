@@ -1,6 +1,7 @@
 import type { ToolName, ToolArgs } from './tools';
 import { parseReference } from '@/services/bible/referenceParser';
-import { getVerses, getChapter, verseSpeakable } from '@/services/bible/bibleApi';
+import { getVerses, getChapter } from '@/services/bible/bibleApi';
+import { toVerseSummaries } from '@/services/bible/verseSummaries';
 import { effectiveReadingVoice, effectiveVoiceStyle } from '@/store/settingsStore';
 import type { Translation } from '@/services/bible/bibleApi';
 import {
@@ -183,14 +184,13 @@ async function handleReadVerses(
   const verses = await getVerses(translation, parsed);
   if (verses.length === 0) return { ok: false, error: 'no verses found' };
 
-  const summaries: VerseSummary[] = verses.map((v) => ({
+  const summaries: VerseSummary[] = toVerseSummaries(
     translation,
-    bookId: parsed.bookId,
-    chapter: parsed.chapter,
-    verse: v.verse,
-    text: verseSpeakable(v),
-    display: formatReference(parsed.bookId, parsed.chapter, v.verse, v.verse, locale),
-  }));
+    parsed.bookId,
+    parsed.chapter,
+    verses,
+    locale,
+  );
 
   // Capture how many verses the message ALREADY has so we can shift the
   // plan's verseIndex into the final message.verses index space. Without

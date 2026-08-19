@@ -50,7 +50,18 @@ function BookIcon({ className }: { className?: string }) {
   );
 }
 
-export function BookChapterPicker() {
+type Props = {
+  /**
+   * What a chapter tap does. Omitted → the chat behaviour: ask the AI to read
+   * it (`send('Read <BookEn> <chapter>')`). The reader passes its own handler to
+   * navigate instead of going through the model.
+   */
+  onPick?: (bookId: number, chapter: number) => void;
+  /** Custom trigger. Omitted → the small book-glyph icon button. */
+  trigger?: (open: () => void) => React.ReactNode;
+};
+
+export function BookChapterPicker({ onPick, trigger }: Props = {}) {
   const { t, i18n } = useTranslation();
   const isProcessing = useChatStore((s) => s.isProcessing);
   const translation = useSettingsStore((s) => s.translation);
@@ -108,20 +119,26 @@ export function BookChapterPicker() {
         ? bookLabel(selectedBook)
         : t('chat.bookPicker.title');
 
+  const openSheet = () => {
+    setView('books');
+    setOpen(true);
+  };
+
   return (
     <>
-      <button
-        type="button"
-        aria-label={t('chat.bookPicker.open') as string}
-        title={t('chat.bookPicker.open') as string}
-        onClick={() => {
-          setView('books');
-          setOpen(true);
-        }}
-        className="text-cream-dim hover:text-cream disabled:opacity-30 px-2 py-1 transition-colors"
-      >
-        <BookIcon />
-      </button>
+      {trigger ? (
+        trigger(openSheet)
+      ) : (
+        <button
+          type="button"
+          aria-label={t('chat.bookPicker.open') as string}
+          title={t('chat.bookPicker.open') as string}
+          onClick={openSheet}
+          className="text-cream-dim hover:text-cream disabled:opacity-30 px-2 py-1 transition-colors"
+        >
+          <BookIcon />
+        </button>
+      )}
 
       {createPortal(
         <>
@@ -245,10 +262,18 @@ export function BookChapterPicker() {
                       <button
                         key={chapter}
                         type="button"
-                        disabled={isProcessing}
+                        // Only the chat path can be busy; a reader jump is
+                        // always available.
+                        disabled={onPick ? false : isProcessing}
                         onClick={() => {
+                          // Keep this on both paths: the sheet tap is the user
+                          // gesture that unlocks the audio context on iOS.
                           audioPlayback.ensureContext();
-                          void send(`Read ${selectedBook.nameEn} ${chapter}`);
+                          if (onPick) {
+                            onPick(selectedBook.id, chapter);
+                          } else {
+                            void send(`Read ${selectedBook.nameEn} ${chapter}`);
+                          }
                           setOpen(false);
                         }}
                         className={clsx(

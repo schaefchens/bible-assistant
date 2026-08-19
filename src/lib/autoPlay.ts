@@ -2,13 +2,11 @@ import { audioPlayback, type PlaybackTrack } from './audioPlaybackManager';
 import { browserTts, type BrowserTtsItem } from './browserTts';
 import { buildPlaybackPlan } from './playbackPlan';
 import { planToBrowserItems, planToOpenAiTracks, streamReading } from './startPlayback';
-import {
-  getChapter,
-  verseSpeakable,
-  type Translation,
-} from '@/services/bible/bibleApi';
-import { formatReference, getBookById } from '@/services/bible/bookCatalog';
-import { useChatStore } from '@/store/chatStore';
+import { getChapter, type Translation } from '@/services/bible/bibleApi';
+import { toVerseSummaries } from '@/services/bible/verseSummaries';
+import { nextChapterRef } from '@/services/bible/chapterNavigation';
+import { readingHosts } from './readingHosts';
+import { rangeHistoryNote } from './chatReadingHost';
 import { usePlaybackStore } from '@/store/playbackStore';
 import {
   effectiveReadingVoice,
@@ -30,7 +28,6 @@ import { isBrowserVoice, type OpenAiVoiceId, type VerseSummary } from '@/types/d
  */
 
 const CHUNK_SIZE = 5;
-const LAST_BOOK_ID = 66;
 
 type Continuation = {
   bookId: number;
@@ -51,22 +48,18 @@ type PrefetchCache = {
   isBrowserVoice: boolean;
 };
 
-let lastPlayedMessageId: string | null = null;
+let lastPlayedGroupId: string | null = null;
 let prefetched: PrefetchCache | null = null;
 let prefetchController: AbortController | null = null;
-/** The messageId we last started (or completed) a prefetch for. The
+/** The groupId we last started (or completed) a prefetch for. The
  * playbackStore subscriber fires on every frame's currentWordIndex tick,
  * so without this guard each tick would abort + restart the in-flight
  * prefetch and it'd never finish. */
-let prefetchAnchorMessageId: string | null = null;
+let prefetchAnchorGroupId: string | null = null;
 let firingContinuation = false;
 
 function chunkKey(cont: Continuation, translation: Translation): string {
   return `${translation}:${cont.bookId}:${cont.chapter}:${cont.verseStart ?? 'all'}:${cont.verseEnd ?? 'all'}`;
-}
-
-function getMessage(messageId: string) {
-  return useChatStore.getState().messages.find((m) => m.id === messageId);
 }
 
 function autoPlayOn(): boolean {
@@ -79,18 +72,22 @@ export function cancelAutoPlayPrefetch(): void {
     prefetchController = null;
   }
   prefetched = null;
-  prefetchAnchorMessageId = null;
+  prefetchAnchorGroupId = null;
 }
 
 /**
- * Decide what plays after the message's current verses. Returns null when
- * the Bible is fully read or the message has no verses to anchor on.
+ * Decide what plays after the group's current verses. Returns null when the
+ * Bible is fully read or the group has no verses to anchor on.
+ *
+ * Host-agnostic by construction: the mode falls out of the verses themselves, so
+ * a reader group (always a full chapter, 1..N) automatically takes the
+ * whole-chapter branch and continues into the next chapter. No reader
+ * special-casing is needed anywhere in this module.
  */
 async function computeNextChunk(
-  messageId: string,
+  groupId: string,
 ): Promise<{ cont: Continuation; translation: Translation } | null> {
-  const msg = getMessage(messageId);
-  const verses = msg?.verses;
+  const verses = readingHosts.getGroup(groupId)?.verses;
   if (!verses || verses.length === 0) return null;
 
   const last = verses[verses.length - 1];
@@ -142,14 +139,8 @@ function nextWholeChapter(
   chapter: number,
   translation: Translation,
 ): { cont: Continuation; translation: Translation } | null {
-  const book = getBookById(bookId);
-  if (!book) return null;
-  if (chapter < book.chapters) {
-    return { cont: { bookId, chapter: chapter + 1 }, translation };
-  }
-  // End of book → next book, chapter 1.
-  if (bookId >= LAST_BOOK_ID) return null;
-  return { cont: { bookId: bookId + 1, chapter: 1 }, translation };
+  const ref = nextChapterRef(bookId, chapter);
+  return ref ? { cont: { bookId: ref.bookId, chapter: ref.chapter }, translation } : null;
 }
 
 async function nextVerseChunkAfterChapterEnd(
@@ -157,22 +148,15 @@ async function nextVerseChunkAfterChapterEnd(
   chapter: number,
   translation: Translation,
 ): Promise<{ cont: Continuation; translation: Translation } | null> {
-  const book = getBookById(bookId);
-  if (!book) return null;
-  let nextBookId = bookId;
-  let nextChapter = chapter + 1;
-  if (nextChapter > book.chapters) {
-    if (bookId >= LAST_BOOK_ID) return null;
-    nextBookId = bookId + 1;
-    nextChapter = 1;
-  }
-  const verses = await getChapter(translation, nextBookId, nextChapter);
+  const ref = nextChapterRef(bookId, chapter);
+  if (!ref) return null;
+  const verses = await getChapter(translation, ref.bookId, ref.chapter);
   if (verses.length === 0) return null;
   const lastVerseNo = verses[verses.length - 1].verse;
   return {
     cont: {
-      bookId: nextBookId,
-      chapter: nextChapter,
+      bookId: ref.bookId,
+      chapter: ref.chapter,
       verseStart: 1,
       verseEnd: Math.min(CHUNK_SIZE, lastVerseNo),
     },
@@ -195,49 +179,18 @@ async function buildSummariesFor(
             v.verse >= (cont.verseStart as number) &&
             v.verse <= (cont.verseEnd ?? (cont.verseStart as number)),
         );
-  return slice.map((v) => ({
-    translation,
-    bookId: cont.bookId,
-    chapter: cont.chapter,
-    verse: v.verse,
-    text: verseSpeakable(v),
-    display: formatReference(cont.bookId, cont.chapter, v.verse, v.verse, locale),
-  }));
-}
-
-function rangeHistoryNote(
-  summaries: VerseSummary[],
-  locale: 'en' | 'de',
-): string {
-  // Collapse contiguous (book, chapter, verse) runs in this single chunk.
-  type Range = { bookId: number; chapter: number; start: number; end: number };
-  const ranges: Range[] = [];
-  for (const v of summaries) {
-    const last = ranges[ranges.length - 1];
-    if (
-      last &&
-      last.bookId === v.bookId &&
-      last.chapter === v.chapter &&
-      v.verse === last.end + 1
-    ) {
-      last.end = v.verse;
-    } else {
-      ranges.push({ bookId: v.bookId, chapter: v.chapter, start: v.verse, end: v.verse });
-    }
-  }
-  const formatted = ranges
-    .map((r) => formatReference(r.bookId, r.chapter, r.start, r.end, locale))
-    .join('; ');
-  return `(Played aloud: ${formatted}.)`;
+  return toVerseSummaries(translation, cont.bookId, cont.chapter, slice, locale);
 }
 
 /**
- * Enqueue an auto-play continuation as a NEW assistant message — auto-play
- * never modifies the original reading. Each chunk appears in chat as its
- * own ReaderPanel, audio bridges via soft-end + the chapter-pause.
+ * Enqueue an auto-play continuation as a NEW reading group — auto-play never
+ * modifies the original one. The *host* decides what "a new group" means: chat
+ * appends an assistant message (so the chunk gets its own ReaderPanel), the
+ * reader inserts the chapter into its window (so the page grows as the voice
+ * advances). Audio bridges via soft-end + the chapter-pause either way.
  */
 async function enqueueContinuationFor(
-  _anchorMessageId: string,
+  anchorGroupId: string,
   cont: Continuation,
   translation: Translation,
 ): Promise<void> {
@@ -259,17 +212,13 @@ async function enqueueContinuationFor(
   // undefined (chapter mode in computeNextChunk).
   const wholeChapter = cont.verseStart === undefined;
 
-  // Create a fresh assistant message for this chunk.
-  const newMessageId = crypto.randomUUID();
-  useChatStore.getState().appendMessage({
-    id: newMessageId,
-    role: 'assistant',
-    text: '',
-    verses: summaries,
-    historyNote: rangeHistoryNote(summaries, settings.locale),
-    headingWholeChapter: wholeChapter,
-    createdAt: Date.now(),
-  });
+  const newGroupId = await readingHosts
+    .hostFor(anchorGroupId)
+    ?.appendReading(summaries, {
+      wholeChapter,
+      historyNote: rangeHistoryNote(summaries, settings.locale),
+    });
+  if (!newGroupId) return;
 
   const readerVoice = effectiveReadingVoice();
   if (isBrowserVoice(readerVoice)) {
@@ -282,16 +231,16 @@ async function enqueueContinuationFor(
       pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
       wholeChapter,
     });
-    const items: BrowserTtsItem[] = planToBrowserItems(plan, newMessageId);
+    const items: BrowserTtsItem[] = planToBrowserItems(plan, newGroupId);
     void browserTts.enqueue(items);
     return;
   }
 
   if (tracksFromPrefetch) {
     // Prefetch hit: the whole chunk is already built, so enqueue it at once.
-    // (Tracks were tagged with the prefetch's reserved messageId — swap to our
+    // (Tracks were tagged with the prefetch's reserved groupId — swap to our
     // actual new message so the WordHighlighter binds correctly.)
-    const tracks = tracksFromPrefetch.map((t) => ({ ...t, messageId: newMessageId }));
+    const tracks = tracksFromPrefetch.map((t) => ({ ...t, groupId: newGroupId }));
     if (tracks.length > 0) void audioPlayback.enqueue(tracks);
   } else {
     // Cold build: stream so the continuation's first verse plays after one TTS
@@ -308,7 +257,7 @@ async function enqueueContinuationFor(
     });
     await streamReading(
       plan,
-      newMessageId,
+      newGroupId,
       readerVoice as OpenAiVoiceId,
       effectiveVoiceStyle() || undefined,
       undefined,
@@ -317,18 +266,18 @@ async function enqueueContinuationFor(
   }
 }
 
-async function schedulePrefetchFor(messageId: string): Promise<void> {
+async function schedulePrefetchFor(groupId: string): Promise<void> {
   if (!autoPlayOn()) return;
   // Already prefetching for this anchor — let it finish.
-  if (prefetchAnchorMessageId === messageId && (prefetchController || prefetched)) {
+  if (prefetchAnchorGroupId === groupId && (prefetchController || prefetched)) {
     return;
   }
   cancelAutoPlayPrefetch();
-  prefetchAnchorMessageId = messageId;
+  prefetchAnchorGroupId = groupId;
   const controller = new AbortController();
   prefetchController = controller;
   try {
-    const next = await computeNextChunk(messageId);
+    const next = await computeNextChunk(groupId);
     if (!next || controller.signal.aborted) return;
     const settings = useSettingsStore.getState();
     const summaries = await buildSummariesFor(
@@ -354,7 +303,7 @@ async function schedulePrefetchFor(messageId: string): Promise<void> {
       });
       tracks = await planToOpenAiTracks(
         plan,
-        messageId,
+        groupId,
         prefetchVoice as OpenAiVoiceId,
         effectiveVoiceStyle() || undefined,
         controller.signal,
@@ -376,12 +325,12 @@ async function schedulePrefetchFor(messageId: string): Promise<void> {
   }
 }
 
-/** Last messageId whose verses we played. Survives `softEnd()` clearing
+/** Last groupId whose verses we played. Survives `softEnd()` clearing
  * the playback store's `current`, so the manual next-button path can
  * still pick up the conversation thread. Returns null before anything has
  * played in this session. */
-export function getLastPlayedMessageId(): string | null {
-  return lastPlayedMessageId;
+export function getLastPlayedGroupId(): string | null {
+  return lastPlayedGroupId;
 }
 
 /**
@@ -390,38 +339,52 @@ export function getLastPlayedMessageId(): string | null {
  * auto-play is off. The `firingContinuation` guard below protects against
  * double-tap spam.
  */
-export const triggerContinuation = (messageId: string): Promise<void> =>
-  onSoftEnd(messageId);
+export const triggerContinuation = (groupId: string): Promise<void> =>
+  onSoftEnd(groupId);
 
-async function onSoftEnd(messageId: string): Promise<void> {
+async function onSoftEnd(groupId: string): Promise<void> {
   if (firingContinuation) return;
   firingContinuation = true;
   try {
-    const next = await computeNextChunk(messageId);
+    const next = await computeNextChunk(groupId);
     if (!next) {
       // Nothing to continue with (e.g. end of Bible). If the manual
       // next-button path poked us into a 'loading' state for instant
       // feedback, restore idle so the thinking drone and PlayButton pulse
       // don't get stuck.
-      const ps = usePlaybackStore.getState();
-      if (ps.status === 'loading' && !ps.current) ps.setStatus('idle');
+      restoreIdleIfStuck();
       return;
     }
-    await enqueueContinuationFor(messageId, next.cont, next.translation);
+    await enqueueContinuationFor(groupId, next.cont, next.translation);
     // Kick off the next prefetch right after enqueueing.
-    void schedulePrefetchFor(messageId);
+    void schedulePrefetchFor(groupId);
+  } catch (e) {
+    // A chapter fetch inside computeNextChunk can reject (offline, a pack that
+    // isn't downloaded, a translation that genuinely lacks the next chapter).
+    // Without this catch it escaped as an unhandled rejection AND left status
+    // stuck at 'loading' — a permanently spinning play button and a thinking
+    // drone that never stops. Reading offline makes that reachable constantly.
+    console.warn('auto-play continuation failed', e);
+    restoreIdleIfStuck();
   } finally {
     firingContinuation = false;
   }
 }
 
+/** Undo the optimistic 'loading' poke from the manual next-button path when no
+ * continuation actually materialized. */
+function restoreIdleIfStuck(): void {
+  const ps = usePlaybackStore.getState();
+  if (ps.status === 'loading' && !ps.current) ps.setStatus('idle');
+}
+
 /** Subscribe to playback + settings; call once at app startup. */
 export function initAutoPlay(): void {
-  // Track the last playing messageId so we can recover it on soft-end
+  // Track the last playing groupId so we can recover it on soft-end
   // (current is null by then).
   usePlaybackStore.subscribe((state, prev) => {
-    if (state.current?.messageId) {
-      lastPlayedMessageId = state.current.messageId;
+    if (state.current?.groupId) {
+      lastPlayedGroupId = state.current.groupId;
     }
 
     const wasPlaying = prev.status === 'playing' || prev.status === 'loading';
@@ -431,18 +394,18 @@ export function initAutoPlay(): void {
       becameIdle &&
       (audioPlayback.isSoftEnded() || browserTts.isSoftEnded()) &&
       autoPlayOn() &&
-      lastPlayedMessageId
+      lastPlayedGroupId
     ) {
-      void onSoftEnd(lastPlayedMessageId);
+      void onSoftEnd(lastPlayedGroupId);
     }
 
     // Prefetch trigger: only when the playing message CHANGES. The
     // subscribe callback fires on every per-frame currentWordIndex tick;
-    // anchoring on messageId means we kick off one prefetch per message
+    // anchoring on groupId means we kick off one prefetch per message
     // and let it complete (rather than aborting + restarting 60×/sec).
-    if (state.current && autoPlayOn() && state.current.messageId) {
-      const msgId = state.current.messageId;
-      if (msgId !== prefetchAnchorMessageId) {
+    if (state.current && autoPlayOn() && state.current.groupId) {
+      const msgId = state.current.groupId;
+      if (msgId !== prefetchAnchorGroupId) {
         void schedulePrefetchFor(msgId);
       }
     }
@@ -450,8 +413,8 @@ export function initAutoPlay(): void {
 
   // React when the user toggles auto-play ON mid-playback.
   useSettingsStore.subscribe((state, prev) => {
-    if (state.autoPlayReading && !prev.autoPlayReading && lastPlayedMessageId) {
-      void schedulePrefetchFor(lastPlayedMessageId);
+    if (state.autoPlayReading && !prev.autoPlayReading && lastPlayedGroupId) {
+      void schedulePrefetchFor(lastPlayedGroupId);
     }
     if (!state.autoPlayReading && prev.autoPlayReading) {
       cancelAutoPlayPrefetch();
