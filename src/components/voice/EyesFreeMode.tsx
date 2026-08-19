@@ -5,10 +5,10 @@ import { useTranslation } from 'react-i18next';
 import { useGlobalVoiceStore } from '@/store/globalVoiceStore';
 import { voiceControl } from '@/hooks/useGlobalVoice';
 import { usePlaybackStore } from '@/store/playbackStore';
-import { useChatStore } from '@/store/chatStore';
 import {
   navigateVerse,
   togglePlayOrStart,
+  useReadingVerses,
 } from '@/hooks/usePlaybackTransport';
 import { playZoneTick, type ZoneSound } from '@/lib/clickTick';
 import { speakLabel, primeSpeechSynthesis } from '@/lib/speakLabel';
@@ -270,18 +270,17 @@ function ZoneButton({
 const CHUNK_SIZE = 4;
 
 function RollingTicker() {
-  const messageId = usePlaybackStore((s) => s.current?.messageId ?? null);
+  const groupId = usePlaybackStore((s) => s.current?.groupId ?? null);
   const verseIndex = usePlaybackStore((s) => s.current?.verseIndex ?? -1);
   const wordIndex = usePlaybackStore((s) => s.current?.currentWordIndex ?? -1);
   const isVerse = usePlaybackStore((s) => s.current?.isVerse ?? false);
   const status = usePlaybackStore((s) => s.status);
   const hasTrack = usePlaybackStore((s) => s.current !== null);
 
-  const verseText = useChatStore((s) => {
-    if (messageId == null || verseIndex < 0) return '';
-    const msg = s.messages.find((m) => m.id === messageId);
-    return msg?.verses?.[verseIndex]?.text ?? '';
-  });
+  // Host-aware, so the ticker also follows a reading played from the reader
+  // screen rather than going blank.
+  const verses = useReadingVerses(groupId);
+  const verseText = verseIndex >= 0 ? (verses?.[verseIndex]?.text ?? '') : '';
 
   const words = useMemo(
     () => verseText.split(/\s+/).filter(Boolean),

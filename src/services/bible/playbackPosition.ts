@@ -1,5 +1,6 @@
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useChatStore } from '@/store/chatStore';
+import { readingHosts } from '@/lib/readingHosts';
 import { getChapter } from './bibleApi';
 import { getBookById } from './bookCatalog';
 import type { Translation } from './bibleApi';
@@ -18,10 +19,9 @@ export type ResolvedPosition = {
  * nothing has been read yet. */
 export function resolveLastReadVerse(): ResolvedPosition | null {
   const cur = usePlaybackStore.getState().current;
-  const messages = useChatStore.getState().messages;
   if (cur) {
-    const msg = messages.find((m) => m.id === cur.messageId);
-    const v = msg?.verses?.[cur.verseIndex];
+    // Host-resolved, so a reading playing from the reader screen counts too.
+    const v = readingHosts.getGroup(cur.groupId)?.verses[cur.verseIndex];
     if (v) {
       return {
         translation: v.translation,
@@ -31,6 +31,9 @@ export function resolveLastReadVerse(): ResolvedPosition | null {
       };
     }
   }
+  // Fallback stays chat-specific on purpose: the only caller is the ribbon
+  // tooling, which is a chat feature ("bookmark where we just were").
+  const messages = useChatStore.getState().messages;
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     if (m.role === 'assistant' && m.verses && m.verses.length > 0) {

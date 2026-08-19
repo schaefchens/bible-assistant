@@ -55,8 +55,9 @@ export function safeAreaInset(side: 'top' | 'right' | 'bottom' | 'left'): number
 
 export function getMicAnchor(opts: {
   corner: MicCorner | undefined;
-  route: string;
-  composerHeight: number;
+  /** Height of the page's own bottom bar (chat composer, reader pager), from
+   * uiLayoutStore. 0 when the page has none. */
+  bottomBarHeight: number;
 }): AnchorStyle {
   const corner: MicCorner = opts.corner ?? 'br';
   const top = PAD + safeAreaInset('top');
@@ -65,14 +66,12 @@ export function getMicAnchor(opts: {
   const left = PAD + safeAreaInset('left');
   const right = PAD + safeAreaInset('right');
 
-  // On the chat route, the composer also lives above the nav. Lift bottom corners
-  // above it so floaters don't cover the send button.
-  if (
-    opts.route === '/' &&
-    opts.composerHeight > 0 &&
-    (corner === 'br' || corner === 'bl')
-  ) {
-    bottom += opts.composerHeight - 4;
+  // A page may render its own bar above the nav (the chat composer, the reader's
+  // chapter pager). Lift bottom corners over it so floaters don't cover it. No
+  // route check needed: only the mounted page reports a height, and 0 means
+  // there's nothing to clear.
+  if (opts.bottomBarHeight > 0 && (corner === 'br' || corner === 'bl')) {
+    bottom += opts.bottomBarHeight - 4;
   }
 
   switch (corner) {

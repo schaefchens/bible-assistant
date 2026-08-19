@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import { apiPostJson } from '@/services/api/client';
+import { ApiError, apiPostJson } from '@/services/api/client';
 import { bookKey, packDb } from '@/db/bibleDexie';
 import type { BibleVerse, Translation } from './bibleApi';
 import {
@@ -158,6 +158,25 @@ export class ChapterUnavailableError extends Error {
 const SOURCES: ChapterSource[] = Capacitor.isNativePlatform()
   ? [bundledSource, localPackSource, networkSource]
   : [localPackSource, networkSource];
+
+/**
+ * Whether a failed chapter resolution means "this translation simply doesn't
+ * have that chapter" — as opposed to a network or server problem.
+ *
+ * Two shapes mean the same thing, because the offline and online paths report it
+ * differently: the pack path throws ChapterUnavailableError when every source
+ * came up empty, and `bible.chapter` answers 404 "chapter not found" when the
+ * Zefania parse finds no such chapter.
+ *
+ * This is a routine situation, not an exotic one: `BookEntry.chapters` is English
+ * versification, so the German texts legitimately lack chapters the catalog
+ * advertises (LUT's Malachi ends at 3 where KJV has 4). Callers stepping forward
+ * should treat it as end-of-book and roll into the next book.
+ */
+export function isChapterMissing(e: unknown): boolean {
+  if (e instanceof ChapterUnavailableError) return true;
+  return e instanceof ApiError && e.status === 404;
+}
 
 export async function resolveChapter(
   translation: Translation,

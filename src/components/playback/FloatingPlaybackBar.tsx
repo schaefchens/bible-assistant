@@ -2,14 +2,15 @@ import { useCallback, useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useChatStore } from '@/store/chatStore';
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useUiLayoutStore } from '@/store/uiLayoutStore';
 import {
   navigateVerse,
   togglePlayOrStart,
+  useHasAnyReading,
 } from '@/hooks/usePlaybackTransport';
+import { isReadingRoute } from '@/lib/appRoutes';
 import { useCornerDrag } from '@/hooks/useMicDrag';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { getMicAnchor, oppositeCorner } from '@/components/voice/MicAnchor';
@@ -20,14 +21,14 @@ export function FloatingPlaybackBar() {
   const { t } = useTranslation();
   const location = useLocation();
 
-  const hasReadings = useChatStore((s) =>
-    s.messages.some((m) => (m.verses?.length ?? 0) > 0),
-  );
+  // Host-aware: true when chat has readings OR the reader has a chapter open,
+  // so the bar shows up on /read even with an empty conversation.
+  const hasReadings = useHasAnyReading();
   const status = usePlaybackStore((s) => s.status);
 
   const micCorner = useSettingsStore((s) => s.micCorner);
   const setMicCorner = useSettingsStore((s) => s.setMicCorner);
-  const composerHeight = useUiLayoutStore((s) => s.composerHeight);
+  const bottomBarHeight = useUiLayoutStore((s) => s.bottomBarHeight);
 
   const autoPlay = useSettingsStore((s) => s.autoPlayReading);
   const setAutoPlay = useSettingsStore((s) => s.setAutoPlayReading);
@@ -35,12 +36,16 @@ export function FloatingPlaybackBar() {
   const setAutoScroll = useSettingsStore((s) => s.setAutoScrollReader);
 
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
+  // Which route the bar was dismissed on, rather than a plain boolean: a bar
+  // closed in chat shouldn't leave the reader with no play button, and deriving
+  // it from the route means no extra effect to reset it on navigation.
+  const [dismissedOn, setDismissedOn] = useState<string | null>(null);
+  const dismissed = dismissedOn === location.pathname;
 
   // Bring the bar back whenever playback resumes (new reading, Space, ↓, etc.).
   useEffect(() => {
     if (status === 'playing' || status === 'loading') {
-      setDismissed(false);
+      setDismissedOn(null);
     }
   }, [status]);
 
@@ -55,12 +60,11 @@ export function FloatingPlaybackBar() {
 
   const barCorner = oppositeCorner(micCorner);
   const onRightSide = barCorner === 'tr' || barCorner === 'br';
-  const onChatRoute = location.pathname === '/';
+  const onReadingRoute = isReadingRoute(location.pathname);
 
   const anchorStyle = getMicAnchor({
     corner: barCorner,
-    route: location.pathname,
-    composerHeight,
+    bottomBarHeight,
   });
 
   if (!hasReadings || dismissed) {
@@ -91,7 +95,7 @@ export function FloatingPlaybackBar() {
 
   const handleClose = () => {
     audioPlayback.stop();
-    setDismissed(true);
+    setDismissedOn(location.pathname);
   };
 
   return (
@@ -175,9 +179,9 @@ export function FloatingPlaybackBar() {
           </TransportButton>
         </div>
 
-        {/* Extras — chat-only toggles hidden elsewhere to keep the bar slim. */}
+        {/* Extras — reading-route toggles hidden elsewhere to keep the bar slim. */}
         <div className="flex items-center gap-1">
-          {onChatRoute && (
+          {onReadingRoute && (
             <>
               <ToggleButton
                 active={autoPlay}

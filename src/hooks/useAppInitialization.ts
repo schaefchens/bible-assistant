@@ -6,9 +6,9 @@ import {
   useSettingsStore,
 } from '@/store/settingsStore';
 import { usePlaybackStore } from '@/store/playbackStore';
-import { useChatStore } from '@/store/chatStore';
 import { useLastReadingStore } from '@/store/lastReadingStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
+import { readingHosts } from '@/lib/readingHosts';
 import { getOpenAiKeyStatus } from '@/services/api/auth';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
 
@@ -38,20 +38,19 @@ export function useAppInitialization(hasPassphrase: boolean): void {
 
   // 2. Persist a "last reading" slot whenever the active verse advances, so a
   // fresh app load (or cleared chat) can still resume what the user was
-  // hearing. Guards on (messageId, verseIndex) since the playbackStore
+  // hearing. Guards on (groupId, verseIndex) since the playbackStore
   // subscription also fires per-frame on currentWordIndex ticks.
   useEffect(() => {
     let prevKey = '';
     const unsub = usePlaybackStore.subscribe((state) => {
       const cur = state.current;
       if (!cur) return;
-      const key = `${cur.messageId}:${cur.verseIndex}`;
+      const key = `${cur.groupId}:${cur.verseIndex}`;
       if (key === prevKey) return;
       prevKey = key;
-      const msg = useChatStore
-        .getState()
-        .messages.find((m) => m.id === cur.messageId);
-      const v = msg?.verses?.[cur.verseIndex];
+      // Resolved through the host registry, so a reading played from the reader
+      // screen captures a resume point exactly like a chat reading does.
+      const v = readingHosts.getGroup(cur.groupId)?.verses[cur.verseIndex];
       if (!v) return;
       useLastReadingStore.getState().setSlot({
         translation: v.translation,

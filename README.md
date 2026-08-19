@@ -9,7 +9,7 @@ A mobile-first PWA that retrieves Bible verses by voice or text and reads them a
 - **AI**: OpenAI `gpt-4o-mini` (tool calling), `gpt-4o-mini-tts` (TTS), `gpt-4o-transcribe` (Whisper, word-level timestamps), all proxied through PHP — the key never leaves the server.
 - **Bible source**: [bolls.life](https://bolls.life) — `ESV` (English Standard Version) and `S00` (Schlachter 2000 German).
 
-The SPA is served under the `/assistant/` path in both dev and production. Change the `base` value in `vite.config.ts` to move it.
+The SPA is served from the root of its own subdomain (https://bibleassistant.apps.schaefchens.de/) in both dev and production. To mount it under a path prefix instead, set `WEB_BASE=/subpath/` — `vite.config.ts` derives the build `base` *and* the dev proxy from it, so the two can't drift.
 
 ## Local dev
 
@@ -22,24 +22,25 @@ cp public/secrets.php.example public/secrets.php   # add OPENAI_API_KEY
 php -S 0.0.0.0:8000 -t public
 ```
 
-Open **http://localhost:5173/assistant/**. Vite strips the `/assistant` prefix when forwarding `/assistant/api.php` and `/assistant/storage/*` to the PHP server, and adds an `X-Base-Path: /assistant` header so PHP knows what prefix to put back into returned audio URLs.
+Open **http://localhost:5173/**. Vite forwards `/api.php` and `/storage/*` to the PHP server. (Under a `WEB_BASE` prefix it also strips that prefix on the way to PHP and sends an `X-Base-Path` header, so PHP puts the prefix back into the audio URLs it returns.)
 
 For PWA / Web Speech features on iOS you need HTTPS (use mkcert or a tunnel).
 
-## Deploy (Hetzner webspace, e.g. `/assistant/`)
+## Deploy (Hetzner webspace)
 
 ```
 npm run build
 ```
 
-Upload to the server's `assistant/` directory:
+`./scripts/deploy.sh [--dry-run]` does this over SFTP with an explicit allow-list (it must
+never upload `storage/` or `secrets.php`). To do it by hand, upload to the web root:
 
 - `dist/*` (the built SPA, includes manifest, service worker, icons)
 - `public/api.php`
 - A server-side `secrets.php` next to `api.php` containing `define('OPENAI_API_KEY', 'sk-...')`. **Never commit this file.**
-- Ensure `assistant/storage/` is writable by PHP.
+- Ensure `storage/` next to `api.php` is writable by PHP.
 
-PHP auto-detects the base path from `REQUEST_URI` (matches the leading segment before `/api.php` or `/storage/`). To override, set the `BIBLE_ASSISTANT_BASE_PATH` env var, or `define('BASE_PATH', '/whatever')` in `secrets.php`.
+At the web root PHP needs no base path. Under a path prefix it auto-detects one from `REQUEST_URI` (the leading segment before `/api.php` or `/storage/`); override with the `BIBLE_ASSISTANT_BASE_PATH` env var or `define('BASE_PATH', '/whatever')` in `secrets.php`.
 
 ## Identity
 

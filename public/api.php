@@ -50,7 +50,7 @@ const AUDIO_DIR = STORAGE_DIR . '/audio';
 
 /**
  * URL prefix under which the SPA + this api.php are served.
- * Production: '/assistant'. Resolution order:
+ * Production: '' — the app sits at the root of its own subdomain. Resolution order:
  *   1) define('BASE_PATH', ...) in secrets.php
  *   2) BIBLE_ASSISTANT_BASE_PATH env var
  *   3) X-Base-Path request header (Vite dev proxy sets this)

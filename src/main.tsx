@@ -8,10 +8,14 @@ import App from './App';
 import { hydrateIdentity } from '@/lib/bootIdentity';
 import { reclaimLegacyAudioCache } from '@/lib/mediaCache';
 import { initPwaUpdate } from '@/lib/pwaUpdate';
+import { initReadingHosts } from '@/lib/readingHosts';
 import { initPlaybackController } from '@/lib/playbackController';
 import { initAutoPlay } from '@/lib/autoPlay';
 
 initPwaUpdate();
+// Must come first: the two initializers below install playbackStore
+// subscribers that resolve verses through the host registry.
+initReadingHosts();
 initPlaybackController();
 initAutoPlay();
 // Reclaim the disk held by the retired Workbox `verse-audio-v2` cache; nothing

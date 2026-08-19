@@ -5,7 +5,7 @@ import { bcp47ForTranslation } from './translationLocaleMap';
 import { cancelNative, nativeTtsSupported, speakNative } from './nativeTts';
 
 export type BrowserTtsItem = {
-  messageId: string;
+  groupId: string;
   verseIndex: number;
   text: string;
   /** Optional — picks a system voice matching the verse's language. */
@@ -160,10 +160,10 @@ class BrowserTtsManager {
   }
 
   /** Same semantics as audioPlayback.replaceUpcomingFor — replace the
-   * contiguous block of upcoming items for `messageId`. */
-  replaceUpcomingFor(messageId: string, newItems: BrowserTtsItem[]): void {
+   * contiguous block of upcoming items for `groupId`. */
+  replaceUpcomingFor(groupId: string, newItems: BrowserTtsItem[]): void {
     const startIdx = this.queue.findIndex(
-      (it, i) => i > this.currentIndex && it.messageId === messageId,
+      (it, i) => i > this.currentIndex && it.groupId === groupId,
     );
     if (startIdx < 0) {
       this.queue = [
@@ -174,7 +174,7 @@ class BrowserTtsManager {
       return;
     }
     let endIdx = startIdx;
-    while (endIdx < this.queue.length && this.queue[endIdx].messageId === messageId) {
+    while (endIdx < this.queue.length && this.queue[endIdx].groupId === groupId) {
       endIdx++;
     }
     this.queue = [
@@ -328,7 +328,7 @@ class BrowserTtsManager {
 
     const publish = () => {
       usePlaybackStore.getState().setCurrent({
-        messageId: item.messageId,
+        groupId: item.groupId,
         verseIndex: item.verseIndex,
         totalVerses: this.queue.length,
         audioUrl: '',

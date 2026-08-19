@@ -14,7 +14,30 @@ import { execSync } from 'node:child_process';
  * with WEB_BASE=/subpath/ if it ever moves back under a prefix.
  */
 const WEB_BASE = process.env.WEB_BASE ?? '/';
+/** WEB_BASE without its trailing slash: '' at the root, '/subpath' under one. */
+const DEV_PREFIX = WEB_BASE.replace(/\/+$/, '');
 const NATIVE_OUT_DIR = 'dist-native';
+
+/**
+ * Dev-only route to the PHP backend (`php -S 0.0.0.0:8000 -t public`), which
+ * serves api.php and storage/ at its own root.
+ *
+ * Derived from WEB_BASE so the dev server always matches however the app is
+ * mounted. At the root that means the paths pass straight through; under a
+ * prefix it is stripped on the way to PHP and handed back via X-Base-Path, so
+ * the audio URLs PHP returns carry the prefix the SPA expects.
+ */
+function phpDevRoute(sendBasePath: boolean) {
+  return {
+    target: 'http://localhost:8000',
+    changeOrigin: false,
+    ...(DEV_PREFIX
+      ? { rewrite: (p: string) => p.slice(DEV_PREFIX.length) || '/' }
+      : {}),
+    // Omitted at the root, where PHP's BASE_PATH must stay empty.
+    ...(sendBasePath && DEV_PREFIX ? { headers: { 'X-Base-Path': DEV_PREFIX } } : {}),
+  };
+}
 
 /**
  * `public/` is a minefield for a native build: alongside the icons it holds
@@ -84,12 +107,12 @@ const BUILD_TIME = new Date().toISOString();
 
 export default defineConfig(({ mode }) => {
   // `vite build --mode capacitor` produces the native bundle; everything else
-  // is the /assistant/ web deploy. One config so the two can't drift.
+  // is the web deploy. One config so the two can't drift.
   const isNative = mode === 'capacitor';
 
   return {
-    // Native assets are served from the root of capacitor://localhost, so the
-    // '/assistant/' base would 404 every chunk.
+    // Native assets are served from the root of capacitor://localhost, so an
+    // absolute base would 404 every chunk.
     base: isNative ? './' : WEB_BASE,
     publicDir: isNative ? false : 'public',
     build: {
@@ -109,21 +132,8 @@ export default defineConfig(({ mode }) => {
     server: {
       host: true,
       proxy: {
-        // The PHP dev server (php -S 0.0.0.0:8000 -t public) serves api.php /
-        // storage at root, so strip the /assistant prefix when forwarding. The
-        // X-Base-Path header tells PHP what prefix the SPA expects in returned
-        // URLs (e.g. cached-audio URLs) so they round-trip correctly.
-        '/assistant/api.php': {
-          target: 'http://localhost:8000',
-          changeOrigin: false,
-          rewrite: (p) => p.replace(/^\/assistant/, ''),
-          headers: { 'X-Base-Path': '/assistant' },
-        },
-        '/assistant/storage': {
-          target: 'http://localhost:8000',
-          changeOrigin: false,
-          rewrite: (p) => p.replace(/^\/assistant/, ''),
-        },
+        [`${DEV_PREFIX}/api.php`]: phpDevRoute(true),
+        [`${DEV_PREFIX}/storage`]: phpDevRoute(false),
       },
     },
     plugins: [
@@ -149,14 +159,16 @@ export default defineConfig(({ mode }) => {
           icons: [
             { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
             { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-            // `maskable` is declared separately and only on the large size:
-            // the artwork sits inside the central ~66% of the square, so a
-            // circular or squircle mask can't clip the dove's wings or the
-            // book. Declaring `any maskable` on one entry (as this did while
-            // pointing at the old placeholder favicon) lets a browser use the
-            // same bitmap for both, which is what causes over-cropped icons.
+            // `maskable` gets its own bitmap, not a `purpose: 'any maskable'`
+            // on a shared one — a browser may crop a maskable icon to a circle,
+            // and sharing one file is what produces over-cropped launcher icons.
+            //
+            // Two files rather than one is also what lets the icons above fill
+            // the square properly: only this one carries the safe-zone padding
+            // (see FILL in scripts/icons/buildIcons.mjs), instead of every
+            // surface paying for the worst case.
             {
-              src: 'icons/icon-512.png',
+              src: 'icons/icon-512-maskable.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',

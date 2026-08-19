@@ -17,7 +17,7 @@ export function VoiceOverlay() {
   const navigate = useNavigate();
   const location = useLocation();
   const corner = useSettingsStore((s) => s.micCorner);
-  const composerHeight = useUiLayoutStore((s) => s.composerHeight);
+  const bottomBarHeight = useUiLayoutStore((s) => s.bottomBarHeight);
 
   const overlayOpen = useGlobalVoiceStore((s) => s.overlayOpen);
   const listening = useGlobalVoiceStore((s) => s.listening);
@@ -67,7 +67,7 @@ export function VoiceOverlay() {
 
   // Anchor near mic — opposite vertical side stays the same, just nudge the
   // overlay inward from the mic.
-  const anchorBase = getMicAnchor({ corner, route: location.pathname, composerHeight });
+  const anchorBase = getMicAnchor({ corner, bottomBarHeight });
   const overlayStyle: React.CSSProperties = { position: 'fixed', zIndex: 49, maxWidth: 320 };
   if (anchorBase.top !== undefined) overlayStyle.top = anchorBase.top + OVERLAY_GAP;
   if (anchorBase.bottom !== undefined) overlayStyle.bottom = anchorBase.bottom + OVERLAY_GAP;

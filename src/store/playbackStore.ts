@@ -3,7 +3,7 @@ import { create } from 'zustand';
 export type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused';
 
 export type CurrentTrack = {
-  messageId: string;
+  groupId: string;
   verseIndex: number;
   totalVerses: number;
   audioUrl: string;

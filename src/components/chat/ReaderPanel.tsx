@@ -2,9 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useChatStore } from '@/store/chatStore';
-import { usePlaybackStore } from '@/store/playbackStore';
-import { audioPlayback } from '@/lib/audioPlaybackManager';
-import { startReadingPlaylist } from '@/lib/startPlayback';
+import { playFromVerseWord } from '@/lib/startPlayback';
 import { useCommandPipeline } from '@/hooks/useCommandPipeline';
 import { useContinueReading } from '@/hooks/useContinueReading';
 import { WordHighlighter } from '@/components/playback/WordHighlighter';
@@ -46,21 +44,7 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
   const handleWordTap = useCallback(
     (verseIdx: number, wordIdx: number) => {
       if (!message.verses?.length) return;
-      const playbackCurrent = usePlaybackStore.getState().current;
-      const sameMessage = playbackCurrent?.messageId === message.id;
-      const onSameVerseTrack =
-        sameMessage &&
-        playbackCurrent.verseIndex === verseIdx &&
-        playbackCurrent.isVerse;
-      if (onSameVerseTrack) {
-        audioPlayback.seekToWord(wordIdx);
-        return;
-      }
-      if (sameMessage) {
-        audioPlayback.goToVerseIndex(verseIdx, wordIdx);
-        return;
-      }
-      void startReadingPlaylist(message.id, message.verses, verseIdx, wordIdx);
+      playFromVerseWord(message.id, message.verses, verseIdx, wordIdx);
     },
     [message.id, message.verses],
   );
@@ -223,7 +207,7 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
                   return (
                     <WordHighlighter
                       key={`${v.bookId}-${v.chapter}-${v.verse}-${verseIdx}`}
-                      messageId={message.id}
+                      groupId={message.id}
                       verseIndex={verseIdx}
                       verse={v}
                       onWordTap={handleWordTap}

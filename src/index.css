@@ -78,6 +78,47 @@
     box-shadow: inset 3px 0 0 #c8a96e;
   }
 
+  /* Inline variant for the reader's flowing prose, where verses share a
+     paragraph. The block rules above don't work here: a left inset bar is
+     meaningless on a span that wraps across lines, and horizontal padding would
+     open gaps mid-sentence. So the "currently reading" cue is background only,
+     and `box-decoration-break: clone` is what makes that tint continue cleanly
+     onto every wrapped line instead of painting one long ragged box. */
+  .verse-inline {
+    background-color: transparent;
+    border-radius: 0.25rem;
+    transition: background-color 200ms ease;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+  .verse-inline.verse-current {
+    background-color: rgba(200, 169, 110, 0.12);
+    box-shadow: none;
+  }
+
+  /* Chapter heading in the reader: small-caps Georgia with wide tracking,
+     centered in a gap punched out of the rule that runs behind it. The `bg-navy`
+     on the heading itself is what masks the rule — the reader page paints no
+     background of its own, so this matches the body exactly. */
+  .chapter-heading {
+    @apply font-serif text-gold;
+    font-variant-caps: small-caps;
+    letter-spacing: 0.14em;
+  }
+
+  /* Oversized initial on the chapter's first letter.
+     Deliberately a *raised* initial rather than a floated drop cap: it keeps the
+     verse number in front of it in natural reading order ("¹Siehe"), and it
+     can't interact with `.verse-inline`'s background, which wraps across lines
+     via box-decoration-break and would paint raggedly around a float. */
+  .chapter-initial {
+    @apply text-gold font-serif;
+    font-size: 2.2em;
+    /* Near-zero so the oversized glyph doesn't inflate the first line's box. */
+    line-height: 0.7;
+    vertical-align: -0.16em;
+  }
+
   .message-selected {
     @apply ring-2 ring-gold/60;
   }

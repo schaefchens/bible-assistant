@@ -2,7 +2,7 @@ import { audioPlayback, type PlaybackTrack } from './audioPlaybackManager';
 import { browserTts, type BrowserTtsItem } from './browserTts';
 import { buildPlaybackPlan, type PlanItem } from './playbackPlan';
 import { planToBrowserItems, planToOpenAiTracks } from './startPlayback';
-import { useChatStore } from '@/store/chatStore';
+import { readingHosts } from './readingHosts';
 import { usePlaybackStore } from '@/store/playbackStore';
 import {
   effectiveReadingVoice,
@@ -41,10 +41,7 @@ async function rebuildCurrentTail(): Promise<void> {
   const cur = usePlaybackStore.getState().current;
   if (!cur) return;
 
-  const msg = useChatStore
-    .getState()
-    .messages.find((m) => m.id === cur.messageId);
-  const verses = msg?.verses ?? [];
+  const verses = readingHosts.getGroup(cur.groupId)?.verses ?? [];
   if (verses.length === 0) return;
 
   // Decide where the "tail" starts. If the currently-playing track is a
@@ -103,16 +100,16 @@ async function rebuildCurrentTail(): Promise<void> {
   const myGen = ++inflightGeneration;
 
   if (usingBrowser) {
-    const items = planToBrowserItems(shifted, cur.messageId);
+    const items = planToBrowserItems(shifted, cur.groupId);
     // Atomic enough — no async between snapshot and replace for browser.
     if (myGen !== inflightGeneration) return;
-    browserTts.replaceUpcomingFor(cur.messageId, items);
+    browserTts.replaceUpcomingFor(cur.groupId, items);
     return;
   }
 
   const tracks = await planToOpenAiTracks(
     shifted,
-    cur.messageId,
+    cur.groupId,
     readerVoice as OpenAiVoiceId,
     effectiveVoiceStyle() || undefined,
     undefined,
@@ -122,8 +119,8 @@ async function rebuildCurrentTail(): Promise<void> {
   if (myGen !== inflightGeneration) return;
   // Re-verify we're still on the same message.
   const nowCur = usePlaybackStore.getState().current;
-  if (!nowCur || nowCur.messageId !== cur.messageId) return;
-  audioPlayback.replaceUpcomingFor(cur.messageId, tracks);
+  if (!nowCur || nowCur.groupId !== cur.groupId) return;
+  audioPlayback.replaceUpcomingFor(cur.groupId, tracks);
 }
 
 function isPlaybackActive(): boolean {
