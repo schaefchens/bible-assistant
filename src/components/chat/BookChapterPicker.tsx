@@ -699,7 +699,10 @@ export function BookChapterPicker({
                         </PagerButton>
                       </div>
 
-                      <ul className="pb-2">
+                      {/* A touch more than the list screen's `space-y-1`: these
+                          rows carry no play button, so they're 36px rather than
+                          44px and the same gap reads tighter between them. */}
+                      <ul className="space-y-1.5 pb-3">
                         {visiblePassages.map((seg, i) => (
                           <li key={`${seg.entryId ?? seg.bookId}:${seg.chapter}:${i}`}>
                             <PassageRow
