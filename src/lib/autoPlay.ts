@@ -14,7 +14,7 @@ import {
   nextReadingAfter,
   type NextReading,
 } from './readingContinuation';
-import { noteEntryFinished, noteEntryStarted } from './readingListPlayback';
+import { noteEntryFinished, noteEntryStarted } from './readingProgressTracker';
 import { readingHosts } from './readingHosts';
 import { rangeHistoryNote } from './chatReadingHost';
 import { usePlaybackStore } from '@/store/playbackStore';

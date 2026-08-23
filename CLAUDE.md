@@ -285,9 +285,19 @@ written far more often than the list and merges differently: `completed` is **un
 devices, never last-write-wins, so two devices working different days can't erase each other's
 ticks. `mergeReadingProgress` and api.php's `handleUpsertProgress` implement the same rule on
 both sides — a device that ticks an entry without pulling first must not clobber the other's
-work. Entries tick automatically when their audio finishes (`noteEntryFinished`, which waits
-for an entry's *last* chapter, so "Genesis 1-3" isn't marked read after Genesis 1) and by hand
-in the editor.
+work.
+
+**Reading counts, not just listening.** `lib/readingProgressTracker.ts` is the one place that
+writes progress, and three things call it: narration finishing a passage, the reader *moving
+past* one, and a manual tick in the editor. It holds no playback or reader import precisely so
+both can use it.
+
+The reader's rule is the fiddly one. Turning the page past a passage is as good a signal that
+it was read as its narration ending — but only a **single step forward** counts (the pager's
+next, or scrolling into the following segment). A jump — the picker, a resume, "take me to day
+40" — passes over everything in between without reading it, so it moves your place and ticks
+nothing. `noteEntryFinished` additionally waits for an entry's *last* chapter, so "Genesis 1-3"
+isn't marked read after Genesis 1.
 
 All progress writes go through `updateProgress`, which reads the current record **inside** the
 same synchronous block as the write and updates the store before awaiting Dexie. Both matter:

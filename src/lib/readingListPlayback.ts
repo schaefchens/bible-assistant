@@ -2,6 +2,7 @@ import { audioPlayback } from './audioPlaybackManager';
 import { chatReadingHost, rangeHistoryNote } from './chatReadingHost';
 import { loadReadingVerses } from './readingContinuation';
 import { startAmbientIfEnabled, startPlaybackForVerses } from './startPlayback';
+import { noteEntryStarted } from './readingProgressTracker';
 import { isWholeChapter } from '@/services/reading/readingSequence';
 import type { ListProvenance } from './readingHosts';
 import {
@@ -106,38 +107,4 @@ export async function playSegmentInChat(ref: SegmentRef): Promise<boolean> {
 
 function provenanceOf(ref: SegmentRef): ListProvenance | undefined {
   return ref.listId && ref.entryId ? { listId: ref.listId, entryId: ref.entryId } : undefined;
-}
-
-/** Remember where the user is in a list, so the next session resumes here. */
-export function noteEntryStarted(provenance: ListProvenance | undefined): void {
-  if (!provenance) return;
-  void useLibraryStore
-    .getState()
-    .setCurrentEntry(provenance.listId, provenance.entryId);
-}
-
-/**
- * Tick an entry off once its audio has finished.
- *
- * `chapter` is the last chapter that played, and it matters: an entry like
- * "Genesis 1-3" expands to three segments, and ticking it when the first one
- * ended would mark two thirds of the reading done. The entry is only finished
- * when its *last* segment is.
- */
-export function noteEntryFinished(
-  provenance: ListProvenance | undefined,
-  chapter?: number,
-): void {
-  if (!provenance) return;
-  const lib = useLibraryStore.getState();
-  const list = lib.readingLists.find((l) => l.id === provenance.listId);
-  if (!list) return;
-  if (chapter !== undefined) {
-    const own = expandList(list, useSettingsStore.getState().translation).filter(
-      (s) => s.entryId === provenance.entryId,
-    );
-    const last = own[own.length - 1];
-    if (last && last.chapter !== chapter) return;
-  }
-  void lib.setEntryDone(provenance.listId, provenance.entryId, true);
 }

@@ -15,6 +15,7 @@ import {
   type ReadingSequence,
   type SegmentRef,
 } from '@/services/reading/readingSequence';
+import { noteEntryFinished, noteEntryStarted } from '@/lib/readingProgressTracker';
 import type { VerseSummary } from '@/types/domain';
 import { useLibraryStore } from './libraryStore';
 import { useSettingsStore } from './settingsStore';
@@ -176,6 +177,35 @@ function resolveAgainstList(ref: SegmentRef): SegmentRef {
   );
 }
 
+/**
+ * Record progress from the reader's own movement, so **reading counts, not just
+ * listening**. Turning the page past a passage is exactly as good a signal that
+ * it was read as its narration finishing, and a plan that only advanced when you
+ * pressed play was wrong about anyone who reads silently.
+ *
+ * Finishing is claimed only for a *single step forward* — the pager's next
+ * button, or scrolling into the following segment. A jump (the picker, a resume,
+ * "take me to day 40") passes over everything in between without reading it, so
+ * it moves your place without ticking anything off.
+ */
+function trackListProgress(previous: SegmentRef | null, next: SegmentRef): void {
+  if (!next.listId || !next.entryId) return;
+  if (previous?.listId === next.listId && previous.entryId) {
+    const sequence = sequenceFor(
+      { kind: 'list', listId: next.listId },
+      useSettingsStore.getState().translation,
+    );
+    const after = sequence.next(previous);
+    if (after && segmentId(after) === segmentId(next)) {
+      noteEntryFinished(
+        { listId: previous.listId, entryId: previous.entryId },
+        previous.chapter,
+      );
+    }
+  }
+  noteEntryStarted({ listId: next.listId, entryId: next.entryId });
+}
+
 /** Restrict a chapter's verses to what the segment actually covers. */
 function sliceToRanges(verses: VerseSummary[], ref: SegmentRef): VerseSummary[] {
   if (isWholeChapter(ref)) return verses;
@@ -281,6 +311,7 @@ export const useReaderStore = create<ReaderState>()(
         }
         const segment = result.segment;
 
+        const previousPosition = get().position;
         set((s) => {
           const segments = { ...s.segments, [segment.id]: segment };
           let visible: string[];
@@ -301,6 +332,8 @@ export const useReaderStore = create<ReaderState>()(
             position: mode === 'prepend' && s.position ? s.position : segment.ref,
           };
         });
+        // Prepending loads what came *before* — it doesn't move the reader.
+        if (mode !== 'prepend') trackListProgress(previousPosition, segment.ref);
         return segment.id;
       }
 
@@ -435,6 +468,7 @@ export const useReaderStore = create<ReaderState>()(
           const cur = get().position;
           if (cur && segmentId(cur) === segmentId(ref)) return;
           set({ position: ref });
+          trackListProgress(cur, ref);
         },
 
         adopt: (verses, ref) => {
