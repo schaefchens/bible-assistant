@@ -195,15 +195,25 @@ type PositionIntent = 'turn' | 'scroll' | 'jump';
 
 /**
  * How long a passage has to have been the reader's position before leaving it
- * counts as having read it.
+ * counts as having read it — **scaled by how much there is to read**.
  *
  * Turning the page is a good signal, but not on its own: stepping through three
- * chapters to reach the fourth marked the two you flicked past as read. A
- * chapter takes minutes to read and seconds to skip, so dwell separates them
- * cleanly. It errs toward *not* claiming: a missed tick is one tap to fix, while
- * a false one quietly corrupts what a plan says you've read.
+ * chapters to reach the fourth marked the two you flicked past. Dwell separates
+ * them, because reading takes minutes and skipping takes seconds.
+ *
+ * A flat threshold can't do that job, though. "John 3:16" is read in three
+ * seconds, so any threshold long enough to exclude flicking past a chapter
+ * excluded *every* single-verse entry — they could never be marked read at all.
+ * So the gate is per verse, with a floor that still catches a flick and a cap so
+ * that Psalm 119 doesn't demand three minutes.
  */
-const DWELL_TO_COUNT_MS = 8_000;
+const DWELL_PER_VERSE_MS = 1_000;
+const DWELL_MIN_MS = 2_500;
+const DWELL_MAX_MS = 20_000;
+
+function dwellNeededFor(verseCount: number): number {
+  return Math.min(DWELL_MAX_MS, Math.max(DWELL_MIN_MS, verseCount * DWELL_PER_VERSE_MS));
+}
 
 /** The position being dwelt on, and since when. */
 let dwell: { id: string; since: number } | null = null;
@@ -233,10 +243,16 @@ function trackListProgress(
   intent: PositionIntent,
 ): void {
   const now = Date.now();
+  const previousId = previous ? segmentId(previous) : null;
+  // How much was on the page decides how long counts as having read it. The
+  // segment is still cached, so this needs no fetch.
+  const verseCount = previousId
+    ? (useReaderStore.getState().segments[previousId]?.verses.length ?? 0)
+    : 0;
   const dwelt =
-    !!previous &&
-    dwell?.id === segmentId(previous) &&
-    now - dwell.since >= DWELL_TO_COUNT_MS;
+    !!previousId &&
+    dwell?.id === previousId &&
+    now - dwell.since >= dwellNeededFor(verseCount);
   dwell = { id: segmentId(next), since: now };
 
   if (!next.listId || !next.entryId) return;

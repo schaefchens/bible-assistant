@@ -36,6 +36,7 @@ import {
 } from '@/services/bible/playbackPosition';
 import { playReadingListInChat } from '@/lib/readingListPlayback';
 import {
+  expandEntryToChapters,
   formatReadingEntry,
   listEntries,
   newReadingDay,
@@ -444,7 +445,9 @@ function parsePassages(passages: string[]): { entries: ReadingEntry[]; rejected:
   const rejected: string[] = [];
   for (const raw of passages) {
     const entry = parseReadingEntryLine(raw);
-    if (entry) entries.push(entry);
+    // A book or a span becomes one entry per chapter, so "read Jonah" is four
+    // things the user can tick off rather than one all-or-nothing item.
+    if (entry) entries.push(...expandEntryToChapters(entry));
     else rejected.push(raw);
   }
   return { entries, rejected };

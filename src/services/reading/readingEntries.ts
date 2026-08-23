@@ -65,14 +65,16 @@ export function parseReadingEntryLine(line: string): ReadingEntry | null {
   return entry;
 }
 
-/** Parse many lines, dropping the ones that don't resolve. */
+/** Parse many lines, dropping the ones that don't resolve. Multi-chapter
+ * passages arrive as one entry per chapter — see `expandEntryToChapters`. */
 export function parseReadingEntryLines(text: string): ReadingEntry[] {
   return text
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)
     .map(parseReadingEntryLine)
-    .filter((e): e is ReadingEntry => e !== null);
+    .filter((e): e is ReadingEntry => e !== null)
+    .flatMap(expandEntryToChapters);
 }
 
 /** The passage part of a line, without the id or the `;` suffixes. */
@@ -153,6 +155,54 @@ export function entryChapterCount(entry: ReadingEntry): number {
     return entry.chapterEnd - entry.chapter + 1;
   }
   return 1;
+}
+
+/**
+ * Split an entry that covers several chapters into one entry per chapter.
+ *
+ * **Progress is per entry**, so a multi-chapter entry can only ever be all-read
+ * or all-unread — reading Jonah 1 and ticking it marked all four chapters, while
+ * the picker showed them as four separately tickable rows. Rather than teach
+ * progress about half-finished entries, entries are created at the granularity
+ * they are read and displayed at: one chapter each.
+ *
+ * A verse-range entry is already a single segment and passes through untouched;
+ * so does a plain chapter. Labels and pinned translations are carried onto every
+ * chapter, because they described the passage, not the chapter number.
+ */
+export function expandEntryToChapters(entry: ReadingEntry): ReadingEntry[] {
+  const book = getBookById(entry.bookId);
+  if (!book) return [entry];
+
+  const from = entry.chapter ?? 1;
+  const to =
+    entry.chapter === undefined
+      ? book.chapters
+      : entry.chapterEnd && entry.chapterEnd > entry.chapter
+        ? entry.chapterEnd
+        : entry.chapter;
+  if (to <= from && entry.chapter !== undefined) return [entry];
+
+  const out: ReadingEntry[] = [];
+  for (let chapter = from; chapter <= to; chapter++) {
+    out.push({
+      ...entry,
+      id: chapter === from ? entry.id : newEntryId(),
+      chapter,
+      chapterEnd: undefined,
+      // Ranges only ever belonged to a single-chapter entry, and this branch is
+      // only reached for multi-chapter ones.
+      ranges: undefined,
+    });
+  }
+  return out;
+}
+
+/** True when this entry still covers more than one chapter — a shape earlier
+ * builds could store, and which `expandEntryToChapters` replaces. */
+export function spansChapters(entry: ReadingEntry): boolean {
+  if (entry.chapter === undefined) return true;
+  return !!entry.chapterEnd && entry.chapterEnd > entry.chapter;
 }
 
 /**

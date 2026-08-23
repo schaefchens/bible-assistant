@@ -221,12 +221,19 @@ about that shape are load-bearing:
 
 - **A plain list is one untitled day**, which the UI renders flat (`isFlatList`). One data
   shape, two presentations — there is no separate "unstructured list" type.
-- **An entry is a passage, not a chapter**: a whole book (`chapter` absent), a chapter, a span
-  (`chapterEnd`), or verse ranges. `expandList()` fans that out into the chapter-sized
-  **segments** playback and the reader work in, all segments of one entry sharing its
-  `entryId`. Reading order is entry order, always. `expandList` is also the one place that
-  decides a plain list has *no* day structure (its segments carry no `dayIndex`), which is what
-  keeps "Day 1" off both the reader's heading and the picker's groups.
+- **A stored entry is one chapter, or verses within one.** The *parser* accepts a whole book
+  ("Jonah") or a span ("Genesis 1-3"), but `expandEntryToChapters` splits those into an entry
+  per chapter before they are ever saved — in the editor, in the picker's add, and in the
+  assistant's tools. Progress is per entry, so an entry covering four chapters could only be
+  all-read or all-unread: ticking Jonah 1 ticked all of Jonah, while the picker showed four
+  separately tickable rows. Entries are created at the granularity they are read and displayed
+  at. `chapter`-less and `chapterEnd` entries therefore only exist transiently (mid-parse) or as
+  legacy data — `libraryStore`'s `expandStoredSpans` repairs the latter on load, carrying the
+  parent's tick to every chapter so no progress is lost.
+- `expandList()` fans entries out into the chapter-sized **segments** playback and the reader
+  work in. Reading order is entry order, always. It is also the one place that decides a plain
+  list has *no* day structure (its segments carry no `dayIndex`), which is what keeps "Day 1"
+  off both the reader's heading and the picker's groups.
 
 A `SegmentRef` is a **copy**, and copies of list data go stale — a renamed day, an added
 translation override, a field a later build computes differently. Anything holding one for a
@@ -299,10 +306,13 @@ The reader's rule is the fiddly one, and it takes two signals:
    translation reload, the endless-scroll prefetch — is a `jump`, which never marks anything.
    This cannot be inferred from the positions: picking the very next passage out of the selector
    looks identical to turning the page onto it, and marking it read was wrong.
-2. **Dwell** (`DWELL_TO_COUNT_MS`): leaving a passage only counts if it was the position for
-   long enough to have been read. Without it, stepping through three chapters to reach the
-   fourth marked the two you flicked past. A chapter takes minutes to read and seconds to skip,
-   so a few seconds separates them cleanly.
+2. **Dwell, scaled by how much there is to read** (`dwellNeededFor`): leaving a passage only
+   counts if it was the position long enough to have been read. Without it, stepping through
+   three chapters to reach the fourth marked the two you flicked past. It has to scale, though:
+   "John 3:16" is read in three seconds, so any flat threshold long enough to exclude flicking
+   past a chapter excluded *every* single-verse entry — they could never be marked at all. So
+   it is per verse, with a floor that still catches a flick and a cap so Psalm 119 doesn't
+   demand three minutes.
 
 Both err toward *not* claiming a passage: a missed tick is one tap to fix, a false one quietly
 corrupts what a plan says you have read. `noteEntryFinished` additionally waits for an entry's

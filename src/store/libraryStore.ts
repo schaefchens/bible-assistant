@@ -9,7 +9,13 @@ import type {
 } from '@/types/domain';
 import { apiGetJson, apiPostJson } from '@/services/api/client';
 import { normalizeCardReferences } from '@/services/bible/cardReference';
-import { newReadingDay, normalizeReadingList } from '@/services/reading/readingEntries';
+import {
+  expandEntryToChapters,
+  listEntries,
+  newReadingDay,
+  normalizeReadingList,
+  spansChapters,
+} from '@/services/reading/readingEntries';
 import {
   emptyReadingProgress,
   mergeReadingProgress,
@@ -144,6 +150,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       pendingOps: pending,
       initialized: true,
     });
+    void expandStoredSpans();
     if (navigator.onLine) {
       void get().pullFromServer().catch(() => {});
       void get().flushQueue().catch(() => {});
@@ -637,8 +644,47 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       boardOrderUpdatedAt: nextBoardOrderUpdatedAt,
       activeBoardId: nextActive,
     });
+    void expandStoredSpans();
   },
 }));
+
+/**
+ * Split any stored multi-chapter entry into one entry per chapter.
+ *
+ * Progress is per entry, so an entry covering four chapters could only be all
+ * read or all unread — which is why ticking Jonah 1 ticked all of Jonah. Entries
+ * are created per chapter now (see `expandEntryToChapters`); this repairs the
+ * ones written before that, and the ones a device still on the old build sends.
+ *
+ * A tick on the parent carries to every chapter, so the migration never costs
+ * the user progress. `expandEntryToChapters` keeps the first chapter's id, so
+ * that one is already covered; only the rest need adding.
+ *
+ * Idempotent by construction: afterwards nothing spans chapters, so the next
+ * pass finds nothing to do.
+ */
+async function expandStoredSpans(): Promise<void> {
+  const store = useLibraryStore.getState();
+  const stale = store.readingLists.filter((l) => listEntries(l).some(spansChapters));
+  for (const list of stale) {
+    const wasDone = new Set(store.readingProgress[list.id]?.completed ?? []);
+    const inherited: string[] = [];
+    const days = list.days.map((day) => ({
+      ...day,
+      entries: day.entries.flatMap((entry) => {
+        const parts = expandEntryToChapters(entry);
+        if (parts.length > 1 && wasDone.has(entry.id)) {
+          inherited.push(...parts.slice(1).map((p) => p.id));
+        }
+        return parts;
+      }),
+    }));
+    await useLibraryStore.getState().upsertReadingList({ ...list, days });
+    for (const entryId of inherited) {
+      await useLibraryStore.getState().setEntryDone(list.id, entryId, true);
+    }
+  }
+}
 
 /**
  * Queue every local row the server has never accepted.
