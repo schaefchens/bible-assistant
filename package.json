@@ -11,6 +11,7 @@
     "ios": "npm run sync && cap open ios",
     "android": "npm run sync && cap open android",
     "android:apk": "npm run sync && cd android && ./gradlew assembleRelease",
+    "android:bundle": "npm run sync && cd android && ./gradlew bundleRelease",
     "icons": "node scripts/icons/buildIcons.mjs",
     "bible:build": "node scripts/bible/buildPacks.mjs",
     "bible:verify": "node scripts/bible/verifyPacks.mjs",

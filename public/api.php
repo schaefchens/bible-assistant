@@ -1114,10 +1114,17 @@ function handleRecordingUpload(array $ctx): void {
  * one way this could do real damage.
  */
 function deleteTree(string $dir): void {
-    $root = realpath(STORAGE_DIR);
-    $real = realpath($dir);
-    if ($root === false || $real === false) return;
-    if ($real === $root || strncmp($real, $root . '/', strlen($root) + 1) !== 0) return;
+    // Resolve for the containment check, but fall back to the literal path when
+    // realpath() can't resolve one — open_basedir, or a storage/ symlinked
+    // outside it, makes realpath() return false, and bailing there means the
+    // delete silently does nothing. Falling back is safe: every caller builds
+    // the path from a uuid authenticate() has already pinned to [0-9a-f-]{36},
+    // so it cannot escape regardless. The prefix test is belt-and-braces.
+    $root = realpath(STORAGE_DIR) ?: STORAGE_DIR;
+    $real = realpath($dir) ?: $dir;
+    if ($real === $root) return;
+    if (strncmp($real, $root . '/', strlen($root) + 1) !== 0) return;
+    if (!is_dir($real)) return;
 
     foreach (scandir($real) ?: [] as $name) {
         if ($name === '.' || $name === '..') continue;
@@ -1148,6 +1155,20 @@ function deleteTree(string $dir): void {
 function handleAccountDelete(array $ctx): void {
     deleteTree($ctx['userDir']);
     deleteTree(AUDIO_DIR . '/recordings/' . $ctx['userId']);
+
+    // Answer from the filesystem, not from the attempt. This is the one endpoint
+    // whose whole value is the promise it keeps, so reporting a success that
+    // didn't happen is worse than reporting the failure — and `remaining` makes
+    // the failure diagnosable instead of opaque. Those names are the caller's
+    // own data, and a fixed known set.
+    if (is_dir($ctx['userDir'])) {
+        $left = @scandir($ctx['userDir']);
+        fail(500, 'could not delete account data', [
+            'remaining' => $left === false
+                ? ['<unreadable>']
+                : array_values(array_diff($left, ['.', '..'])),
+        ]);
+    }
     respond(200, ['deleted' => true]);
 }
 
