@@ -30,6 +30,12 @@ import {
 } from '@/lib/readingListOperations';
 import type { ReadingDay, ReadingEntry, ReadingList } from '@/types/domain';
 
+/** A week of a plan per page — the unit people think in for a daily plan. */
+const DAYS_PER_PAGE = 7;
+/** Passages per page for a plain list. Roomier than the picker's page: this is a
+ * whole screen, and scrolling a screenful is not the problem paging solves. */
+const ENTRIES_PER_PAGE = 25;
+
 type Props = {
   list: ReadingList;
   /** Opens in edit mode — used right after "New list", where the name is blank
@@ -66,6 +72,39 @@ export function ReadingListDetail({ list, startEditing = false }: Props) {
   const stats = useMemo(() => progressStats(list, progress), [list, progress]);
   const allEntries = useMemo(() => listEntries(list), [list]);
   const flat = isFlatList(list);
+
+  /**
+   * Long lists are paged. A whole-Bible plan is 365 days and 1,189 passages, and
+   * rendering them all put 13,000 nodes on the page — every tick then re-rendered
+   * the lot, which is half a second of jank on a desktop and worse on a phone.
+   *
+   * The unit follows the list's own shape, as in the picker: a plan pages by
+   * week, a plain list by passage.
+   */
+  const flatEntries = flat ? (list.days[0]?.entries ?? []) : [];
+  const pageCount = flat
+    ? Math.max(1, Math.ceil(flatEntries.length / ENTRIES_PER_PAGE))
+    : Math.max(1, Math.ceil(list.days.length / DAYS_PER_PAGE));
+  const [pageState, setPageState] = useState<{ listId: string; page: number } | null>(null);
+  // Opens on the page holding the passage the user is on, so a plan lands on
+  // today rather than on day 1 of 365. Not memoized: it is one findIndex, which
+  // is nothing next to rendering the rows it decides.
+  const defaultPage = pageOf(list, flat, progress?.currentEntryId);
+  const page = Math.min(
+    pageCount - 1,
+    Math.max(0, pageState?.listId === list.id ? pageState.page : defaultPage),
+  );
+  const goToPage = (next: number) =>
+    setPageState({ listId: list.id, page: Math.max(0, Math.min(pageCount - 1, next)) });
+  /** Whatever was just added is on the last page — show it rather than leaving
+   * the user looking at a page it isn't on. */
+  const showLastPage = () => goToPage(pageCount);
+
+  const visibleDays = flat
+    ? list.days.map((day, index) => ({ day, index }))
+    : list.days
+        .map((day, index) => ({ day, index }))
+        .slice(page * DAYS_PER_PAGE, (page + 1) * DAYS_PER_PAGE);
   const completed = useMemo(
     () => new Set(progress?.completed ?? []),
     [progress?.completed],
@@ -191,7 +230,28 @@ export function ReadingListDetail({ list, startEditing = false }: Props) {
           <p className="py-8 text-center text-ink-muted text-sm">{t('lists.emptyList')}</p>
         )}
 
-        {list.days.map((day, dayIndex) => (
+        {pageCount > 1 && (
+          <PagePicker
+            label={
+              flat
+                ? t('lists.passagesRange', {
+                    from: page * ENTRIES_PER_PAGE + 1,
+                    to: Math.min((page + 1) * ENTRIES_PER_PAGE, flatEntries.length),
+                    total: flatEntries.length,
+                  })
+                : t('lists.daysRange', {
+                    from: page * DAYS_PER_PAGE + 1,
+                    to: Math.min((page + 1) * DAYS_PER_PAGE, list.days.length),
+                    total: list.days.length,
+                  })
+            }
+            page={page}
+            pageCount={pageCount}
+            onGo={goToPage}
+          />
+        )}
+
+        {visibleDays.map(({ day, index: dayIndex }) => (
           <section key={day.id} className="mb-6">
             {!flat && (
               <DayHeading
@@ -204,7 +264,10 @@ export function ReadingListDetail({ list, startEditing = false }: Props) {
             )}
 
             <ul className="space-y-1">
-              {day.entries.map((entry) => (
+              {(flat
+                ? day.entries.slice(page * ENTRIES_PER_PAGE, (page + 1) * ENTRIES_PER_PAGE)
+                : day.entries
+              ).map((entry) => (
                 <EntryRow
                   key={entry.id}
                   entry={entry}
@@ -233,7 +296,10 @@ export function ReadingListDetail({ list, startEditing = false }: Props) {
               <>
                 {addingTo === day.id ? (
                   <AddPassageForm
-                    onAdd={(entries) => save(withEntriesAdded(list, day.id, entries))}
+                    onAdd={(entries) => {
+                      save(withEntriesAdded(list, day.id, entries));
+                      if (flat) showLastPage();
+                    }}
                   />
                 ) : (
                   <button
@@ -249,11 +315,23 @@ export function ReadingListDetail({ list, startEditing = false }: Props) {
           </section>
         ))}
 
+        {pageCount > 1 && (
+          <PagePicker
+            label={t('lists.page', { page: page + 1, total: pageCount })}
+            page={page}
+            pageCount={pageCount}
+            onGo={goToPage}
+          />
+        )}
+
         {editing && (
           <div className="flex flex-wrap gap-2 pt-2 border-t border-surface-raised/50">
             <button
               type="button"
-              onClick={() => save(withDayAdded(list))}
+              onClick={() => {
+                save(withDayAdded(list));
+                showLastPage();
+              }}
               className="h-9 px-3 rounded-lg border border-brand/30 text-brand text-sm hover:bg-brand/10 active:scale-95 transition-all"
             >
               + {t('lists.addDay')}
@@ -278,6 +356,61 @@ export function ReadingListDetail({ list, startEditing = false }: Props) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Which page holds `entryId` — the page a long list should open on. */
+function pageOf(list: ReadingList, flat: boolean, entryId: string | undefined): number {
+  if (!entryId) return 0;
+  if (flat) {
+    const at = (list.days[0]?.entries ?? []).findIndex((e) => e.id === entryId);
+    return at === -1 ? 0 : Math.floor(at / ENTRIES_PER_PAGE);
+  }
+  const at = list.days.findIndex((d) => d.entries.some((e) => e.id === entryId));
+  return at === -1 ? 0 : Math.floor(at / DAYS_PER_PAGE);
+}
+
+/**
+ * Step through a long list. Rendered above and below the passages, because a
+ * page of a week is taller than the screen and scrolling back up to move on is
+ * the kind of small friction that makes a plan feel like work.
+ */
+function PagePicker({
+  label,
+  page,
+  pageCount,
+  onGo,
+}: {
+  label: string;
+  page: number;
+  pageCount: number;
+  onGo: (page: number) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex items-center justify-between gap-2 mb-4">
+      <button
+        type="button"
+        onClick={() => onGo(page - 1)}
+        disabled={page === 0}
+        aria-label={t('lists.previousPage') as string}
+        className="h-8 w-9 shrink-0 rounded-lg text-lg leading-none text-brand hover:bg-brand/10 disabled:opacity-25 disabled:pointer-events-none transition-colors"
+      >
+        ‹
+      </button>
+      <span className="min-w-0 truncate text-[11px] uppercase tracking-wider text-ink-muted">
+        {label}
+      </span>
+      <button
+        type="button"
+        onClick={() => onGo(page + 1)}
+        disabled={page >= pageCount - 1}
+        aria-label={t('lists.nextPage') as string}
+        className="h-8 w-9 shrink-0 rounded-lg text-lg leading-none text-brand hover:bg-brand/10 disabled:opacity-25 disabled:pointer-events-none transition-colors"
+      >
+        ›
+      </button>
     </div>
   );
 }

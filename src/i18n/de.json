@@ -500,6 +500,11 @@
     "play": "Diese Liste vorlesen",
     "continue": "Fortsetzen",
     "start": "Lesen beginnen",
-    "inList": "In dieser Liste"
+    "inList": "In dieser Liste",
+    "daysRange": "Tage {{from}}–{{to}} von {{total}}",
+    "passagesRange": "Stellen {{from}}–{{to}} von {{total}}",
+    "page": "Seite {{page}} von {{total}}",
+    "previousPage": "Vorherige Seite",
+    "nextPage": "Nächste Seite"
   }
 }

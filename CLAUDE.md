@@ -243,6 +243,12 @@ while re-resolves it against the list (`findListSegment`): the reader on load, a
 Named `ReadingList`, not "reading": `reading`, `ReadingGroup` and `ReadingHost` already mean
 "a playback group bound to verses" throughout `lib/`.
 
+**Long lists are paged on the list screen too** (`DAYS_PER_PAGE` / `ENTRIES_PER_PAGE`), by week
+for a plan and by passage for a plain list, opening on the page holding the passage you are on.
+Rendering a whole year put ~13,000 nodes on the page and made every tick re-render all of them —
+half a second of jank on a desktop, worse on a phone. The pager is drawn above *and* below the
+passages, since a page is taller than the screen.
+
 **Where it lives in the UI.** Not a nav tab — the entry point is the book picker in the Chat
 and Read headers (`BookChapterPicker`, `showReadingLists`), which is where "what should I
 read" is already asked.
