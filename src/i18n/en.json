@@ -77,7 +77,11 @@
       "languageDe": "German",
       "readingLists": "Reading lists",
       "titleList": "Read from your list",
-      "clearList": "Leave this reading list"
+      "clearList": "Leave this reading list",
+      "earlier": "Earlier",
+      "later": "Later",
+      "dayOf": "Day {{day}} of {{total}}",
+      "pageOf": "{{page}} of {{total}}"
     }
   },
   "playback": {

@@ -2,7 +2,7 @@ import type { ReadingList, VerseRange } from '@/types/domain';
 import type { Translation } from '@/services/bible/bibleApi';
 import { formatRangeList, formatReference, getBookById } from '@/services/bible/bookCatalog';
 import { nextChapterRef, prevChapterRef } from '@/services/bible/chapterNavigation';
-import { listEntries } from './readingEntries';
+import { isFlatList, listEntries } from './readingEntries';
 
 /**
  * What the reader (and playback) walks through: the whole Bible in canonical
@@ -108,6 +108,11 @@ export function bibleSequence(translation: Translation): ReadingSequence {
  */
 export function expandList(list: ReadingList, activeTranslation: Translation): SegmentRef[] {
   const out: SegmentRef[] = [];
+  // A plain list has no day structure, so its segments carry none: "Day 1" over
+  // a collection of favourite psalms is a label nobody asked for, and this is
+  // the one place that decides it — the reader's heading and the picker's
+  // grouping both follow from it.
+  const flat = isFlatList(list);
   list.days.forEach((day, dayIndex) => {
     for (const entry of day.entries) {
       const translation = entry.translation ?? activeTranslation;
@@ -118,8 +123,8 @@ export function expandList(list: ReadingList, activeTranslation: Translation): S
         listId: list.id,
         entryId: entry.id,
         label: entry.label,
-        dayIndex,
-        dayTitle: day.title,
+        dayIndex: flat ? undefined : dayIndex,
+        dayTitle: flat ? undefined : day.title,
       };
       if (entry.chapter === undefined) {
         const count = getBookById(entry.bookId)?.chapters ?? 0;

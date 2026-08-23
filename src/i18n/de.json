@@ -77,7 +77,11 @@
       "languageDe": "Deutsch",
       "readingLists": "Leselisten",
       "titleList": "Aus deiner Liste lesen",
-      "clearList": "Diese Leseliste verlassen"
+      "clearList": "Diese Leseliste verlassen",
+      "earlier": "Früher",
+      "later": "Später",
+      "dayOf": "Tag {{day}} von {{total}}",
+      "pageOf": "{{page}} von {{total}}"
     }
   },
   "playback": {

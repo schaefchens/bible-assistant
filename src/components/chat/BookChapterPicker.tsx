@@ -23,6 +23,25 @@ import { playSegmentInChat } from '@/lib/readingListPlayback';
 
 type View = 'books' | 'chapters' | 'translations' | 'lists';
 
+/** One day of a reading list, as the picker shows it. */
+type DayGroup = {
+  title: string | null;
+  titled: boolean;
+  items: SegmentRef[];
+  /** Every passage in it has been read — the group is behind you. */
+  done: boolean;
+};
+
+/**
+ * How many passages an ungrouped list shows before paging. A list is a thing to
+ * pick from, and a wall of ninety references is not something you pick from.
+ */
+const PASSAGES_PER_PAGE = 10;
+
+function clampIndex(value: number, length: number): number {
+  return Math.min(Math.max(value, 0), Math.max(0, length - 1));
+}
+
 function BackChevron() {
   return (
     <svg
@@ -101,6 +120,114 @@ function ChevronRight() {
     >
       <polyline points="9 18 15 12 9 6" />
     </svg>
+  );
+}
+
+/**
+ * One passage in the locked list: whether it has been read, where the reader is,
+ * and what it is. The tick is an indicator, not a control — ticking lives on the
+ * list screen, and a second tap target inside a narrow column would be a
+ * mis-tap waiting to happen.
+ */
+function PassageRow({
+  seg,
+  lang,
+  done,
+  current,
+  compact,
+  onClick,
+}: {
+  seg: SegmentRef;
+  lang: 'en' | 'de';
+  done: boolean;
+  current: boolean;
+  compact?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        'w-full flex items-baseline gap-1.5 rounded-lg px-1.5 py-1.5 text-left transition-colors',
+        current ? 'bg-brand/10 ring-1 ring-brand/30' : 'hover:bg-brand/10 active:bg-brand/15',
+      )}
+    >
+      {done ? (
+        <CheckMark className="shrink-0 translate-y-px text-brand" />
+      ) : (
+        <span
+          aria-hidden
+          className="shrink-0 translate-y-px h-3 w-3 rounded-[3px] border border-ink-muted/40"
+        />
+      )}
+      <span className="min-w-0">
+        <span
+          className={clsx(
+            'block font-serif',
+            compact ? 'text-[13px] leading-tight' : 'text-sm truncate',
+            done ? 'text-ink-muted line-through' : 'text-ink',
+          )}
+        >
+          {formatSegment(seg, lang)}
+        </span>
+        {seg.label && (
+          <span
+            className={clsx(
+              'block text-[10px] text-ink-muted',
+              compact ? 'leading-tight' : 'truncate',
+            )}
+          >
+            {seg.label}
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+function CheckMark({ className }: { className?: string }) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+/** Step one day (or one page) through a long list. */
+function PagerButton({
+  onClick,
+  disabled,
+  label,
+  children,
+}: {
+  onClick: () => void;
+  disabled: boolean;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className="h-7 w-7 shrink-0 rounded-lg text-lg leading-none text-brand hover:bg-brand/10 disabled:opacity-25 disabled:pointer-events-none transition-colors"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -221,13 +348,15 @@ export function BookChapterPicker({
   const lockedProgress = lockedList ? readingProgress[lockedList.id] : undefined;
 
   /**
-   * The locked list's passages, grouped the way the list is written. A plain
-   * list (one untitled day) gets no headings — "Day 1" over a collection of
-   * favourite psalms would be inventing a structure the user didn't ask for.
+   * The locked list's passages, grouped the way the list is written, with
+   * whether each group is finished. A plain list (one untitled day) gets no
+   * heading — "Day 1" over a collection of favourite psalms would invent a
+   * structure the user didn't ask for.
    */
-  const dayGroups = useMemo(() => {
+  const dayGroups = useMemo<DayGroup[]>(() => {
     if (!lockedList) return [];
-    const groups: { title: string | null; titled: boolean; items: SegmentRef[] }[] = [];
+    const done = new Set(lockedProgress?.completed ?? []);
+    const groups: DayGroup[] = [];
     let currentDay: number | undefined;
     for (const seg of expandList(lockedList, translation)) {
       if (groups.length === 0 || seg.dayIndex !== currentDay) {
@@ -236,14 +365,69 @@ export function BookChapterPicker({
           title: seg.dayTitle ?? null,
           titled: seg.dayTitle !== undefined,
           items: [seg],
+          done: false,
         });
       } else {
         groups[groups.length - 1].items.push(seg);
       }
     }
+    for (const g of groups) {
+      g.done = g.items.length > 0 && g.items.every((i) => !!i.entryId && done.has(i.entryId));
+    }
     return groups;
-  }, [lockedList, translation]);
-  const showDayHeadings = dayGroups.length > 1 || dayGroups.some((g) => g.titled);
+  }, [lockedList, lockedProgress, translation]);
+
+  const grouped = dayGroups.length > 1;
+
+  /**
+   * Which group is "today": the one holding the entry the user is on, else the
+   * first with anything unread, else the last. Reading a plan should open on the
+   * day you're actually in, not on day 1 of 90.
+   */
+  const currentDay = useMemo(() => {
+    if (dayGroups.length === 0) return 0;
+    const currentEntryId = lockedProgress?.currentEntryId;
+    if (currentEntryId) {
+      const at = dayGroups.findIndex((g) => g.items.some((i) => i.entryId === currentEntryId));
+      if (at !== -1) return at;
+    }
+    const firstUnread = dayGroups.findIndex((g) => !g.done);
+    return firstUnread === -1 ? dayGroups.length - 1 : firstUnread;
+  }, [dayGroups, lockedProgress]);
+
+  /**
+   * The paged/windowed position, stamped with the list it belongs to so
+   * selecting another list falls back to that list's own "today" without an
+   * effect to reset it.
+   */
+  const [browsePos, setBrowsePos] = useState<{ listId: string; at: number } | null>(null);
+  const browsing = browsePos && browsePos.listId === lockedList?.id ? browsePos.at : null;
+
+  const flatItems = useMemo(() => dayGroups.flatMap((g) => g.items), [dayGroups]);
+  const pageCount = Math.max(1, Math.ceil(flatItems.length / PASSAGES_PER_PAGE));
+  /** A flat list opens on the page holding the current entry. */
+  const currentPage = useMemo(() => {
+    const currentEntryId = lockedProgress?.currentEntryId;
+    if (!currentEntryId) return 0;
+    const at = flatItems.findIndex((i) => i.entryId === currentEntryId);
+    return at === -1 ? 0 : Math.floor(at / PASSAGES_PER_PAGE);
+  }, [flatItems, lockedProgress]);
+
+  const focusDay = clampIndex(browsing ?? currentDay, dayGroups.length);
+  const page = clampIndex(browsing ?? currentPage, pageCount);
+  /** Previous / current / next, dropping the ends of the list. */
+  const windowDays = [focusDay - 1, focusDay, focusDay + 1].filter(
+    (i) => i >= 0 && i < dayGroups.length,
+  );
+
+  const stepBrowse = (delta: number) => {
+    if (!lockedList) return;
+    const limit = grouped ? dayGroups.length : pageCount;
+    const from = grouped ? focusDay : page;
+    setBrowsePos({ listId: lockedList.id, at: clampIndex(from + delta, limit) });
+  };
+  const canBrowseBack = (grouped ? focusDay : page) > 0;
+  const canBrowseOn = (grouped ? focusDay : page) < (grouped ? dayGroups.length : pageCount) - 1;
 
   const headerTitle =
     view === 'translations'
@@ -501,60 +685,121 @@ export function BookChapterPicker({
               )}
 
               {view === 'books' && lockedList && (
-                <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-safe">
+                <div className="flex-1 min-h-0 overflow-y-auto pb-safe">
                   {dayGroups.length === 0 ? (
                     <p className="py-8 text-center text-ink-muted text-sm">
                       {t('lists.emptyList')}
                     </p>
                   ) : (
-                    <div className="py-2 space-y-4">
-                      {dayGroups.map((group, dayIndex) => (
-                        <section key={dayIndex}>
-                          {showDayHeadings && (
-                            <h3 className="px-3 pb-1 text-[11px] uppercase tracking-wider text-ink-muted/70 font-serif">
-                              {group.title ?? t('lists.day', { number: dayIndex + 1 })}
-                            </h3>
-                          )}
-                          <ul>
-                            {group.items.map((seg, i) => {
-                              const done =
-                                !!seg.entryId &&
-                                (lockedProgress?.completed.includes(seg.entryId) ?? false);
-                              const current =
-                                !!seg.entryId && lockedProgress?.currentEntryId === seg.entryId;
-                              return (
-                                <li key={`${seg.entryId ?? seg.bookId}:${seg.chapter}:${i}`}>
-                                  <button
-                                    type="button"
-                                    onClick={() => pickSegment(seg)}
-                                    className={clsx(
-                                      'w-full flex items-baseline gap-2 rounded-xl px-3 py-2 text-left transition-colors',
-                                      current
-                                        ? 'bg-brand/10 ring-1 ring-brand/30'
-                                        : 'hover:bg-brand/10 active:bg-brand/15',
-                                    )}
-                                  >
-                                    <span
-                                      className={clsx(
-                                        'font-serif text-sm truncate',
-                                        done ? 'text-ink-muted line-through' : 'text-ink',
-                                      )}
-                                    >
-                                      {formatSegment(seg, lang)}
-                                    </span>
-                                    {seg.label && (
-                                      <span className="text-[11px] text-ink-muted truncate">
-                                        {seg.label}
-                                      </span>
-                                    )}
-                                  </button>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </section>
-                      ))}
-                    </div>
+                    <>
+                      {/* One pager for both shapes: days for a plan, pages of
+                          passages for a plain list. */}
+                      <div className="flex items-center justify-between gap-2 px-5 py-2">
+                        <PagerButton
+                          onClick={() => stepBrowse(-1)}
+                          disabled={!canBrowseBack}
+                          label={t('chat.bookPicker.earlier') as string}
+                        >
+                          ‹
+                        </PagerButton>
+                        <span className="text-[11px] uppercase tracking-wider text-ink-muted/70">
+                          {grouped
+                            ? t('chat.bookPicker.dayOf', {
+                                day: focusDay + 1,
+                                total: dayGroups.length,
+                              })
+                            : t('chat.bookPicker.pageOf', { page: page + 1, total: pageCount })}
+                        </span>
+                        <PagerButton
+                          onClick={() => stepBrowse(1)}
+                          disabled={!canBrowseOn}
+                          label={t('chat.bookPicker.later') as string}
+                        >
+                          ›
+                        </PagerButton>
+                      </div>
+
+                      {grouped ? (
+                        /* Yesterday, today, tomorrow. The middle column is the
+                           one you're in; the neighbours are context, and are
+                           dimmed and narrower so the eye doesn't have to work
+                           out which is which. */
+                        <div className="flex gap-1 px-2 pb-2">
+                          {windowDays.map((dayIndex) => {
+                            const group = dayGroups[dayIndex];
+                            const focused = dayIndex === focusDay;
+                            return (
+                              <section
+                                key={dayIndex}
+                                className={clsx(
+                                  'min-w-0 rounded-xl px-1.5 py-2 transition-colors',
+                                  focused ? 'flex-[1.6]' : 'flex-1 opacity-60',
+                                  group.done && 'bg-brand/5 ring-1 ring-brand/20',
+                                )}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => setBrowsePos({ listId: lockedList.id, at: dayIndex })}
+                                  disabled={focused}
+                                  className={clsx(
+                                    'w-full flex items-baseline gap-1 px-1.5 pb-1.5 text-left',
+                                    'text-[10px] uppercase tracking-wider font-serif leading-tight',
+                                    focused ? 'text-brand' : 'text-ink-muted/70',
+                                  )}
+                                >
+                                  {group.done && <CheckMark className="shrink-0 translate-y-px" />}
+                                  <span className="min-w-0">
+                                    {group.title ?? t('lists.day', { number: dayIndex + 1 })}
+                                  </span>
+                                </button>
+                                <ul>
+                                  {group.items.map((seg, i) => (
+                                    <li key={`${seg.entryId ?? seg.bookId}:${seg.chapter}:${i}`}>
+                                      <PassageRow
+                                        seg={seg}
+                                        lang={lang}
+                                        done={
+                                          !!seg.entryId &&
+                                          (lockedProgress?.completed.includes(seg.entryId) ?? false)
+                                        }
+                                        current={
+                                          !!seg.entryId &&
+                                          lockedProgress?.currentEntryId === seg.entryId
+                                        }
+                                        compact
+                                        onClick={() => pickSegment(seg)}
+                                      />
+                                    </li>
+                                  ))}
+                                </ul>
+                              </section>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <ul className="px-5 pb-2">
+                          {flatItems
+                            .slice(page * PASSAGES_PER_PAGE, (page + 1) * PASSAGES_PER_PAGE)
+                            .map((seg, i) => (
+                              <li key={`${seg.entryId ?? seg.bookId}:${seg.chapter}:${i}`}>
+                                <PassageRow
+                                  seg={seg}
+                                  lang={lang}
+                                  done={
+                                    !!seg.entryId &&
+                                    (lockedProgress?.completed.includes(seg.entryId) ?? false)
+                                  }
+                                  current={
+                                    !!seg.entryId &&
+                                    lockedProgress?.currentEntryId === seg.entryId
+                                  }
+                                  onClick={() => pickSegment(seg)}
+                                />
+                              </li>
+                            ))}
+                        </ul>
+                      )}
+                    </>
                   )}
                 </div>
               )}

@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ROUTES } from '@/lib/appRoutes';
+import { useGoBack } from '@/hooks/useGoBack';
 import { ReadingListDetail } from '@/components/reading/ReadingListDetail';
 import { ProgressBar } from '@/components/reading/ProgressBar';
 import { useLibraryStore } from '@/store/libraryStore';
@@ -29,6 +31,10 @@ export function ReadingListsPage() {
    * mode for a list that is still blank. */
   const [freshIds, setFreshIds] = useState<string[]>([]);
 
+  // Not a nav tab, so without this the index is a dead end: you arrive from the
+  // picker on Chat or Read and nothing returns you there.
+  const goBack = useGoBack(ROUTES.chat);
+
   const create = useCallback(async () => {
     const list = newReadingList('');
     setFreshIds((ids) => [...ids, list.id]);
@@ -46,8 +52,16 @@ export function ReadingListsPage() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <header className="flex items-center justify-between px-4 py-2 border-b border-surface-raised/50 bg-surface/90 backdrop-blur">
-        <div className="min-w-0">
+      <header className="flex items-center justify-between gap-2 px-4 py-2 border-b border-surface-raised/50 bg-surface/90 backdrop-blur">
+        <button
+          type="button"
+          onClick={goBack}
+          aria-label={t('common.back') as string}
+          className="shrink-0 text-ink-muted hover:text-ink transition-colors -ml-1 px-1"
+        >
+          <BackChevron />
+        </button>
+        <div className="flex-1 min-w-0">
           <h1 className="font-serif text-brand text-lg truncate">{t('lists.title')}</h1>
           <p className="text-[11px] text-ink-muted truncate">{t('lists.subtitle')}</p>
         </div>
@@ -110,6 +124,24 @@ function ListRow({ list, onOpen }: { list: ReadingList; onOpen: () => void }) {
         <span>{t('lists.chapters', { count: listChapterCount(list) })}</span>
       </div>
     </button>
+  );
+}
+
+function BackChevron() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
   );
 }
 

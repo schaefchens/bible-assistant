@@ -224,7 +224,14 @@ about that shape are load-bearing:
 - **An entry is a passage, not a chapter**: a whole book (`chapter` absent), a chapter, a span
   (`chapterEnd`), or verse ranges. `expandList()` fans that out into the chapter-sized
   **segments** playback and the reader work in, all segments of one entry sharing its
-  `entryId`. Reading order is entry order, always.
+  `entryId`. Reading order is entry order, always. `expandList` is also the one place that
+  decides a plain list has *no* day structure (its segments carry no `dayIndex`), which is what
+  keeps "Day 1" off both the reader's heading and the picker's groups.
+
+A `SegmentRef` is a **copy**, and copies of list data go stale — a renamed day, an added
+translation override, a field a later build computes differently. Anything holding one for a
+while re-resolves it against the list (`findListSegment`): the reader on load, and
+`appendReading` on a continuation. Both were bugs before they were rules.
 
 Named `ReadingList`, not "reading": `reading`, `ReadingGroup` and `ReadingHost` already mean
 "a playback group bound to verses" throughout `lib/`.
@@ -233,14 +240,30 @@ Named `ReadingList`, not "reading": `reading`, `ReadingGroup` and `ReadingHost` 
 and Read headers (`BookChapterPicker`, `showReadingLists`), which is where "what should I
 read" is already asked.
 
-That sheet **locks into** the selected list: while one is selected it lists that list's
-passages, grouped by day, *instead of* the Old/New Testament book columns — the list is the
-only thing you can be choosing from, which is the point of having chosen it. The selection row
-carries its own controls, because with the books hidden there is no longer a chapter tap to
-imply "I've left the list": a pencil opens that list's editor, and an `×` clears the selection
-so the books come back. Day headings are suppressed for a plain list (one untitled day) —
-"Day 1" over a collection of favourite psalms would invent a structure the user didn't ask
-for. `/lists` and `/lists/:id` are the full-screen index and editor (mirroring `/cards/:id`).
+That sheet **locks into** the selected list: while one is selected it shows that list's
+passages *instead of* the Old/New Testament book columns — the list is the only thing you can
+be choosing from, which is the point of having chosen it. The selection row carries its own
+controls, because with the books hidden there is no longer a chapter tap to imply "I've left
+the list": a pencil opens that list's editor, and an `×` clears the selection so the books come
+back.
+
+It shows a **window**, not the whole list, because a ninety-day plan is not something you pick
+from:
+
+- a plan (two or more days) gets three columns — the previous day, the day you're in, the next
+  — with the middle one wider and the neighbours dimmed. "The day you're in" is the day holding
+  the current entry, else the first with anything unread;
+- a plain list gets pages of `PASSAGES_PER_PAGE`, opening on the page holding the current entry;
+- every passage carries a tick or an empty box, and a day whose passages are all read is
+  tinted and ticked as a whole — so "where am I" is answerable at a glance.
+
+The tick is an indicator, not a control: ticking lives on the list screen, and a second tap
+target inside a column that narrow is a mis-tap waiting to happen.
+
+`/lists` and `/lists/:id` are the full-screen index and editor (mirroring `/cards/:id`).
+Neither is a nav tab, so both go back through **history** (`useGoBack`) rather than to a fixed
+parent — a fixed parent makes the index and the editor a loop, and strands anyone who arrived
+from the picker.
 
 **Entries are typed or picked.** `parseReadingEntryLine` accepts the card editor's syntax
 (`Passage; [Translation]; [Note]`) plus the two shapes a plan needs — a bare book name and a

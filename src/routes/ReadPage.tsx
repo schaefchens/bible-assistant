@@ -8,6 +8,7 @@ import { TranslationPickerSheet } from '@/components/bible/TranslationPickerShee
 import { useAutoScrollActiveVerse } from '@/hooks/useAutoScrollActiveVerse';
 import { useEndlessChapters } from '@/hooks/useEndlessChapters';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
+import { useLibraryStore } from '@/store/libraryStore';
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -51,9 +52,16 @@ export function ReadPage() {
 
   // Open the persisted position (seeded from the audio resume point the very
   // first time) whenever the tab is entered with nothing loaded.
+  //
+  // A list-sourced reader waits for the library: its position has to be resolved
+  // against the list, and the lists arrive from Dexie a tick later. Opening
+  // early read a stale persisted ref and briefly navigated canonically.
+  const libraryReady = useLibraryStore((s) => s.initialized);
+  const waitingForLists = source.kind === 'list' && !libraryReady;
   useEffect(() => {
+    if (waitingForLists) return;
     void ensureOpen();
-  }, [ensureOpen]);
+  }, [ensureOpen, waitingForLists]);
 
   /**
    * A translation switch invalidates every reader group, because the group id

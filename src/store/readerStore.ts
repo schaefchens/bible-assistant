@@ -7,6 +7,7 @@ import { loadChapterSummaries } from '@/services/bible/verseSummaries';
 import {
   BIBLE_SOURCE,
   bibleSequence,
+  findListSegment,
   isWholeChapter,
   listSequence,
   segmentId,
@@ -150,6 +151,31 @@ type StepDirection = 'forward' | 'backward' | 'none';
  * is a request. */
 const MAX_GAP_SKIP = 3;
 
+/**
+ * Re-resolve a list segment from its list, so the ref in play is always the one
+ * the sequence would produce.
+ *
+ * A `SegmentRef` is persisted with `position`, and a copy goes stale: a day
+ * renamed, a translation override added, or — as happened — a field this build
+ * computes differently. Looking it up costs nothing (the list is in memory) and
+ * removes a whole class of "the reader disagrees with the list" bugs. Falls back
+ * to the ref as given when the list isn't loaded yet or no longer has that
+ * entry.
+ */
+function resolveAgainstList(ref: SegmentRef): SegmentRef {
+  if (!ref.listId || !ref.entryId) return ref;
+  const list = useLibraryStore.getState().readingLists.find((l) => l.id === ref.listId);
+  if (!list) return ref;
+  return (
+    findListSegment(
+      list,
+      useSettingsStore.getState().translation,
+      ref.entryId,
+      ref.chapter,
+    ) ?? ref
+  );
+}
+
 /** Restrict a chapter's verses to what the segment actually covers. */
 function sliceToRanges(verses: VerseSummary[], ref: SegmentRef): VerseSummary[] {
   if (isWholeChapter(ref)) return verses;
@@ -230,13 +256,14 @@ export const useReaderStore = create<ReaderState>()(
     (set, get) => {
       /** Shared loader: fetch, then splice into the window. */
       async function load(
-        ref: SegmentRef,
+        given: SegmentRef,
         mode: 'replace' | 'append' | 'prepend',
         /** Which way the user was moving, so a chapter this translation lacks is
          * skipped rather than dead-ending. Not derivable from `mode`: the paged
          * next button replaces the window. */
         dir: StepDirection = 'none',
       ): Promise<string | null> {
+        const ref = resolveAgainstList(given);
         const id = segmentId(ref);
         const cached = get().segments[id];
 
@@ -285,13 +312,17 @@ export const useReaderStore = create<ReaderState>()(
       function resumeOf(source: ReaderSource, translation: Translation): SegmentRef | null {
         const sequence = sequenceFor(source, translation);
         if (source.kind === 'list') {
-          const currentEntryId = useLibraryStore.getState().readingProgress[source.listId]
-            ?.currentEntryId;
+          const progress = useLibraryStore.getState().readingProgress[source.listId];
           const all = sequence.all();
-          const at = currentEntryId
-            ? all?.find((s) => s.entryId === currentEntryId)
-            : undefined;
-          return at ?? sequence.first();
+          if (progress?.currentEntryId) {
+            const at = all?.find((s) => s.entryId === progress.currentEntryId);
+            if (at) return at;
+          }
+          // Nothing recorded (a plan ticked off by hand, say): the first thing
+          // still unread, which is also the day the picker opens on.
+          const done = new Set(progress?.completed ?? []);
+          const unread = all?.find((s) => !s.entryId || !done.has(s.entryId));
+          return unread ?? sequence.first();
         }
         const slot = useLastReadingStore.getState().slot;
         return slot
@@ -314,10 +345,17 @@ export const useReaderStore = create<ReaderState>()(
           // the tab pointing at nothing. Navigation already degrades to
           // canonical order; drop the source too so the UI stops claiming to be
           // in a plan.
+          //
+          // Only once the library has actually loaded: its lists arrive from
+          // Dexie asynchronously, and an empty array during boot looks exactly
+          // like a deleted list — which silently unlocked the plan the user was
+          // in the middle of, on every reload.
+          const library = useLibraryStore.getState();
           const source = get().source;
           if (
+            library.initialized &&
             source.kind === 'list' &&
-            !useLibraryStore.getState().readingLists.some((l) => l.id === source.listId)
+            !library.readingLists.some((l) => l.id === source.listId)
           ) {
             set({ source: BIBLE_SOURCE, position: null });
           }

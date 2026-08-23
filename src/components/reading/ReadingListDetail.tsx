@@ -6,6 +6,8 @@ import { AddPassageForm } from './AddPassageForm';
 import { ProgressBar } from './ProgressBar';
 import { playReadingList, playSegmentInReader } from '@/lib/readingListPlayback';
 import { BIBLE_SOURCE, expandList } from '@/services/reading/readingSequence';
+import { useGoBack } from '@/hooks/useGoBack';
+import { ROUTES } from '@/lib/appRoutes';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -53,6 +55,9 @@ export function ReadingListDetail({ list, startEditing = false }: Props) {
   const translation = useSettingsStore((s) => s.translation);
   const goTo = useReaderStore((s) => s.goTo);
 
+  // Back to wherever this was opened from — the index, or the picker on Chat or
+  // Read when the sheet's edit button jumped straight here.
+  const goBack = useGoBack(ROUTES.lists);
   const [editing, setEditing] = useState(startEditing);
   const [addingTo, setAddingTo] = useState<string | null>(null);
 
@@ -106,7 +111,7 @@ export function ReadingListDetail({ list, startEditing = false }: Props) {
       <header className="flex items-center gap-2 px-4 py-2 border-b border-surface-raised/50 bg-surface/90 backdrop-blur">
         <button
           type="button"
-          onClick={() => navigate('/lists')}
+          onClick={goBack}
           aria-label={t('common.back') as string}
           className="text-ink-muted hover:text-ink transition-colors -ml-1 px-1"
         >
