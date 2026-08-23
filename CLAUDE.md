@@ -42,8 +42,12 @@ This file is the orientation map. When changing code, find the relevant subsyste
 | Narration source chain (cached → server) | `src/services/narration/narrationSources.ts` |
 | Chapter narration download | `src/services/narration/downloadChapter.ts` + `src/store/narrationStore.ts` |
 | Native speech recognition | `src/lib/nativeSpeech.ts` (Whisper stays the fallback) |
-| Auto-continuation + prefetch | `src/lib/autoPlay.ts` |
+| What plays next (canonical order *or* a reading list) | `src/lib/readingContinuation.ts` |
+| Auto-continuation + prefetch (the machinery, not the policy) | `src/lib/autoPlay.ts` |
 | Bible reader screen | `src/routes/ReadPage.tsx` + `src/store/readerStore.ts` |
+| Reading lists (screen / editor) | `src/routes/ReadingListsPage.tsx` + `src/components/reading/*` |
+| Reading-list order + expansion | `src/services/reading/readingSequence.ts` |
+| Playing a list, and its progress | `src/lib/readingListPlayback.ts` |
 | Playback ⇄ content seam | `src/lib/readingHosts.ts` |
 | Bible data / references | `src/services/bible/*` |
 | HTTP to backend | `src/services/api/*` (all via `client.ts`) |
@@ -76,6 +80,10 @@ message id — it binds audio to the verses `WordHighlighter` highlights.
 | --- | --- | --- |
 | bare uuid (no `:`) | `chatReadingHost` | an assistant message with `verses` |
 | `reader:<translation>:<book>:<chapter>` | `readerReadingHost` | a loaded chapter |
+| `reader:<translation>:l:<listId>:<entryId>:<chapter>` | `readerReadingHost` | one chapter of a reading-list entry |
+
+Ids are built by `segmentId()` and only ever *parsed* for their namespace prefix — the
+reader looks segments up by whole id, so the shapes above are free to change together.
 
 Anything in the playback path that needs "the verses behind what is playing" goes through
 `readingHosts.getGroup(id)` — the transport, `autoPlay`, `playbackController`, the
@@ -87,16 +95,27 @@ Resolution is per *id*, not per active screen, because both hosts can own live g
 once (chat has readings from earlier in the session while the reader has chapters mounted).
 `readingHosts.focus()` is consulted only for "what does Play start when nothing is queued?".
 
-Auto-continuation is host-agnostic: `autoPlay` computes the next chunk from the group's own
-verses and asks the host to `appendReading()` it. Chat materializes a new assistant message
-(with a `historyNote` so the model knows); the reader inserts the chapter into its window.
-A reader group is always a whole chapter, so it always takes `computeNextChunk`'s
-whole-chapter branch — which is why the reader gets endless audio reading, TTS prefetch and
-audio-driven endless scroll from the same mechanism, with no reader special-casing.
+Auto-continuation is host-agnostic: `autoPlay` asks **`readingContinuation.nextReadingAfter()`**
+what follows, then asks the host to `appendReading()` it. Chat materializes a new assistant
+message (with a `historyNote` so the model knows); the reader inserts the segment into its
+window. That one function is the only place the rule lives:
+
+- a group carrying `ReadingGroup.provenance` (a `{listId, entryId}` pair) continues with the
+  **next entry of that list**, and stops at its end — a list is a playlist;
+- everything else continues **canonically**: a fully-read chapter rolls into the next one, a
+  verse range walks on in ~5-verse chunks, stopping at Revelation 22.
+
+Both hosts report provenance (chat from `ChatMessage.listId/entryId`, the reader from the
+segment's `SegmentRef`) and both propagate it through `appendReading`, which is what lets a
+list play as a list from either screen. **Don't reintroduce a second copy of "what comes
+next"** — that rule previously existed three times (autoPlay, readerStore, useContinueReading)
+and the copies disagreed about book rollover.
 
 Reader group ids are **deterministic**, so scrolling away and back (or replaying) re-binds
 the highlighter to already-queued tracks. `appendReading` must stay idempotent for the same
-reason.
+reason — and for a list continuation it adopts **the list's own segment**
+(`findListSegment`) rather than rebuilding one from the verses, because a rebuilt ref drifts
+from the sequence's and a ref with no match in the sequence has no neighbours.
 
 ## Stores (Zustand) — who owns what
 All in `src/store/`. `(persist)` = survives reload via `zustand/middleware`.
@@ -105,11 +124,11 @@ All in `src/store/`. `(persist)` = survives reload via `zustand/middleware`.
 | `usePlaybackStore` | **Source of truth for audio state**: status, current track, word index (drives `WordHighlighter`), volumes |
 | `useChatStore` | Conversation history, `isProcessing`, `currentTool` |
 | `useSettingsStore` *(persist v15 + migrations)* | User prefs: locale, `theme`, translation, voices, reading/announcement prefs, ambient, mic corner, `syncEnabled` |
-| `useLibraryStore` | Cards + boards + their order + the offline sync queue (flushed to `api.php`) |
+| `useLibraryStore` | Cards + boards + their order, reading lists + per-list progress, and the offline sync queue (flushed to `api.php`) |
 | `useRibbonsStore` *(persist)* | Colored bookmarks ("ribbons") |
 | `useGlobalVoiceStore` | Mic listening state, last voice response |
 | `useLastReadingStore` *(persist)* | Resume point for "play last reading" — **audio-owned**, written only from the playback subscription. The reader's scroll position deliberately does not write here, or idle scrolling would move it |
-| `useReaderStore` *(persist v1 — `position` only)* | The reader screen: current chapter, the loaded-chapter cache + the mounted window |
+| `useReaderStore` *(persist v2 — `position` + `source`)* | The reader screen: what it is walking through (the Bible, or a reading list), the current segment, the loaded-segment cache + the mounted window |
 | `useBiblePacksStore` *(persist — `wanted` only)* | Offline Bible packs: per-translation status/progress, and which translations the user has asked for |
 | `useNarrationStore` | Per-chapter narration download state (status/progress/error). Transient — the truth is in Dexie and `check()` re-derives from it |
 | `useUiLayoutStore` | Transient layout — `bottomBarHeight`, the height of whichever bar the current page puts above the nav (chat composer, reader pager), so floaters clear it |
@@ -136,6 +155,18 @@ is playback-group → verses, via `src/lib/readingHosts.ts` (see above).
 A fifth bottom-bar tab, right of Chat, for reading rather than asking. `src/routes/ReadPage.tsx`
 plus `src/components/reader/*`; the store is `useReaderStore`.
 
+**Its unit is a *segment*, not a chapter.** A segment is usually a whole chapter — every
+segment the Bible source produces is — but a reading-list entry with verse ranges
+("Psalm 23:1-6") is a first-class segment the reader renders and plays. `isWholeChapter(ref)`
+is the test, and it decides the heading phrasing and the announcement wording.
+
+**What it walks through is `source`**: `{kind:'bible'}` (canonical order) or
+`{kind:'list', listId}` (list order). Prev/next, endless scroll in both directions, the
+pager labels and the picker all go through the sequence for that source
+(`services/reading/readingSequence.ts`, or `useReaderSequence()` in components) — there is no
+`nextChapterRef` call left in the reader. Choosing a chapter out of the Bible picker *is*
+choosing to leave a list, so switching source needs no separate control.
+
 - **Flowing prose, not one verse per line.** `WordHighlighter` takes `layout="inline"` so several
   verses share a `<p>`, with superscript verse numbers. The "currently reading" tint uses the
   `.verse-inline` CSS pair (background + `box-decoration-break: clone`) because the block
@@ -144,14 +175,15 @@ plus `src/components/reader/*`; the store is `useReaderStore`.
   bibles carries paragraph markup — `public/bibles/*.xml` has only `<verse>`/`<chapter>`/`<book>`
   — so the rule is "break after a verse that ends a sentence, once ≥4 verses have accumulated".
   Deterministic and never mid-sentence, but not editorial. `MIN_VERSES_PER_PARAGRAPH` is the knob.
-- **Two fields, not one array**: `chapters` is a bounded cache keyed by group id, `visible` is the
+- **Two fields, not one array**: `segments` is a bounded cache keyed by group id, `visible` is the
   mounted window (`MAX_VISIBLE = 6`). The cache outlives window trimming so a track queued for a
-  scrolled-away chapter still resolves. `MAX_VISIBLE` is the load-bearing render-cost mitigation
+  scrolled-away segment still resolves. `MAX_VISIBLE` is the load-bearing render-cost mitigation
   (every verse mounts a `WordHighlighter` with two playback selectors, and the rAF loop rewrites
   `current` ~60×/s) — don't raise it without profiling.
-- **Only `position` is persisted.** Verse text would bloat localStorage and go stale on a pack
-  upgrade, and `getChapter` is memoized + in-flight-deduped so a re-fetch on boot is nearly free.
-  First-ever open seeds from `useLastReadingStore`; after that the two are independent.
+- **Only `position` and `source` are persisted.** Verse text would bloat localStorage and go stale
+  on a pack upgrade, and `getChapter` is memoized + in-flight-deduped so a re-fetch on boot is
+  nearly free. A Bible reader's first-ever open seeds from `useLastReadingStore`; a list-sourced
+  one resumes from that list's own progress instead. After that they are independent.
 - **Paged vs endless** is `settings.readerEndlessScroll` (default off → prev/next chapter buttons).
   Endless appends forward from an IntersectionObserver sentinel and prepends backward from an
   explicit button. Both directions, plus window trimming, re-pin the scroll position in
@@ -163,11 +195,69 @@ plus `src/components/reader/*`; the store is `useReaderStore`.
   rolls into the next book, backward walks down — while an explicit jump still errors. The miss
   arrives two ways depending on the source, so test it with `isChapterMissing()`
   (`ChapterUnavailableError` offline, `bible.chapter` 404 online), never `instanceof` alone.
+  In a reading list the same tolerance applies per *entry*: a whole-book entry fans out using the
+  catalog's chapter count, so a step (and a continuation) walks past chapters the chosen text
+  genuinely lacks rather than stalling a plan on a phantom chapter.
 - Switching translation stops reader audio before reloading: group ids embed the translation, and
   word counts differ between texts, so letting queued TTS play on would desync the highlight.
+  **A segment whose translation is pinned by its list entry is exempt** (`SegmentRef.translationPinned`):
+  the user asked for that passage in that text. Without the exemption the reader "corrects" a
+  deliberately German entry to whatever is globally selected — mid-playback, and its group id then
+  no longer matches the sequence's, so the passage loses its neighbours.
 - **Known limitation:** a voice command on `/read` still produces a *chat* reading (audio plays,
   the page doesn't follow). Same as `/cards` today; routing it into the reader needs a target-host
   field on `SendOpts`/`DispatchContext`.
+
+## Reading lists
+
+A **reading list** is a compiled, ordered sequence of passages — a reading plan, or a custom
+collection. `ReadingList` → `ReadingDay[]` → `ReadingEntry[]` (`types/domain.ts`). Two things
+about that shape are load-bearing:
+
+- **A plain list is one untitled day**, which the UI renders flat (`isFlatList`). One data
+  shape, two presentations — there is no separate "unstructured list" type.
+- **An entry is a passage, not a chapter**: a whole book (`chapter` absent), a chapter, a span
+  (`chapterEnd`), or verse ranges. `expandList()` fans that out into the chapter-sized
+  **segments** playback and the reader work in, all segments of one entry sharing its
+  `entryId`. Reading order is entry order, always.
+
+Named `ReadingList`, not "reading": `reading`, `ReadingGroup` and `ReadingHost` already mean
+"a playback group bound to verses" throughout `lib/`.
+
+**Where it lives in the UI.** Not a nav tab — the entry point is the book picker in the Chat
+and Read headers (`BookChapterPicker`, `showReadingLists`), which is where "what should I
+read" is already asked. It drills lists → passages; picking one reads it aloud in chat, or
+jumps the page on `/read`. `/lists` and `/lists/:id` are the full-screen index and editor
+(mirroring `/cards/:id`), reached from that sheet.
+
+**Entries are typed or picked.** `parseReadingEntryLine` accepts the card editor's syntax
+(`Passage; [Translation]; [Note]`) plus the two shapes a plan needs — a bare book name and a
+chapter span. Unlike a card reference, an unparseable line is **rejected, and reported**: a
+card is a note that may hold a half-remembered reference, but a list is a playback queue, and
+an entry playback can't resolve would be a silent hole in the middle of a plan.
+
+**Progress is a separate table** (`db.readingProgress`, keyed by `listId`) because it is
+written far more often than the list and merges differently: `completed` is **unioned** across
+devices, never last-write-wins, so two devices working different days can't erase each other's
+ticks. `mergeReadingProgress` and api.php's `handleUpsertProgress` implement the same rule on
+both sides — a device that ticks an entry without pulling first must not clobber the other's
+work. Entries tick automatically when their audio finishes (`noteEntryFinished`, which waits
+for an entry's *last* chapter, so "Genesis 1-3" isn't marked read after Genesis 1) and by hand
+in the editor.
+
+All progress writes go through `updateProgress`, which reads the current record **inside** the
+same synchronous block as the write and updates the store before awaiting Dexie. Both matter:
+finishing an entry and marking the next one current happen in the same tick, and with the read
+outside, the second writer's whole-record write silently dropped the first's tick.
+
+**Playing a list** is `playReadingList(listId)` → the reader, resuming from
+`progress.currentEntryId`. The playlist behaviour itself is not special-cased anywhere in the
+audio pipeline: it falls out of `ReadingGroup.provenance` plus `nextReadingAfter` (see
+"Reading hosts" above).
+
+The assistant can build and run them: `create_reading_list`, `update_reading_list`,
+`list_reading_lists`, `play_reading_list`, `delete_reading_list`. `play_reading_list` is in
+`READ_TOOL_NAMES`, so like `read_verses` the reading *is* the reply and no chat text is emitted.
 
 ## Theming
 
@@ -226,9 +316,11 @@ boards, ribbons, playback of already-fetched audio — works with no connection.
 migration backfills `true` for existing installs, which already have server data.
 It is enforced at exactly three chokepoints, and they are the whole mechanism:
 
-1. `syncQueueManager.enqueueOp()` / `enqueueOrderSync()` — drop ops instead of growing a
-   queue behind a flush that will never run. Both report whether they queued, so
-   `pendingOps` stays honest.
+1. `syncQueueManager.enqueueOp()` / `enqueueOrderSync()` / `enqueueProgressSync()` — drop ops
+   instead of growing a queue behind a flush that will never run. All three report whether
+   they queued, so `pendingOps` stays honest. (`enqueueProgressSync` also collapses pending
+   ops *per list*, the way order syncs collapse per array: working through a plan produces one
+   per entry finished and only the newest matters.)
 2. `libraryStore.flushQueue()` — the one path that pushes.
 3. `libraryStore.pullFromServer()` — the one path that reads.
 
@@ -303,7 +395,13 @@ opt-in truthful: a user who only reads scripture and asks the assistant question
 nothing on the server. Don't move an action into `$ACCOUNT_ACTIONS` without meaning it,
 and don't reintroduce an eager `mkdir` in `authenticate()`.
 
-Actions: `chat`, `tts`, `tts.speak`, `bible.chapter`, `transcribe`, `auth.openaiKey.{status,set,clear}`, `cards.{list,upsert,delete,order.get,order.set}`, `boards.{list,upsert,delete,order.get,order.set}`, `recording.upload`, `account.delete`, `ambient.list`.
+Actions: `chat`, `tts`, `tts.speak`, `bible.chapter`, `transcribe`, `auth.openaiKey.{status,set,clear}`, `cards.{list,upsert,delete,order.get,order.set}`, `boards.{list,upsert,delete,order.get,order.set}`, `readingLists.{list,upsert,delete}`, `readingProgress.{list,set}`, `recording.upload`, `account.delete`, `ambient.list`.
+
+`readingProgress.set` is the one writer that **merges** rather than replaces — see "Reading
+lists". `readingLists.delete` also drops that list's progress row, which has no meaning without
+it. The client tolerates both reading-list actions being absent (an older api.php answers
+"unknown action"), so shipping the client before the backend costs a user their lists syncing,
+not their cards.
 
 Bible text is parsed from Zefania XML in `public/bibles/*.xml` (S00, S51, LUT, HFA, ELB = German; ESV, KJV, NKJV = English). Client base URL + error handling: `src/services/api/client.ts` (`apiPostJson` / `apiGetJson` / `apiPostForm`, `ApiError`, `onUserKeyFailure`).
 
