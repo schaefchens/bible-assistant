@@ -56,6 +56,81 @@ export function publishNowPlaying(verses: VerseSummary[], startIndex = 0): void 
   audioPlayback.setNowPlaying(label, getTranslationInfo(first.translation).name);
 }
 
+/**
+ * True when the browser is *certain* there is no network. A false positive is
+ * possible (a captive portal reports online), a false negative is not — which
+ * is exactly the guarantee needed here: this must never claim offline while a
+ * TTS request would have succeeded.
+ */
+function definitelyOffline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
+
+/**
+ * Which engine reads: the on-device voice, or OpenAI TTS?
+ *
+ * Being offline counts as "device voice" even when an OpenAI voice is selected.
+ * Without this every buildTrack() in the reading fails, each failure is
+ * swallowed, and the reading plays *nothing at all* — the app looks broken with
+ * no error surfaced anywhere. Reading with the one voice that needs no network
+ * is the only useful answer.
+ *
+ * Not a pure predicate: choosing the device voice *because* of the network
+ * announces the fallback once per session, so the UI can explain why the voice
+ * changed. This is called at the points where the engine is committed to, which
+ * is exactly where that belongs.
+ *
+ * Deliberately NOT consulted by playbackController's mid-reading rebuild, nor
+ * by playFromVerseWord — the engine there has to stay whichever one is already
+ * playing. A reading queued while online keeps working offline (its audio is in
+ * mediaCache, and seeking within a queued track needs no network), so switching
+ * engines under it would both leave two engines talking over each other and
+ * throw away better audio.
+ *
+ * Note for downloadable narration: "offline" only implies "no OpenAI audio"
+ * because buildTrack has to ask api.php for the URL before mediaCache can be
+ * consulted. Once a narration source can resolve URLs locally, this check has
+ * to move behind it — offline with the chapter already downloaded should read
+ * in the downloaded voice, not the device one.
+ */
+export function readingUsesBrowserVoice(): boolean {
+  if (isBrowserVoice(effectiveReadingVoice())) return true;
+  if (definitelyOffline()) {
+    announceNarrationFallback();
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Fires the first time a reading drops from OpenAI TTS to the device voice.
+ * Mirrors client.ts's onUserKeyFailure so the notice doesn't have to be
+ * threaded through every playback caller.
+ *
+ * Once per session on purpose: after the first explanation the fallback is
+ * better off silent, and a banner per chapter would be noise.
+ */
+type NarrationFallbackListener = () => void;
+const narrationFallbackListeners = new Set<NarrationFallbackListener>();
+let narrationFallbackAnnounced = false;
+
+export function onNarrationFallback(fn: NarrationFallbackListener): () => void {
+  narrationFallbackListeners.add(fn);
+  return () => narrationFallbackListeners.delete(fn);
+}
+
+function announceNarrationFallback(): void {
+  if (narrationFallbackAnnounced) return;
+  narrationFallbackAnnounced = true;
+  for (const fn of narrationFallbackListeners) {
+    try {
+      fn();
+    } catch {
+      /* a bad listener must not break playback */
+    }
+  }
+}
+
 export async function startPlaybackForVerses(
   groupId: string,
   verses: VerseSummary[],
@@ -82,7 +157,7 @@ export async function startPlaybackForVerses(
   const plan = sliceFromVerseIndex(fullPlan, startIndex);
 
   const readerVoice = effectiveReadingVoice();
-  if (isBrowserVoice(readerVoice)) {
+  if (readingUsesBrowserVoice()) {
     const items = planToBrowserItems(plan, groupId);
     void browserTts.speakQueue(items);
     return;
@@ -147,7 +222,7 @@ async function enqueueReadingForGroup(
     wholeChapter: group?.wholeChapter ?? false,
   });
   const readerVoice = effectiveReadingVoice();
-  if (isBrowserVoice(readerVoice)) {
+  if (readingUsesBrowserVoice()) {
     void browserTts.enqueue(planToBrowserItems(plan, groupId));
     return;
   }
@@ -179,13 +254,23 @@ export function planToBrowserItems(plan: PlanItem[], groupId: string): BrowserTt
 // well ahead of playback while staying within sane backend/OpenAI concurrency.
 const TTS_BUILD_CONCURRENCY = 4;
 
+/**
+ * Why a track didn't build. The distinction matters: an abort is the user
+ * stopping, while a failure means TTS is unreachable — and in a fresh reading
+ * that is the difference between "stop" and "play the whole passage with the
+ * device voice instead of nothing at all".
+ */
+type BuildOutcome =
+  | { ok: true; track: PlaybackTrack }
+  | { ok: false; aborted: boolean };
+
 async function buildTrack(
   it: PlanItem,
   groupId: string,
   voice: OpenAiVoiceId,
   voiceStyle: string | undefined,
   signal?: AbortSignal,
-): Promise<PlaybackTrack | null> {
+): Promise<BuildOutcome> {
   try {
     const tts =
       it.kind === 'verse'
@@ -211,17 +296,20 @@ async function buildTrack(
             { signal },
           );
     return {
-      groupId,
-      verseIndex: it.verseIndex,
-      audioUrl: tts.audioUrl,
-      alignmentUrl: tts.alignmentUrl,
-      pauseAfterMs: it.pauseAfterMs,
-      highlightVerse: it.kind === 'verse',
+      ok: true,
+      track: {
+        groupId,
+        verseIndex: it.verseIndex,
+        audioUrl: tts.audioUrl,
+        alignmentUrl: tts.alignmentUrl,
+        pauseAfterMs: it.pauseAfterMs,
+        highlightVerse: it.kind === 'verse',
+      },
     };
   } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') return null;
-    console.warn('tts failed', it.kind, e);
-    return null;
+    const aborted = e instanceof DOMException && e.name === 'AbortError';
+    if (!aborted) console.warn('tts failed', it.kind, e);
+    return { ok: false, aborted };
   }
 }
 
@@ -241,7 +329,8 @@ export async function planToOpenAiTracks(
       if (signal?.aborted) return;
       const i = cursor++;
       if (i >= plan.length) return;
-      results[i] = await buildTrack(plan[i], groupId, voice, voiceStyle, signal);
+      const out = await buildTrack(plan[i], groupId, voice, voiceStyle, signal);
+      results[i] = out.ok ? out.track : null;
     }
   };
   const poolSize = Math.min(TTS_BUILD_CONCURRENCY, plan.length);
@@ -285,8 +374,26 @@ export async function streamReading(
     for (const it of plan) {
       if (signal?.aborted) break;
       if (started && !audioPlayback.isFeed(gen)) break; // superseded / stopped
-      const track = await buildTrack(it, groupId, voice, voiceStyle, signal);
-      if (!track) continue;
+      const out = await buildTrack(it, groupId, voice, voiceStyle, signal);
+      if (!out.ok) {
+        // Nothing has played yet, this is a fresh user-initiated reading, and
+        // TTS is unreachable (offline, backend down, no key, quota) — so every
+        // remaining item would fail identically and the reading would be
+        // silent. Hand the whole plan to the device voice instead.
+        //
+        // Guarded three ways on purpose. Not on abort (that's the user
+        // stopping); not once a track has started, and not in enqueue mode,
+        // because switching engines with audio already queued would leave
+        // audioPlayback and browserTts talking over each other. In those cases
+        // keep the old behaviour of skipping the item.
+        if (!out.aborted && !started && start.mode === 'playQueue') {
+          announceNarrationFallback();
+          void browserTts.speakQueue(planToBrowserItems(plan, groupId));
+          return;
+        }
+        continue;
+      }
+      const track = out.track;
       if (signal?.aborted) break;
       if (!started) {
         started = true;

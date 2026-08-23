@@ -370,6 +370,10 @@
     "useShared": "Geteilten Schlüssel nutzen",
     "dismiss": "Nicht jetzt"
   },
+  "narrationFallback": {
+    "title": "Wird mit der Gerätestimme gelesen.",
+    "hint": "Die Premium-Stimme braucht eine Internetverbindung. Alles andere funktioniert offline weiter."
+  },
   "playbackSheet": {
     "title": "Wiedergabe",
     "readingTitle": "Lesen",

@@ -19,6 +19,7 @@ import { EyesFreeMode } from '@/components/voice/EyesFreeMode';
 import { FloatingPlaybackBar } from '@/components/playback/FloatingPlaybackBar';
 import { UpdateBanner } from '@/components/common/UpdateBanner';
 import { KeyFailureBanner } from '@/components/common/KeyFailureBanner';
+import { NarrationFallbackNotice } from '@/components/common/NarrationFallbackNotice';
 
 export function AppShell() {
   const { t } = useTranslation();
@@ -70,6 +71,7 @@ export function AppShell() {
     <div className="flex flex-col h-full pt-safe px-safe">
       <UpdateBanner />
       <KeyFailureBanner />
+      <NarrationFallbackNotice />
       <main className="flex-1 min-h-0 flex flex-col">
         <Outlet />
       </main>

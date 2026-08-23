@@ -370,6 +370,10 @@
     "useShared": "Use shared key",
     "dismiss": "Not now"
   },
+  "narrationFallback": {
+    "title": "Reading with the device voice.",
+    "hint": "The premium voice needs an internet connection. Everything else keeps working offline."
+  },
   "playbackSheet": {
     "title": "Playback",
     "readingTitle": "Reading",
