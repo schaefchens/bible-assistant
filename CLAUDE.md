@@ -332,6 +332,17 @@ The assistant can build and run them: `create_reading_list`, `update_reading_lis
 `list_reading_lists`, `play_reading_list`, `delete_reading_list`. `play_reading_list` is in
 `READ_TOOL_NAMES`, so like `read_verses` the reading *is* the reply and no chat text is emitted.
 
+**A long plan is built from a rule, not an enumeration.** `create_reading_list`'s `plan`
+argument (`{cover: ['bible'], days: 365}`) hands the arithmetic to
+`services/reading/readingPlan.ts`, which spreads every chapter of the named books or scope
+words across the days. Having the model write out a year — 1,189 chapters — is slow, expensive,
+and truncates long before it finishes, and a truncated plan is a wrong plan.
+
+Two related rules keep the *reply* short: `describeReadingList` returns counts plus a two-day
+sample rather than the whole list, and the prompt says to answer in one sentence and not read
+the plan back. Both exist because the assistant narrated every day of a plan it had just made,
+which for a year plan is minutes of speech.
+
 ## Theming
 
 Colour tokens are named by **role, not hue** — `surface` / `surface-raised` /

@@ -84,32 +84,44 @@ export function resolveReadingList(ref: string): ReadingListLookup {
   };
 }
 
+/** How many days of a list the model is shown. Enough to know its shape. */
+const SAMPLE_DAYS = 2;
+
 /**
- * A reading list as the model should see it: passages as the same strings the
- * tools accept, plus what has been read. Days are flattened into labelled
- * groups so a plan reads as a plan.
+ * A reading list as the model should see it: what it is, how far through it the
+ * user is, and a *sample* of its days.
+ *
+ * Deliberately not the whole thing. A year plan is 1,189 passages, and handing
+ * those back after every create or update cost a fortune in context and — worse
+ * — invited the assistant to read the entire plan out loud, which is a very long
+ * answer to "make me a plan". The counts are what a reply needs; the passages
+ * are on screen for the user to look at.
  */
 export function describeReadingList(list: ReadingList) {
   const locale = useSettingsStore.getState().locale;
   const progress = useLibraryStore.getState().readingProgress[list.id];
   const done = new Set(progress?.completed ?? []);
   const stats = progressStats(list, progress);
+  const current = listEntries(list).find((e) => e.id === progress?.currentEntryId);
   return {
     id: list.id,
     name: list.name,
     description: list.description,
-    passagesRead: stats.done,
+    dayCount: list.days.length,
     passagesTotal: stats.total,
-    currentPassage: (() => {
-      const current = listEntries(list).find((e) => e.id === progress?.currentEntryId);
-      return current ? formatReadingEntry(current, locale) : undefined;
-    })(),
-    days: list.days.map((day, i) => ({
+    passagesRead: stats.done,
+    currentPassage: current ? formatReadingEntry(current, locale) : undefined,
+    days: list.days.slice(0, SAMPLE_DAYS).map((day, i) => ({
       title: day.title ?? `Day ${i + 1}`,
       passages: day.entries.map((e) => ({
         passage: formatReadingEntryInput(e, locale),
         read: done.has(e.id),
       })),
     })),
+    ...(list.days.length > SAMPLE_DAYS
+      ? {
+          omitted: `${list.days.length - SAMPLE_DAYS} further days not shown — do not read the plan out, the user can see it`,
+        }
+      : {}),
   };
 }

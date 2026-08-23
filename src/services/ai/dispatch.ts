@@ -35,6 +35,7 @@ import {
   type ResolvedPosition,
 } from '@/services/bible/playbackPosition';
 import { playReadingListInChat } from '@/lib/readingListPlayback';
+import { buildPlanDays } from '@/services/reading/readingPlan';
 import {
   expandEntryToChapters,
   formatReadingEntry,
@@ -458,6 +459,13 @@ async function handleCreateReadingList(
 ): Promise<ToolDispatchResult> {
   const rejected: string[] = [];
   const days: ReadingDay[] = [];
+
+  // A rule beats an enumeration for anything long — see services/reading/readingPlan.
+  if (args.plan) {
+    const built = buildPlanDays(args.plan.cover ?? [], args.plan.days ?? 1);
+    rejected.push(...built.unresolved);
+    days.push(...built.days);
+  }
 
   for (const day of args.days ?? []) {
     const parsed = parsePassages(day.passages ?? []);

@@ -69,6 +69,7 @@ export type ToolArgs = {
     description?: string;
     passages?: string[];
     days?: { title?: string; passages: string[] }[];
+    plan?: { cover: string[]; days: number };
   };
   update_reading_list: {
     list: string;
@@ -487,7 +488,8 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
             type: 'array',
             description:
               'Structured plan: each element is one day (or week, or session) with its own passages. ' +
-              'Days are titled "Day 1", "Day 2"… automatically unless you give a title.',
+              'Days are titled "Day 1", "Day 2"… automatically unless you give a title. ' +
+              'Only for short plans you write out by hand — use `plan` for anything long.',
             items: {
               type: 'object',
               properties: {
@@ -496,6 +498,26 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
               },
               required: ['passages'],
             },
+          },
+          plan: {
+            type: 'object',
+            description:
+              'Generate the plan from a rule instead of writing it out. ALWAYS prefer this when a ' +
+              'plan spans more than a handful of days — "the whole Bible in a year" is 1,189 chapters, ' +
+              'and enumerating them would be truncated long before it finished. The chapters are ' +
+              'spread evenly across the days, in canonical order.',
+            properties: {
+              cover: {
+                type: 'array',
+                items: { type: 'string' },
+                description:
+                  'What to cover: book names ("Genesis", "1 John") and/or the scope words ' +
+                  '"bible", "ot", "nt", "gospels", "pentateuch". Example: ["bible"] for a whole-Bible ' +
+                  'plan, ["Matthew","Mark","Luke","John"] or ["gospels"] for the gospels.',
+              },
+              days: { type: 'number', description: 'How many days to spread it over.' },
+            },
+            required: ['cover', 'days'],
           },
         },
         required: ['name'],
@@ -806,7 +828,7 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
       `Wenn der Benutzer einfach "weiterlesen", "weiter", "lies weiter" oder "die nächsten Verse" sagt OHNE ein Lesezeichen zu nennen: rufe "read_verses" mit dem nächsten Versabschnitt auf. Schau in den letzten "(Played aloud: …)"-Systemnotizen, was zuletzt gelesen wurde, und bestimme die folgenden Verse selbst (gleiches Kapitel falls noch Verse übrig, sonst Anfang des nächsten Kapitels). "(Played aloud: …)" ist ausschließlich eine Verlaufs-Markierung — gib diese Phrase NIEMALS selbst als Antworttext aus; nutze immer das read_verses-Tool, um zu lesen.`,
       `Lesezeichen (Ribbons): Es gibt fünf farbige Lesezeichen (gold, blue, red, green, purple). "save_ribbon" speichert die aktuelle Leseposition; "continue_from_ribbon" liest ab dem gespeicherten Lesezeichen weiter. Rufe diese Tools NUR auf, wenn der Benutzer ausdrücklich "Lesezeichen", "Ribbon" oder eine der Farben erwähnt. "Weiterlesen" ohne Erwähnung eines Lesezeichens ist KEIN Ribbon-Befehl. Wenn keine Farbe genannt wurde, lass das Argument color weg — bei save_ribbon ist gold die Vorgabe, bei continue_from_ribbon wird automatisch das einzige gesetzte Lesezeichen verwendet.`,
       `Wiedergabe-Einstellungen sind per Sprachbefehl steuerbar: "set_playback_rate" für Tempo ("lies schneller/langsamer"), "set_music" für Musik an/aus/Titel/Lautstärke ("Musik aus", "Musik leiser", "spiel Forest Hymn"), "set_reader_preferences" für Auto-Play / Auto-Scroll / Vers-Wiederholung, "set_announcements" für Kapitel-Ansage / Vers-Nummern / Pausen, "set_mic_position" um das Mikrofon in eine Ecke zu schieben. Übergib nur die Felder, die der Benutzer wirklich erwähnt hat — keine Default-Werte für nicht genannte Optionen erfinden.`,
-      `Leselisten sind zusammengestellte Reihen von Stellen — Lesepläne ("nimm mich in 30 Tagen durch die Evangelien") oder eigene Sammlungen ("meine liebsten Psalmen"). "create_reading_list" erstellt eine (nutze "days", wenn der Plan nach Tagen gegliedert ist, sonst "passages"), "update_reading_list" ändert sie, "list_reading_lists" zeigt sie mit dem Fortschritt, "play_reading_list" liest sie ab der letzten Stelle weiter vor, "delete_reading_list" löscht sie. Eine Stelle darf ein ganzes Buch ("John"), ein Kapitel ("John 3"), eine Spanne ("Genesis 1-3") oder Verse ("Psalm 23:1-6") sein — immer mit englischen Buchnamen. Rufe zuerst "list_reading_lists" auf, wenn der Benutzer eine Liste beim Namen nennt.`,
+      `Leselisten sind zusammengestellte Reihen von Stellen — Lesepläne ("nimm mich in 30 Tagen durch die Evangelien") oder eigene Sammlungen ("meine liebsten Psalmen"). "create_reading_list" erstellt eine (für lange Pläne IMMER "plan" nutzen — etwa cover ["bible"], days 365 —, sonst "days" oder "passages"), "update_reading_list" ändert sie, "list_reading_lists" zeigt sie mit dem Fortschritt, "play_reading_list" liest sie ab der letzten Stelle weiter vor, "delete_reading_list" löscht sie. Eine Stelle darf ein ganzes Buch ("John"), ein Kapitel ("John 3"), eine Spanne ("Genesis 1-3") oder Verse ("Psalm 23:1-6") sein — immer mit englischen Buchnamen. Rufe zuerst "list_reading_lists" auf, wenn der Benutzer eine Liste beim Namen nennt. Nach dem Anlegen oder Ändern einer Liste antworte in EINEM kurzen Satz und zähle die Tage und Stellen NICHT auf — der Benutzer sieht die Liste, und ein vorgelesener Jahresplan dauert Minuten.`,
       `Freihändig-Modus: "enter_eyes_free_mode" öffnet einen Vollbild-Modus mit fünf großen Tastflächen (oben Beenden, unten Mikro, links/rechts vor/zurück, Mitte Play/Pause). Nutze dieses Tool bei "Freihändig-Modus", "Großtasten", "blind bedienen" o.ä. "exit_eyes_free_mode" schließt ihn wieder ("zurück zum Chat", "Freihändig beenden").`,
     ].join(' ');
   }
@@ -823,7 +845,7 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
     `When the user says simply "continue reading", "read on", "next verses", "weiterlesen" or similar WITHOUT mentioning a ribbon/bookmark: call "read_verses" with the next slice. Look at the most recent "(Played aloud: …)" system notes to see what was just read and figure out the next verses yourself (continue in the same chapter if verses remain, otherwise start the next chapter). "(Played aloud: …)" is only a history marker — NEVER emit that phrase as your own reply text; always call read_verses to actually read.`,
     `Ribbons (bookmarks): there are five colored ribbons (gold, blue, red, green, purple). "save_ribbon" stores the current reading position; "continue_from_ribbon" resumes from a saved ribbon. ONLY call these tools when the user explicitly mentions "ribbon", "bookmark", "Lesezeichen", or names a color. Plain "continue reading" / "weiterlesen" is NOT a ribbon command. If no color is given, omit the color argument — save_ribbon defaults to "gold" and continue_from_ribbon automatically uses the single saved ribbon when there's exactly one.`,
     `Playback settings are voice-controllable: "set_playback_rate" for tempo ("read faster", "slow down", "normal speed"), "set_music" for music on/off/track/volume ("music off", "play the forest track", "music louder"), "set_reader_preferences" for auto-play / auto-scroll / repeat-verse, "set_announcements" for chapter headings / verse numbers / pause durations, "set_mic_position" to move the mic to a corner. Only pass the fields the user actually mentioned — never invent defaults for fields they didn't talk about. The current values are provided in the next system message; use them to compute relative changes ("a bit louder" = current + ~0.1, "much faster" = ~1.3) and DO NOT ask the user for fields you can derive (e.g. "turn music on" should reuse the already-selected track — only ask if no track is selected).`,
-    `Reading lists are compiled sequences of passages — reading plans ("take me through the gospels in 30 days") or custom collections ("my favourite psalms"). "create_reading_list" makes one (use "days" when the plan is split by day, otherwise "passages"), "update_reading_list" changes it, "list_reading_lists" shows them with progress, "play_reading_list" reads one aloud from where the user left off and keeps going to its end, "delete_reading_list" removes it. A passage may be a whole book ("John"), a chapter ("John 3"), a span ("Genesis 1-3") or verses ("Psalm 23:1-6"), always with English book names. Call "list_reading_lists" first when the user names a list, to resolve it. Like read_verses, play_reading_list needs NO text reply — the reading is the answer.`,
+    `Reading lists are compiled sequences of passages — reading plans ("take me through the gospels in 30 days") or custom collections ("my favourite psalms"). "create_reading_list" makes one (for anything long ALWAYS use "plan" — e.g. cover ["bible"], days 365 — otherwise "days" or "passages"), "update_reading_list" changes it, "list_reading_lists" shows them with progress, "play_reading_list" reads one aloud from where the user left off and keeps going to its end, "delete_reading_list" removes it. A passage may be a whole book ("John"), a chapter ("John 3"), a span ("Genesis 1-3") or verses ("Psalm 23:1-6"), always with English book names. Call "list_reading_lists" first when the user names a list, to resolve it. Like read_verses, play_reading_list needs NO text reply — the reading is the answer. After creating or changing a list, reply in ONE short sentence and do NOT list the days or passages back: the user can see the list, and a year plan read aloud takes minutes.`,
     `Hands-free / eyes-free mode: "enter_eyes_free_mode" opens a fullscreen overlay with five giant touch zones (top = exit, bottom = mic, left/right = previous/next verse, center = play/pause). Call it on "hands-free", "eyes-free", "open the big buttons", "blind mode" etc. "exit_eyes_free_mode" closes it again ("back to chat", "exit hands-free").`,
   ].join(' ');
 }
