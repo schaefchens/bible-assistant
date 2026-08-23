@@ -29,7 +29,7 @@ This file is the orientation map. When changing code, find the relevant subsyste
 | Concern | File |
 | --- | --- |
 | Router + error boundary | `src/App.tsx` → routes render under `src/components/common/AppShell.tsx` |
-| App init (audio teardown, last-reading, network, key hydration, ambient prefetch) | `AppShell.tsx` effects (→ extracting to `useAppInitialization`) |
+| App init (audio teardown, last-reading, network, key hydration, ambient prefetch, pack retry) | `src/hooks/useAppInitialization.ts` — six independent effects |
 | Voice/text command pipeline | `src/hooks/useCommandPipeline.ts` (`send()`), tool loop in `src/services/ai/orchestrate.ts` |
 | Global mic / push-to-talk | `src/hooks/useGlobalVoice.ts` + `src/components/voice/*` |
 | AI tool definitions (the model's API) | `src/services/ai/tools.ts` |
@@ -101,12 +101,13 @@ All in `src/store/`. `(persist)` = survives reload via `zustand/middleware`.
 | --- | --- |
 | `usePlaybackStore` | **Source of truth for audio state**: status, current track, word index (drives `WordHighlighter`), volumes |
 | `useChatStore` | Conversation history, `isProcessing`, `currentTool` |
-| `useSettingsStore` *(persist v13 + migrations)* | User prefs: locale, translation, voices, reading/announcement prefs, ambient, mic corner |
+| `useSettingsStore` *(persist v14 + migrations)* | User prefs: locale, translation, voices, reading/announcement prefs, ambient, mic corner, `syncEnabled` |
 | `useLibraryStore` | Cards + boards + their order + the offline sync queue (flushed to `api.php`) |
 | `useRibbonsStore` *(persist)* | Colored bookmarks ("ribbons") |
 | `useGlobalVoiceStore` | Mic listening state, last voice response |
 | `useLastReadingStore` *(persist)* | Resume point for "play last reading" — **audio-owned**, written only from the playback subscription. The reader's scroll position deliberately does not write here, or idle scrolling would move it |
 | `useReaderStore` *(persist v1 — `position` only)* | The reader screen: current chapter, the loaded-chapter cache + the mounted window |
+| `useBiblePacksStore` *(persist — `wanted` only)* | Offline Bible packs: per-translation status/progress, and which translations the user has asked for |
 | `useUiLayoutStore` | Transient layout — `bottomBarHeight`, the height of whichever bar the current page puts above the nav (chat composer, reader pager), so floaters clear it |
 | `useUpdateStore` (in `lib/pwaUpdate.ts`) | PWA update-available flag *(named `use*` though it's a store, not a hook — a known, intentionally-left naming exception)* |
 
@@ -164,10 +165,67 @@ plus `src/components/reader/*`; the store is `useReaderStore`.
   the page doesn't follow). Same as `/cards` today; routing it into the reader needs a target-host
   field on `SendOpts`/`DispatchContext`.
 
+## Offline-first — what needs a network and what doesn't
+
+The only genuinely online features are the **assistant** (chat needs the model) and
+**generating** premium narration. Everything else — reading, the reader screen, cards,
+boards, ribbons, playback of already-fetched audio — works with no connection.
+
+**Sync is opt-in.** `settings.syncEnabled` is off on a fresh install; the v13→v14
+migration backfills `true` for existing installs, which already have server data.
+It is enforced at exactly three chokepoints, and they are the whole mechanism:
+
+1. `syncQueueManager.enqueueOp()` / `enqueueOrderSync()` — drop ops instead of growing a
+   queue behind a flush that will never run. Both report whether they queued, so
+   `pendingOps` stays honest.
+2. `libraryStore.flushQueue()` — the one path that pushes.
+3. `libraryStore.pullFromServer()` — the one path that reads.
+
+Guarding there rather than at the ~10 call sites is deliberate: a new caller cannot
+bypass the opt-in by forgetting. Turning sync on costs one catch-up pass
+(`enableSync()` → pull, then seed the queue from every row still `dirty === 1`, then
+flush), which is what dropping ops buys.
+
+**The mnemonic is a device key first, a recovery phrase second.** It is required
+synchronously by every `api.php` call, so `hydrateIdentity()` mints one silently on
+first run (see `lib/bootIdentity.ts`) and the user is only *shown* it when they turn
+sync on. Never put it back in front of a first-run user: an app that reads scripture
+offline must not open on "create an account".
+
+**`isBundled()` vs `isPreinstalled()`** (`services/bible/packFormat.ts`) — the second is
+the one to reach for when the question is "can I read this without the network?". It is
+true only on native, where `cap sync` puts the packs in the asset bundle. On web the same
+files are HTTP fetches the service worker doesn't precache (`globPatterns` excludes
+`.json`; the packs are ~10 MB), so there the bundled texts are treated as ordinary
+*downloadable* packs — which is the only reason the PWA can read offline at all. Only
+`bible-packs/manifest.json` (71 KB) is precached, so the picker renders correct state
+offline.
+
+**Selecting a translation downloads it** (`biblePacksStore.want()`, wired into
+`TranslationList`), and the active translation is wanted even if its row was never
+tapped. Packs are ~1.5 MB gzipped, so this needs no confirmation.
+
+**A reading never plays silence.** `startPlayback.readingUsesBrowserVoice()` folds
+"definitely offline" into the engine choice, and `streamReading` falls back to the device
+voice if the *first* track fails for any non-abort reason. Both are "decide once"
+by design: `playbackController`'s mid-reading rebuild and `playFromVerseWord` keep asking
+`isBrowserVoice()` alone, because a reading queued while online keeps working offline
+(its audio is in `mediaCache`, and seeking a queued track needs no network), and because
+two engines sharing one queue talk over each other.
+
 ## Backend — `public/api.php`
 Single PHP entry; routes on `?action=`. Per-user data dirs keyed by an identity derived from the user's passphrase. OpenAI actions (`chat`, `tts`, `tts.speak`, `transcribe`, `recording.upload`) require a key — a personal key (sent by the client) or the shared key, selected via the `X-Prefer-Shared-Key` header.
 
-Actions: `chat`, `tts`, `tts.speak`, `bible.chapter`, `transcribe`, `auth.openaiKey.{status,set,clear}`, `cards.{list,upsert,delete,order.get,order.set}`, `boards.{list,upsert,delete,order.get,order.set}`, `recording.upload`, `ambient.list`.
+**Accounts are lazy.** `authenticate()` validates the identity headers and creates
+nothing; `requireUserDir()` creates `storage/users/{id}` and is called from the router
+only for `$ACCOUNT_ACTIONS` (the cards/boards writers, `auth.openaiKey.set`,
+`recording.upload`). Everything else works with no directory at all — the readers guard
+with `file_exists`/`is_readable` and answer empty. This is what makes the client's sync
+opt-in truthful: a user who only reads scripture and asks the assistant questions leaves
+nothing on the server. Don't move an action into `$ACCOUNT_ACTIONS` without meaning it,
+and don't reintroduce an eager `mkdir` in `authenticate()`.
+
+Actions: `chat`, `tts`, `tts.speak`, `bible.chapter`, `transcribe`, `auth.openaiKey.{status,set,clear}`, `cards.{list,upsert,delete,order.get,order.set}`, `boards.{list,upsert,delete,order.get,order.set}`, `recording.upload`, `account.delete`, `ambient.list`.
 
 Bible text is parsed from Zefania XML in `public/bibles/*.xml` (S00, S51, LUT, HFA, ELB = German; ESV, KJV, NKJV = English). Client base URL + error handling: `src/services/api/client.ts` (`apiPostJson` / `apiGetJson` / `apiPostForm`, `ApiError`, `onUserKeyFailure`).
 
@@ -183,7 +241,7 @@ Bible text is parsed from Zefania XML in `public/bibles/*.xml` (S00, S51, LUT, H
 | Router | `BrowserRouter` | `HashRouter` (Android WebView ≥117 won't change paths on custom schemes) — `/read` is `#/read`, and `useLocation().pathname` still reads `/read` |
 | Service worker | yes | none — no SW under `capacitor://` |
 | API origin | same-origin, relative | absolute, from `.env.capacitor` (`src/services/api/origin.ts`) |
-| Bible source | `bible.chapter` POST | bundled LUT/KJV packs first, then downloads, then network |
+| Bible source | downloaded packs first, then network | bundled LUT/KJV packs first, then downloads, then network |
 
 **`webDir` must stay `dist-native`.** `dist/` is ~300 MB and contains `secrets.php` (a live
 OpenAI key), `storage/` (every user's cards + `secret.txt`) and the Bible XML, because Vite
