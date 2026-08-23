@@ -81,8 +81,17 @@ export function useAppInitialization(hasPassphrase: boolean): void {
   // call the effective-voice helpers once so previously-stored non-allowed
   // values (reading or assistant voice) get force-reset to their locked
   // defaults before the first playback / chat reply.
+  //
+  // Skipped while offline: the request is guaranteed to fail, and prune() (the
+  // catch path) is what we'd do anyway. An offline-first install shouldn't fire
+  // a doomed request on every cold start.
   useEffect(() => {
     if (!hasPassphrase) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      effectiveReadingVoice();
+      effectiveAssistantVoice();
+      return;
+    }
     let cancelled = false;
     const prune = () => {
       effectiveReadingVoice();

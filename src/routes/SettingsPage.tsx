@@ -12,6 +12,7 @@ import { SegmentedControl } from '@/components/common/SegmentedControl';
 import { TranslationPickerSheet } from '@/components/bible/TranslationPickerSheet';
 import { OpenAiKeySection } from '@/components/settings/OpenAiKeySection';
 import { UpdatesSection } from '@/components/settings/UpdatesSection';
+import { SyncSection } from '@/components/settings/SyncSection';
 import { DangerZone } from '@/components/settings/DangerZone';
 import { ImprintFooter } from '@/components/settings/ImprintFooter';
 import { getTranslationInfo } from '@/services/bible/translationCatalog';
@@ -187,6 +188,10 @@ export function SettingsPage() {
 
       <Section title={t('settings.openaiKey.title')}>
         <OpenAiKeySection />
+      </Section>
+
+      <Section title={t('settings.sync.title')}>
+        <SyncSection />
       </Section>
 
       <Section title={t('settings.identity')}>
