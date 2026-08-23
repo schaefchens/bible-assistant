@@ -37,6 +37,28 @@ export type CachedMedia = {
   createdAt: number;
   /** Drives LRU eviction. */
   lastUsedAt: number;
+  /** 1 for a file the user deliberately downloaded, which LRU eviction must
+   * never reclaim — otherwise a chapter downloaded for a flight quietly
+   * disappears behind whatever was played since. Indexed so the sweep can
+   * exclude them without loading every row's body. */
+  pinned?: 0 | 1;
+};
+
+/**
+ * One resolved narration item: where its audio and word-alignment live.
+ *
+ * This exists so a downloaded chapter can be played with **no** call to
+ * api.php. The URLs are api.php's to define — recomputing them client-side
+ * would duplicate its path scheme and silently break the day it changes — so
+ * they are recorded here when the download succeeds and read back verbatim.
+ *
+ * `key` identifies the *request*, not the URL: see narrationIndex.ts.
+ */
+export type NarrationEntry = {
+  key: string;
+  audioUrl: string;
+  alignmentUrl: string;
+  savedAt: number;
 };
 
 class BibleAssistantDb extends Dexie {
@@ -45,6 +67,7 @@ class BibleAssistantDb extends Dexie {
   syncQueue!: Table<SyncOp, number>;
   preferences!: Table<Preference, string>;
   mediaCache!: Table<CachedMedia, string>;
+  narration!: Table<NarrationEntry, string>;
 
   constructor() {
     super('bible-assistant');
@@ -102,6 +125,19 @@ class BibleAssistantDb extends Dexie {
       syncQueue: '++id, op, createdAt',
       preferences: '&key',
       mediaCache: '&url, lastUsedAt',
+    });
+    // v8 adds deliberately-downloaded narration: the `narration` index of which
+    // (voice, reference) maps to which audio/alignment URL, and a `pinned` flag
+    // on mediaCache so the LRU sweep can't reclaim what the user asked to keep.
+    // Existing mediaCache rows have no `pinned` and stay evictable, which is
+    // right — they arrived as a side effect of playback, not as a download.
+    this.version(8).stores({
+      cards: 'id, title, updatedAt, dirty',
+      boards: 'id, name, updatedAt, dirty',
+      syncQueue: '++id, op, createdAt',
+      preferences: '&key',
+      mediaCache: '&url, lastUsedAt, pinned',
+      narration: '&key',
     });
   }
 }

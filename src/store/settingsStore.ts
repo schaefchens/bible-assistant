@@ -31,6 +31,11 @@ type SettingsState = {
    * reading space; floaters drop down as bottomBarHeight goes to 0. */
   hideComposer: boolean;
   micSoundEnabled: boolean;
+  /** The low drone under "the assistant is thinking". Off by default — it is a
+   * deliberate ambience some people want and most don't, so it's opt-in.
+   * Existing installs keep whatever they have: the v12 migration backfilled
+   * `true` and is left alone, since there's no way to tell someone who chose it
+   * from someone who just never turned it off. */
   thinkingSoundEnabled: boolean;
   readChapterHeadings: boolean;
   readVerseNumbers: boolean;
@@ -55,6 +60,22 @@ type SettingsState = {
    * wizard. Greenfield boots start at false; the v10→v11 migration
    * backfills true for existing installs so they never see the wizard. */
   onboardingComplete: boolean;
+  /**
+   * Whether the library is mirrored to the server for multi-device use and
+   * backup. **Off by default** — the app is offline-first, and nothing is
+   * stored server-side until the user asks for it (api.php creates the account
+   * lazily, on the first write).
+   *
+   * Gates the network at two chokepoints only, libraryStore's flushQueue() and
+   * pullFromServer(), plus whether local mutations are queued at all. Turning
+   * it on later seeds the queue from what's already local — see
+   * libraryStore.enableSync().
+   *
+   * The v13→v14 migration backfills `true`: every existing install already has
+   * data on the server, and silently orphaning it would be the worst possible
+   * reading of "offline-first".
+   */
+  syncEnabled: boolean;
   setLocale: (locale: Locale) => void;
   setTranslation: (translation: Translation, fromUser?: boolean) => void;
   setVoice: (voice: VoiceId) => void;
@@ -80,6 +101,7 @@ type SettingsState = {
   setUserOpenAiKeyStatus: (hasKey: boolean, masked: string | null) => void;
   setSessionPreferSharedKey: (v: boolean) => void;
   setOnboardingComplete: (v: boolean) => void;
+  setSyncEnabled: (v: boolean) => void;
 };
 
 /** Whether the user is currently using their own OpenAI key (server has it
@@ -180,7 +202,7 @@ export const useSettingsStore = create<SettingsState>()(
         readingOnlyView: false,
         hideComposer: false,
         micSoundEnabled: true,
-        thinkingSoundEnabled: true,
+        thinkingSoundEnabled: false,
         readChapterHeadings: false,
         readVerseNumbers: false,
         verseNumberStyle: 'spoken',
@@ -192,6 +214,7 @@ export const useSettingsStore = create<SettingsState>()(
         userOpenAiKeyMasked: null,
         sessionPreferSharedKey: false,
         onboardingComplete: false,
+        syncEnabled: false,
         setLocale: (locale) =>
           set((s) => ({
             locale,
@@ -234,11 +257,14 @@ export const useSettingsStore = create<SettingsState>()(
           set({ sessionPreferSharedKey }),
         setOnboardingComplete: (onboardingComplete) =>
           set({ onboardingComplete }),
+        // Callers should go through libraryStore.enableSync/disableSync, which
+        // also seed or clear the queue — this only moves the flag.
+        setSyncEnabled: (syncEnabled) => set({ syncEnabled }),
       };
     },
     {
       name: 'ba.settings',
-      version: 13,
+      version: 14,
       // Don't persist server-derived state — hydrate fresh on every boot.
       // Otherwise an older "hasUserOpenAiKey: true" could outlive a key the
       // server has since cleared.
@@ -343,6 +369,12 @@ export const useSettingsStore = create<SettingsState>()(
                 ? prev.readerEndlessScroll
                 : false,
           };
+        }
+        if (version < 14) {
+          // Every install that reaches this migration predates the sync opt-in,
+          // which means it already has cards and boards on the server. Default
+          // it to on so nothing is orphaned; a fresh install starts at false.
+          prev = { ...prev, syncEnabled: true };
         }
         return prev as SettingsState;
       },

@@ -25,9 +25,13 @@ declare(strict_types=1);
  *   boards.order.get (GET) Per-user board tab order: { order: string[], updatedAt: number }.
  *   boards.order.set      { order: string[], updatedAt: number }
  *   recording.upload      multipart: audio + bookId, chapter, verse, translation
+ *   account.delete        Erase everything stored for this identity.
  *   ambient.list (GET)    List ambient music tracks under storage/ambient/.
  *
- * Auth: X-User-Id (UUID) + X-User-Secret (hex). First sighting registers.
+ * Auth: X-User-Id (UUID) + X-User-Secret (hex). The first *write* registers the
+ * identity — see authenticate() / requireUserDir(). Reads and the OpenAI proxy
+ * work without an account existing at all, so a client that never opts into
+ * server sync leaves nothing here.
  */
 
 ini_set('display_errors', '0');
@@ -267,14 +271,33 @@ function curlMultipart(string $url, array $fields, string $fileField, string $fi
 /**
  * The per-request context array (`$ctx`) threaded through every handler:
  *   - userId       string  the authenticated identity (uuid)
- *   - userDir      string  USERS_DIR/{userId}, where per-user data lives
+ *   - userSecret   string  the secret presented with it
+ *   - userDir      string  USERS_DIR/{userId} — may not exist yet
  *   - preferShared bool    added by the router: caller opted into the shared
  *                          OpenAI key for this request (X-Prefer-Shared-Key)
  *   - openaiKey    string  added by the router for OpenAI actions only: the
  *                          resolved key (personal unless preferShared/absent)
- * requireAuth() populates userId + userDir; the router adds the rest.
+ * authenticate() populates the first three; the router adds the rest.
  */
-function requireAuth(): array {
+
+/**
+ * Validate the identity headers. Creates nothing.
+ *
+ * An "account" on this server is just a directory under storage/users/, and it
+ * is now brought into existence lazily — by requireUserDir(), from the handful
+ * of actions that actually store something. A client that only uses the OpenAI
+ * proxy (chat, tts, transcribe) or reads shared content (bible.chapter,
+ * ambient.list) leaves no trace here at all. That is what lets the app offer
+ * server sync as an opt-in and mean it literally.
+ *
+ * Auth is "the secret matches, if we have seen this identity before"; a first
+ * write claims it (see requireUserDir). That is the same trust model as when
+ * this function did the claiming itself — just deferred to the point where
+ * there is something to protect. Every read handler below guards with
+ * file_exists()/is_readable(), so a missing directory answers empty rather
+ * than erroring.
+ */
+function authenticate(): array {
     $userId = $_SERVER['HTTP_X_USER_ID'] ?? '';
     $userSecret = $_SERVER['HTTP_X_USER_SECRET'] ?? '';
     if (!$userId || !$userSecret) fail(401, 'missing identity headers');
@@ -282,18 +305,26 @@ function requireAuth(): array {
     if (!preg_match('/^[0-9a-f]{32,}$/i', $userSecret)) fail(401, 'invalid secret');
 
     $userDir = USERS_DIR . '/' . $userId;
-    $secretFile = $userDir . '/secret.txt';
 
-    if (!is_dir($userDir)) {
-        @mkdir($userDir, 0775, true);
-        file_put_contents($secretFile, $userSecret);
-    } else {
-        $stored = @file_get_contents($secretFile);
+    if (is_dir($userDir)) {
+        $stored = @file_get_contents($userDir . '/secret.txt');
         if ($stored === false || trim($stored) !== $userSecret) {
             fail(401, 'auth failed');
         }
     }
-    return ['userId' => $userId, 'userDir' => $userDir];
+
+    return ['userId' => $userId, 'userSecret' => $userSecret, 'userDir' => $userDir];
+}
+
+/**
+ * Bring the account into existence, if this is the first thing the user has
+ * ever stored. Called from the router for $ACCOUNT_ACTIONS only.
+ */
+function requireUserDir(array $ctx): void {
+    if (is_dir($ctx['userDir'])) return;
+    if (!@mkdir($ctx['userDir'], 0775, true)) fail(500, 'could not create user directory');
+    // Claims the identity: from here on every request must present this secret.
+    file_put_contents($ctx['userDir'] . '/secret.txt', $ctx['userSecret']);
 }
 
 // ---------- CORS ------------------------------------------------------------
@@ -354,7 +385,20 @@ $action = $_GET['action'] ?? '';
 if (!is_string($action) || $action === '') fail(400, 'missing action');
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-$ctx = requireAuth();
+$ctx = authenticate();
+
+// The actions that store per-user data — and so bring the account into
+// existence. Everything else works dir-less: the OpenAI proxy needs no storage,
+// bible.chapter and ambient.list serve shared content, and the cards/boards/key
+// *readers* all guard with file_exists()/is_readable() and answer empty.
+$ACCOUNT_ACTIONS = [
+    'cards.upsert', 'cards.delete', 'cards.order.set',
+    'boards.upsert', 'boards.delete', 'boards.order.set',
+    'auth.openaiKey.set', 'recording.upload',
+];
+if (in_array($action, $ACCOUNT_ACTIONS, true)) {
+    requireUserDir($ctx);
+}
 
 // Resolve the effective OpenAI key once per request — prefer the caller's
 // own key over the shared OPENAI_API_KEY so usage bills to their account.
@@ -426,6 +470,9 @@ switch ($action) {
         break;
     case 'recording.upload':
         handleRecordingUpload($ctx);
+        break;
+    case 'account.delete':
+        handleAccountDelete($ctx);
         break;
     case 'ambient.list':
         handleAmbientList();
@@ -1054,6 +1101,54 @@ function handleRecordingUpload(array $ctx): void {
         'audioUrl' => BASE_PATH . "/storage/audio/recordings/{$userId}/{$translation}/{$bookId}/{$chapter}/{$verse}.mp3",
         'alignmentUrl' => BASE_PATH . "/storage/audio/recordings/{$userId}/{$translation}/{$bookId}/{$chapter}/{$verse}.json",
     ]);
+}
+
+/**
+ * Recursively delete a directory, refusing anything that isn't inside
+ * STORAGE_DIR.
+ *
+ * The containment check is belt-and-braces — every caller passes a path built
+ * from a uuid authenticate() has already regex-validated — but a recursive
+ * unlink in a web root earns the paranoia. is_link() is tested before is_dir()
+ * because is_dir() follows symlinks, and following one out of storage/ is the
+ * one way this could do real damage.
+ */
+function deleteTree(string $dir): void {
+    $root = realpath(STORAGE_DIR);
+    $real = realpath($dir);
+    if ($root === false || $real === false) return;
+    if ($real === $root || strncmp($real, $root . '/', strlen($root) + 1) !== 0) return;
+
+    foreach (scandir($real) ?: [] as $name) {
+        if ($name === '.' || $name === '..') continue;
+        $path = $real . '/' . $name;
+        if (is_link($path) || is_file($path)) {
+            @unlink($path);
+        } elseif (is_dir($path)) {
+            deleteTree($path);
+        }
+    }
+    @rmdir($real);
+}
+
+/**
+ * Delete everything this server holds for the caller: cards, boards, their
+ * orders, the personal OpenAI key, any uploaded recordings, and finally the
+ * secret that claimed the identity.
+ *
+ * The counterpart to sync being opt-in — switching it back off has to be able
+ * to leave nothing behind. Idempotent: deleting an account that was never
+ * created is a success, not a 404.
+ *
+ * What this deliberately does NOT touch is storage/audio/{voice}/… — the verse
+ * narration cache is keyed by (voice, translation, reference) and shared by
+ * every user. It holds nothing personal, and clearing it would throw away
+ * generation other people already paid for.
+ */
+function handleAccountDelete(array $ctx): void {
+    deleteTree($ctx['userDir']);
+    deleteTree(AUDIO_DIR . '/recordings/' . $ctx['userId']);
+    respond(200, ['deleted' => true]);
 }
 
 function handleAmbientList(): void {

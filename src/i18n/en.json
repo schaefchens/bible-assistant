@@ -227,6 +227,21 @@
     "whisperFallback": "Use Whisper when speech recognition unavailable",
     "micSound": "Play a soft cue when recording starts and stops",
     "thinkingSound": "Play a deep drone while the assistant is thinking",
+    "sync": {
+      "title": "Sync & backup",
+      "toggle": "Sync my library",
+      "offHint": "Your cards and boards live on this device only — nothing is stored on our server, and no account exists for you.",
+      "onHint": "Your cards and boards are mirrored to the server, so you can pick them up on another device and restore them if you lose this one.",
+      "writeDown": "Write down your recovery passphrase below — it is the only way to reach this backup from another device.",
+      "working": "Working…",
+      "failed": "That did not work. Check your connection and try again.",
+      "pendingOffline": "{{count}} waiting to upload",
+      "delete": "Delete server data",
+      "deleteConfirm": "Tap again to delete",
+      "deleting": "Deleting…",
+      "deleted": "Server data deleted. This device keeps its own copy.",
+      "deleteHint": "Erases everything stored on the server for you and switches sync off. Your device keeps its own copy."
+    },
     "identity": "Recovery passphrase",
     "identityHint": "Write this down. It's the only way to recover your library on another device.",
     "reveal": "Reveal",
@@ -248,6 +263,16 @@
     "pauseBetweenChapters": "Pause between chapters",
     "autoPlay": "Auto-play next passage when playback ends",
     "autoPlayHint": "Continues into the next chapter (or next ~5 verses) and reads on until you stop.",
+    "storage": {
+      "title": "Downloaded audio",
+      "loading": "Checking…",
+      "summary_one": "{{total}} of audio held, {{downloaded}} of it downloaded on purpose (1 item).",
+      "summary_other": "{{total}} of audio held, {{downloaded}} of it downloaded on purpose ({{count}} items).",
+      "hint": "Audio you played is kept so it does not download twice, and is cleared automatically as space is needed. Chapters you downloaded are kept until you clear them here.",
+      "clear": "Clear downloaded audio",
+      "clearConfirm": "Tap again to clear",
+      "clearing": "Clearing…"
+    },
     "updates": {
       "title": "Updates",
       "version": "Version {{commit}} · built {{date}}",
@@ -289,13 +314,9 @@
     "bannerAvailable": "New version available — tap to reload"
   },
   "onboarding": {
-    "welcomeSubtitle": "Set up your account to start.",
-    "createNew": "Create new account",
-    "haveExisting": "I have a passphrase",
     "writeItDown": "Write this down",
     "writeItDownHint": "These 12 words are the only way to recover your library on another device. Keep them somewhere safe — anyone with these words can access your account.",
     "confirmedWrittenDown": "I've written these words down somewhere safe.",
-    "continue": "Continue",
     "activate": "Activate",
     "recoverTitle": "Enter your passphrase",
     "recoverHint": "Type or paste your 12 words separated by spaces.",
@@ -305,6 +326,12 @@
       "back": "Back",
       "continue": "Continue",
       "done": "Done",
+      "welcome": {
+        "subtitle": "Read and listen to the Bible — on your phone, wherever you are.",
+        "offline": "Works offline. No account needed.",
+        "start": "Get started",
+        "restore": "I already have a recovery passphrase"
+      },
       "language": {
         "title": "Which language?",
         "subtitle": "Choose the language for menus and the assistant."
@@ -312,17 +339,6 @@
       "translation": {
         "title": "Pick a Bible translation",
         "subtitle": "You can change it any time from Settings."
-      },
-      "music": {
-        "title": "Music while you read?",
-        "subtitle": "A soft instrumental can play under the reading voice.",
-        "enable": "Play music while reading verses",
-        "pickTrack": "Music track",
-        "pickTrackPlaceholder": "— Pick a track —",
-        "loadingTracks": "Loading tracks…",
-        "noTracks": "No tracks available",
-        "preview": "Preview",
-        "stop": "Stop"
       },
       "announcements": {
         "title": "What should be read out loud?",
@@ -353,6 +369,18 @@
         "preview": "Preview",
         "stop": "Stop",
         "previewText": "And God said, let there be light."
+      },
+      "sync": {
+        "title": "Sync & backup?",
+        "subtitle": "Optional. Everything works without it.",
+        "body": "Your cards and boards stay on this device. Turn on sync to use them on another device and to get them back if you lose this one.",
+        "setUp": "Set up sync & backup",
+        "turnOn": "Turn on sync",
+        "working": "Setting up…",
+        "failed": "That did not work. You can try again later in Settings.",
+        "on": "Sync is on",
+        "onHint": "Your library will be mirrored to the server. You can switch this off in Settings at any time.",
+        "later": "You can also turn this on later in Settings."
       }
     }
   },
@@ -369,6 +397,10 @@
     "hint": "Continue with the shared key for this session? Reading voice will fall back to the default (Echo).",
     "useShared": "Use shared key",
     "dismiss": "Not now"
+  },
+  "narrationFallback": {
+    "title": "Reading with the device voice.",
+    "hint": "The premium voice needs an internet connection. Everything else keeps working offline."
   },
   "playbackSheet": {
     "title": "Playback",
@@ -400,6 +432,13 @@
     "unavailableHint": "Download this translation to read it offline, or pick another one.",
     "failed": "Couldn't load {{reference}}.",
     "switchTranslation": "Choose another translation",
-    "retry": "Try again"
+    "retry": "Try again",
+    "narration": {
+      "download": "Download this chapter for offline listening",
+      "resume": "Finish downloading this chapter",
+      "downloaded": "Downloaded — plays offline",
+      "cancel": "Cancel download",
+      "removeConfirm": "Tap again to remove this download"
+    }
   }
 }

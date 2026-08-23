@@ -4,6 +4,7 @@ import { BookChapterPicker } from '@/components/chat/BookChapterPicker';
 import { formatReference } from '@/services/bible/bookCatalog';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useReaderStore } from '@/store/readerStore';
+import { NarrationDownloadButton } from './NarrationDownloadButton';
 
 type Props = {
   /**
@@ -55,6 +56,13 @@ export function ReaderHeader({ onOpenTranslations }: Props) {
       />
 
       <div className="flex items-center gap-1 shrink-0">
+        {position && (
+          <NarrationDownloadButton
+            translation={translation}
+            bookId={position.bookId}
+            chapter={position.chapter}
+          />
+        )}
         <button
           type="button"
           onClick={onOpenTranslations}

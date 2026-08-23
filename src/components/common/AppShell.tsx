@@ -10,7 +10,6 @@ import { useAppInitialization } from '@/hooks/useAppInitialization';
 import { useNativeShell } from '@/hooks/useNativeShell';
 import { useReadingHostFocus } from '@/hooks/useReadingHostFocus';
 import { getPassphrase } from '@/lib/passphrase';
-import { PassphraseSetup } from '@/components/onboarding/PassphraseSetup';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { VoiceController } from '@/components/voice/VoiceController';
 import { GlobalMicButton } from '@/components/voice/GlobalMicButton';
@@ -19,11 +18,16 @@ import { EyesFreeMode } from '@/components/voice/EyesFreeMode';
 import { FloatingPlaybackBar } from '@/components/playback/FloatingPlaybackBar';
 import { UpdateBanner } from '@/components/common/UpdateBanner';
 import { KeyFailureBanner } from '@/components/common/KeyFailureBanner';
+import { NarrationFallbackNotice } from '@/components/common/NarrationFallbackNotice';
 
 export function AppShell() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [hasPassphrase, setHasPassphrase] = useState(() => !!getPassphrase());
+  // Minted before the first render by hydrateIdentity(), so this is normally
+  // true from the start. It stays a guard rather than an assumption because a
+  // device with no working crypto or storage can still reach here without one,
+  // and the effects it gates would throw from requireIdentity().
+  const hasPassphrase = !!getPassphrase();
   const online = useLibraryStore((s) => s.online);
   const pendingOps = useLibraryStore((s) => s.pendingOps);
 
@@ -51,10 +55,6 @@ export function AppShell() {
   const onboardingComplete = useSettingsStore((s) => s.onboardingComplete);
   const setOnboardingComplete = useSettingsStore((s) => s.setOnboardingComplete);
 
-  if (!hasPassphrase) {
-    return <PassphraseSetup onDone={() => setHasPassphrase(true)} />;
-  }
-
   if (!onboardingComplete) {
     return (
       <OnboardingWizard
@@ -70,6 +70,7 @@ export function AppShell() {
     <div className="flex flex-col h-full pt-safe px-safe">
       <UpdateBanner />
       <KeyFailureBanner />
+      <NarrationFallbackNotice />
       <main className="flex-1 min-h-0 flex flex-col">
         <Outlet />
       </main>

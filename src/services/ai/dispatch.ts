@@ -22,6 +22,7 @@ import { browserTts } from '@/lib/browserTts';
 import {
   startAmbientIfEnabled,
   planToBrowserItems,
+  readingUsesBrowserVoice,
   streamReading,
 } from '@/lib/startPlayback';
 import { getAmbientTracks } from '@/services/api/ambient';
@@ -41,7 +42,6 @@ import {
 import { withoutCardInBoard } from '@/lib/boardOperations';
 import { autoPlaceCard, clamp } from '@/lib/freeformLayout';
 import {
-  isBrowserVoice,
   TEXT_SCALE_MIN,
   TEXT_SCALE_MAX,
   type Card,
@@ -231,7 +231,7 @@ async function handleReadVerses(
             ...it,
             verseIndex: it.verseIndex + existingVerseCount,
           }));
-    if (isBrowserVoice(voice)) {
+    if (await readingUsesBrowserVoice(plan)) {
       if (!ctx.signal?.aborted) {
         const items = planToBrowserItems(plan, ctx.messageId);
         // speakQueue replaces the active playlist (hard stop); enqueue appends.

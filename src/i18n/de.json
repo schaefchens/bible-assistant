@@ -227,6 +227,21 @@
     "whisperFallback": "Whisper nutzen, wenn Spracherkennung nicht verfügbar",
     "micSound": "Sanften Ton bei Aufnahmestart und -ende abspielen",
     "thinkingSound": "Tiefen Klang abspielen, während der Assistent nachdenkt",
+    "sync": {
+      "title": "Synchronisation & Backup",
+      "toggle": "Bibliothek synchronisieren",
+      "offHint": "Deine Karten und Tafeln liegen nur auf diesem Gerät — auf unserem Server ist nichts gespeichert, und es existiert kein Konto für dich.",
+      "onHint": "Deine Karten und Tafeln werden auf dem Server gespiegelt. So kannst du sie auf einem anderen Gerät weiterverwenden und nach einem Geräteverlust wiederherstellen.",
+      "writeDown": "Notiere dir unten deine Wiederherstellungs-Passphrase — nur mit ihr erreichst du dieses Backup von einem anderen Gerät.",
+      "working": "Wird eingerichtet…",
+      "failed": "Das hat nicht funktioniert. Prüfe die Verbindung und versuche es erneut.",
+      "pendingOffline": "Warten auf Upload: {{count}}",
+      "delete": "Serverdaten löschen",
+      "deleteConfirm": "Zum Löschen erneut tippen",
+      "deleting": "Wird gelöscht…",
+      "deleted": "Serverdaten gelöscht. Dieses Gerät behält seine eigene Kopie.",
+      "deleteHint": "Löscht alles, was auf dem Server für dich gespeichert ist, und schaltet die Synchronisation ab. Dieses Gerät behält seine eigene Kopie."
+    },
     "identity": "Wiederherstellungs-Passphrase",
     "identityHint": "Notiere dir das. Es ist die einzige Möglichkeit, deine Bibliothek auf einem anderen Gerät wiederherzustellen.",
     "reveal": "Anzeigen",
@@ -248,6 +263,16 @@
     "pauseBetweenChapters": "Pause zwischen Kapiteln",
     "autoPlay": "Nächste Passage automatisch wiedergeben",
     "autoPlayHint": "Liest mit dem nächsten Kapitel (oder den nächsten ~5 Versen) weiter, bis du stoppst.",
+    "storage": {
+      "title": "Heruntergeladene Audios",
+      "loading": "Wird geprüft…",
+      "summary_one": "{{total}} Audio gespeichert, davon {{downloaded}} bewusst heruntergeladen (1 Element).",
+      "summary_other": "{{total}} Audio gespeichert, davon {{downloaded}} bewusst heruntergeladen ({{count}} Elemente).",
+      "hint": "Gehörte Audios werden behalten, damit sie nicht zweimal geladen werden, und bei Platzbedarf automatisch gelöscht. Selbst heruntergeladene Kapitel bleiben, bis du sie hier löschst.",
+      "clear": "Heruntergeladene Audios löschen",
+      "clearConfirm": "Zum Löschen erneut tippen",
+      "clearing": "Wird gelöscht…"
+    },
     "updates": {
       "title": "Updates",
       "version": "Version {{commit}} · gebaut {{date}}",
@@ -289,13 +314,9 @@
     "bannerAvailable": "Neue Version verfügbar — tippen zum Neuladen"
   },
   "onboarding": {
-    "welcomeSubtitle": "Richte dein Konto ein, um loszulegen.",
-    "createNew": "Neues Konto erstellen",
-    "haveExisting": "Ich habe eine Passphrase",
     "writeItDown": "Notiere dir das",
     "writeItDownHint": "Diese 12 Wörter sind die einzige Möglichkeit, deine Bibliothek auf einem anderen Gerät wiederherzustellen. Bewahre sie sicher auf — wer diese Wörter hat, hat Zugriff auf dein Konto.",
     "confirmedWrittenDown": "Ich habe diese Wörter sicher aufgeschrieben.",
-    "continue": "Weiter",
     "activate": "Aktivieren",
     "recoverTitle": "Gib deine Passphrase ein",
     "recoverHint": "Tippe oder füge deine 12 Wörter, durch Leerzeichen getrennt, ein.",
@@ -305,6 +326,12 @@
       "back": "Zurück",
       "continue": "Weiter",
       "done": "Fertig",
+      "welcome": {
+        "subtitle": "Die Bibel lesen und hören — auf dem Handy, wo du gerade bist.",
+        "offline": "Funktioniert offline. Kein Konto nötig.",
+        "start": "Los geht’s",
+        "restore": "Ich habe schon eine Wiederherstellungs-Passphrase"
+      },
       "language": {
         "title": "Welche Sprache?",
         "subtitle": "Wähle die Sprache für Menüs und Assistent."
@@ -312,17 +339,6 @@
       "translation": {
         "title": "Wähle eine Bibelübersetzung",
         "subtitle": "Du kannst sie jederzeit in den Einstellungen ändern."
-      },
-      "music": {
-        "title": "Musik beim Lesen?",
-        "subtitle": "Eine leise Hintergrundmusik kann unter der Lesestimme spielen.",
-        "enable": "Musik beim Lesen abspielen",
-        "pickTrack": "Musiktitel",
-        "pickTrackPlaceholder": "— Titel wählen —",
-        "loadingTracks": "Titel werden geladen…",
-        "noTracks": "Keine Titel verfügbar",
-        "preview": "Vorhören",
-        "stop": "Stopp"
       },
       "announcements": {
         "title": "Was soll vorgelesen werden?",
@@ -353,6 +369,18 @@
         "preview": "Vorhören",
         "stop": "Stopp",
         "previewText": "Und Gott sprach: Es werde Licht."
+      },
+      "sync": {
+        "title": "Synchronisieren & sichern?",
+        "subtitle": "Optional. Alles funktioniert auch ohne.",
+        "body": "Deine Karten und Tafeln bleiben auf diesem Gerät. Schalte die Synchronisation ein, um sie auf einem anderen Gerät zu nutzen und nach einem Geräteverlust zurückzuholen.",
+        "setUp": "Synchronisation einrichten",
+        "turnOn": "Synchronisation einschalten",
+        "working": "Wird eingerichtet…",
+        "failed": "Das hat nicht funktioniert. Du kannst es später in den Einstellungen erneut versuchen.",
+        "on": "Synchronisation ist aktiv",
+        "onHint": "Deine Bibliothek wird auf dem Server gespiegelt. Du kannst das jederzeit in den Einstellungen abschalten.",
+        "later": "Du kannst das auch später in den Einstellungen einschalten."
       }
     }
   },
@@ -369,6 +397,10 @@
     "hint": "Für diese Sitzung den geteilten Schlüssel verwenden? Die Lesestimme fällt auf den Standard (Echo) zurück.",
     "useShared": "Geteilten Schlüssel nutzen",
     "dismiss": "Nicht jetzt"
+  },
+  "narrationFallback": {
+    "title": "Wird mit der Gerätestimme gelesen.",
+    "hint": "Die Premium-Stimme braucht eine Internetverbindung. Alles andere funktioniert offline weiter."
   },
   "playbackSheet": {
     "title": "Wiedergabe",
@@ -400,6 +432,13 @@
     "unavailableHint": "Lade diese Übersetzung herunter, um sie offline zu lesen, oder wähle eine andere.",
     "failed": "{{reference}} konnte nicht geladen werden.",
     "switchTranslation": "Andere Übersetzung wählen",
-    "retry": "Erneut versuchen"
+    "retry": "Erneut versuchen",
+    "narration": {
+      "download": "Dieses Kapitel zum Offline-Hören herunterladen",
+      "resume": "Download dieses Kapitels abschließen",
+      "downloaded": "Heruntergeladen — spielt offline",
+      "cancel": "Download abbrechen",
+      "removeConfirm": "Zum Entfernen erneut tippen"
+    }
   }
 }

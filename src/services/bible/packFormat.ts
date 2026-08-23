@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import type { BibleVerse, Translation } from './bibleApi';
 
 /** Shape written by scripts/bible/buildPacks.mjs. Keys are terse because this
@@ -46,4 +47,29 @@ export function decodeChapter(pack: BookPack, chapter: number): BibleVerse[] | n
 
 export function isBundled(translation: Translation): boolean {
   return BUNDLED_TRANSLATIONS.includes(translation);
+}
+
+/**
+ * Whether `translation` is readable with no download AND no network.
+ *
+ * True only on native. `cap sync` copies the packs into the iOS/Android asset
+ * bundle, where the WebView serves them as local files. The web build ships
+ * the same files under dist/bible-packs/, but they are ordinary HTTP fetches:
+ * the service worker's globPatterns deliberately exclude .json (the packs are
+ * ~10 MB and precaching them would bloat every SW install), so offline they
+ * are simply unavailable.
+ *
+ * So on web a bundled text is treated as an ordinary *downloadable* pack —
+ * which is the only thing that makes the PWA readable offline at all. Callers
+ * must ask this rather than isBundled() whenever the question is "can I read
+ * this without the network?".
+ *
+ * Note this deliberately ignores the manifest's own `bundled` flag:
+ * BUNDLED_TRANSLATIONS is build-time truth about what shipped in *this*
+ * binary, while the manifest is server-authored and cannot know that. Trusting
+ * the manifest would strand a user with neither a local file nor a download
+ * button.
+ */
+export function isPreinstalled(translation: Translation): boolean {
+  return isBundled(translation) && Capacitor.isNativePlatform();
 }

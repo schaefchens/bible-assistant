@@ -11,16 +11,18 @@ import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { readingHosts } from '@/lib/readingHosts';
 import { getOpenAiKeyStatus } from '@/services/api/auth';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
+import { useBiblePacksStore } from '@/store/biblePacksStore';
 
 /**
  * App-boot side effects, kept out of AppShell's render body so the shell is a
- * thin layout component. Owns five independent effects; all the
+ * thin layout component. Owns six independent effects; all the
  * passphrase-gated ones no-op until `hasPassphrase` is true:
  *   1. tear down any audio session left alive by an iOS PWA suspend
  *   2. persist a "last reading" slot as the active verse advances
  *   3. library init + online/offline listeners
  *   4. hydrate the personal-OpenAI-key status (and prune now-disallowed voices)
  *   5. prefetch the selected ambient track
+ *   6. finish any Bible pack the user asked for but couldn't download yet
  */
 export function useAppInitialization(hasPassphrase: boolean): void {
   const init = useLibraryStore((s) => s.init);
@@ -81,8 +83,17 @@ export function useAppInitialization(hasPassphrase: boolean): void {
   // call the effective-voice helpers once so previously-stored non-allowed
   // values (reading or assistant voice) get force-reset to their locked
   // defaults before the first playback / chat reply.
+  //
+  // Skipped while offline: the request is guaranteed to fail, and prune() (the
+  // catch path) is what we'd do anyway. An offline-first install shouldn't fire
+  // a doomed request on every cold start.
   useEffect(() => {
     if (!hasPassphrase) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      effectiveReadingVoice();
+      effectiveAssistantVoice();
+      return;
+    }
     let cancelled = false;
     const prune = () => {
       effectiveReadingVoice();
@@ -119,4 +130,26 @@ export function useAppInitialization(hasPassphrase: boolean): void {
       cancelled = true;
     };
   }, [hasPassphrase, ambientEnabled, ambientTrackId]);
+
+  // 6. Finish downloading any Bible the user has asked for. Runs at boot and
+  // again on every reconnect, so a translation chosen in airplane mode arrives
+  // on its own instead of waiting for the user to notice and retry.
+  //
+  // Not passphrase-gated: pack files are plain static fetches with no identity
+  // headers, so this works before (and without) any account.
+  useEffect(() => {
+    const retry = () => {
+      const packs = useBiblePacksStore.getState();
+      // The active translation is wanted by definition, even when the user
+      // never tapped its row — a fresh install picks one from the device
+      // locale, and that one has to be readable offline too.
+      void packs
+        .want(useSettingsStore.getState().translation)
+        .then(() => packs.retryWanted())
+        .catch(() => {});
+    };
+    retry();
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, []);
 }

@@ -4,11 +4,14 @@ import type { Card, Board, FreeformCardLayout } from '@/types/domain';
 import { apiGetJson, apiPostJson } from '@/services/api/client';
 import { normalizeCardReferences } from '@/services/bible/cardReference';
 import { reconcileOrder, reorderInArray } from '@/utils/orderingUtils';
+import { useSettingsStore } from '@/store/settingsStore';
 import {
+  enqueueOp,
   enqueueOrderSync,
   persistOrder,
   readStoredOrder,
   shouldDropSyncOp,
+  syncEnabled,
 } from './syncQueueManager';
 
 type LibraryState = {
@@ -36,6 +39,8 @@ type LibraryState = {
   setOnline: (value: boolean) => void;
   flushQueue: () => Promise<void>;
   pullFromServer: () => Promise<void>;
+  enableSync: () => Promise<void>;
+  disableSync: () => Promise<void>;
 };
 
 const CARD_ORDER_KEY = 'cardOrder';
@@ -106,52 +111,44 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   upsertCard: async (card) => {
     const updated: Card = { ...card, updatedAt: Date.now() };
     await db.cards.put({ ...updated, dirty: 1 });
-    await db.syncQueue.add({
-      op: 'card.upsert',
-      payload: updated,
-      createdAt: Date.now(),
-      attempts: 0,
-    });
+    const queued = await enqueueOp('card.upsert', updated);
     const isNew = !get().cards.some((c) => c.id === updated.id);
     let nextOrder = get().cardOrder;
     let nextOrderUpdatedAt = get().cardOrderUpdatedAt;
+    let orderQueued = false;
     if (isNew) {
       nextOrder = [updated.id, ...nextOrder.filter((id) => id !== updated.id)];
       nextOrderUpdatedAt = Date.now();
       await persistOrder(CARD_ORDER_KEY, nextOrder, nextOrderUpdatedAt);
-      await enqueueOrderSync('cardOrder.set', nextOrder, nextOrderUpdatedAt);
+      orderQueued = await enqueueOrderSync('cardOrder.set', nextOrder, nextOrderUpdatedAt);
     }
     set((s) => ({
       cards: replaceOrAdd(s.cards, updated),
       cardOrder: nextOrder,
       cardOrderUpdatedAt: nextOrderUpdatedAt,
-      pendingOps: isNew ? s.pendingOps + 2 : s.pendingOps + 1,
+      pendingOps: s.pendingOps + (queued ? 1 : 0) + (orderQueued ? 1 : 0),
     }));
     if (get().online) void get().flushQueue();
   },
 
   deleteCard: async (id) => {
     await db.cards.update(id, { deleted: 1, dirty: 1 });
-    await db.syncQueue.add({
-      op: 'card.delete',
-      payload: { id },
-      createdAt: Date.now(),
-      attempts: 0,
-    });
+    const queued = await enqueueOp('card.delete', { id });
     const prevOrder = get().cardOrder;
     const nextOrder = prevOrder.filter((cid) => cid !== id);
     const orderChanged = nextOrder.length !== prevOrder.length;
     let nextOrderUpdatedAt = get().cardOrderUpdatedAt;
+    let orderQueued = false;
     if (orderChanged) {
       nextOrderUpdatedAt = Date.now();
       await persistOrder(CARD_ORDER_KEY, nextOrder, nextOrderUpdatedAt);
-      await enqueueOrderSync('cardOrder.set', nextOrder, nextOrderUpdatedAt);
+      orderQueued = await enqueueOrderSync('cardOrder.set', nextOrder, nextOrderUpdatedAt);
     }
     set((s) => ({
       cards: s.cards.filter((c) => c.id !== id),
       cardOrder: nextOrder,
       cardOrderUpdatedAt: nextOrderUpdatedAt,
-      pendingOps: orderChanged ? s.pendingOps + 2 : s.pendingOps + 1,
+      pendingOps: s.pendingOps + (queued ? 1 : 0) + (orderQueued ? 1 : 0),
     }));
     if (get().online) void get().flushQueue();
   },
@@ -172,8 +169,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       .where('op')
       .equals('cardOrder.set')
       .count()) > 0;
-    await enqueueOrderSync('cardOrder.set', reconciled, updatedAt);
-    if (!hadPending) {
+    const queued = await enqueueOrderSync('cardOrder.set', reconciled, updatedAt);
+    if (queued && !hadPending) {
       set((s) => ({ pendingOps: s.pendingOps + 1 }));
     }
     if (get().online) void get().flushQueue();
@@ -182,26 +179,22 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   upsertBoard: async (board) => {
     const updated: Board = { ...board, updatedAt: Date.now() };
     await db.boards.put({ ...updated, dirty: 1 });
-    await db.syncQueue.add({
-      op: 'board.upsert',
-      payload: updated,
-      createdAt: Date.now(),
-      attempts: 0,
-    });
+    const queued = await enqueueOp('board.upsert', updated);
     const isNew = !get().boards.some((b) => b.id === updated.id);
     let nextOrder = get().boardOrder;
     let nextOrderUpdatedAt = get().boardOrderUpdatedAt;
+    let orderQueued = false;
     if (isNew) {
       nextOrder = [...nextOrder.filter((bid) => bid !== updated.id), updated.id];
       nextOrderUpdatedAt = Date.now();
       await persistOrder(BOARD_ORDER_KEY, nextOrder, nextOrderUpdatedAt);
-      await enqueueOrderSync('boardOrder.set', nextOrder, nextOrderUpdatedAt);
+      orderQueued = await enqueueOrderSync('boardOrder.set', nextOrder, nextOrderUpdatedAt);
     }
     set((s) => ({
       boards: replaceOrAdd(s.boards, updated),
       boardOrder: nextOrder,
       boardOrderUpdatedAt: nextOrderUpdatedAt,
-      pendingOps: isNew ? s.pendingOps + 2 : s.pendingOps + 1,
+      pendingOps: s.pendingOps + (queued ? 1 : 0) + (orderQueued ? 1 : 0),
     }));
     if (get().online) void get().flushQueue();
   },
@@ -218,12 +211,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   deleteBoard: async (id) => {
     await db.boards.update(id, { deleted: 1, dirty: 1 });
-    await db.syncQueue.add({
-      op: 'board.delete',
-      payload: { id },
-      createdAt: Date.now(),
-      attempts: 0,
-    });
+    const queued = await enqueueOp('board.delete', { id });
     const wasActive = get().activeBoardId === id;
     if (wasActive) {
       await db.preferences.delete(ACTIVE_BOARD_KEY);
@@ -232,17 +220,18 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const nextOrder = prevOrder.filter((bid) => bid !== id);
     const orderChanged = nextOrder.length !== prevOrder.length;
     let nextOrderUpdatedAt = get().boardOrderUpdatedAt;
+    let orderQueued = false;
     if (orderChanged) {
       nextOrderUpdatedAt = Date.now();
       await persistOrder(BOARD_ORDER_KEY, nextOrder, nextOrderUpdatedAt);
-      await enqueueOrderSync('boardOrder.set', nextOrder, nextOrderUpdatedAt);
+      orderQueued = await enqueueOrderSync('boardOrder.set', nextOrder, nextOrderUpdatedAt);
     }
     set((s) => ({
       boards: s.boards.filter((b) => b.id !== id),
       boardOrder: nextOrder,
       boardOrderUpdatedAt: nextOrderUpdatedAt,
       activeBoardId: wasActive ? null : s.activeBoardId,
-      pendingOps: orderChanged ? s.pendingOps + 2 : s.pendingOps + 1,
+      pendingOps: s.pendingOps + (queued ? 1 : 0) + (orderQueued ? 1 : 0),
     }));
     if (get().online) void get().flushQueue();
   },
@@ -261,8 +250,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       .where('op')
       .equals('boardOrder.set')
       .count()) > 0;
-    await enqueueOrderSync('boardOrder.set', reconciled, updatedAt);
-    if (!hadPending) {
+    const queued = await enqueueOrderSync('boardOrder.set', reconciled, updatedAt);
+    if (queued && !hadPending) {
       set((s) => ({ pendingOps: s.pendingOps + 1 }));
     }
     if (get().online) void get().flushQueue();
@@ -283,7 +272,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     if (value) void get().flushQueue();
   },
 
+  // The one client-side path that pushes to the server. Guarded here rather
+  // than at each of its seven callers, so a new caller can't accidentally
+  // bypass the opt-in. With sync off the queue is empty anyway — this makes
+  // that a property of the design rather than a coincidence.
   flushQueue: async () => {
+    if (!syncEnabled()) return;
     const ops = await db.syncQueue.orderBy('createdAt').toArray();
     for (const op of ops) {
       try {
@@ -340,7 +334,48 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
   },
 
+  // Counterpart to flushQueue: the one path that reads from the server.
+  /**
+   * Turn on server sync and catch the server up.
+   *
+   * Pull first: the merge rules already prefer remote only for rows this device
+   * has never edited, so a user enabling sync after recovering their passphrase
+   * on a new device gets their library back rather than overwriting it with an
+   * empty one.
+   *
+   * Then seed the queue from local state, because mutations made while sync was
+   * off were deliberately never queued (see syncQueueManager.enqueueOp) — this
+   * is the one catch-up pass that trade-off costs.
+   */
+  enableSync: async () => {
+    useSettingsStore.getState().setSyncEnabled(true);
+    try {
+      await get().pullFromServer();
+    } catch {
+      // Offline, or the account doesn't exist yet. Seeding below still queues
+      // everything, and the flush retries when the connection comes back.
+    }
+    await seedSyncQueue();
+    set({ pendingOps: await db.syncQueue.count() });
+    await get().flushQueue().catch(() => {});
+  },
+
+  /**
+   * Stop syncing. Local data is untouched — this only severs the mirror.
+   *
+   * The pending queue is dropped rather than parked: it can only contain ops
+   * the user has now decided shouldn't leave the device, and keeping them would
+   * mean re-enabling sync silently uploads edits made while it was off.
+   * enableSync's seed pass reconstructs whatever is genuinely unsynced anyway.
+   */
+  disableSync: async () => {
+    useSettingsStore.getState().setSyncEnabled(false);
+    await db.syncQueue.clear();
+    set({ pendingOps: 0 });
+  },
+
   pullFromServer: async () => {
+    if (!syncEnabled()) return;
     const [cardsResp, boardsResp, cardOrderResp, boardOrderResp] = await Promise.all([
       apiGetJson<{ cards: Card[] }>('cards.list'),
       apiGetJson<{ boards: Board[] }>('boards.list'),
@@ -452,6 +487,47 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     });
   },
 }));
+
+/**
+ * Queue every local row the server has never accepted.
+ *
+ * `dirty === 1` is exactly that set: it's set by every local mutation and
+ * cleared only by a successful flush or an adopted pull — so while sync was off
+ * nothing ever cleared it. Tombstones (deleted === 1) are queued as deletes,
+ * without which a card deleted offline would be resurrected by the first pull
+ * from another device.
+ *
+ * Orders are pushed whenever one has ever been set; api.php's handleOrderSet
+ * ignores a stale timestamp, so a local order that predates the server's cannot
+ * clobber it.
+ */
+async function seedSyncQueue(): Promise<void> {
+  const [cardRows, boardRows] = await Promise.all([
+    db.cards.toArray(),
+    db.boards.toArray(),
+  ]);
+  for (const row of cardRows) {
+    if (row.dirty !== 1) continue;
+    if (row.deleted === 1) await enqueueOp('card.delete', { id: row.id });
+    else await enqueueOp('card.upsert', stripLocal(row));
+  }
+  for (const row of boardRows) {
+    if (row.dirty !== 1) continue;
+    if (row.deleted === 1) await enqueueOp('board.delete', { id: row.id });
+    else await enqueueOp('board.upsert', stripLocal(row));
+  }
+  const { cardOrder, cardOrderUpdatedAt, boardOrder, boardOrderUpdatedAt } =
+    useLibraryStore.getState();
+  // An order that has never been set has nothing to say, and pushing it would
+  // create the account purely to record two empty arrays — exactly the eager
+  // account creation the lazy-dir work removed. It syncs with the first card.
+  if (cardOrder.length > 0 || cardOrderUpdatedAt > 0) {
+    await enqueueOrderSync('cardOrder.set', cardOrder, cardOrderUpdatedAt);
+  }
+  if (boardOrder.length > 0 || boardOrderUpdatedAt > 0) {
+    await enqueueOrderSync('boardOrder.set', boardOrder, boardOrderUpdatedAt);
+  }
+}
 
 function stripLocal<T extends { dirty?: number; deleted?: number }>(local: T): Omit<T, 'dirty' | 'deleted'> {
   const { dirty: _d, deleted: _x, ...rest } = local;

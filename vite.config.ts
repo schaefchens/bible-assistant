@@ -145,7 +145,17 @@ export default defineConfig(({ mode }) => {
         // needRefresh simply never becomes true and the update UI stays hidden.
         disable: isNative,
         registerType: 'prompt',
-        includeAssets: ['favicon-32.png', 'apple-touch-icon.png', 'icons/*.png'],
+        includeAssets: [
+          'favicon-32.png',
+          'apple-touch-icon.png',
+          'icons/*.png',
+          // 71 KB, and without it the translation picker can't tell installed
+          // from available while offline — which is exactly when an
+          // offline-Bible feature needs to look right. The book files it
+          // indexes stay out of the precache on purpose (~10 MB); they arrive
+          // via an explicit pack download into IndexedDB.
+          'bible-packs/manifest.json',
+        ],
         manifest: {
           name: 'Bible Assistant',
           short_name: 'Bible',

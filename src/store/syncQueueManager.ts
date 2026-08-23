@@ -1,5 +1,33 @@
 import { db, type SyncOp } from '@/db/dexie';
 import { ApiError } from '@/services/api/client';
+import { useSettingsStore } from '@/store/settingsStore';
+
+/**
+ * Whether the user has opted into mirroring their library to the server.
+ *
+ * Read here rather than passed in, because every writer in libraryStore would
+ * otherwise have to thread it through. The two places it matters are queueing
+ * (below) and libraryStore's flushQueue/pullFromServer.
+ */
+export function syncEnabled(): boolean {
+  return useSettingsStore.getState().syncEnabled;
+}
+
+/**
+ * Queue one op for the server. Returns whether it was actually queued, so
+ * callers can keep their `pendingOps` count honest.
+ *
+ * With sync off this drops the op instead of letting the queue grow forever
+ * behind a flush that will never run. The cost is that turning sync on has to
+ * seed the queue from local state — see libraryStore.enableSync() — and that
+ * trade is deliberate: an unbounded queue on a device that may never sync is
+ * worse than one explicit catch-up pass.
+ */
+export async function enqueueOp(op: SyncOp['op'], payload: unknown): Promise<boolean> {
+  if (!syncEnabled()) return false;
+  await db.syncQueue.add({ op, payload, createdAt: Date.now(), attempts: 0 });
+  return true;
+}
 
 /** Persisted order pref: the array plus a logical clock so a remote pull can
  * tell whether its order is newer than the local one. */
@@ -21,12 +49,15 @@ export async function persistOrder(
  * Enqueue a whole-array order sync. Order syncs COLLAPSE: only the most recent
  * order matters, so any pending op of the same type is deleted before the new
  * one is queued — this keeps the queue bounded and never sends a stale order.
+ *
+ * Returns whether it was queued (false when sync is off), like enqueueOp.
  */
 export async function enqueueOrderSync(
   op: Extract<SyncOp['op'], 'cardOrder.set' | 'boardOrder.set'>,
   order: string[],
   updatedAt: number,
-): Promise<void> {
+): Promise<boolean> {
+  if (!syncEnabled()) return false;
   const pending = await db.syncQueue.where('op').equals(op).primaryKeys();
   if (pending.length > 0) {
     await db.syncQueue.bulkDelete(pending);
@@ -37,6 +68,7 @@ export async function enqueueOrderSync(
     createdAt: Date.now(),
     attempts: 0,
   });
+  return true;
 }
 
 /** Parse a stored order pref value, tolerating the legacy bare-`string[]`

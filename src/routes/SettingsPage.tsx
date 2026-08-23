@@ -11,7 +11,9 @@ import { PlaybackSettingsForm } from '@/components/playback/PlaybackSettingsForm
 import { SegmentedControl } from '@/components/common/SegmentedControl';
 import { TranslationPickerSheet } from '@/components/bible/TranslationPickerSheet';
 import { OpenAiKeySection } from '@/components/settings/OpenAiKeySection';
+import { StorageSection } from '@/components/settings/StorageSection';
 import { UpdatesSection } from '@/components/settings/UpdatesSection';
+import { SyncSection } from '@/components/settings/SyncSection';
 import { DangerZone } from '@/components/settings/DangerZone';
 import { ImprintFooter } from '@/components/settings/ImprintFooter';
 import { getTranslationInfo } from '@/services/bible/translationCatalog';
@@ -189,6 +191,10 @@ export function SettingsPage() {
         <OpenAiKeySection />
       </Section>
 
+      <Section title={t('settings.sync.title')}>
+        <SyncSection />
+      </Section>
+
       <Section title={t('settings.identity')}>
         <p className="text-xs text-cream-dim mb-2">{t('settings.identityHint')}</p>
         {!revealed ? (
@@ -215,6 +221,10 @@ export function SettingsPage() {
             </div>
           </>
         )}
+      </Section>
+
+      <Section title={t('settings.storage.title')}>
+        <StorageSection />
       </Section>
 
       <Section title={t('settings.updates.title')}>
