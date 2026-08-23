@@ -226,21 +226,23 @@ async function enqueueContinuationFor(
   if (!newGroupId) return;
 
   const readerVoice = effectiveReadingVoice();
+  // Built up front: the engine choice needs to see the plan, because a chapter
+  // already downloaded should keep playing in its downloaded voice even offline.
+  const contPlan = buildPlaybackPlan(summaries, {
+    locale: settings.locale,
+    readChapterHeadings: settings.readChapterHeadings,
+    readVerseNumbers: settings.readVerseNumbers,
+    verseNumberStyle: settings.verseNumberStyle,
+    pauseBetweenVersesMs: settings.pauseBetweenVersesMs,
+    pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
+    wholeChapter,
+  });
   // Offline counts as the device voice here too, so an endless reading keeps
   // going through a tunnel instead of falling silent at the chunk boundary.
   // If the network dropped *during* the previous chunk the two engines can
   // briefly overlap on its last verse — a far better outcome than silence.
-  if (readingUsesBrowserVoice()) {
-    const plan = buildPlaybackPlan(summaries, {
-      locale: settings.locale,
-      readChapterHeadings: settings.readChapterHeadings,
-      readVerseNumbers: settings.readVerseNumbers,
-      verseNumberStyle: settings.verseNumberStyle,
-      pauseBetweenVersesMs: settings.pauseBetweenVersesMs,
-      pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
-      wholeChapter,
-    });
-    const items: BrowserTtsItem[] = planToBrowserItems(plan, newGroupId);
+  if (await readingUsesBrowserVoice(contPlan)) {
+    const items: BrowserTtsItem[] = planToBrowserItems(contPlan, newGroupId);
     void browserTts.enqueue(items);
     return;
   }
@@ -255,17 +257,8 @@ async function enqueueContinuationFor(
     // Cold build: stream so the continuation's first verse plays after one TTS
     // round-trip instead of after the whole (possibly chapter-long) chunk —
     // this is the fix for the long silent gap before a continuation.
-    const plan = buildPlaybackPlan(summaries, {
-      locale: settings.locale,
-      readChapterHeadings: settings.readChapterHeadings,
-      readVerseNumbers: settings.readVerseNumbers,
-      verseNumberStyle: settings.verseNumberStyle,
-      pauseBetweenVersesMs: settings.pauseBetweenVersesMs,
-      pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
-      wholeChapter,
-    });
     await streamReading(
-      plan,
+      contPlan,
       newGroupId,
       readerVoice as OpenAiVoiceId,
       effectiveVoiceStyle() || undefined,
@@ -299,17 +292,17 @@ async function schedulePrefetchFor(groupId: string): Promise<void> {
     const key = chunkKey(next.cont, next.translation);
     let tracks: PlaybackTrack[] | null = null;
     const prefetchVoice = effectiveReadingVoice();
-    const usingBrowser = readingUsesBrowserVoice();
+    const plan = buildPlaybackPlan(summaries, {
+      locale: settings.locale,
+      readChapterHeadings: settings.readChapterHeadings,
+      readVerseNumbers: settings.readVerseNumbers,
+      verseNumberStyle: settings.verseNumberStyle,
+      pauseBetweenVersesMs: settings.pauseBetweenVersesMs,
+      pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
+      wholeChapter: next.cont.verseStart === undefined,
+    });
+    const usingBrowser = await readingUsesBrowserVoice(plan);
     if (!usingBrowser) {
-      const plan = buildPlaybackPlan(summaries, {
-        locale: settings.locale,
-        readChapterHeadings: settings.readChapterHeadings,
-        readVerseNumbers: settings.readVerseNumbers,
-        verseNumberStyle: settings.verseNumberStyle,
-        pauseBetweenVersesMs: settings.pauseBetweenVersesMs,
-        pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
-        wholeChapter: next.cont.verseStart === undefined,
-      });
       tracks = await planToOpenAiTracks(
         plan,
         groupId,

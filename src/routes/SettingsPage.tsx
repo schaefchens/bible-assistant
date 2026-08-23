@@ -11,6 +11,7 @@ import { PlaybackSettingsForm } from '@/components/playback/PlaybackSettingsForm
 import { SegmentedControl } from '@/components/common/SegmentedControl';
 import { TranslationPickerSheet } from '@/components/bible/TranslationPickerSheet';
 import { OpenAiKeySection } from '@/components/settings/OpenAiKeySection';
+import { StorageSection } from '@/components/settings/StorageSection';
 import { UpdatesSection } from '@/components/settings/UpdatesSection';
 import { SyncSection } from '@/components/settings/SyncSection';
 import { DangerZone } from '@/components/settings/DangerZone';
@@ -220,6 +221,10 @@ export function SettingsPage() {
             </div>
           </>
         )}
+      </Section>
+
+      <Section title={t('settings.storage.title')}>
+        <StorageSection />
       </Section>
 
       <Section title={t('settings.updates.title')}>

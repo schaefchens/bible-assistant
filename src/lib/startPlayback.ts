@@ -1,6 +1,10 @@
 import { audioPlayback, type PlaybackTrack } from './audioPlaybackManager';
 import { browserTts, type BrowserTtsItem } from './browserTts';
-import { postTts, postTtsSpeak } from '@/services/api/tts';
+import {
+  cachedNarrationSource,
+  resolveSpeechNarration,
+  resolveVerseNarration,
+} from '@/services/narration/narrationSources';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { readingHosts } from './readingHosts';
 import { usePlaybackStore } from '@/store/playbackStore';
@@ -67,13 +71,52 @@ function definitelyOffline(): boolean {
 }
 
 /**
- * Which engine reads: the on-device voice, or OpenAI TTS?
+ * Whether every item in `plan` can be narrated with no network at all.
  *
- * Being offline counts as "device voice" even when an OpenAI voice is selected.
- * Without this every buildTrack() in the reading fails, each failure is
- * swallowed, and the reading plays *nothing at all* — the app looks broken with
- * no error surfaced anywhere. Reading with the one voice that needs no network
- * is the only useful answer.
+ * All-or-nothing on purpose: a partial hit would read the downloaded verses in
+ * the premium voice and skip the rest, leaving holes in the middle of a chapter.
+ * Reading all of it in the device voice is worse-sounding but whole.
+ */
+async function planFullyCached(
+  plan: PlanItem[],
+  voice: OpenAiVoiceId,
+  voiceStyle: string,
+): Promise<boolean> {
+  for (const it of plan) {
+    const ref =
+      it.kind === 'verse'
+        ? await cachedNarrationSource.getVerse({
+            voice,
+            voiceStyle,
+            text: it.verse.text,
+            translation: it.verse.translation,
+            bookId: it.verse.bookId,
+            chapter: it.verse.chapter,
+            verse: it.verse.verse,
+          })
+        : await cachedNarrationSource.getSpeech({
+            voice,
+            voiceStyle,
+            language: localeForTranslation(it.translation),
+            text: it.text,
+          });
+    if (!ref) return false;
+  }
+  return true;
+}
+
+/**
+ * Which engine reads this plan: the on-device voice, or OpenAI TTS?
+ *
+ * Being offline counts as "device voice" even when an OpenAI voice is selected —
+ * unless the whole plan is already downloaded, in which case being offline is
+ * irrelevant and the premium narration plays. That exception is the entire point
+ * of downloading a chapter; without it the download would be silently useless in
+ * the one situation it was made for.
+ *
+ * Without the fallback, every buildTrack() in an offline reading fails, each
+ * failure is swallowed, and the reading plays *nothing at all* — the app looks
+ * broken with no error surfaced anywhere.
  *
  * Not a pure predicate: choosing the device voice *because* of the network
  * announces the fallback once per session, so the UI can explain why the voice
@@ -86,20 +129,14 @@ function definitelyOffline(): boolean {
  * mediaCache, and seeking within a queued track needs no network), so switching
  * engines under it would both leave two engines talking over each other and
  * throw away better audio.
- *
- * Note for downloadable narration: "offline" only implies "no OpenAI audio"
- * because buildTrack has to ask api.php for the URL before mediaCache can be
- * consulted. Once a narration source can resolve URLs locally, this check has
- * to move behind it — offline with the chapter already downloaded should read
- * in the downloaded voice, not the device one.
  */
-export function readingUsesBrowserVoice(): boolean {
-  if (isBrowserVoice(effectiveReadingVoice())) return true;
-  if (definitelyOffline()) {
-    announceNarrationFallback();
-    return true;
-  }
-  return false;
+export async function readingUsesBrowserVoice(plan: PlanItem[]): Promise<boolean> {
+  const voice = effectiveReadingVoice();
+  if (isBrowserVoice(voice)) return true;
+  if (!definitelyOffline()) return false;
+  if (await planFullyCached(plan, voice as OpenAiVoiceId, effectiveVoiceStyle())) return false;
+  announceNarrationFallback();
+  return true;
 }
 
 /**
@@ -157,7 +194,7 @@ export async function startPlaybackForVerses(
   const plan = sliceFromVerseIndex(fullPlan, startIndex);
 
   const readerVoice = effectiveReadingVoice();
-  if (readingUsesBrowserVoice()) {
+  if (await readingUsesBrowserVoice(plan)) {
     const items = planToBrowserItems(plan, groupId);
     void browserTts.speakQueue(items);
     return;
@@ -222,7 +259,7 @@ async function enqueueReadingForGroup(
     wholeChapter: group?.wholeChapter ?? false,
   });
   const readerVoice = effectiveReadingVoice();
-  if (readingUsesBrowserVoice()) {
+  if (await readingUsesBrowserVoice(plan)) {
     void browserTts.enqueue(planToBrowserItems(plan, groupId));
     return;
   }
@@ -272,36 +309,39 @@ async function buildTrack(
   signal?: AbortSignal,
 ): Promise<BuildOutcome> {
   try {
-    const tts =
+    // Through the narration resolver, not straight to api.php: an already-
+    // downloaded verse resolves from the local index with no request at all,
+    // which is what makes a downloaded chapter playable offline.
+    const ref =
       it.kind === 'verse'
-        ? await postTts(
+        ? await resolveVerseNarration(
             {
-              text: it.verse.text,
               voice,
-              voiceStyle,
+              voiceStyle: voiceStyle ?? '',
+              text: it.verse.text,
               translation: it.verse.translation,
               bookId: it.verse.bookId,
               chapter: it.verse.chapter,
               verse: it.verse.verse,
             },
-            { signal },
+            signal,
           )
-        : await postTtsSpeak(
+        : await resolveSpeechNarration(
             {
-              text: it.text,
               voice,
-              voiceStyle,
+              voiceStyle: voiceStyle ?? '',
               language: localeForTranslation(it.translation),
+              text: it.text,
             },
-            { signal },
+            signal,
           );
     return {
       ok: true,
       track: {
         groupId,
         verseIndex: it.verseIndex,
-        audioUrl: tts.audioUrl,
-        alignmentUrl: tts.alignmentUrl,
+        audioUrl: ref.audioUrl,
+        alignmentUrl: ref.alignmentUrl,
         pauseAfterMs: it.pauseAfterMs,
         highlightVerse: it.kind === 'verse',
       },

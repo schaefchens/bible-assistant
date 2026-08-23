@@ -231,7 +231,7 @@ async function handleReadVerses(
             ...it,
             verseIndex: it.verseIndex + existingVerseCount,
           }));
-    if (readingUsesBrowserVoice()) {
+    if (await readingUsesBrowserVoice(plan)) {
       if (!ctx.signal?.aborted) {
         const items = planToBrowserItems(plan, ctx.messageId);
         // speakQueue replaces the active playlist (hard stop); enqueue appends.
