@@ -16,7 +16,7 @@ import {
   formatSegment,
   type SegmentRef,
 } from '@/services/reading/readingSequence';
-import { passageDetail } from '@/services/reading/readingEntries';
+import { listChapterCount, passageDetail } from '@/services/reading/readingEntries';
 import { progressStats } from '@/services/reading/readingProgress';
 import { PassageRow } from '@/components/reading/PassageRow';
 import { ProgressBar } from '@/components/reading/ProgressBar';
@@ -126,6 +126,14 @@ function ChevronRight() {
   );
 }
 
+function PlayGlyph() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M7 4l14 8-14 8V4z" />
+    </svg>
+  );
+}
+
 function CheckMark({ className }: { className?: string }) {
   return (
     <svg
@@ -218,6 +226,12 @@ type Props = {
    * handler so the page navigates instead.
    */
   onPickSegment?: (ref: SegmentRef) => void;
+  /**
+   * What the Continue button does. Omitted → read it aloud in the chat, like
+   * tapping a passage there. The reader passes its own so Continue *plays*
+   * rather than just jumping, which is what tapping does on that screen.
+   */
+  onContinue?: (ref: SegmentRef) => void;
   /** Custom trigger. Omitted → the small book-glyph icon button. */
   trigger?: (open: () => void) => React.ReactNode;
   /**
@@ -231,6 +245,7 @@ type Props = {
 export function BookChapterPicker({
   onPick,
   onPickSegment,
+  onContinue,
   trigger,
   showReadingLists,
 }: Props = {}) {
@@ -379,6 +394,21 @@ export function BookChapterPicker({
   const visiblePassages = grouped
     ? (dayGroups[focusDay]?.items ?? [])
     : flatItems.slice(page * PASSAGES_PER_PAGE, (page + 1) * PASSAGES_PER_PAGE);
+
+  /**
+   * The passage to treat as "where I am". Falls back to the first unread when
+   * nothing has been played, so the sheet always marks a spot and Continue
+   * always has a target — and it agrees with the reader's own resume point and
+   * with the day the window opens on, all three deriving it the same way.
+   */
+  const currentEntryId =
+    lockedProgress?.currentEntryId ??
+    flatItems.find(
+      (i) => !i.entryId || !(lockedProgress?.completed.includes(i.entryId) ?? false),
+    )?.entryId;
+  const resumeSegment = currentEntryId
+    ? flatItems.find((i) => i.entryId === currentEntryId)
+    : flatItems[0];
 
   const dayLabel = (index: number) =>
     dayGroups[index]?.title ?? t('lists.day', { number: index + 1 });
@@ -658,9 +688,30 @@ export function BookChapterPicker({
                     <>
                       <div className="pt-1 pb-3">
                         <ProgressBar fraction={lockedStats.fraction} />
-                        <p className="mt-1.5 text-[11px] text-ink-muted">
-                          {t('lists.progress', lockedStats)}
-                        </p>
+                        <div className="mt-1.5 flex items-center justify-between gap-2">
+                          <p className="min-w-0 text-[11px] text-ink-muted truncate">
+                            {t('lists.progress', lockedStats)}
+                            {' · '}
+                            {t('lists.chapters', { count: listChapterCount(lockedList) })}
+                          </p>
+                          {resumeSegment && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                audioPlayback.ensureContext();
+                                if (onContinue) onContinue(resumeSegment);
+                                else void playSegmentInChat(resumeSegment);
+                                setOpen(false);
+                              }}
+                              className="h-8 shrink-0 px-3 rounded-lg bg-brand text-on-brand text-sm flex items-center gap-1.5 active:scale-95 transition-transform"
+                            >
+                              <PlayGlyph />
+                              {lockedStats.done > 0 && lockedStats.done < lockedStats.total
+                                ? t('lists.continue')
+                                : t('lists.start')}
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       {/* One step at a time — a day of a plan, or ten passages of
@@ -678,8 +729,11 @@ export function BookChapterPicker({
                         </PagerButton>
                         <span
                           className={clsx(
-                            'flex items-center gap-1 min-w-0 text-[11px] uppercase tracking-wider font-serif',
-                            currentGroup?.done ? 'text-brand-muted' : 'text-brand',
+                            'flex items-center gap-1 min-w-0 rounded-full px-3 py-1',
+                            'text-[12px] uppercase tracking-wider font-serif',
+                            currentGroup?.done
+                              ? 'bg-brand/10 text-brand-muted'
+                              : 'bg-brand/15 text-brand',
                           )}
                         >
                           {currentGroup?.done && <CheckMark />}
@@ -715,9 +769,7 @@ export function BookChapterPicker({
                                 !!seg.entryId &&
                                 (lockedProgress?.completed.includes(seg.entryId) ?? false)
                               }
-                              current={
-                                !!seg.entryId && lockedProgress?.currentEntryId === seg.entryId
-                              }
+                              current={!!seg.entryId && seg.entryId === currentEntryId}
                               onToggle={
                                 seg.entryId
                                   ? () =>

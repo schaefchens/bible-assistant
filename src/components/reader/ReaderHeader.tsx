@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { BookChapterPicker } from '@/components/chat/BookChapterPicker';
+import { playSegmentInReader } from '@/lib/readingListPlayback';
 import { BIBLE_SOURCE, formatSegment } from '@/services/reading/readingSequence';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -50,6 +51,12 @@ export function ReaderHeader({ onOpenTranslations }: Props) {
           void setSource(BIBLE_SOURCE).then(() =>
             goTo({ translation, bookId, chapter }),
           );
+        }}
+        // Continue *reads*, unlike a passage tap: it is the "carry on where I
+        // left off" button, and stopping at a jump would make it a slower way to
+        // do what tapping the passage already does.
+        onContinue={(ref) => {
+          void playSegmentInReader(ref);
         }}
         // A list passage jumps the page instead of reading aloud: the reader's
         // own play button is right there, and the chapter tap above doesn't

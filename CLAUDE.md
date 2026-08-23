@@ -251,12 +251,18 @@ It shows a **window**, not the whole list, because a ninety-day plan is not some
 from:
 
 - a plan (two or more days) shows one day at a time, with the neighbouring days *named* in the
-  pager (`‹ Day 1 · DAY 2 · Day 3 ›`) rather than listed. "The day you're in" is the day holding
-  the current entry, else the first with anything unread — so a plan opens on today, and
+  pager (`‹ Day 1 · DAY 2 · Day 3 ›`) rather than listed, and the day you're on in a brand pill;
   finishing today's last passage moves the window on by itself;
 - a plain list gets pages of `PASSAGES_PER_PAGE`, opening on the page holding the current entry;
 - a finished day is ticked wherever it is named, including in the pager, so "have I done that
   one" needs no stepping onto it.
+
+**"Where I am" is derived, not stored**: `progress.currentEntryId` when something has been
+played, else the first unread passage. Three things read it and must agree — the day the window
+opens on, the highlighted row, and what Continue plays — and the reader's own resume
+(`resumeOf`) derives it the same way, so the sheet and the page never disagree about where you
+left off. A plan ticked off entirely by hand has no `currentEntryId` at all, which is why the
+fallback exists rather than being a nicety.
 
 The rows are **the list screen's rows** — `components/reading/PassageRow.tsx`, shared with
 `/lists/:id`, progress bar and tappable checkboxes included. The picker had its own compact
