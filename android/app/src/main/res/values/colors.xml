@@ -1,10 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Matches the navy in tailwind.config.js / the theme-color meta tag. -->
-    <color name="navy">#1a1a2e</color>
-    <color name="gold">#c8a96e</color>
+    <!-- The system-bar and pre-splash window colours, matching the `surface` token in
+         src/index.css. This file is the LIGHT configuration; values-night/
+         carries the dark one, so the bars follow the *device* appearance.
 
-    <color name="colorPrimary">#1a1a2e</color>
-    <color name="colorPrimaryDark">#12121f</color>
-    <color name="colorAccent">#c8a96e</color>
+         An in-app override (light theme on a dark phone) therefore leaves the
+         bars dark: SystemBars.setStyle() sets bar *icon* contrast at runtime but
+         has no background counterpart, and these are static resources. Closing
+         that gap needs a small native shim — see src/lib/theme.ts. -->
+    <color name="chrome">#f7f3ea</color>
+    <color name="chromeDark">#e8e0d0</color>
+    <color name="brand">#c8a96e</color>
+
+    <color name="colorPrimary">@color/chrome</color>
+    <color name="colorPrimaryDark">@color/chromeDark</color>
+    <color name="colorAccent">@color/brand</color>
 </resources>

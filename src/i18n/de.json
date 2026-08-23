@@ -203,6 +203,12 @@
   "settings": {
     "title": "Einstellungen",
     "language": "Sprache",
+    "theme": {
+      "title": "Erscheinungsbild",
+      "system": "System",
+      "light": "Hell",
+      "dark": "Dunkel"
+    },
     "translation": "Bibel-Übersetzung",
     "voice": "Stimme",
     "voiceStyle": "Stimmstil (optional)",

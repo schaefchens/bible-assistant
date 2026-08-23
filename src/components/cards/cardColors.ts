@@ -134,7 +134,7 @@ export function boardTabClasses(color?: CardColor): BoardTabClasses {
     default:
       return {
         active:
-          'bg-surface-raised text-brand border-brand/60 shadow-[0_-2px_8px_-2px_rgba(200,169,110,0.25)]',
+          'bg-surface-raised text-brand border-brand/60 shadow-[0_-2px_8px_-2px_rgb(var(--brand)/0.25)]',
         inactive:
           'bg-surface-sunken/70 text-ink-muted border-surface-raised/70 hover:bg-surface-raised/70 hover:text-ink',
       };

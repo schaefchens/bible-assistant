@@ -7,6 +7,7 @@ import {
 } from '@/store/settingsStore';
 import { VOICE_OPTIONS, type VoiceId } from '@/types/domain';
 import { getPassphrase } from '@/lib/passphrase';
+import type { ThemeChoice } from '@/lib/theme';
 import { PlaybackSettingsForm } from '@/components/playback/PlaybackSettingsForm';
 import { SegmentedControl } from '@/components/common/SegmentedControl';
 import { TranslationPickerSheet } from '@/components/bible/TranslationPickerSheet';
@@ -48,6 +49,19 @@ export function SettingsPage() {
             { value: 'de', label: 'Deutsch' },
           ]}
           onChange={(v) => settings.setLocale(v as 'en' | 'de')}
+        />
+      </Section>
+
+      <Section title={t('settings.theme.title')}>
+        <SegmentedControl
+          cols={3}
+          value={settings.theme}
+          options={[
+            { value: 'system', label: t('settings.theme.system') },
+            { value: 'light', label: t('settings.theme.light') },
+            { value: 'dark', label: t('settings.theme.dark') },
+          ]}
+          onChange={(v) => settings.setTheme(v as ThemeChoice)}
         />
       </Section>
 

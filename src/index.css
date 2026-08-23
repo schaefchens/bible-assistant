@@ -3,8 +3,67 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
+  /*
+   * Theme tokens.
+   *
+   * Values are space-separated RGB *channels*, not hex, because Tailwind's alpha
+   * modifiers (`bg-brand/40` — 173 of them in this codebase) compile to
+   * `rgb(var(--token) / 0.4)`. Hand a hex to that and every one of them breaks.
+   * See the `rgb(var(--x) / <alpha-value>)` colours in tailwind.config.js.
+   *
+   * Declared on `[data-theme]` rather than only on `:root` on purpose: an
+   * attribute selector applies at any depth, so a subtree can carry its own
+   * palette. That is what a per-reader theme (sepia, night) will need, and it
+   * costs nothing now.
+   *
+   * Dark is the bare `:root` default so the first paint is correct before any JS
+   * runs, and matches the native splash. src/lib/theme.ts owns switching.
+   */
+  :root,
+  [data-theme='dark'] {
     color-scheme: dark;
+
+    --surface: 26 26 46; /* #1a1a2e */
+    --surface-raised: 38 38 63; /* #26263f */
+    --surface-sunken: 15 15 30; /* #0f0f1e */
+    --ink: 232 224 208; /* #e8e0d0 */
+    --ink-muted: 189 182 169; /* #bdb6a9 */
+    --brand: 200 169 110; /* #c8a96e */
+    --brand-muted: 156 132 86; /* #9c8456 */
+    --brand-bright: 231 201 138; /* #e7c98a */
+    --on-brand: 26 26 46; /* dark text on light gold */
+    --card-none-bg: 45 45 73; /* #2d2d49 */
+    --card-none-fg: 232 224 208;
+    /* Alpha for the "currently reading" tint. A number, not a colour, so every
+       token above stays in one format — and so a contrast control has a single
+       knob to turn. Light gold on a dark ground reads at 10%. */
+    --verse-tint-alpha: 0.1;
+  }
+
+  [data-theme='light'] {
+    color-scheme: light;
+
+    --surface: 247 243 234; /* #f7f3ea — warm paper, not stark white */
+    --surface-raised: 255 255 255; /* #ffffff — lifts off the paper */
+    --surface-sunken: 232 224 208; /* #e8e0d0 */
+    --ink: 34 31 25; /* #221f19  14.8:1 on surface */
+    --ink-muted: 92 85 72; /* #5c5548   6.7:1 */
+    /* The dark palette's gold is 2.1:1 on paper — a hard fail — so the brand
+       inverts rather than carrying over. These three mirror the dark theme's
+       ratios: 5.6 / 4.7 / 8.4 against 7.6 / 4.8 / higher. */
+    --brand: 122 92 44; /* #7a5c2c   5.6:1 */
+    --brand-muted: 133 104 59; /* #85683b  4.7:1, matching dark's 4.75 */
+    --brand-bright: 90 67 32; /* #5a4320   8.4:1 — "brighter" means more
+                                  emphasis, which on paper means darker */
+    --on-brand: 253 251 246; /* light text on the dark brown fill, 6.0:1 */
+    --card-none-bg: 255 255 255;
+    --card-none-fg: 34 31 25;
+    /* Higher than the dark theme's: a dark brown at 10% on paper is nearly
+       invisible, where light gold at 10% on navy is not. */
+    --verse-tint-alpha: 0.16;
+  }
+
+  :root {
     -webkit-text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
 
@@ -74,8 +133,8 @@
     transition: background-color 200ms ease, box-shadow 200ms ease;
   }
   .verse-current {
-    background-color: rgba(200, 169, 110, 0.1);
-    box-shadow: inset 3px 0 0 #c8a96e;
+    background-color: rgb(var(--brand) / var(--verse-tint-alpha));
+    box-shadow: inset 3px 0 0 rgb(var(--brand));
   }
 
   /* Inline variant for the reader's flowing prose, where verses share a
@@ -92,7 +151,9 @@
     box-decoration-break: clone;
   }
   .verse-inline.verse-current {
-    background-color: rgba(200, 169, 110, 0.12);
+    /* A shade stronger than the block variant: with no inset bar to help, the
+       tint is the only cue that this is the verse being read. */
+    background-color: rgb(var(--brand) / calc(var(--verse-tint-alpha) + 0.02));
     box-shadow: none;
   }
 

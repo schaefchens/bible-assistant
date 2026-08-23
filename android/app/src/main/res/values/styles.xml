@@ -5,18 +5,18 @@
          The Capacitor template ships Theme.AppCompat.Light, whose white window
          background shows through behind the status and navigation bars — on a
          dark app that reads as two white bands top and bottom. This is a dark
-         app, so the base theme is dark and the window background is navy. -->
+         app, so the base theme is dark and the window background follows @color/chrome. -->
     <style name="AppTheme" parent="Theme.AppCompat.DayNight.DarkActionBar">
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>
-        <item name="android:windowBackground">@color/navy</item>
+        <item name="android:windowBackground">@color/chrome</item>
     </style>
 
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
-        <item name="android:windowBackground">@color/navy</item>
+        <item name="android:windowBackground">@color/chrome</item>
 
         <!-- Measured, not assumed: Capacitor 8 does NOT put this WebView
              edge-to-edge. innerHeight is 867 against a 915px screen, and the
@@ -26,12 +26,16 @@
              So these colours very much still apply, and transparent was wrong:
              it let the light window background through as a white band. Paint
              them navy to match the app. -->
-        <item name="android:statusBarColor">@color/navy</item>
-        <item name="android:navigationBarColor">@color/navy</item>
+        <item name="android:statusBarColor">@color/chrome</item>
+        <item name="android:navigationBarColor">@color/chrome</item>
 
-        <!-- Light glyphs, because what's behind them is navy. -->
-        <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
+        <!-- Dark glyphs, because values/ is now the LIGHT configuration;
+             values-night/themes.xml flips them for dark. SystemBars.setStyle()
+             also sets these at runtime from the resolved theme, which is what
+             makes an in-app override work for the icons even where the bar
+             background cannot follow. -->
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
     </style>
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
@@ -51,10 +55,10 @@
              SplashScreen plugin's own ImageView (see capacitor.config.ts —
              androidScaleType CENTER_CROP, launchAutoHide false), and the frame
              before that is windowBackground, which is already navy. -->
-        <item name="android:windowBackground">@color/navy</item>
+        <item name="android:windowBackground">@color/chrome</item>
         <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
-        <item name="android:statusBarColor">@color/navy</item>
-        <item name="android:navigationBarColor">@color/navy</item>
+        <item name="android:statusBarColor">@color/chrome</item>
+        <item name="android:navigationBarColor">@color/chrome</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
     </style>

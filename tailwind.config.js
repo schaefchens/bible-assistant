@@ -9,24 +9,27 @@ export default {
       // thing that quietly wastes an afternoon. Values live in CSS variables so
       // a theme can swap them; see src/lib/themes.ts.
       colors: {
+        // `rgb(var(--x) / <alpha-value>)`, not a hex, so the 173 alpha modifiers
+        // in this codebase (bg-brand/40 and friends) keep working. Values live
+        // in src/index.css; see the comment there.
         surface: {
-          DEFAULT: '#1a1a2e', // the page
-          sunken: '#0f0f1e', // wells, insets, the deepest ground
-          raised: '#26263f', // cards, inputs, anything lifted off the page
+          DEFAULT: 'rgb(var(--surface) / <alpha-value>)', // the page
+          sunken: 'rgb(var(--surface-sunken) / <alpha-value>)', // wells, insets
+          raised: 'rgb(var(--surface-raised) / <alpha-value>)', // cards, inputs
         },
         brand: {
-          DEFAULT: '#c8a96e',
-          muted: '#9c8456',
-          bright: '#e7c98a', // hover / emphasis
+          DEFAULT: 'rgb(var(--brand) / <alpha-value>)',
+          muted: 'rgb(var(--brand-muted) / <alpha-value>)',
+          bright: 'rgb(var(--brand-bright) / <alpha-value>)', // more emphasis
         },
         ink: {
-          DEFAULT: '#e8e0d0', // primary text
-          muted: '#bdb6a9', // secondary text
+          DEFAULT: 'rgb(var(--ink) / <alpha-value>)', // primary text
+          muted: 'rgb(var(--ink-muted) / <alpha-value>)', // secondary text
         },
         // Foreground on a brand fill. Theme-dependent: the brand is light in the
         // dark theme (dark text on gold) and dark in the light theme (light text
         // on brown), so this has to invert with it.
-        'on-brand': '#1a1a2e',
+        'on-brand': 'rgb(var(--on-brand) / <alpha-value>)',
         // Foreground on a pastel ribbon or card fill. Fixed dark in *every*
         // theme, because those fills are light in every theme — which is exactly
         // why it can't share a token with 'on-brand'.
@@ -39,8 +42,11 @@ export default {
           purple: '#a89dcf',
         },
         card: {
-          'none-bg': '#2d2d49',
-          'none-fg': '#e8e0d0',
+          // Theme-dependent, unlike the rest of this palette: an uncoloured
+          // card is chrome, so it follows the surface rather than staying a
+          // fixed dark tile on a light page.
+          'none-bg': 'rgb(var(--card-none-bg) / <alpha-value>)',
+          'none-fg': 'rgb(var(--card-none-fg) / <alpha-value>)',
           'yellow-bg': '#d4ba6b',
           'yellow-fg': '#1a1a2e',
           'amber-bg': '#cf9866',
