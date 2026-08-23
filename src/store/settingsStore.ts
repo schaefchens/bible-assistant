@@ -31,6 +31,11 @@ type SettingsState = {
    * reading space; floaters drop down as bottomBarHeight goes to 0. */
   hideComposer: boolean;
   micSoundEnabled: boolean;
+  /** The low drone under "the assistant is thinking". Off by default — it is a
+   * deliberate ambience some people want and most don't, so it's opt-in.
+   * Existing installs keep whatever they have: the v12 migration backfilled
+   * `true` and is left alone, since there's no way to tell someone who chose it
+   * from someone who just never turned it off. */
   thinkingSoundEnabled: boolean;
   readChapterHeadings: boolean;
   readVerseNumbers: boolean;
@@ -197,7 +202,7 @@ export const useSettingsStore = create<SettingsState>()(
         readingOnlyView: false,
         hideComposer: false,
         micSoundEnabled: true,
-        thinkingSoundEnabled: true,
+        thinkingSoundEnabled: false,
         readChapterHeadings: false,
         readVerseNumbers: false,
         verseNumberStyle: 'spoken',
