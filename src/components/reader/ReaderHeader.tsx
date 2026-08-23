@@ -1,7 +1,9 @@
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { BookChapterPicker } from '@/components/chat/BookChapterPicker';
-import { formatReference } from '@/services/bible/bookCatalog';
+import { playSegmentInReader } from '@/lib/readingListPlayback';
+import { BIBLE_SOURCE, formatSegment } from '@/services/reading/readingSequence';
+import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useReaderStore } from '@/store/readerStore';
 import { NarrationDownloadButton } from './NarrationDownloadButton';
@@ -31,16 +33,41 @@ export function ReaderHeader({ onOpenTranslations }: Props) {
 
   const position = useReaderStore((s) => s.position);
   const goTo = useReaderStore((s) => s.goTo);
+  const setSource = useReaderStore((s) => s.setSource);
+  const source = useReaderStore((s) => s.source);
+  const listName = useLibraryStore((s) =>
+    source.kind === 'list' ? s.readingLists.find((l) => l.id === source.listId)?.name : undefined,
+  );
 
-  const label = position
-    ? formatReference(position.bookId, position.chapter, undefined, undefined, lang)
-    : t('read.title');
+  const label = position ? formatSegment(position, lang) : t('read.title');
 
   return (
     <header className="flex items-center justify-between gap-2 px-4 py-2 border-b border-surface-raised/50 bg-surface/90 backdrop-blur">
       <BookChapterPicker
+        showReadingLists
+        // Choosing a chapter out of the Bible *is* choosing to read the Bible,
+        // so it leaves whatever list was being followed. No separate control.
         onPick={(bookId, chapter) => {
-          void goTo({ translation, bookId, chapter });
+          void setSource(BIBLE_SOURCE).then(() =>
+            goTo({ translation, bookId, chapter }),
+          );
+        }}
+        // Continue *reads*, unlike a passage tap: it is the "carry on where I
+        // left off" button, and stopping at a jump would make it a slower way to
+        // do what tapping the passage already does.
+        onContinue={(ref) => {
+          void playSegmentInReader(ref);
+        }}
+        // A list passage jumps the page instead of reading aloud: the reader's
+        // own play button is right there, and the chapter tap above doesn't
+        // start audio either.
+        onPickSegment={(ref) => {
+          void (ref.listId
+            ? useReaderStore
+                .getState()
+                .setSource({ kind: 'list', listId: ref.listId })
+                .then(() => goTo(ref))
+            : goTo(ref));
         }}
         trigger={(open) => (
           <button
@@ -49,7 +76,14 @@ export function ReaderHeader({ onOpenTranslations }: Props) {
             aria-label={t('read.pickChapter') as string}
             className="flex items-center gap-1.5 min-w-0 text-brand hover:text-brand-bright transition-colors"
           >
-            <span className="font-serif text-lg truncate">{label}</span>
+            <span className="min-w-0 text-left leading-tight">
+              {listName && (
+                <span className="block text-[10px] uppercase tracking-wider text-brand-muted truncate">
+                  {listName}
+                </span>
+              )}
+              <span className="block font-serif text-lg truncate">{label}</span>
+            </span>
             <ChevronDown />
           </button>
         )}

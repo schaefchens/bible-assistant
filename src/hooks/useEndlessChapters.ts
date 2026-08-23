@@ -42,18 +42,18 @@ export function useEndlessChapters(
   const visible = useReaderStore((s) => s.visible);
   const error = useReaderStore((s) => s.error);
 
-  /** { chapter id, its offset from the container's top edge }. */
+  /** { segment id, its offset from the container's top edge }. */
   const anchor = useRef<{ id: string; delta: number } | null>(null);
 
   const sampleAnchor = useCallback(() => {
     const container = scrollRef.current;
     if (!container) return;
-    const blocks = container.querySelectorAll<HTMLElement>('[data-chapter-id]');
+    const blocks = container.querySelectorAll<HTMLElement>('[data-segment-id]');
     for (const el of blocks) {
       // The first chapter whose bottom is still below the top edge is the one
       // the user is looking at (or about to scroll into).
       if (el.offsetTop + el.offsetHeight > container.scrollTop) {
-        const id = el.dataset.chapterId;
+        const id = el.dataset.segmentId;
         if (id) anchor.current = { id, delta: el.offsetTop - container.scrollTop };
         return;
       }
@@ -87,7 +87,7 @@ export function useEndlessChapters(
     const a = anchor.current;
     if (!container || !a) return;
     const el = container.querySelector<HTMLElement>(
-      `[data-chapter-id="${CSS.escape(a.id)}"]`,
+      `[data-segment-id="${CSS.escape(a.id)}"]`,
     );
     if (!el) return;
     const target = el.offsetTop - a.delta;
@@ -121,20 +121,16 @@ export function useEndlessChapters(
       (entries) => {
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
-          const id = (entry.target as HTMLElement).dataset.chapterId;
+          const id = (entry.target as HTMLElement).dataset.segmentId;
           if (!id) continue;
-          const chapter = useReaderStore.getState().chapters[id];
-          if (!chapter) continue;
-          useReaderStore.getState().setPosition({
-            translation: chapter.translation,
-            bookId: chapter.bookId,
-            chapter: chapter.chapter,
-          });
+          const segment = useReaderStore.getState().segments[id];
+          if (!segment) continue;
+          useReaderStore.getState().setPosition(segment.ref);
         }
       },
       { root: container, rootMargin: '-45% 0px -55% 0px' },
     );
-    for (const el of container.querySelectorAll('[data-chapter-id]')) {
+    for (const el of container.querySelectorAll('[data-segment-id]')) {
       observer.observe(el);
     }
     return () => observer.disconnect();

@@ -2,36 +2,36 @@ import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { useBottomBarHeight } from '@/hooks/useBottomBarHeight';
-import {
-  nextChapterRef,
-  prevChapterRef,
-  type ChapterRef,
-} from '@/services/bible/chapterNavigation';
-import { formatReference } from '@/services/bible/bookCatalog';
+import { useReaderSequence } from '@/hooks/useReaderSequence';
+import { formatSegment } from '@/services/reading/readingSequence';
 import { useReaderStore } from '@/store/readerStore';
 
 type Props = { onStep: (dir: 1 | -1) => void };
 
 /**
- * Paged navigation — one chapter at a time, like turning a page. Hidden in
+ * Paged navigation — one segment at a time, like turning a page. Hidden in
  * endless-scroll mode, where the scroll itself is the navigation.
+ *
+ * "Next" means next in whatever the reader is walking through: the following
+ * chapter of the Bible, or the following passage of a reading list.
  */
 export function ReaderFooter({ onStep }: Props) {
   const { t, i18n } = useTranslation();
   const lang: 'en' | 'de' = (i18n.language || 'en').startsWith('de') ? 'de' : 'en';
 
   const position = useReaderStore((s) => s.position);
+  const source = useReaderStore((s) => s.source);
   const loading = useReaderStore((s) => s.status === 'loading');
+  const sequence = useReaderSequence();
   // Publish our height so the mic and playback bar float above the pager
   // instead of covering it.
   const barRef = useRef<HTMLElement>(null);
   useBottomBarHeight(barRef);
   if (!position) return null;
 
-  const prev = prevChapterRef(position.bookId, position.chapter);
-  const next = nextChapterRef(position.bookId, position.chapter);
-  const label = (ref: ChapterRef) =>
-    formatReference(ref.bookId, ref.chapter, undefined, undefined, lang);
+  const prev = sequence.prev(position);
+  const next = sequence.next(position);
+  const inList = source.kind === 'list';
 
   return (
     <nav
@@ -43,14 +43,14 @@ export function ReaderFooter({ onStep }: Props) {
         onClick={() => onStep(-1)}
         aria-label={t('read.prevChapter') as string}
       >
-        {prev ? <>← {label(prev)}</> : t('read.startOfBible')}
+        {prev ? <>← {formatSegment(prev, lang)}</> : t(inList ? 'read.startOfList' : 'read.startOfBible')}
       </StepButton>
       <StepButton
         disabled={!next || loading}
         onClick={() => onStep(1)}
         aria-label={t('read.nextChapter') as string}
       >
-        {next ? <>{label(next)} →</> : t('read.endOfBible')}
+        {next ? <>{formatSegment(next, lang)} →</> : t(inList ? 'read.endOfList' : 'read.endOfBible')}
       </StepButton>
     </nav>
   );

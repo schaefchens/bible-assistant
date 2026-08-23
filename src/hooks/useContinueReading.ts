@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getChapter, type Translation } from '@/services/bible/bibleApi';
-import { formatReference, getBookById } from '@/services/bible/bookCatalog';
+import { formatRangeList, formatReference, getBookById } from '@/services/bible/bookCatalog';
+import {
+  isWholeChapterReading,
+  nextReadingAfter,
+  type NextReading,
+} from '@/lib/readingContinuation';
+import { playSegmentInChat } from '@/lib/readingListPlayback';
 import { useSettingsStore } from '@/store/settingsStore';
-import type { ChatMessage, VerseSummary } from '@/types/domain';
+import type { ChatMessage, Locale } from '@/types/domain';
 import type { SendOpts } from '@/hooks/useCommandPipeline';
 
 type ContinueReading = {
@@ -11,122 +16,93 @@ type ContinueReading = {
   sendNext: () => void;
 };
 
-const CHUNK_SIZE = 5;
-
-function computeNextRange(
-  last: VerseSummary,
-  chapterEndVerse: number | null,
-  nextChapterMax: number | null,
-  wholeChapter: boolean,
-): { reference: string; translation: Translation; label: string } | null {
-  const book = getBookById(last.bookId);
-  if (!book) return null;
-  if (wholeChapter) {
-    if (last.chapter >= book.chapters) return null;
-    const nextChapter = last.chapter + 1;
-    return {
-      reference: `${book.nameEn} ${nextChapter}`,
-      translation: last.translation,
-      label: `${book.nameEn} ${nextChapter}`,
-    };
-  }
-  if (chapterEndVerse !== null && last.verse < chapterEndVerse) {
-    const start = last.verse + 1;
-    const end = Math.min(start + CHUNK_SIZE - 1, chapterEndVerse);
-    return {
-      reference: `${book.nameEn} ${last.chapter}:${start}-${end}`,
-      translation: last.translation,
-      label: `${book.nameEn} ${last.chapter}:${start}-${end}`,
-    };
-  }
-  if (last.chapter < book.chapters) {
-    const nextChapter = last.chapter + 1;
-    const end =
-      nextChapterMax !== null ? Math.min(CHUNK_SIZE, nextChapterMax) : CHUNK_SIZE;
-    return {
-      reference: `${book.nameEn} ${nextChapter}:1-${end}`,
-      translation: last.translation,
-      label: `${book.nameEn} ${nextChapter}:1-${end}`,
-    };
-  }
-  return null;
-}
-
-/** Computes the "continue reading" affordance for a reading message: whether
- * there is more to read after its last verse, a pretty locale-aware label for
- * that next range, and a `sendNext()` that issues the follow-up read. */
+/**
+ * The "continue reading" affordance under a reading: whether there is more
+ * after its last verse, a locale-formatted label for it, and the action that
+ * reads it.
+ *
+ * What comes next is `lib/readingContinuation.ts`'s answer, not this hook's —
+ * so the chip offers the next entry of a reading list when the reading belongs
+ * to one, and the next passage in canonical order otherwise. It used to compute
+ * that itself (a fourth copy of the rule, which also couldn't cross a book
+ * boundary the way auto-play could, so the chip vanished at the end of a book
+ * while the audio read on).
+ */
 export function useContinueReading(
   message: ChatMessage,
   send: (text: string, opts?: SendOpts) => void | Promise<void>,
 ): ContinueReading {
-  const last = useMemo(() => {
-    const verses = message.verses;
-    if (!verses || verses.length === 0) return null;
-    return verses[verses.length - 1];
-  }, [message.verses]);
-
-  const [chapterEndVerse, setChapterEndVerse] = useState<number | null>(null);
-  const [nextChapterMax, setNextChapterMax] = useState<number | null>(null);
+  const locale = useSettingsStore((s) => s.locale);
+  // Stamped with the message it answers for, so a resolution that lands after
+  // the panel has been recycled for another reading is ignored rather than
+  // shown against the wrong verses.
+  const [resolved, setResolved] = useState<{
+    id: string;
+    next: NextReading | null;
+  } | null>(null);
+  const verseCount = message.verses?.length ?? 0;
 
   useEffect(() => {
-    if (!last) return;
+    if (verseCount === 0) return;
     let cancelled = false;
-    void getChapter(last.translation, last.bookId, last.chapter)
-      .then((verses) => {
-        if (cancelled || verses.length === 0) return;
-        setChapterEndVerse(verses[verses.length - 1].verse);
+    void nextReadingAfter(message.id)
+      .then((n) => {
+        if (!cancelled) setResolved({ id: message.id, next: n });
       })
-      .catch(() => {});
-    const book = getBookById(last.bookId);
-    if (book && last.chapter < book.chapters) {
-      void getChapter(last.translation, last.bookId, last.chapter + 1)
-        .then((verses) => {
-          if (cancelled || verses.length === 0) return;
-          setNextChapterMax(verses[verses.length - 1].verse);
-        })
-        .catch(() => {});
-    }
+      .catch(() => {
+        if (!cancelled) setResolved({ id: message.id, next: null });
+      });
     return () => {
       cancelled = true;
     };
-  }, [last]);
+  }, [message.id, verseCount]);
 
-  if (!last) {
-    return { canContinue: false, nextLabel: '', sendNext: () => {} };
+  const next = resolved?.id === message.id && verseCount > 0 ? resolved.next : null;
+
+  return useMemo(() => {
+    if (!next) return { canContinue: false, nextLabel: '', sendNext: () => {} };
+    return {
+      canContinue: true,
+      nextLabel: formatNextReading(next, locale),
+      sendNext: () => {
+        // A reading that belongs to a list continues *inside* the list, played
+        // directly so its provenance — and therefore the rest of the plan —
+        // survives. Anything else goes through the model as before, which is
+        // what keeps the conversation coherent about what was read.
+        if (next.provenance) {
+          void playSegmentInChat({
+            translation: next.translation,
+            bookId: next.bookId,
+            chapter: next.chapter,
+            ranges: next.ranges,
+            listId: next.provenance.listId,
+            entryId: next.provenance.entryId,
+          });
+        } else {
+          void send(`Read ${englishReference(next)}`);
+        }
+      },
+    };
+  }, [next, locale, send]);
+}
+
+function formatNextReading(next: NextReading, locale: Locale): string {
+  if (isWholeChapterReading(next)) {
+    return formatReference(next.bookId, next.chapter, undefined, undefined, locale);
   }
+  return formatRangeList(next.bookId, next.chapter, next.ranges ?? [], locale);
+}
 
-  const next = computeNextRange(
-    last,
-    chapterEndVerse,
-    nextChapterMax,
-    message.headingWholeChapter === true,
-  );
-  if (!next) {
-    return { canContinue: false, nextLabel: '', sendNext: () => {} };
-  }
-
-  const { locale } = useSettingsStore.getState();
-  // Pretty label honors locale formatting (e.g. "Galater 5:23-27" or
-  // "Galater 6" for a whole-chapter continuation).
-  const hasVerseRange = next.reference.includes(':');
-  const chapterMatch = next.reference.match(/(\d+)(?::|$)/)?.[1];
-  const chapterNum = chapterMatch ? parseInt(chapterMatch, 10) : last.chapter;
-  let label: string;
-  if (hasVerseRange) {
-    const startVerse = next.reference.split(':')[1]?.split('-')[0];
-    const endVerse = next.reference.split('-')[1];
-    const startNum = startVerse ? parseInt(startVerse, 10) : last.verse + 1;
-    const endNum = endVerse ? parseInt(endVerse, 10) : startNum;
-    label = formatReference(last.bookId, chapterNum, startNum, endNum, locale);
-  } else {
-    label = formatReference(last.bookId, chapterNum, undefined, undefined, locale);
-  }
-
-  return {
-    canContinue: true,
-    nextLabel: label,
-    sendNext: () => {
-      void send(`Read ${next.reference}`);
-    },
-  };
+/** The reference as the model expects it — English book names, `chapter:start-end`.
+ * Canonical continuations always carry a single contiguous range, so the first
+ * and last range bound the whole request. */
+function englishReference(next: NextReading): string {
+  const name = getBookById(next.bookId)?.nameEn ?? String(next.bookId);
+  if (isWholeChapterReading(next)) return `${name} ${next.chapter}`;
+  const ranges = next.ranges!;
+  const start = ranges[0].start;
+  const end = ranges[ranges.length - 1].end;
+  return start === end
+    ? `${name} ${next.chapter}:${start}`
+    : `${name} ${next.chapter}:${start}-${end}`;
 }

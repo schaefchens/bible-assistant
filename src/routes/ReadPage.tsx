@@ -2,17 +2,18 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useTranslation } from 'react-i18next';
 import { ReaderHeader } from '@/components/reader/ReaderHeader';
 import { ReaderFooter } from '@/components/reader/ReaderFooter';
-import { ChapterBlock } from '@/components/reader/ChapterBlock';
+import { SegmentBlock } from '@/components/reader/SegmentBlock';
 import { ChapterUnavailableCard } from '@/components/reader/ChapterUnavailableCard';
 import { TranslationPickerSheet } from '@/components/bible/TranslationPickerSheet';
 import { useAutoScrollActiveVerse } from '@/hooks/useAutoScrollActiveVerse';
 import { useEndlessChapters } from '@/hooks/useEndlessChapters';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
+import { useLibraryStore } from '@/store/libraryStore';
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { prevChapterRef, nextChapterRef } from '@/services/bible/chapterNavigation';
-import { formatReference } from '@/services/bible/bookCatalog';
+import { formatSegment } from '@/services/reading/readingSequence';
+import { useReaderSequence } from '@/hooks/useReaderSequence';
 import { readingHosts } from '@/lib/readingHosts';
 
 /**
@@ -28,14 +29,18 @@ export function ReadPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const visible = useReaderStore((s) => s.visible);
-  const chapters = useReaderStore((s) => s.chapters);
+  const segments = useReaderStore((s) => s.segments);
   const position = useReaderStore((s) => s.position);
   const status = useReaderStore((s) => s.status);
   const error = useReaderStore((s) => s.error);
   const ensureOpen = useReaderStore((s) => s.ensureOpen);
-  const stepChapter = useReaderStore((s) => s.stepChapter);
+  const stepSegment = useReaderStore((s) => s.step);
   const goTo = useReaderStore((s) => s.goTo);
+  // Prev/next come from whatever the reader is walking through — canonical order
+  // for the Bible, list order for a reading list. Same code either way.
+  const sequence = useReaderSequence();
 
+  const source = useReaderStore((s) => s.source);
   const translation = useSettingsStore((s) => s.translation);
   const setTranslation = useSettingsStore((s) => s.setTranslation);
   const endless = useSettingsStore((s) => s.readerEndlessScroll);
@@ -47,9 +52,16 @@ export function ReadPage() {
 
   // Open the persisted position (seeded from the audio resume point the very
   // first time) whenever the tab is entered with nothing loaded.
+  //
+  // A list-sourced reader waits for the library: its position has to be resolved
+  // against the list, and the lists arrive from Dexie a tick later. Opening
+  // early read a stale persisted ref and briefly navigated canonically.
+  const libraryReady = useLibraryStore((s) => s.initialized);
+  const waitingForLists = source.kind === 'list' && !libraryReady;
   useEffect(() => {
+    if (waitingForLists) return;
     void ensureOpen();
-  }, [ensureOpen]);
+  }, [ensureOpen, waitingForLists]);
 
   /**
    * A translation switch invalidates every reader group, because the group id
@@ -57,16 +69,21 @@ export function ReadPage() {
    * counts differ between translations, so letting it play on against
    * re-rendered verses would desync the highlight with no way back — stopping
    * is the honest option.
+   *
+   * A segment whose translation is *pinned* by its list entry is exempt: the
+   * user asked for that passage in that text, and "correcting" it to the active
+   * translation would both misrender it and break the sequence around it.
    */
   useEffect(() => {
-    const loaded = visible[0] ? chapters[visible[0]] : undefined;
-    if (!loaded || loaded.translation === translation) return;
+    const loaded = visible[0] ? segments[visible[0]] : undefined;
+    if (!loaded || loaded.ref.translationPinned) return;
+    if (loaded.ref.translation === translation) return;
     const current = usePlaybackStore.getState().current;
     if (current && readingHosts.hostFor(current.groupId)?.ns === 'reader') {
       audioPlayback.stop();
     }
     void useReaderStore.getState().reloadForTranslation(translation);
-  }, [translation, visible, chapters]);
+  }, [translation, visible, segments]);
 
   // Paged navigation replaces the window, so the scroll position has to be set
   // deliberately. Going back lands at the *end* of the previous chapter, the way
@@ -75,9 +92,9 @@ export function ReadPage() {
   const step = useCallback(
     (dir: 1 | -1) => {
       pendingScroll.current = dir === 1 ? 'top' : 'bottom';
-      void stepChapter(dir);
+      void stepSegment(dir);
     },
-    [stepChapter],
+    [stepSegment],
   );
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -91,25 +108,12 @@ export function ReadPage() {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, []);
 
-  const canLoadPrevious =
-    endless &&
-    !!visible[0] &&
-    !!chapters[visible[0]] &&
-    prevChapterRef(chapters[visible[0]].bookId, chapters[visible[0]].chapter) !== null;
-
-  const lastLoaded = visible.length > 0 ? chapters[visible[visible.length - 1]] : undefined;
-  const canLoadNext =
-    !!lastLoaded && nextChapterRef(lastLoaded.bookId, lastLoaded.chapter) !== null;
-
-  const previousLabel = canLoadPrevious
-    ? (() => {
-        const first = chapters[visible[0]];
-        const ref = prevChapterRef(first.bookId, first.chapter);
-        return ref
-          ? formatReference(ref.bookId, ref.chapter, undefined, undefined, lang)
-          : '';
-      })()
-    : '';
+  const firstLoaded = visible[0] ? segments[visible[0]] : undefined;
+  const lastLoaded = visible.length > 0 ? segments[visible[visible.length - 1]] : undefined;
+  const previousRef = firstLoaded ? sequence.prev(firstLoaded.ref) : null;
+  const canLoadPrevious = endless && previousRef !== null;
+  const canLoadNext = !!lastLoaded && sequence.next(lastLoaded.ref) !== null;
+  const previousLabel = canLoadPrevious && previousRef ? formatSegment(previousRef, lang) : '';
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -133,8 +137,8 @@ export function ReadPage() {
         )}
 
         {visible.map((id) => {
-          const chapter = chapters[id];
-          return chapter ? <ChapterBlock key={id} chapter={chapter} /> : null;
+          const segment = segments[id];
+          return segment ? <SegmentBlock key={id} segment={segment} /> : null;
         })}
 
         {error && (
@@ -156,7 +160,10 @@ export function ReadPage() {
         {endless && canLoadNext && !error && <div ref={sentinelRef} className="h-px" />}
 
         {endless && !canLoadNext && visible.length > 0 && (
-          <p className="py-6 text-center text-ink-muted text-sm">{t('read.endOfBible')}</p>
+          <p className="py-6 text-center text-ink-muted text-sm">
+            {/* A list ends; the Bible runs out. Different facts, different words. */}
+            {source.kind === 'list' ? t('read.endOfList') : t('read.endOfBible')}
+          </p>
         )}
       </div>
 

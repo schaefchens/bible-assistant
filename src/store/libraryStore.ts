@@ -1,13 +1,26 @@
 import { create } from 'zustand';
 import { db } from '@/db/dexie';
-import type { Card, Board, FreeformCardLayout } from '@/types/domain';
+import type {
+  Card,
+  Board,
+  FreeformCardLayout,
+  ReadingList,
+  ReadingProgress,
+} from '@/types/domain';
 import { apiGetJson, apiPostJson } from '@/services/api/client';
 import { normalizeCardReferences } from '@/services/bible/cardReference';
+import { newReadingDay, normalizeReadingList } from '@/services/reading/readingEntries';
+import {
+  emptyReadingProgress,
+  mergeReadingProgress,
+  normalizeReadingProgress,
+} from '@/services/reading/readingProgress';
 import { reconcileOrder, reorderInArray } from '@/utils/orderingUtils';
 import { useSettingsStore } from '@/store/settingsStore';
 import {
   enqueueOp,
   enqueueOrderSync,
+  enqueueProgressSync,
   persistOrder,
   readStoredOrder,
   shouldDropSyncOp,
@@ -17,6 +30,14 @@ import {
 type LibraryState = {
   cards: Card[];
   boards: Board[];
+  /**
+   * Reading lists, newest-touched first. No user-controlled order array (unlike
+   * cards and boards): a list's *entries* carry the order that matters, and a
+   * second orderable collection would be two sync ops for no user benefit.
+   */
+  readingLists: ReadingList[];
+  /** Progress per list id. Absent = nothing read yet. */
+  readingProgress: Record<string, ReadingProgress>;
   cardOrder: string[];
   cardOrderUpdatedAt: number;
   boardOrder: string[];
@@ -36,6 +57,12 @@ type LibraryState = {
   reorderBoards: (fromId: string, toId: string) => Promise<void>;
   setBoardOrder: (order: string[]) => Promise<void>;
   setActiveBoardId: (id: string | null) => Promise<void>;
+  upsertReadingList: (list: ReadingList) => Promise<void>;
+  deleteReadingList: (id: string) => Promise<void>;
+  /** Tick or untick one entry. */
+  setEntryDone: (listId: string, entryId: string, done: boolean) => Promise<void>;
+  /** Record where the user is in a list, without changing what's ticked. */
+  setCurrentEntry: (listId: string, entryId: string | undefined) => Promise<void>;
   setOnline: (value: boolean) => void;
   flushQueue: () => Promise<void>;
   pullFromServer: () => Promise<void>;
@@ -54,6 +81,8 @@ function nowId(): string {
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   cards: [],
   boards: [],
+  readingLists: [],
+  readingProgress: {},
   cardOrder: [],
   cardOrderUpdatedAt: 0,
   boardOrder: [],
@@ -65,9 +94,20 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   init: async () => {
     if (get().initialized) return;
-    const [cards, boards, pending, savedCardOrderRow, savedBoardOrderRow, activeRow] = await Promise.all([
+    const [
+      cards,
+      boards,
+      readingListRows,
+      progressRows,
+      pending,
+      savedCardOrderRow,
+      savedBoardOrderRow,
+      activeRow,
+    ] = await Promise.all([
       db.cards.filter((c) => c.deleted !== 1).toArray(),
       db.boards.filter((b) => b.deleted !== 1).toArray(),
+      db.readingLists.filter((l) => l.deleted !== 1).toArray(),
+      db.readingProgress.toArray(),
       db.syncQueue.count(),
       db.preferences.get(CARD_ORDER_KEY),
       db.preferences.get(BOARD_ORDER_KEY),
@@ -94,6 +134,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({
       cards: liveCards,
       boards: liveBoards,
+      readingLists: sortLists(readingListRows.map(stripLocal).map(normalizeList)),
+      readingProgress: indexProgress(progressRows.map(stripLocal)),
       cardOrder: reconciledCardOrder,
       cardOrderUpdatedAt: storedCardOrder.updatedAt,
       boardOrder: reconciledBoardOrder,
@@ -267,6 +309,53 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({ activeBoardId: id });
   },
 
+  upsertReadingList: async (list) => {
+    const updated: ReadingList = { ...list, updatedAt: Date.now() };
+    await db.readingLists.put({ ...updated, dirty: 1 });
+    const queued = await enqueueOp('readingList.upsert', updated);
+    set((s) => ({
+      readingLists: sortLists(replaceOrAdd(s.readingLists, updated)),
+      pendingOps: s.pendingOps + (queued ? 1 : 0),
+    }));
+    if (get().online) void get().flushQueue();
+  },
+
+  deleteReadingList: async (id) => {
+    await db.readingLists.update(id, { deleted: 1, dirty: 1 });
+    // Progress is deleted outright rather than tombstoned: it means nothing
+    // without its list, and the server drops it with the list too.
+    await db.readingProgress.delete(id);
+    const queued = await enqueueOp('readingList.delete', { id });
+    set((s) => {
+      const readingProgress = { ...s.readingProgress };
+      delete readingProgress[id];
+      return {
+        readingLists: s.readingLists.filter((l) => l.id !== id),
+        readingProgress,
+        pendingOps: s.pendingOps + (queued ? 1 : 0),
+      };
+    });
+    if (get().online) void get().flushQueue();
+  },
+
+  setEntryDone: async (listId, entryId, done) => {
+    await updateProgress(set, get, listId, (current) => {
+      const completed = done
+        ? Array.from(new Set([...current.completed, entryId]))
+        : current.completed.filter((id) => id !== entryId);
+      if (completed.length === current.completed.length) return current;
+      return { ...current, completed, updatedAt: Date.now() };
+    });
+  },
+
+  setCurrentEntry: async (listId, entryId) => {
+    await updateProgress(set, get, listId, (current) =>
+      current.currentEntryId === entryId
+        ? current
+        : { ...current, currentEntryId: entryId, updatedAt: Date.now() },
+    );
+  },
+
   setOnline: (value) => {
     set({ online: value });
     if (value) void get().flushQueue();
@@ -318,6 +407,27 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           case 'boardOrder.set':
             await apiPostJson('boards.order.set', op.payload);
             break;
+          case 'readingList.upsert': {
+            await apiPostJson('readingLists.upsert', { readingList: op.payload });
+            const l = op.payload as ReadingList;
+            const cur = await db.readingLists.get(l.id);
+            if (cur && cur.updatedAt === l.updatedAt) {
+              await db.readingLists.update(l.id, { dirty: 0 });
+            }
+            break;
+          }
+          case 'readingList.delete':
+            await apiPostJson('readingLists.delete', op.payload);
+            break;
+          case 'readingProgress.set': {
+            await apiPostJson('readingProgress.set', { progress: op.payload });
+            const p = op.payload as ReadingProgress;
+            const cur = await db.readingProgress.get(p.listId);
+            if (cur && cur.updatedAt === p.updatedAt) {
+              await db.readingProgress.update(p.listId, { dirty: 0 });
+            }
+            break;
+          }
         }
         await db.syncQueue.delete(op.id!);
         set((s) => ({ pendingOps: Math.max(0, s.pendingOps - 1) }));
@@ -376,18 +486,34 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   pullFromServer: async () => {
     if (!syncEnabled()) return;
-    const [cardsResp, boardsResp, cardOrderResp, boardOrderResp] = await Promise.all([
-      apiGetJson<{ cards: Card[] }>('cards.list'),
-      apiGetJson<{ boards: Board[] }>('boards.list'),
-      apiGetJson<{ order: string[]; updatedAt: number }>('cards.order.get').catch(
-        () => ({ order: [], updatedAt: 0 }),
-      ),
-      apiGetJson<{ order: string[]; updatedAt: number }>('boards.order.get').catch(
-        () => ({ order: [], updatedAt: 0 }),
-      ),
-    ]);
+    const [cardsResp, boardsResp, cardOrderResp, boardOrderResp, listsResp, progressResp] =
+      await Promise.all([
+        apiGetJson<{ cards: Card[] }>('cards.list'),
+        apiGetJson<{ boards: Board[] }>('boards.list'),
+        apiGetJson<{ order: string[]; updatedAt: number }>('cards.order.get').catch(
+          () => ({ order: [], updatedAt: 0 }),
+        ),
+        apiGetJson<{ order: string[]; updatedAt: number }>('boards.order.get').catch(
+          () => ({ order: [], updatedAt: 0 }),
+        ),
+        // Swallowed rather than allowed to reject the whole pull: the client
+        // can ship before api.php is redeployed, and an unknown action must not
+        // cost the user their cards.
+        apiGetJson<{ readingLists: unknown[] }>('readingLists.list').catch(() => ({
+          readingLists: [],
+        })),
+        apiGetJson<{ progress: unknown[] }>('readingProgress.list').catch(() => ({
+          progress: [],
+        })),
+      ]);
     const remoteCards = cardsResp.cards ?? [];
     const remoteBoards = boardsResp.boards ?? [];
+    const remoteLists = (listsResp.readingLists ?? [])
+      .map(normalizeReadingList)
+      .filter((l): l is ReadingList => l !== null);
+    const remoteProgress = (progressResp.progress ?? [])
+      .map(normalizeReadingProgress)
+      .filter((p): p is ReadingProgress => p !== null);
 
     // A local row should only block adopting a newer remote if it has a
     // genuinely pending upsert in the queue. A leftover dirty flag with no
@@ -401,8 +527,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const pendingBoardIds = new Set(
       queued.filter((o) => o.op === 'board.upsert').map((o) => (o.payload as Board).id),
     );
+    const pendingListIds = new Set(
+      queued
+        .filter((o) => o.op === 'readingList.upsert')
+        .map((o) => (o.payload as ReadingList).id),
+    );
 
-    await db.transaction('rw', db.cards, db.boards, async () => {
+    await db.transaction('rw', db.cards, db.boards, db.readingLists, db.readingProgress, async () => {
       for (const c of remoteCards) {
         const local = await db.cards.get(c.id);
         const blocked = local?.dirty === 1 && pendingCardIds.has(c.id);
@@ -417,11 +548,30 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           await db.boards.put({ ...b, dirty: 0, deleted: 0 });
         }
       }
+      for (const l of remoteLists) {
+        const local = await db.readingLists.get(l.id);
+        const blocked = local?.dirty === 1 && pendingListIds.has(l.id);
+        if (!local || (!blocked && l.updatedAt > local.updatedAt)) {
+          await db.readingLists.put({ ...l, dirty: 0, deleted: 0 });
+        }
+      }
+      // Progress needs no "blocked" case: the merge is a union, so adopting the
+      // remote row can't drop a local tick. The dirty flag is carried over so a
+      // still-pending push happens anyway.
+      for (const p of remoteProgress) {
+        const local = await db.readingProgress.get(p.listId);
+        const merged = mergeReadingProgress(local ? stripLocal(local) : undefined, p);
+        if (merged) {
+          await db.readingProgress.put({ ...merged, dirty: local?.dirty ?? 0 });
+        }
+      }
     });
 
-    const [cards, boards] = await Promise.all([
+    const [cards, boards, listRows, progressRows] = await Promise.all([
       db.cards.filter((c) => c.deleted !== 1).toArray(),
       db.boards.filter((b) => b.deleted !== 1).toArray(),
+      db.readingLists.filter((l) => l.deleted !== 1).toArray(),
+      db.readingProgress.toArray(),
     ]);
     const liveCards = cards.map(stripLocal).map(normalizeCard);
     const liveBoards = boards.map(stripLocal);
@@ -479,6 +629,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set({
       cards: liveCards,
       boards: liveBoards,
+      readingLists: sortLists(listRows.map(stripLocal).map(normalizeList)),
+      readingProgress: indexProgress(progressRows.map(stripLocal)),
       cardOrder: reconciledCardOrder,
       cardOrderUpdatedAt: nextCardOrderUpdatedAt,
       boardOrder: reconciledBoardOrder,
@@ -502,9 +654,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
  * clobber it.
  */
 async function seedSyncQueue(): Promise<void> {
-  const [cardRows, boardRows] = await Promise.all([
+  const [cardRows, boardRows, listRows, progressRows] = await Promise.all([
     db.cards.toArray(),
     db.boards.toArray(),
+    db.readingLists.toArray(),
+    db.readingProgress.toArray(),
   ]);
   for (const row of cardRows) {
     if (row.dirty !== 1) continue;
@@ -527,6 +681,15 @@ async function seedSyncQueue(): Promise<void> {
   if (boardOrder.length > 0 || boardOrderUpdatedAt > 0) {
     await enqueueOrderSync('boardOrder.set', boardOrder, boardOrderUpdatedAt);
   }
+  for (const row of listRows) {
+    if (row.dirty !== 1) continue;
+    if (row.deleted === 1) await enqueueOp('readingList.delete', { id: row.id });
+    else await enqueueOp('readingList.upsert', stripLocal(row));
+  }
+  for (const row of progressRows) {
+    if (row.dirty !== 1) continue;
+    await enqueueProgressSync(stripLocal(row));
+  }
 }
 
 function stripLocal<T extends { dirty?: number; deleted?: number }>(local: T): Omit<T, 'dirty' | 'deleted'> {
@@ -541,6 +704,68 @@ function stripLocal<T extends { dirty?: number; deleted?: number }>(local: T): O
 // CardReference[] on read, so old local rows and remote payloads both work.
 function normalizeCard(card: Card): Card {
   return { ...card, references: normalizeCardReferences(card.references) };
+}
+
+/**
+ * Read-modify-write one list's progress: Dexie, the sync queue, and the store.
+ *
+ * Takes a patch rather than a finished record, and reads the current value
+ * *inside* this function, because progress has two writers that fire in the same
+ * tick — finishing an entry ticks it off while the continuation marks the next
+ * one current. With the read outside, the second writer computes from a record
+ * that predates the first and its whole-record write silently drops the tick.
+ *
+ * The store is updated **synchronously**, before the Dexie put, for the same
+ * reason: it is what the next writer reads.
+ *
+ * Returning the same record from `patch` means "nothing changed" and skips the
+ * write entirely — no bumped timestamp, no sync op.
+ */
+async function updateProgress(
+  set: (fn: (s: LibraryState) => Partial<LibraryState>) => void,
+  get: () => LibraryState,
+  listId: string,
+  patch: (current: ReadingProgress) => ReadingProgress,
+): Promise<void> {
+  const current = get().readingProgress[listId] ?? emptyReadingProgress(listId);
+  const next = patch(current);
+  if (next === current) return;
+
+  set((s) => ({ readingProgress: { ...s.readingProgress, [listId]: next } }));
+  await db.readingProgress.put({ ...next, dirty: 1 });
+  const hadPending = (await db.syncQueue.where('op').equals('readingProgress.set').count()) > 0;
+  const queued = await enqueueProgressSync(next);
+  // A collapsed op replaced one already counted, so only count a genuinely new
+  // queue entry.
+  if (queued && !hadPending) {
+    set((s) => ({ pendingOps: s.pendingOps + 1 }));
+  }
+  if (get().online) void get().flushQueue();
+}
+
+/** Most-recently-touched first — "continue what I was reading" without a
+ * user-maintained order array. */
+function sortLists(lists: ReadingList[]): ReadingList[] {
+  return lists.slice().sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function indexProgress(rows: ReadingProgress[]): Record<string, ReadingProgress> {
+  const out: Record<string, ReadingProgress> = {};
+  for (const row of rows) out[row.listId] = row;
+  return out;
+}
+
+/** A stored row that predates a field (or a hand-edited server file) must not
+ * crash the reader. normalizeReadingList only rejects a row with no id, which a
+ * Dexie row keyed by id cannot be — the fallback just keeps the
+ * "at least one day" invariant true if that ever changes. */
+function normalizeList(list: ReadingList): ReadingList {
+  return (
+    normalizeReadingList(list) ?? {
+      ...list,
+      days: list.days?.length ? list.days : [newReadingDay()],
+    }
+  );
 }
 
 function replaceOrAdd<T extends { id: string }>(items: T[], next: T): T[] {

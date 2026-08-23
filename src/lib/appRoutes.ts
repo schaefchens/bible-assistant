@@ -8,6 +8,7 @@
 export const ROUTES = {
   chat: '/',
   read: '/read',
+  lists: '/lists',
   cards: '/cards',
   boards: '/boards',
   settings: '/settings',

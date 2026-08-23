@@ -14,11 +14,25 @@ import { readerReadingHost } from './readerReadingHost';
  */
 export type ReadingGroupId = string;
 
+/**
+ * Which reading-list entry a group came from.
+ *
+ * This is what makes a reading list behave like a playlist: continuation asks
+ * the list what comes after `entryId` instead of asking the Bible what comes
+ * after the last verse. Absent → the group is an ordinary passage and
+ * continuation follows canonical order, which is every pre-existing reading.
+ *
+ * Both hosts carry it (chat on the message, the reader on the segment) so
+ * `lib/readingContinuation.ts` needs no idea which host it is talking to.
+ */
+export type ListProvenance = { listId: string; entryId: string };
+
 export type ReadingGroup = {
   id: ReadingGroupId;
   verses: VerseSummary[];
   /** Heading phrasing: "John, chapter 3" vs "John 3:16-18". */
   wholeChapter: boolean;
+  provenance?: ListProvenance;
 };
 
 export type AppendReadingOptions = {
@@ -26,6 +40,8 @@ export type AppendReadingOptions = {
   /** Chat-only: the "(Played aloud: …)" line the model reads back as history.
    * Hosts with no conversation ignore it. */
   historyNote?: string;
+  /** Carried onto the new group so a list keeps playing as a list. */
+  provenance?: ListProvenance;
 };
 
 /**

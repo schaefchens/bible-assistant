@@ -34,10 +34,25 @@ import {
   resolveLastReadVerse,
   type ResolvedPosition,
 } from '@/services/bible/playbackPosition';
+import { playReadingListInChat } from '@/lib/readingListPlayback';
 import {
+  formatReadingEntry,
+  listEntries,
+  newReadingDay,
+  newReadingList,
+  parseReadingEntryLine,
+} from '@/services/reading/readingEntries';
+import {
+  withDayAdded,
+  withEntriesAdded,
+  withEntryRemoved,
+} from '@/lib/readingListOperations';
+import {
+  describeReadingList,
   listCardsInUserOrder,
   resolveBoard,
   resolveCard,
+  resolveReadingList,
 } from '@/services/library/cardResolver';
 import { withoutCardInBoard } from '@/lib/boardOperations';
 import { autoPlaceCard, clamp } from '@/lib/freeformLayout';
@@ -48,6 +63,9 @@ import {
   type Board,
   type FreeformCardLayout,
   type OpenAiVoiceId,
+  type ReadingDay,
+  type ReadingEntry,
+  type ReadingList,
   type VerseSummary,
 } from '@/types/domain';
 
@@ -100,6 +118,14 @@ const TOOL_REGISTRY: { [N in ToolName]: ToolHandler<N> } = {
   remove_card_from_board: (args) => handleRemoveCardFromBoard(args),
   arrange_card: (args) => handleArrangeCard(args),
   list_boards: () => ({ ok: true, data: useLibraryStore.getState().boards }),
+  list_reading_lists: () => ({
+    ok: true,
+    data: useLibraryStore.getState().readingLists.map(describeReadingList),
+  }),
+  create_reading_list: (args) => handleCreateReadingList(args),
+  update_reading_list: (args) => handleUpdateReadingList(args),
+  delete_reading_list: (args) => handleDeleteReadingList(args),
+  play_reading_list: (args) => handlePlayReadingList(args),
   set_language: (args) => handleSetLanguage(args),
   set_translation: (args) => handleSetTranslation(args),
   set_voice: (args) => handleSetVoice(args),
@@ -404,6 +430,150 @@ async function handleCreateBoard(args: ToolArgs['create_board']): Promise<ToolDi
 async function handleDeleteBoard(args: ToolArgs['delete_board']): Promise<ToolDispatchResult> {
   await useLibraryStore.getState().deleteBoard(args.id);
   return { ok: true };
+}
+
+// ─── Reading lists ────────────────────────────────────────────────────────
+
+/**
+ * Parse the model's passage strings, reporting the ones that didn't resolve
+ * rather than dropping them silently — a reading list with a hole in it is
+ * worse than a tool call that says which line was wrong.
+ */
+function parsePassages(passages: string[]): { entries: ReadingEntry[]; rejected: string[] } {
+  const entries: ReadingEntry[] = [];
+  const rejected: string[] = [];
+  for (const raw of passages) {
+    const entry = parseReadingEntryLine(raw);
+    if (entry) entries.push(entry);
+    else rejected.push(raw);
+  }
+  return { entries, rejected };
+}
+
+async function handleCreateReadingList(
+  args: ToolArgs['create_reading_list'],
+): Promise<ToolDispatchResult> {
+  const rejected: string[] = [];
+  const days: ReadingDay[] = [];
+
+  for (const day of args.days ?? []) {
+    const parsed = parsePassages(day.passages ?? []);
+    rejected.push(...parsed.rejected);
+    days.push({ ...newReadingDay(day.title), entries: parsed.entries });
+  }
+  if (args.passages?.length) {
+    const parsed = parsePassages(args.passages);
+    rejected.push(...parsed.rejected);
+    // A plain list is one untitled day — see the ReadingList type.
+    days.push({ ...newReadingDay(), entries: parsed.entries });
+  }
+  if (days.length === 0) days.push(newReadingDay());
+  if (days.every((d) => d.entries.length === 0)) {
+    return {
+      ok: false,
+      error: rejected.length
+        ? `no passage could be parsed (${rejected.join(', ')})`
+        : 'a reading list needs at least one passage',
+    };
+  }
+
+  const list: ReadingList = {
+    ...newReadingList(args.name),
+    description: args.description,
+    days,
+  };
+  await useLibraryStore.getState().upsertReadingList(list);
+  return {
+    ok: true,
+    data: { ...describeReadingList(list), rejected: rejected.length ? rejected : undefined },
+  };
+}
+
+async function handleUpdateReadingList(
+  args: ToolArgs['update_reading_list'],
+): Promise<ToolDispatchResult> {
+  const lookup = resolveReadingList(args.list);
+  if (!lookup.ok) return { ok: false, error: lookup.error };
+  let list = lookup.list;
+  const rejected: string[] = [];
+
+  if (args.name !== undefined) list = { ...list, name: args.name };
+  if (args.description !== undefined) {
+    list = { ...list, description: args.description || undefined };
+  }
+
+  if (args.addPassages?.length) {
+    const parsed = parsePassages(args.addPassages);
+    rejected.push(...parsed.rejected);
+    const lastDay = list.days[list.days.length - 1];
+    list = withEntriesAdded(list, lastDay.id, parsed.entries);
+  }
+  if (args.addDay?.passages?.length) {
+    const parsed = parsePassages(args.addDay.passages);
+    rejected.push(...parsed.rejected);
+    const withDay = withDayAdded(list, args.addDay.title);
+    const added = withDay.days[withDay.days.length - 1];
+    list = withEntriesAdded(withDay, added.id, parsed.entries);
+  }
+  if (args.removePassages?.length) {
+    const locale = useSettingsStore.getState().locale;
+    for (const wanted of args.removePassages) {
+      const target = parseReadingEntryLine(wanted);
+      if (!target) {
+        rejected.push(wanted);
+        continue;
+      }
+      // Match on the formatted passage, so "Psalm 23:1-6" finds the entry
+      // regardless of the note or translation the user attached to it.
+      const text = formatReadingEntry(target, locale);
+      const hit = listEntries(list).find((e) => formatReadingEntry(e, locale) === text);
+      if (hit) list = withEntryRemoved(list, hit.id);
+      else rejected.push(wanted);
+    }
+  }
+
+  await useLibraryStore.getState().upsertReadingList(list);
+  return {
+    ok: true,
+    data: { ...describeReadingList(list), rejected: rejected.length ? rejected : undefined },
+  };
+}
+
+async function handleDeleteReadingList(
+  args: ToolArgs['delete_reading_list'],
+): Promise<ToolDispatchResult> {
+  const lookup = resolveReadingList(args.list);
+  if (!lookup.ok) return { ok: false, error: lookup.error };
+  await useLibraryStore.getState().deleteReadingList(lookup.list.id);
+  return { ok: true, data: { deleted: lookup.list.name } };
+}
+
+async function handlePlayReadingList(
+  args: ToolArgs['play_reading_list'],
+): Promise<ToolDispatchResult> {
+  const lookup = resolveReadingList(args.list);
+  if (!lookup.ok) return { ok: false, error: lookup.error };
+  const list = lookup.list;
+  if (listEntries(list).length === 0) {
+    return { ok: false, error: `reading list "${list.name}" is empty` };
+  }
+  if (args.restart) {
+    // Clearing the resume point is what "start over" means; the ticks stay, so
+    // the user can still see what they have read.
+    await useLibraryStore.getState().setCurrentEntry(list.id, undefined);
+  }
+  // Into the chat, not the reader: the reading appears where the user asked for
+  // it, exactly like read_verses, and the list keeps playing as a list because
+  // the appended message carries the entry's provenance. The list screen's own
+  // Play button is the one that reads in the reader.
+  const started = await playReadingListInChat(list.id);
+  if (!started) {
+    return {
+      ok: false,
+      error: `could not start "${list.name}" — its passages may not be available in the current translation`,
+    };
+  }
+  return { ok: true, data: describeReadingList(list) };
 }
 
 async function handleAddCardToBoard(
