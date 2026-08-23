@@ -30,6 +30,7 @@ export function TranslationList({ value, onChange, className }: Props) {
   // UI without an app update.
   const initPacks = useBiblePacksStore((s) => s.init);
   const packStatus = useBiblePacksStore((s) => s.status);
+  const wantPack = useBiblePacksStore((s) => s.want);
   useEffect(() => {
     void initPacks();
   }, [initPacks]);
@@ -65,7 +66,13 @@ export function TranslationList({ value, onChange, className }: Props) {
       >
         <button
           type="button"
-          onClick={() => onChange(tr.code)}
+          onClick={() => {
+            onChange(tr.code);
+            // Selecting a text you then can't read without a connection is the
+            // whole gap here, so choosing one fetches it. No confirmation:
+            // packs are ~1.5 MB gzipped, and PackActionButton shows progress.
+            void wantPack(tr.code);
+          }}
           disabled={unavailable}
           className={clsx(
             'flex-1 min-w-0 text-left px-4 py-3 flex items-start gap-3',
