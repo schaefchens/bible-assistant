@@ -292,12 +292,21 @@ writes progress, and three things call it: narration finishing a passage, the re
 past* one, and a manual tick in the editor. It holds no playback or reader import precisely so
 both can use it.
 
-The reader's rule is the fiddly one. Turning the page past a passage is as good a signal that
-it was read as its narration ending — but only a **single step forward** counts (the pager's
-next, or scrolling into the following segment). A jump — the picker, a resume, "take me to day
-40" — passes over everything in between without reading it, so it moves your place and ticks
-nothing. `noteEntryFinished` additionally waits for an entry's *last* chapter, so "Genesis 1-3"
-isn't marked read after Genesis 1.
+The reader's rule is the fiddly one, and it takes two signals:
+
+1. **Intent, declared by the caller** (`PositionIntent`): the pager's next button is a `turn`,
+   the scroll observer reports `scroll`, and everything else — the picker, a resume, a
+   translation reload, the endless-scroll prefetch — is a `jump`, which never marks anything.
+   This cannot be inferred from the positions: picking the very next passage out of the selector
+   looks identical to turning the page onto it, and marking it read was wrong.
+2. **Dwell** (`DWELL_TO_COUNT_MS`): leaving a passage only counts if it was the position for
+   long enough to have been read. Without it, stepping through three chapters to reach the
+   fourth marked the two you flicked past. A chapter takes minutes to read and seconds to skip,
+   so a few seconds separates them cleanly.
+
+Both err toward *not* claiming a passage: a missed tick is one tap to fix, a false one quietly
+corrupts what a plan says you have read. `noteEntryFinished` additionally waits for an entry's
+*last* chapter, so "Genesis 1-3" isn't marked read after Genesis 1.
 
 All progress writes go through `updateProgress`, which reads the current record **inside** the
 same synchronous block as the write and updates the store before awaiting Dexie. Both matter:

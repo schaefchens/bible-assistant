@@ -178,30 +178,80 @@ function resolveAgainstList(ref: SegmentRef): SegmentRef {
 }
 
 /**
- * Record progress from the reader's own movement, so **reading counts, not just
- * listening**. Turning the page past a passage is exactly as good a signal that
- * it was read as its narration finishing, and a plan that only advanced when you
- * pressed play was wrong about anyone who reads silently.
+ * What moved the reader, which is the only reliable way to know whether the
+ * passage being left was *read*.
  *
- * Finishing is claimed only for a *single step forward* — the pager's next
- * button, or scrolling into the following segment. A jump (the picker, a resume,
- * "take me to day 40") passes over everything in between without reading it, so
- * it moves your place without ticking anything off.
+ *   turn   — the pager's next button: you finished the page and turned it
+ *   scroll — the passage crossed the viewport as you read down the page
+ *   jump   — anywhere else: the picker, a resume, a translation reload, the
+ *            endless-scroll prefetch. Lands you somewhere without reading what
+ *            you passed.
+ *
+ * Inferring this from the positions alone doesn't work: picking the very next
+ * passage out of the selector looks identical to turning the page onto it, and
+ * marking it read was wrong.
  */
-function trackListProgress(previous: SegmentRef | null, next: SegmentRef): void {
+type PositionIntent = 'turn' | 'scroll' | 'jump';
+
+/**
+ * How long a passage has to have been the reader's position before leaving it
+ * counts as having read it.
+ *
+ * Turning the page is a good signal, but not on its own: stepping through three
+ * chapters to reach the fourth marked the two you flicked past as read. A
+ * chapter takes minutes to read and seconds to skip, so dwell separates them
+ * cleanly. It errs toward *not* claiming: a missed tick is one tap to fix, while
+ * a false one quietly corrupts what a plan says you've read.
+ */
+const DWELL_TO_COUNT_MS = 8_000;
+
+/** The position being dwelt on, and since when. */
+let dwell: { id: string; since: number } | null = null;
+
+/** Whether `next` comes after `previous` in their list — scrolling back up
+ * must not tick anything off. */
+function isForwardInList(previous: SegmentRef, next: SegmentRef): boolean {
+  if (!next.listId) return false;
+  const all = sequenceFor(
+    { kind: 'list', listId: next.listId },
+    useSettingsStore.getState().translation,
+  ).all();
+  if (!all) return false;
+  const from = all.findIndex((s) => segmentId(s) === segmentId(previous));
+  const to = all.findIndex((s) => segmentId(s) === segmentId(next));
+  return from !== -1 && to !== -1 && to > from;
+}
+
+/**
+ * Record progress from the reader's own movement, so **reading counts, not just
+ * listening**: a plan that only advanced when you pressed play was wrong about
+ * anyone who reads silently.
+ */
+function trackListProgress(
+  previous: SegmentRef | null,
+  next: SegmentRef,
+  intent: PositionIntent,
+): void {
+  const now = Date.now();
+  const dwelt =
+    !!previous &&
+    dwell?.id === segmentId(previous) &&
+    now - dwell.since >= DWELL_TO_COUNT_MS;
+  dwell = { id: segmentId(next), since: now };
+
   if (!next.listId || !next.entryId) return;
-  if (previous?.listId === next.listId && previous.entryId) {
-    const sequence = sequenceFor(
-      { kind: 'list', listId: next.listId },
-      useSettingsStore.getState().translation,
+  if (
+    intent !== 'jump' &&
+    dwelt &&
+    previous &&
+    previous.listId === next.listId &&
+    previous.entryId &&
+    isForwardInList(previous, next)
+  ) {
+    noteEntryFinished(
+      { listId: previous.listId, entryId: previous.entryId },
+      previous.chapter,
     );
-    const after = sequence.next(previous);
-    if (after && segmentId(after) === segmentId(next)) {
-      noteEntryFinished(
-        { listId: previous.listId, entryId: previous.entryId },
-        previous.chapter,
-      );
-    }
   }
   noteEntryStarted({ listId: next.listId, entryId: next.entryId });
 }
@@ -292,6 +342,9 @@ export const useReaderStore = create<ReaderState>()(
          * skipped rather than dead-ending. Not derivable from `mode`: the paged
          * next button replaces the window. */
         dir: StepDirection = 'none',
+        /** What this load means for progress — see PositionIntent. Defaults to
+         * the safe answer: a load that doesn't say is not a read. */
+        intent: PositionIntent = 'jump',
       ): Promise<string | null> {
         const ref = resolveAgainstList(given);
         const id = segmentId(ref);
@@ -333,7 +386,7 @@ export const useReaderStore = create<ReaderState>()(
           };
         });
         // Prepending loads what came *before* — it doesn't move the reader.
-        if (mode !== 'prepend') trackListProgress(previousPosition, segment.ref);
+        if (mode !== 'prepend') trackListProgress(previousPosition, segment.ref, intent);
         return segment.id;
       }
 
@@ -450,7 +503,8 @@ export const useReaderStore = create<ReaderState>()(
           const sequence = sequenceFor(get().source, useSettingsStore.getState().translation);
           const ref = dir === 1 ? sequence.next(pos) : sequence.prev(pos);
           if (!ref) return;
-          await load(ref, 'replace', dir === 1 ? 'forward' : 'backward');
+          // Only forward is a page turn; stepping back is not a read.
+          await load(ref, 'replace', dir === 1 ? 'forward' : 'backward', dir === 1 ? 'turn' : 'jump');
         },
 
         extend: async (dir) => {
@@ -468,7 +522,7 @@ export const useReaderStore = create<ReaderState>()(
           const cur = get().position;
           if (cur && segmentId(cur) === segmentId(ref)) return;
           set({ position: ref });
-          trackListProgress(cur, ref);
+          trackListProgress(cur, ref, 'scroll');
         },
 
         adopt: (verses, ref) => {
