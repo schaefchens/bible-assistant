@@ -38,6 +38,8 @@ This file is the orientation map. When changing code, find the relevant subsyste
 | Verse/reply/ambient playback (HTMLAudioElement) | `src/lib/elementTrackPlayer.ts`, `src/lib/ambientAudioBus.ts` |
 | Browser TTS engine (SpeechSynthesis) | `src/lib/browserTts.ts` singleton `browserTts` |
 | Persistent audio + alignment cache (IndexedDB) | `src/lib/mediaCache.ts` |
+| Narration source chain (cached → server) | `src/services/narration/narrationSources.ts` |
+| Chapter narration download | `src/services/narration/downloadChapter.ts` + `src/store/narrationStore.ts` |
 | Native speech recognition | `src/lib/nativeSpeech.ts` (Whisper stays the fallback) |
 | Auto-continuation + prefetch | `src/lib/autoPlay.ts` |
 | Bible reader screen | `src/routes/ReadPage.tsx` + `src/store/readerStore.ts` |
@@ -108,6 +110,7 @@ All in `src/store/`. `(persist)` = survives reload via `zustand/middleware`.
 | `useLastReadingStore` *(persist)* | Resume point for "play last reading" — **audio-owned**, written only from the playback subscription. The reader's scroll position deliberately does not write here, or idle scrolling would move it |
 | `useReaderStore` *(persist v1 — `position` only)* | The reader screen: current chapter, the loaded-chapter cache + the mounted window |
 | `useBiblePacksStore` *(persist — `wanted` only)* | Offline Bible packs: per-translation status/progress, and which translations the user has asked for |
+| `useNarrationStore` | Per-chapter narration download state (status/progress/error). Transient — the truth is in Dexie and `check()` re-derives from it |
 | `useUiLayoutStore` | Transient layout — `bottomBarHeight`, the height of whichever bar the current page puts above the nav (chat composer, reader pager), so floaters clear it |
 | `useUpdateStore` (in `lib/pwaUpdate.ts`) | PWA update-available flag *(named `use*` though it's a store, not a hook — a known, intentionally-left naming exception)* |
 
@@ -205,13 +208,40 @@ offline.
 `TranslationList`), and the active translation is wanted even if its row was never
 tapped. Packs are ~1.5 MB gzipped, so this needs no confirmation.
 
-**A reading never plays silence.** `startPlayback.readingUsesBrowserVoice()` folds
-"definitely offline" into the engine choice, and `streamReading` falls back to the device
-voice if the *first* track fails for any non-abort reason. Both are "decide once"
-by design: `playbackController`'s mid-reading rebuild and `playFromVerseWord` keep asking
-`isBrowserVoice()` alone, because a reading queued while online keeps working offline
-(its audio is in `mediaCache`, and seeking a queued track needs no network), and because
-two engines sharing one queue talk over each other.
+**Narration resolves through a source chain**, `services/narration/narrationSources.ts`
+— the audio counterpart of `chapterSources`, same "`null` means try the next source"
+contract. `cachedNarrationSource` answers from a local index with **no** call to
+api.php, which is the only way a chapter in IndexedDB is playable offline; before it
+existed, `buildTrack` had to ask the server for a verse's URL first.
+
+Two rules keep that honest:
+
+- The URLs are recorded from api.php's response, never recomputed. Rebuilding its path
+  scheme client-side would duplicate it in two languages and break silently the day it
+  changes — which is what the `narration` Dexie table is for.
+- Resolution requires an index entry **and** the bytes present (`isCached`). That's what
+  lets ordinary playback populate the index for free without promising audio a cleared
+  or evicted cache can't deliver.
+
+**Downloading = pinning.** `mediaCache`'s `pinned` rows are exempt from LRU eviction, so
+a chapter saved for a flight can't be reclaimed by whatever was played since. Enough
+pinned data can push the cache past `BUDGET_BYTES` with nothing left to free; the sweep
+stops, and Settings' storage readout is where that becomes visible. Downloads are
+**per chapter** on purpose — a book means up to 2,461 verses of TTS plus forced
+alignment — and cover exactly what the current settings would *play*, so a reader with
+announcements off isn't billed for clips they'll never hear.
+
+**A reading never plays silence.** `startPlayback.readingUsesBrowserVoice(plan)` folds
+"definitely offline" into the engine choice — *unless* the whole plan is already
+downloaded, in which case being offline is irrelevant and the premium narration plays.
+All-or-nothing: a partial hit would read some verses in one voice and skip the rest.
+`streamReading` additionally falls back to the device voice if the *first* track fails
+for any non-abort reason (which also covers backend-down, no-key and quota).
+
+Both are "decide once" by design: `playbackController`'s mid-reading rebuild and
+`playFromVerseWord` keep asking `isBrowserVoice()` alone, because a reading queued while
+online keeps working offline (its audio is in `mediaCache`, and seeking a queued track
+needs no network), and because two engines sharing one queue talk over each other.
 
 ## Backend — `public/api.php`
 Single PHP entry; routes on `?action=`. Per-user data dirs keyed by an identity derived from the user's passphrase. OpenAI actions (`chat`, `tts`, `tts.speak`, `transcribe`, `recording.upload`) require a key — a personal key (sent by the client) or the shared key, selected via the `X-Prefer-Shared-Key` header.
