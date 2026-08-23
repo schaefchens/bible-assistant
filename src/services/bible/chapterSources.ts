@@ -5,7 +5,7 @@ import type { BibleVerse, Translation } from './bibleApi';
 import {
   BUNDLED_PACK_VERSION,
   decodeChapter,
-  isBundled,
+  isPreinstalled,
   type BookPack,
 } from './packFormat';
 
@@ -60,7 +60,7 @@ async function loadBundledBook(
 export const bundledSource: ChapterSource = {
   name: 'bundled',
   async getChapter(translation, bookId, chapter) {
-    if (!isBundled(translation)) return null;
+    if (!isPreinstalled(translation)) return null;
     const pack = await loadBundledBook(translation, bookId);
     return pack ? decodeChapter(pack, chapter) : null;
   },
@@ -112,7 +112,9 @@ export function invalidateLocalPackCache(translation?: Translation): void {
 export const localPackSource: ChapterSource = {
   name: 'localPack',
   async getChapter(translation, bookId, chapter) {
-    if (isBundled(translation)) return null; // bundledSource already handled it
+    // Only skip what bundledSource has already handled — which, on web, is
+    // nothing: there LUT/KJV are downloaded into Dexie like any other pack.
+    if (isPreinstalled(translation)) return null;
     const pack = await loadLocalBook(translation, bookId);
     return pack ? decodeChapter(pack, chapter) : null;
   },
@@ -151,9 +153,10 @@ export class ChapterUnavailableError extends Error {
  * Native reads bundled packs first — they're local files, so they're both the
  * fastest option and the only one that works offline.
  *
- * Web deliberately skips them: there the same packs are 76–557 KB HTTP fetches,
- * which is worse than the existing ~4 KB bible.chapter POST. Flipping web to
- * offline-first later is a one-line change here.
+ * Web deliberately skips them: there the same packs are 76–557 KB HTTP fetches
+ * that the service worker doesn't precache, which is both slower than the ~4 KB
+ * bible.chapter POST and no use offline. Web reaches the same texts through
+ * localPackSource instead, by downloading them — see isPreinstalled().
  */
 const SOURCES: ChapterSource[] = Capacitor.isNativePlatform()
   ? [bundledSource, localPackSource, networkSource]

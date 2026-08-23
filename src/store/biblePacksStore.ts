@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Translation } from '@/services/bible/bibleApi';
-import { isBundled } from '@/services/bible/packFormat';
+import { isPreinstalled } from '@/services/bible/packFormat';
 import {
   findTranslation,
   getManifest,
@@ -47,7 +47,10 @@ export const useBiblePacksStore = create<BiblePacksState>((set, get) => ({
 
     for (const entry of manifest?.translations ?? []) {
       const code = entry.code;
-      if (entry.bundled || isBundled(code)) {
+      // isPreinstalled(), not entry.bundled: on web the bundled texts are
+      // downloadable like any other pack, because that is what makes them
+      // readable offline. See packFormat.isPreinstalled().
+      if (isPreinstalled(code)) {
         status[code] = 'bundled';
         continue;
       }
