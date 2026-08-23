@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import { AddPassageForm } from './AddPassageForm';
+import { PassageRow } from './PassageRow';
 import { ProgressBar } from './ProgressBar';
 import { playReadingList, playSegmentInReader } from '@/lib/readingListPlayback';
 import { BIBLE_SOURCE, expandList } from '@/services/reading/readingSequence';
@@ -16,6 +17,7 @@ import {
   isFlatList,
   listChapterCount,
   listEntries,
+  passageDetail,
 } from '@/services/reading/readingEntries';
 import { progressStats } from '@/services/reading/readingProgress';
 import {
@@ -350,69 +352,34 @@ function EntryRow({
 }) {
   const { t } = useTranslation();
   return (
-    <li
-      className={clsx(
-        'flex items-center gap-2 rounded-xl px-2 py-1.5',
-        current ? 'bg-brand/10 ring-1 ring-brand/30' : 'hover:bg-surface-raised/40',
-      )}
-    >
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-pressed={done}
-        aria-label={(done ? t('lists.markNotDone') : t('lists.markDone')) as string}
-        className={clsx(
-          'h-6 w-6 shrink-0 rounded-md border flex items-center justify-center transition-colors',
-          done ? 'bg-brand border-brand text-on-brand' : 'border-ink-muted/40 text-transparent',
-        )}
-      >
-        <CheckIcon />
-      </button>
-
-      <button
-        type="button"
-        onClick={onOpen}
-        aria-label={t('lists.openPassage') as string}
-        className="flex-1 min-w-0 text-left"
-      >
-        <span
-          className={clsx(
-            'font-serif text-[15px] truncate block',
-            done ? 'text-ink-muted line-through' : 'text-ink',
-          )}
-        >
-          {text}
-        </span>
-        {(entry.label || entry.translation) && (
-          <span className="block text-[11px] text-ink-muted truncate">
-            {[entry.label, entry.translation].filter(Boolean).join(' · ')}
-          </span>
-        )}
-      </button>
-
-      {!editing && (
-        <IconButton label={t('lists.play') as string} onClick={onPlay}>
-          <PlayIcon />
-        </IconButton>
-      )}
-
-      {editing && (
-        <span className="flex items-center gap-0.5 shrink-0">
-          <IconButton label={t('lists.moveUp') as string} onClick={() => onMove(-1)}>
-            ↑
-          </IconButton>
-          <IconButton label={t('lists.moveDown') as string} onClick={() => onMove(1)}>
-            ↓
-          </IconButton>
-          <IconButton
-            label={t('lists.removeEntry') as string}
-            onClick={onRemove}
-            danger
-          >
-            ×
-          </IconButton>
-        </span>
-      )}
+    <li>
+      <PassageRow
+        text={text}
+        detail={passageDetail([entry.label, entry.translation])}
+        done={done}
+        current={current}
+        onToggle={onToggle}
+        onOpen={onOpen}
+        trailing={
+          editing ? (
+            <span className="flex items-center gap-0.5 shrink-0">
+              <IconButton label={t('lists.moveUp') as string} onClick={() => onMove(-1)}>
+                ↑
+              </IconButton>
+              <IconButton label={t('lists.moveDown') as string} onClick={() => onMove(1)}>
+                ↓
+              </IconButton>
+              <IconButton label={t('lists.removeEntry') as string} onClick={onRemove} danger>
+                ×
+              </IconButton>
+            </span>
+          ) : (
+            <IconButton label={t('lists.play') as string} onClick={onPlay}>
+              <PlayIcon />
+            </IconButton>
+          )
+        }
+      />
     </li>
   );
 }
@@ -520,24 +487,6 @@ function BackChevron() {
       aria-hidden="true"
     >
       <polyline points="15 18 9 12 15 6" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <polyline points="20 6 9 17 4 12" />
     </svg>
   );
 }

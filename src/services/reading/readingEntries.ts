@@ -155,6 +155,16 @@ export function entryChapterCount(entry: ReadingEntry): number {
   return 1;
 }
 
+/**
+ * The "note · TRANSLATION" line shown under a passage, or undefined when there
+ * is neither. A pinned translation is worth showing; the active one is not, so
+ * callers pass it only when the entry overrode it.
+ */
+export function passageDetail(parts: (string | undefined)[]): string | undefined {
+  const detail = parts.filter(Boolean).join(' · ');
+  return detail || undefined;
+}
+
 /** Every entry of a list, days flattened, in reading order. */
 export function listEntries(list: ReadingList): ReadingEntry[] {
   return list.days.flatMap((d) => d.entries);

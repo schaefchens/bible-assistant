@@ -250,15 +250,18 @@ back.
 It shows a **window**, not the whole list, because a ninety-day plan is not something you pick
 from:
 
-- a plan (two or more days) gets three columns — the previous day, the day you're in, the next
-  — with the middle one wider and the neighbours dimmed. "The day you're in" is the day holding
-  the current entry, else the first with anything unread;
+- a plan (two or more days) shows one day at a time, with the neighbouring days *named* in the
+  pager (`‹ Day 1 · DAY 2 · Day 3 ›`) rather than listed. "The day you're in" is the day holding
+  the current entry, else the first with anything unread — so a plan opens on today, and
+  finishing today's last passage moves the window on by itself;
 - a plain list gets pages of `PASSAGES_PER_PAGE`, opening on the page holding the current entry;
-- every passage carries a tick or an empty box, and a day whose passages are all read is
-  tinted and ticked as a whole — so "where am I" is answerable at a glance.
+- a finished day is ticked wherever it is named, including in the pager, so "have I done that
+  one" needs no stepping onto it.
 
-The tick is an indicator, not a control: ticking lives on the list screen, and a second tap
-target inside a column that narrow is a mis-tap waiting to happen.
+The rows are **the list screen's rows** — `components/reading/PassageRow.tsx`, shared with
+`/lists/:id`, progress bar and tappable checkboxes included. The picker had its own compact
+variant, and looking like a different feature was the first thing anyone noticed about it. One
+component means one answer to what a passage looks like.
 
 `/lists` and `/lists/:id` are the full-screen index and editor (mirroring `/cards/:id`).
 Neither is a nav tab, so both go back through **history** (`useGoBack`) rather than to a fixed
