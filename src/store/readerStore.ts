@@ -277,8 +277,11 @@ export const useReaderStore = create<ReaderState>()(
         return segment.id;
       }
 
-      /** Where a source resumes: the entry the user was last on, else its
-       * first segment. */
+      /**
+       * Where a source resumes: for a list, the entry the user was last on; for
+       * the Bible, the verse they last *heard* — dropping someone at Genesis 1
+       * is only right on a genuinely fresh install.
+       */
       function resumeOf(source: ReaderSource, translation: Translation): SegmentRef | null {
         const sequence = sequenceFor(source, translation);
         if (source.kind === 'list') {
@@ -290,7 +293,10 @@ export const useReaderStore = create<ReaderState>()(
             : undefined;
           return at ?? sequence.first();
         }
-        return sequence.first();
+        const slot = useLastReadingStore.getState().slot;
+        return slot
+          ? { translation, bookId: slot.bookId, chapter: slot.chapter }
+          : sequence.first();
       }
 
       return {
@@ -320,16 +326,12 @@ export const useReaderStore = create<ReaderState>()(
             await load(stored, 'replace');
             return;
           }
-          // First-ever open. A Bible reader seeds from the audio resume point,
-          // so the tab feels like it remembers you; after that the two are
+          // First-ever open. A Bible reader seeds from the audio resume point so
+          // the tab feels like it remembers you; after that the two are
           // independent (this is "which page am I looking at", the last-reading
           // slot is "where the audio was"). A list-sourced reader resumes from
           // its own progress instead — the plan is the whole point.
-          const slot = useLastReadingStore.getState().slot;
-          const seeded =
-            get().source.kind === 'bible' && slot
-              ? { translation, bookId: slot.bookId, chapter: slot.chapter }
-              : resumeOf(get().source, translation);
+          const seeded = resumeOf(get().source, translation);
           await load(seeded ?? { translation, bookId: 1, chapter: 1 }, 'replace');
         },
 
@@ -357,9 +359,17 @@ export const useReaderStore = create<ReaderState>()(
             return;
           }
           const translation = useSettingsStore.getState().translation;
+          const previous = get().position;
           // Every group id belongs to the old source, so the window has to go.
           set({ source, visible: [], position: null, error: null });
-          const ref = resumeOf(source, translation);
+          // Leaving a reading list keeps the passage on screen, now read
+          // canonically: the user cleared a *filter*, they didn't ask to be sent
+          // somewhere else. (The active translation wins — the passage they were
+          // on may have been pinned to another text by its entry.)
+          const ref =
+            source.kind === 'bible' && previous
+              ? { translation, bookId: previous.bookId, chapter: previous.chapter }
+              : resumeOf(source, translation);
           if (ref) await load(ref, 'replace');
         },
 

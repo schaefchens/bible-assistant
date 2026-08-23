@@ -75,7 +75,9 @@
       "back": "Zurück",
       "languageEn": "Englisch",
       "languageDe": "Deutsch",
-      "readingLists": "Leselisten"
+      "readingLists": "Leselisten",
+      "titleList": "Aus deiner Liste lesen",
+      "clearList": "Diese Leseliste verlassen"
     }
   },
   "playback": {

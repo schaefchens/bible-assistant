@@ -164,8 +164,13 @@ is the test, and it decides the heading phrasing and the announcement wording.
 `{kind:'list', listId}` (list order). Prev/next, endless scroll in both directions, the
 pager labels and the picker all go through the sequence for that source
 (`services/reading/readingSequence.ts`, or `useReaderSequence()` in components) — there is no
-`nextChapterRef` call left in the reader. Choosing a chapter out of the Bible picker *is*
-choosing to leave a list, so switching source needs no separate control.
+`nextChapterRef` call left in the reader.
+
+`source` is also **the app's one notion of "the list I'm reading through"**, not just the
+reader's: the book picker in both headers reads and writes it, so selecting a list on the chat
+screen is the same act as selecting it on `/read`, and it survives closing the sheet. Switching
+source keeps the reader's place — leaving a list re-reads the passage you were on canonically,
+because clearing a filter is not a request to be sent somewhere else.
 
 - **Flowing prose, not one verse per line.** `WordHighlighter` takes `layout="inline"` so several
   verses share a `<p>`, with superscript verse numbers. The "currently reading" tint uses the
@@ -226,9 +231,16 @@ Named `ReadingList`, not "reading": `reading`, `ReadingGroup` and `ReadingHost` 
 
 **Where it lives in the UI.** Not a nav tab — the entry point is the book picker in the Chat
 and Read headers (`BookChapterPicker`, `showReadingLists`), which is where "what should I
-read" is already asked. It drills lists → passages; picking one reads it aloud in chat, or
-jumps the page on `/read`. `/lists` and `/lists/:id` are the full-screen index and editor
-(mirroring `/cards/:id`), reached from that sheet.
+read" is already asked.
+
+That sheet **locks into** the selected list: while one is selected it lists that list's
+passages, grouped by day, *instead of* the Old/New Testament book columns — the list is the
+only thing you can be choosing from, which is the point of having chosen it. The selection row
+carries its own controls, because with the books hidden there is no longer a chapter tap to
+imply "I've left the list": a pencil opens that list's editor, and an `×` clears the selection
+so the books come back. Day headings are suppressed for a plain list (one untitled day) —
+"Day 1" over a collection of favourite psalms would invent a structure the user didn't ask
+for. `/lists` and `/lists/:id` are the full-screen index and editor (mirroring `/cards/:id`).
 
 **Entries are typed or picked.** `parseReadingEntryLine` accepts the card editor's syntax
 (`Passage; [Translation]; [Note]`) plus the two shapes a plan needs — a bare book name and a
