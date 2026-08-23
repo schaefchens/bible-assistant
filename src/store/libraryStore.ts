@@ -497,8 +497,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
  * without which a card deleted offline would be resurrected by the first pull
  * from another device.
  *
- * Orders are pushed unconditionally; api.php's handleOrderSet ignores a stale
- * timestamp, so a local order that predates the server's cannot clobber it.
+ * Orders are pushed whenever one has ever been set; api.php's handleOrderSet
+ * ignores a stale timestamp, so a local order that predates the server's cannot
+ * clobber it.
  */
 async function seedSyncQueue(): Promise<void> {
   const [cardRows, boardRows] = await Promise.all([
@@ -517,8 +518,15 @@ async function seedSyncQueue(): Promise<void> {
   }
   const { cardOrder, cardOrderUpdatedAt, boardOrder, boardOrderUpdatedAt } =
     useLibraryStore.getState();
-  await enqueueOrderSync('cardOrder.set', cardOrder, cardOrderUpdatedAt);
-  await enqueueOrderSync('boardOrder.set', boardOrder, boardOrderUpdatedAt);
+  // An order that has never been set has nothing to say, and pushing it would
+  // create the account purely to record two empty arrays — exactly the eager
+  // account creation the lazy-dir work removed. It syncs with the first card.
+  if (cardOrder.length > 0 || cardOrderUpdatedAt > 0) {
+    await enqueueOrderSync('cardOrder.set', cardOrder, cardOrderUpdatedAt);
+  }
+  if (boardOrder.length > 0 || boardOrderUpdatedAt > 0) {
+    await enqueueOrderSync('boardOrder.set', boardOrder, boardOrderUpdatedAt);
+  }
 }
 
 function stripLocal<T extends { dirty?: number; deleted?: number }>(local: T): Omit<T, 'dirty' | 'deleted'> {

@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import { adoptPassphrase, PASSPHRASE_KEY } from './passphrase';
+import { adoptPassphrase, generatePassphrase, PASSPHRASE_KEY, setPassphrase } from './passphrase';
 import { secureGet, secureSet } from './secureStore';
 
 /** Pre-native localStorage keys. The identity is derived from the mnemonic, so
@@ -9,12 +9,18 @@ const LEGACY_KEYS = ['ba.userId', 'ba.userSecret'];
 
 /**
  * Load the recovery mnemonic into memory before the first render, migrating it
- * out of localStorage on the way.
+ * out of localStorage on the way — and minting one if this is a first run.
  *
- * Must resolve before React mounts: AppShell reads getPassphrase() during
- * render to decide whether to show onboarding, so hydrating late would flash
- * the passphrase setup screen at an existing user — and, worse, invite them to
- * generate a second identity over the top of their real one.
+ * Must resolve before React mounts: the identity is required synchronously by
+ * every api.php call (see identity.ts), and hydrating late would let the first
+ * request go out unauthenticated.
+ *
+ * The mnemonic is two things wearing one hat. It is the device's API identity,
+ * needed for the assistant and for TTS even when nothing is stored server-side;
+ * and it is the portable recovery key for server sync. Only the second is worth
+ * a screen, so it is minted silently here and shown when — and only when — the
+ * user turns sync on. The app used to open on "create an account", which made a
+ * fully-offline reader feel like it needed a server before it would read.
  */
 export async function hydrateIdentity(): Promise<void> {
   let mnemonic: string | null = null;
@@ -54,5 +60,19 @@ export async function hydrateIdentity(): Promise<void> {
     }
   }
 
-  if (mnemonic) adoptPassphrase(mnemonic);
+  if (mnemonic) {
+    adoptPassphrase(mnemonic);
+    return;
+  }
+
+  // First run. setPassphrase() populates the in-memory caches before it awaits
+  // durable storage, so even a failed write leaves this session usable — and
+  // nothing is lost by it, because a mnemonic that has never been used for sync
+  // has nothing to recover. The next launch simply mints another.
+  const fresh = generatePassphrase();
+  try {
+    await setPassphrase(fresh);
+  } catch {
+    adoptPassphrase(fresh);
+  }
 }

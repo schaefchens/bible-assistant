@@ -304,13 +304,9 @@
     "bannerAvailable": "New version available — tap to reload"
   },
   "onboarding": {
-    "welcomeSubtitle": "Set up your account to start.",
-    "createNew": "Create new account",
-    "haveExisting": "I have a passphrase",
     "writeItDown": "Write this down",
     "writeItDownHint": "These 12 words are the only way to recover your library on another device. Keep them somewhere safe — anyone with these words can access your account.",
     "confirmedWrittenDown": "I've written these words down somewhere safe.",
-    "continue": "Continue",
     "activate": "Activate",
     "recoverTitle": "Enter your passphrase",
     "recoverHint": "Type or paste your 12 words separated by spaces.",
@@ -320,6 +316,12 @@
       "back": "Back",
       "continue": "Continue",
       "done": "Done",
+      "welcome": {
+        "subtitle": "Read and listen to the Bible — on your phone, wherever you are.",
+        "offline": "Works offline. No account needed.",
+        "start": "Get started",
+        "restore": "I already have a recovery passphrase"
+      },
       "language": {
         "title": "Which language?",
         "subtitle": "Choose the language for menus and the assistant."
@@ -327,17 +329,6 @@
       "translation": {
         "title": "Pick a Bible translation",
         "subtitle": "You can change it any time from Settings."
-      },
-      "music": {
-        "title": "Music while you read?",
-        "subtitle": "A soft instrumental can play under the reading voice.",
-        "enable": "Play music while reading verses",
-        "pickTrack": "Music track",
-        "pickTrackPlaceholder": "— Pick a track —",
-        "loadingTracks": "Loading tracks…",
-        "noTracks": "No tracks available",
-        "preview": "Preview",
-        "stop": "Stop"
       },
       "announcements": {
         "title": "What should be read out loud?",
@@ -368,6 +359,18 @@
         "preview": "Preview",
         "stop": "Stop",
         "previewText": "And God said, let there be light."
+      },
+      "sync": {
+        "title": "Sync & backup?",
+        "subtitle": "Optional. Everything works without it.",
+        "body": "Your cards and boards stay on this device. Turn on sync to use them on another device and to get them back if you lose this one.",
+        "setUp": "Set up sync & backup",
+        "turnOn": "Turn on sync",
+        "working": "Setting up…",
+        "failed": "That did not work. You can try again later in Settings.",
+        "on": "Sync is on",
+        "onHint": "Your library will be mirrored to the server. You can switch this off in Settings at any time.",
+        "later": "You can also turn this on later in Settings."
       }
     }
   },

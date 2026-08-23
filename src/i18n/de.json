@@ -304,13 +304,9 @@
     "bannerAvailable": "Neue Version verfügbar — tippen zum Neuladen"
   },
   "onboarding": {
-    "welcomeSubtitle": "Richte dein Konto ein, um loszulegen.",
-    "createNew": "Neues Konto erstellen",
-    "haveExisting": "Ich habe eine Passphrase",
     "writeItDown": "Notiere dir das",
     "writeItDownHint": "Diese 12 Wörter sind die einzige Möglichkeit, deine Bibliothek auf einem anderen Gerät wiederherzustellen. Bewahre sie sicher auf — wer diese Wörter hat, hat Zugriff auf dein Konto.",
     "confirmedWrittenDown": "Ich habe diese Wörter sicher aufgeschrieben.",
-    "continue": "Weiter",
     "activate": "Aktivieren",
     "recoverTitle": "Gib deine Passphrase ein",
     "recoverHint": "Tippe oder füge deine 12 Wörter, durch Leerzeichen getrennt, ein.",
@@ -320,6 +316,12 @@
       "back": "Zurück",
       "continue": "Weiter",
       "done": "Fertig",
+      "welcome": {
+        "subtitle": "Die Bibel lesen und hören — auf dem Handy, wo du gerade bist.",
+        "offline": "Funktioniert offline. Kein Konto nötig.",
+        "start": "Los geht’s",
+        "restore": "Ich habe schon eine Wiederherstellungs-Passphrase"
+      },
       "language": {
         "title": "Welche Sprache?",
         "subtitle": "Wähle die Sprache für Menüs und Assistent."
@@ -327,17 +329,6 @@
       "translation": {
         "title": "Wähle eine Bibelübersetzung",
         "subtitle": "Du kannst sie jederzeit in den Einstellungen ändern."
-      },
-      "music": {
-        "title": "Musik beim Lesen?",
-        "subtitle": "Eine leise Hintergrundmusik kann unter der Lesestimme spielen.",
-        "enable": "Musik beim Lesen abspielen",
-        "pickTrack": "Musiktitel",
-        "pickTrackPlaceholder": "— Titel wählen —",
-        "loadingTracks": "Titel werden geladen…",
-        "noTracks": "Keine Titel verfügbar",
-        "preview": "Vorhören",
-        "stop": "Stopp"
       },
       "announcements": {
         "title": "Was soll vorgelesen werden?",
@@ -368,6 +359,18 @@
         "preview": "Vorhören",
         "stop": "Stopp",
         "previewText": "Und Gott sprach: Es werde Licht."
+      },
+      "sync": {
+        "title": "Synchronisieren & sichern?",
+        "subtitle": "Optional. Alles funktioniert auch ohne.",
+        "body": "Deine Karten und Tafeln bleiben auf diesem Gerät. Schalte die Synchronisation ein, um sie auf einem anderen Gerät zu nutzen und nach einem Geräteverlust zurückzuholen.",
+        "setUp": "Synchronisation einrichten",
+        "turnOn": "Synchronisation einschalten",
+        "working": "Wird eingerichtet…",
+        "failed": "Das hat nicht funktioniert. Du kannst es später in den Einstellungen erneut versuchen.",
+        "on": "Synchronisation ist aktiv",
+        "onHint": "Deine Bibliothek wird auf dem Server gespiegelt. Du kannst das jederzeit in den Einstellungen abschalten.",
+        "later": "Du kannst das auch später in den Einstellungen einschalten."
       }
     }
   },
