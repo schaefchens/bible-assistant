@@ -58,7 +58,7 @@ export function BoardGrid({ cards, onOpen, onReorder, onRemove, emptyLabel }: Pr
   );
 
   if (cards.length === 0) {
-    return <p className="text-cream-dim italic px-4 py-6">{emptyLabel ?? '—'}</p>;
+    return <p className="text-ink-muted italic px-4 py-6">{emptyLabel ?? '—'}</p>;
   }
 
   const toggleFlip = (id: string) => {
@@ -195,7 +195,7 @@ function BoardCell({
               e.stopPropagation();
               onRemoveClick();
             }}
-            className="rounded-full bg-black/40 hover:bg-black/60 text-cream text-xs w-7 h-7 inline-flex items-center justify-center backdrop-blur-sm"
+            className="rounded-full bg-black/40 hover:bg-black/60 text-ink text-xs w-7 h-7 inline-flex items-center justify-center backdrop-blur-sm"
             aria-label={removeLabel}
           >
             ✕

@@ -40,7 +40,7 @@ export function ThinkingIndicator() {
   }
 
   return (
-    <div className="px-4 py-2 flex items-center gap-2 text-cream-dim text-sm italic">
+    <div className="px-4 py-2 flex items-center gap-2 text-ink-muted text-sm italic">
       <span className="inline-flex gap-1" aria-hidden>
         <Dot delay="0ms" />
         <Dot delay="160ms" />
@@ -54,7 +54,7 @@ export function ThinkingIndicator() {
 function Dot({ delay }: { delay: string }) {
   return (
     <span
-      className="w-1.5 h-1.5 rounded-full bg-gold/70 animate-pulse-soft"
+      className="w-1.5 h-1.5 rounded-full bg-brand/70 animate-pulse-soft"
       style={{ animationDelay: delay }}
     />
   );

@@ -162,7 +162,7 @@ export function CardStack({
   }, [cards, raisedId, onEdit, onDelete]);
 
   if (cards.length === 0) {
-    return <p className="text-cream-dim italic px-4 py-6">{emptyLabel ?? '—'}</p>;
+    return <p className="text-ink-muted italic px-4 py-6">{emptyLabel ?? '—'}</p>;
   }
 
   const lastIdx = cards.length - 1;
@@ -394,7 +394,7 @@ function CardStackItem({
               e.stopPropagation();
               onFlip();
             }}
-            className="rounded-full bg-black/50 hover:bg-black/70 text-cream text-xs px-2.5 py-1"
+            className="rounded-full bg-black/50 hover:bg-black/70 text-ink text-xs px-2.5 py-1"
           >
             {flipLabel}
           </button>
@@ -405,7 +405,7 @@ function CardStackItem({
               e.stopPropagation();
               onEditClick();
             }}
-            className="rounded-full bg-black/50 hover:bg-black/70 text-cream text-xs px-2.5 py-1"
+            className="rounded-full bg-black/50 hover:bg-black/70 text-ink text-xs px-2.5 py-1"
             aria-label={editLabel}
           >
             ✎

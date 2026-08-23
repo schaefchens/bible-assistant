@@ -11,9 +11,9 @@ export function UpdateBanner() {
     <button
       type="button"
       onClick={() => void applyUpdate()}
-      className="w-full px-4 py-2 text-sm bg-gold/15 text-gold hover:bg-gold/25 transition-colors border-b border-gold/30 flex items-center justify-center gap-2"
+      className="w-full px-4 py-2 text-sm bg-brand/15 text-brand hover:bg-brand/25 transition-colors border-b border-brand/30 flex items-center justify-center gap-2"
     >
-      <span className="inline-block h-2 w-2 rounded-full bg-gold animate-pulse" />
+      <span className="inline-block h-2 w-2 rounded-full bg-brand animate-pulse" />
       {t('updates.bannerAvailable')}
     </button>
   );

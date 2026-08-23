@@ -29,7 +29,7 @@ export function PlaybackSettingsForm() {
 function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="text-xs uppercase tracking-wide text-gold-dim mb-2">{title}</h3>
+      <h3 className="text-xs uppercase tracking-wide text-brand-muted mb-2">{title}</h3>
       {children}
     </div>
   );
@@ -83,7 +83,7 @@ function MusicSettings() {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-cream-dim">{t('settings.ambient.hint')}</p>
+      <p className="text-xs text-ink-muted">{t('settings.ambient.hint')}</p>
 
       <label className="flex items-center gap-2">
         <input
@@ -95,7 +95,7 @@ function MusicSettings() {
       </label>
 
       <div>
-        <label className="block text-xs text-cream-dim mb-1">
+        <label className="block text-xs text-ink-muted mb-1">
           {t('settings.ambient.track')}
         </label>
         <div className="flex gap-2">
@@ -103,7 +103,7 @@ function MusicSettings() {
             value={ambient.trackId ?? ''}
             onChange={(e) => setAmbient({ trackId: e.target.value || null })}
             disabled={tracks === null}
-            className="flex-1 bg-navy-soft text-cream rounded-xl px-3 py-2 disabled:opacity-50"
+            className="flex-1 bg-surface-raised text-ink rounded-xl px-3 py-2 disabled:opacity-50"
           >
             <option value="">
               {tracks === null
@@ -179,7 +179,7 @@ function ReadingSettings() {
         />
         <span className="text-sm">
           {t('settings.autoPlay')}
-          <span className="block text-xs text-cream-dim mt-0.5">
+          <span className="block text-xs text-ink-muted mt-0.5">
             {t('settings.autoPlayHint')}
           </span>
         </span>
@@ -194,7 +194,7 @@ function ReadingSettings() {
         />
         <span className="text-sm">
           {t('settings.autoScroll')}
-          <span className="block text-xs text-cream-dim mt-0.5">
+          <span className="block text-xs text-ink-muted mt-0.5">
             {t('settings.autoScrollHint')}
           </span>
         </span>
@@ -209,7 +209,7 @@ function ReadingSettings() {
         />
         <span className="text-sm">
           {t('settings.reader.endlessScroll')}
-          <span className="block text-xs text-cream-dim mt-0.5">
+          <span className="block text-xs text-ink-muted mt-0.5">
             {t('settings.reader.endlessScrollHint')}
           </span>
         </span>
@@ -228,10 +228,10 @@ function ReadingSettings() {
       </label>
 
       <div>
-        <label className="block text-xs text-cream-dim mb-1">
+        <label className="block text-xs text-ink-muted mb-1">
           {t('chat.reader.rate')}
         </label>
-        <div className="grid grid-cols-4 bg-navy-soft rounded-xl p-1">
+        <div className="grid grid-cols-4 bg-surface-raised rounded-xl p-1">
           {RATE_CYCLE.map((r) => (
             <button
               key={r}
@@ -243,8 +243,8 @@ function ReadingSettings() {
               className={
                 'py-2 text-sm rounded-lg transition-colors font-mono ' +
                 (rate === r
-                  ? 'bg-gold text-navy'
-                  : 'text-cream-dim hover:text-cream')
+                  ? 'bg-brand text-on-brand'
+                  : 'text-ink-muted hover:text-ink')
               }
             >
               {r.toFixed(2)}×
@@ -290,7 +290,7 @@ function AnnouncementsSettings() {
 
       {readVerseNumbers && (
         <div className="pl-6">
-          <div className="grid grid-cols-2 bg-navy-soft rounded-xl p-1">
+          <div className="grid grid-cols-2 bg-surface-raised rounded-xl p-1">
             {(['spoken', 'plain'] as const).map((style) => (
               <button
                 key={style}
@@ -304,8 +304,8 @@ function AnnouncementsSettings() {
                 className={
                   'py-2 text-sm rounded-lg transition-colors ' +
                   (verseNumberStyle === style
-                    ? 'bg-gold text-navy'
-                    : 'text-cream-dim hover:text-cream')
+                    ? 'bg-brand text-on-brand'
+                    : 'text-ink-muted hover:text-ink')
                 }
               >
                 {style === 'spoken'
@@ -344,7 +344,7 @@ function VolumeSlider({
 }) {
   return (
     <div>
-      <label className="flex items-center justify-between text-xs text-cream-dim mb-1">
+      <label className="flex items-center justify-between text-xs text-ink-muted mb-1">
         <span>{label}</span>
         <span className="font-mono tabular-nums">{Math.round(value * 100)}%</span>
       </label>
@@ -355,7 +355,7 @@ function VolumeSlider({
         step={0.01}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-gold"
+        className="w-full accent-brand"
       />
     </div>
   );

@@ -2,8 +2,8 @@
 export function StepHeading({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div className="mb-8 text-center">
-      <h2 className="text-2xl font-serif text-gold mb-2">{title}</h2>
-      <p className="text-sm text-cream-dim">{subtitle}</p>
+      <h2 className="text-2xl font-serif text-brand mb-2">{title}</h2>
+      <p className="text-sm text-ink-muted">{subtitle}</p>
     </div>
   );
 }

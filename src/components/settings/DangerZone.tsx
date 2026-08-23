@@ -27,7 +27,7 @@ export function DangerZone() {
 
   return (
     <div className="space-y-2">
-      <p className="text-xs text-cream-dim">{t('settings.dangerZone.hint')}</p>
+      <p className="text-xs text-ink-muted">{t('settings.dangerZone.hint')}</p>
       <button
         type="button"
         onClick={onClick}

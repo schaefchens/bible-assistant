@@ -32,8 +32,8 @@ export function ChapterUnavailableCard({ error, onRetry, onPickTranslation }: Pr
   const translationName = getTranslationInfo(error.translation).name;
 
   return (
-    <div className="my-4 rounded-2xl border border-gold/25 bg-navy-soft/30 px-4 py-4">
-      <p className="font-serif text-cream/90">
+    <div className="my-4 rounded-2xl border border-brand/25 bg-surface-raised/30 px-4 py-4">
+      <p className="font-serif text-ink/90">
         {error.kind === 'unavailable'
           ? t('read.unavailable', { translation: translationName, reference })
           : t('read.failed', { reference })}
@@ -41,7 +41,7 @@ export function ChapterUnavailableCard({ error, onRetry, onPickTranslation }: Pr
 
       {error.kind === 'unavailable' && (
         <>
-          <p className="mt-1 text-sm text-cream-dim">{t('read.unavailableHint')}</p>
+          <p className="mt-1 text-sm text-ink-muted">{t('read.unavailableHint')}</p>
           <div className="mt-3">
             <PackActionButton code={error.translation} />
           </div>
@@ -55,14 +55,14 @@ export function ChapterUnavailableCard({ error, onRetry, onPickTranslation }: Pr
             clearError();
             onRetry();
           }}
-          className="h-9 px-3 text-sm rounded-xl border border-gold/30 text-gold hover:bg-gold/10 active:scale-[0.98] transition-all"
+          className="h-9 px-3 text-sm rounded-xl border border-brand/30 text-brand hover:bg-brand/10 active:scale-[0.98] transition-all"
         >
           {t('read.retry')}
         </button>
         <button
           type="button"
           onClick={onPickTranslation}
-          className="h-9 px-3 text-sm rounded-xl border border-navy-soft text-cream-dim hover:text-cream hover:border-gold/30 active:scale-[0.98] transition-all"
+          className="h-9 px-3 text-sm rounded-xl border border-surface-raised text-ink-muted hover:text-ink hover:border-brand/30 active:scale-[0.98] transition-all"
         >
           {t('read.switchTranslation')}
         </button>

@@ -47,21 +47,21 @@ export function SyncStep() {
 
       {syncEnabled ? (
         <div className="space-y-2">
-          <p className="text-sm text-gold">✓ {t('onboarding.wizard.sync.on')}</p>
-          <p className="text-xs text-cream-dim">{t('onboarding.wizard.sync.onHint')}</p>
+          <p className="text-sm text-brand">✓ {t('onboarding.wizard.sync.on')}</p>
+          <p className="text-xs text-ink-muted">{t('onboarding.wizard.sync.onHint')}</p>
         </div>
       ) : !revealed ? (
         <div className="space-y-4">
-          <p className="text-sm text-cream-dim">{t('onboarding.wizard.sync.body')}</p>
+          <p className="text-sm text-ink-muted">{t('onboarding.wizard.sync.body')}</p>
           <button type="button" className="btn-ghost px-4 py-2 text-sm" onClick={() => setRevealed(true)}>
             {t('onboarding.wizard.sync.setUp')}
           </button>
-          <p className="text-xs text-cream-dim/70">{t('onboarding.wizard.sync.later')}</p>
+          <p className="text-xs text-ink-muted/70">{t('onboarding.wizard.sync.later')}</p>
         </div>
       ) : (
         <div className="flex flex-col">
-          <h3 className="text-sm font-serif text-gold mb-1">{t('onboarding.writeItDown')}</h3>
-          <p className="text-xs text-cream-dim mb-4">{t('onboarding.writeItDownHint')}</p>
+          <h3 className="text-sm font-serif text-brand mb-1">{t('onboarding.writeItDown')}</h3>
+          <p className="text-xs text-ink-muted mb-4">{t('onboarding.writeItDownHint')}</p>
 
           <PassphraseWords mnemonic={mnemonic} />
 

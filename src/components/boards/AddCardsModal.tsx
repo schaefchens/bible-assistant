@@ -52,11 +52,11 @@ export function AddCardsModal({
       onClick={onClose}
     >
       <div
-        className="bg-navy-soft rounded-2xl shadow-2xl border border-navy-soft/70 p-3 w-full max-w-md max-h-[80vh] flex flex-col"
+        className="bg-surface-raised rounded-2xl shadow-2xl border border-surface-raised/70 p-3 w-full max-w-md max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-1 pb-2">
-          <span className="text-base text-gold font-serif">{t('boards.addCards')}</span>
+          <span className="text-base text-brand font-serif">{t('boards.addCards')}</span>
           <button className="btn-ghost text-sm" onClick={onClose}>
             {t('boards.done')}
           </button>
@@ -72,9 +72,9 @@ export function AddCardsModal({
           </div>
         )}
         {candidates.length === 0 ? (
-          <p className="text-cream-dim italic px-2 py-6 text-sm text-center">{emptyLabel}</p>
+          <p className="text-ink-muted italic px-2 py-6 text-sm text-center">{emptyLabel}</p>
         ) : visible.length === 0 ? (
-          <p className="text-cream-dim italic px-2 py-6 text-sm text-center">
+          <p className="text-ink-muted italic px-2 py-6 text-sm text-center">
             {t('cards.noTagsMatch')}
           </p>
         ) : (
@@ -83,11 +83,11 @@ export function AddCardsModal({
               <button
                 key={c.id}
                 onClick={() => void onAdd(c)}
-                className="w-full text-left bg-navy/50 rounded-lg p-2 hover:bg-navy"
+                className="w-full text-left bg-surface/50 rounded-lg p-2 hover:bg-surface"
               >
-                <div className="font-serif text-cream text-sm truncate">{c.title || '—'}</div>
+                <div className="font-serif text-ink text-sm truncate">{c.title || '—'}</div>
                 {c.references.length > 0 && (
-                  <div className="text-xs text-gold-dim mt-0.5 truncate">
+                  <div className="text-xs text-brand-muted mt-0.5 truncate">
                     {c.references.map((r) => formatCardReferenceHeading(r, locale)).join(' · ')}
                   </div>
                 )}

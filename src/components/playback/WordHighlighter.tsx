@@ -95,17 +95,17 @@ export function WordHighlighter({
     <Tag
       data-verse-key={`${groupId}:${verseIndex}`}
       className={clsx(
-        'font-serif text-cream scroll-mt-16',
+        'font-serif text-ink scroll-mt-16',
         inline ? 'verse-inline' : 'verse leading-relaxed',
         isCurrent && 'verse-current',
       )}
     >
       {inline ? (
-        <sup className="text-gold-dim text-[0.65em] font-sans mr-0.5 select-none">
+        <sup className="text-brand-muted text-[0.65em] font-sans mr-0.5 select-none">
           {verse.verse}
         </sup>
       ) : (
-        <span className="text-gold-dim text-xs font-sans mr-2 align-baseline">
+        <span className="text-brand-muted text-xs font-sans mr-2 align-baseline">
           {verse.verse}
         </span>
       )}

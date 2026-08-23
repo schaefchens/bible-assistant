@@ -14,7 +14,7 @@ function ProgressRing({ pct }: { pct: number }) {
   const c = 2 * Math.PI * r;
   return (
     <svg viewBox="0 0 24 24" className="h-6 w-6 -rotate-90" aria-hidden="true">
-      <circle cx="12" cy="12" r={r} fill="none" strokeWidth="2.5" className="stroke-navy-soft" />
+      <circle cx="12" cy="12" r={r} fill="none" strokeWidth="2.5" className="stroke-surface-raised" />
       <circle
         cx="12"
         cy="12"
@@ -22,7 +22,7 @@ function ProgressRing({ pct }: { pct: number }) {
         fill="none"
         strokeWidth="2.5"
         strokeLinecap="round"
-        className="stroke-gold"
+        className="stroke-brand"
         strokeDasharray={c}
         strokeDashoffset={c * (1 - pct)}
       />
@@ -64,7 +64,7 @@ export function PackActionButton({ code }: { code: Translation }) {
 
   if (status === 'bundled') {
     return (
-      <span className="shrink-0 self-center text-[10px] uppercase tracking-wide text-gold/70">
+      <span className="shrink-0 self-center text-[10px] uppercase tracking-wide text-brand/70">
         {t('bible.packs.included')}
       </span>
     );
@@ -72,7 +72,7 @@ export function PackActionButton({ code }: { code: Translation }) {
 
   if (status === 'unavailable') {
     return (
-      <span className="shrink-0 self-center text-[10px] uppercase tracking-wide text-cream-dim/50">
+      <span className="shrink-0 self-center text-[10px] uppercase tracking-wide text-ink-muted/50">
         {t('bible.packs.unavailable')}
       </span>
     );
@@ -89,7 +89,7 @@ export function PackActionButton({ code }: { code: Translation }) {
         className="shrink-0 self-center relative grid place-items-center h-8 w-8"
       >
         <ProgressRing pct={pct} />
-        <span className="absolute text-[9px] tabular-nums text-cream-dim">
+        <span className="absolute text-[9px] tabular-nums text-ink-muted">
           {Math.round(pct * 100)}
         </span>
       </button>
@@ -119,7 +119,7 @@ export function PackActionButton({ code }: { code: Translation }) {
     <button
       type="button"
       onClick={swallow(() => void download(code))}
-      className="shrink-0 self-center flex items-center gap-1 rounded-md px-2 py-1 text-[10px] uppercase tracking-wide text-cream-dim hover:text-gold hover:bg-gold/10 transition-colors"
+      className="shrink-0 self-center flex items-center gap-1 rounded-md px-2 py-1 text-[10px] uppercase tracking-wide text-ink-muted hover:text-brand hover:bg-brand/10 transition-colors"
     >
       <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6">
         <path d="M8 2v8m0 0 3-3m-3 3L5 7" strokeLinecap="round" strokeLinejoin="round" />

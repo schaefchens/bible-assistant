@@ -125,7 +125,7 @@ export function ReadPage() {
             type="button"
             onClick={loadPrevious}
             disabled={status === 'loading'}
-            className="w-full mb-4 h-10 rounded-xl border border-gold/25 text-gold text-[12px] sm:text-sm hover:bg-gold/10 active:scale-[0.98] transition-all disabled:opacity-40"
+            className="w-full mb-4 h-10 rounded-xl border border-brand/25 text-brand text-[12px] sm:text-sm hover:bg-brand/10 active:scale-[0.98] transition-all disabled:opacity-40"
           >
             ↑ {t('read.loadPrevious')}
             {previousLabel ? ` · ${previousLabel}` : ''}
@@ -148,7 +148,7 @@ export function ReadPage() {
         )}
 
         {status === 'loading' && visible.length === 0 && (
-          <p className="py-8 text-center text-cream-dim text-sm">{t('read.loading')}</p>
+          <p className="py-8 text-center text-ink-muted text-sm">{t('read.loading')}</p>
         )}
 
         {/* Endless-scroll trigger. Not rendered while an error is showing, so a
@@ -156,7 +156,7 @@ export function ReadPage() {
         {endless && canLoadNext && !error && <div ref={sentinelRef} className="h-px" />}
 
         {endless && !canLoadNext && visible.length > 0 && (
-          <p className="py-6 text-center text-cream-dim text-sm">{t('read.endOfBible')}</p>
+          <p className="py-6 text-center text-ink-muted text-sm">{t('read.endOfBible')}</p>
         )}
       </div>
 

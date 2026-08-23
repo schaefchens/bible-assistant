@@ -40,18 +40,18 @@ export function ImprintFooter() {
   useEffect(() => () => clearTimers(), []);
 
   return (
-    <section className="mt-10 pt-6 border-t border-navy-soft/50 text-center text-xs text-cream-dim">
-      <h3 className="font-serif text-gold/80 text-sm tracking-wide">
+    <section className="mt-10 pt-6 border-t border-surface-raised/50 text-center text-xs text-ink-muted">
+      <h3 className="font-serif text-brand/80 text-sm tracking-wide">
         Impressum
       </h3>
-      <p className="text-[10px] uppercase tracking-widest text-cream-dim/70 mt-0.5">
+      <p className="text-[10px] uppercase tracking-widest text-ink-muted/70 mt-0.5">
         gemäß § 5 TMG
       </p>
 
-      <div className="mt-4 mx-auto max-w-xs rounded-2xl border border-navy-soft/60 bg-navy-soft/30 px-5 py-4 space-y-2">
-        <p className="text-cream-dim/80">Gemacht von:</p>
+      <div className="mt-4 mx-auto max-w-xs rounded-2xl border border-surface-raised/60 bg-surface-raised/30 px-5 py-4 space-y-2">
+        <p className="text-ink-muted/80">Gemacht von:</p>
         {revealed ? (
-          <address className="not-italic leading-relaxed text-cream">
+          <address className="not-italic leading-relaxed text-ink">
             Christoph Scharf
             <br />
             Mühltorstr. 1
@@ -60,7 +60,7 @@ export function ImprintFooter() {
             <br />
             <a
               href="mailto:app.support@schaefchens.de"
-              className="text-gold hover:text-gold/80 break-all"
+              className="text-brand hover:text-brand/80 break-all"
             >
               app.support@schaefchens.de
             </a>
@@ -74,7 +74,7 @@ export function ImprintFooter() {
               onPointerLeave={onPressEnd}
               onPointerCancel={onPressEnd}
               onContextMenu={(e) => e.preventDefault()}
-              className="text-cream underline decoration-dotted underline-offset-4 hover:text-gold transition-colors select-none"
+              className="text-ink underline decoration-dotted underline-offset-4 hover:text-brand transition-colors select-none"
               style={{ WebkitTouchCallout: 'none' }}
             >
               einem Diener des Herrn
@@ -89,7 +89,7 @@ export function ImprintFooter() {
             )}
           </>
         )}
-        <p className="pt-2 italic text-cream-dim/80 font-serif">
+        <p className="pt-2 italic text-ink-muted/80 font-serif">
           „Mit der Gnade Gottes und Claude"
         </p>
       </div>

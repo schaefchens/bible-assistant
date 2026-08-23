@@ -106,7 +106,7 @@ export function BookChapterPicker({ onPick, trigger }: Props = {}) {
         setSelectedBookId(book.id);
         setView('chapters');
       }}
-      className="w-full text-left px-3 py-2 text-sm leading-snug text-cream hover:bg-gold/10 active:bg-gold/15 transition-colors"
+      className="w-full text-left px-3 py-2 text-sm leading-snug text-ink hover:bg-brand/10 active:bg-brand/15 transition-colors"
     >
       {bookLabel(book)}
     </button>
@@ -134,7 +134,7 @@ export function BookChapterPicker({ onPick, trigger }: Props = {}) {
           aria-label={t('chat.bookPicker.open') as string}
           title={t('chat.bookPicker.open') as string}
           onClick={openSheet}
-          className="text-cream-dim hover:text-cream disabled:opacity-30 px-2 py-1 transition-colors"
+          className="text-ink-muted hover:text-ink disabled:opacity-30 px-2 py-1 transition-colors"
         >
           <BookIcon />
         </button>
@@ -156,7 +156,7 @@ export function BookChapterPicker({ onPick, trigger }: Props = {}) {
             aria-label={headerTitle as string}
             className={clsx(
               'fixed left-0 right-0 bottom-0 z-50',
-              'rounded-t-3xl bg-navy-deep border-t border-gold/30 shadow-2xl',
+              'rounded-t-3xl bg-surface-sunken border-t border-brand/30 shadow-2xl',
               'transition-transform duration-300 ease-out will-change-transform',
               open ? 'translate-y-0' : 'translate-y-full',
             )}
@@ -164,20 +164,20 @@ export function BookChapterPicker({ onPick, trigger }: Props = {}) {
           >
             <div className="flex flex-col" style={{ maxHeight: '85vh' }}>
               <div className="flex flex-col items-center pt-2 pb-1">
-                <div className="h-1.5 w-12 rounded-full bg-cream/20" />
+                <div className="h-1.5 w-12 rounded-full bg-ink/20" />
               </div>
               <div className="flex items-center justify-between px-5 pb-3 gap-2">
                 {view === 'books' ? (
-                  <h2 className="font-serif text-gold text-lg truncate">{headerTitle}</h2>
+                  <h2 className="font-serif text-brand text-lg truncate">{headerTitle}</h2>
                 ) : (
                   <button
                     type="button"
                     onClick={() => setView('books')}
                     aria-label={t('chat.bookPicker.back') as string}
-                    className="text-cream-dim hover:text-cream transition-colors -ml-1 px-1 flex items-center gap-1 min-w-0"
+                    className="text-ink-muted hover:text-ink transition-colors -ml-1 px-1 flex items-center gap-1 min-w-0"
                   >
                     <BackChevron />
-                    <span className="font-serif text-gold text-lg truncate">
+                    <span className="font-serif text-brand text-lg truncate">
                       {headerTitle}
                     </span>
                   </button>
@@ -186,30 +186,30 @@ export function BookChapterPicker({ onPick, trigger }: Props = {}) {
                   type="button"
                   onClick={() => setOpen(false)}
                   aria-label={t('common.close') as string}
-                  className="text-cream-dim hover:text-cream transition-colors text-2xl leading-none px-2 shrink-0"
+                  className="text-ink-muted hover:text-ink transition-colors text-2xl leading-none px-2 shrink-0"
                 >
                   ×
                 </button>
               </div>
 
               {view === 'books' && (
-                <div className="px-5 pb-3 border-b border-navy-soft/40">
+                <div className="px-5 pb-3 border-b border-surface-raised/40">
                   <button
                     type="button"
                     onClick={() => setView('translations')}
                     aria-label={t('chat.bookPicker.changeTranslation') as string}
                     className={clsx(
                       'w-full flex items-center gap-3 rounded-xl px-3 py-2.5',
-                      'bg-navy/60 border border-gold/30 hover:border-gold/60 hover:bg-navy/80',
+                      'bg-surface/60 border border-brand/30 hover:border-brand/60 hover:bg-surface/80',
                       'transition-colors text-left',
                     )}
                   >
-                    <BookIcon className="text-gold shrink-0" />
+                    <BookIcon className="text-brand shrink-0" />
                     <span className="flex-1 min-w-0">
-                      <span className="block font-serif text-gold text-sm leading-tight truncate">
+                      <span className="block font-serif text-brand text-sm leading-tight truncate">
                         {currentTranslation.name}
                       </span>
-                      <span className="block text-xs text-cream-dim/80 mt-0.5">
+                      <span className="block text-xs text-ink-muted/80 mt-0.5">
                         {currentTranslation.year} ·{' '}
                         {currentTranslation.language === 'de'
                           ? t('chat.bookPicker.languageDe')
@@ -225,7 +225,7 @@ export function BookChapterPicker({ onPick, trigger }: Props = {}) {
                       strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      className="text-cream-dim shrink-0"
+                      className="text-ink-muted shrink-0"
                       aria-hidden="true"
                     >
                       <polyline points="9 18 15 12 9 6" />
@@ -236,8 +236,8 @@ export function BookChapterPicker({ onPick, trigger }: Props = {}) {
 
               {view === 'books' && (
                 <div className="flex flex-1 min-h-0 pb-safe">
-                  <div className="w-1/2 flex flex-col border-r border-navy-soft/40">
-                    <h3 className="shrink-0 px-3 pt-2 pb-2 text-xs uppercase tracking-wider text-cream-dim/70 font-serif border-b border-navy-soft/40">
+                  <div className="w-1/2 flex flex-col border-r border-surface-raised/40">
+                    <h3 className="shrink-0 px-3 pt-2 pb-2 text-xs uppercase tracking-wider text-ink-muted/70 font-serif border-b border-surface-raised/40">
                       {t('chat.bookPicker.oldTestament')}
                     </h3>
                     <div className="flex-1 min-h-0 overflow-y-auto py-1">
@@ -245,7 +245,7 @@ export function BookChapterPicker({ onPick, trigger }: Props = {}) {
                     </div>
                   </div>
                   <div className="w-1/2 flex flex-col">
-                    <h3 className="shrink-0 px-3 pt-2 pb-2 text-xs uppercase tracking-wider text-cream-dim/70 font-serif border-b border-navy-soft/40">
+                    <h3 className="shrink-0 px-3 pt-2 pb-2 text-xs uppercase tracking-wider text-ink-muted/70 font-serif border-b border-surface-raised/40">
                       {t('chat.bookPicker.newTestament')}
                     </h3>
                     <div className="flex-1 min-h-0 overflow-y-auto py-1">
@@ -277,9 +277,9 @@ export function BookChapterPicker({ onPick, trigger }: Props = {}) {
                           setOpen(false);
                         }}
                         className={clsx(
-                          'aspect-square rounded-xl bg-navy border border-navy-soft/50',
-                          'text-cream text-sm font-mono',
-                          'hover:bg-gold/10 hover:border-gold/40 active:scale-95',
+                          'aspect-square rounded-xl bg-surface border border-surface-raised/50',
+                          'text-ink text-sm font-mono',
+                          'hover:bg-brand/10 hover:border-brand/40 active:scale-95',
                           'transition-colors',
                           'disabled:opacity-40 disabled:pointer-events-none',
                         )}

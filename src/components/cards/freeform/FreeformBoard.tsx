@@ -470,8 +470,8 @@ export function FreeformBoard({ board, cards, onOpen, onLayoutCommit, editMode }
     <div
       className={
         fullscreen
-          ? 'fixed inset-0 z-50 overflow-hidden bg-navy-deep'
-          : 'flex-1 min-h-0 relative overflow-hidden bg-navy-deep'
+          ? 'fixed inset-0 z-50 overflow-hidden bg-surface-sunken'
+          : 'flex-1 min-h-0 relative overflow-hidden bg-surface-sunken'
       }
     >
       <div

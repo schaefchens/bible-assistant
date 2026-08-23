@@ -329,7 +329,7 @@ function CenteredEmpty({
 }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6 py-16 text-center">
-      <p className="text-cream-dim max-w-xs">{text}</p>
+      <p className="text-ink-muted max-w-xs">{text}</p>
       <button
         onClick={onCta}
         className="btn-primary text-base px-6 py-3 rounded-xl"
@@ -347,7 +347,7 @@ function EmptyState({ onCreate }: { onCreate: (values: BoardValues) => Promise<v
   const submit = () => void onCreate({ name }).then(() => setName(''));
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6 py-16 text-center">
-      <p className="text-cream-dim max-w-xs">{t('boards.noBoards')}</p>
+      <p className="text-ink-muted max-w-xs">{t('boards.noBoards')}</p>
       {creating ? (
         <div className="flex gap-2 w-full max-w-sm">
           <input
@@ -359,7 +359,7 @@ function EmptyState({ onCreate }: { onCreate: (values: BoardValues) => Promise<v
               else if (e.key === 'Escape') setCreating(false);
             }}
             placeholder={t('boards.boardName') as string}
-            className="flex-1 bg-navy rounded-xl px-3 py-2 text-cream outline-none focus:ring-2 focus:ring-gold/60"
+            className="flex-1 bg-surface rounded-xl px-3 py-2 text-ink outline-none focus:ring-2 focus:ring-brand/60"
           />
           <button className="btn-primary text-sm" onClick={submit}>
             {t('boards.save')}

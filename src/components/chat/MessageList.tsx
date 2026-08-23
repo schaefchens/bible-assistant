@@ -90,12 +90,12 @@ export function MessageList({ scrollRef }: Props) {
       className="flex-1 overflow-y-auto px-3 pt-4 pb-20 space-y-3"
     >
       {messages.length === 0 && (
-        <div className="text-center text-cream-dim py-12 px-4">
+        <div className="text-center text-ink-muted py-12 px-4">
           <p className="font-serif italic">{t('chat.empty')}</p>
         </div>
       )}
       {readingOnly && messages.length > 0 && readingCount === 0 && (
-        <div className="text-center text-cream-dim py-12 px-4">
+        <div className="text-center text-ink-muted py-12 px-4">
           <p className="font-serif italic">{t('chat.readingViewEmpty')}</p>
         </div>
       )}

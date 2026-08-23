@@ -39,7 +39,7 @@ export function FreeformHandles({ cardId, scale, onHandlePointerDown }: Props) {
           }}
           onPointerDown={(e) => onHandlePointerDown(e, cardId, h.id)}
         >
-          <span className="w-3.5 h-3.5 rounded-sm bg-gold border border-navy-deep shadow" />
+          <span className="w-3.5 h-3.5 rounded-sm bg-brand border border-surface-sunken shadow" />
         </div>
       ))}
 
@@ -57,7 +57,7 @@ export function FreeformHandles({ cardId, scale, onHandlePointerDown }: Props) {
         aria-label="rotate"
       >
         <span className="w-11 h-11 rounded-full flex items-center justify-center">
-          <span className="w-5 h-5 rounded-full bg-gold border border-navy-deep shadow flex items-center justify-center text-[11px] leading-none text-navy-deep">
+          <span className="w-5 h-5 rounded-full bg-brand border border-surface-sunken shadow flex items-center justify-center text-[11px] leading-none text-on-brand">
             ↻
           </span>
         </span>

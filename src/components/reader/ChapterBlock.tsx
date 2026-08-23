@@ -40,11 +40,11 @@ export const ChapterBlock = memo(function ChapterBlock({ chapter }: Props) {
     <section data-chapter-id={chapter.id} className="pb-16">
       <header className="relative flex items-center justify-center mb-6">
         {/* A rule spanning the column, with the heading punching a gap in it. */}
-        <span aria-hidden className="absolute inset-x-0 top-1/2 h-px bg-gold/20" />
-        <h2 className="chapter-heading relative bg-navy px-5 text-lg">{heading}</h2>
+        <span aria-hidden className="absolute inset-x-0 top-1/2 h-px bg-brand/20" />
+        <h2 className="chapter-heading relative bg-surface px-5 text-lg">{heading}</h2>
         {/* Absolutely positioned so it can't pull the heading off centre. Its own
-            bg-navy opens a matching gap in the rule. */}
-        <span className="absolute right-0 bg-navy pl-3">
+            bg-surface opens a matching gap in the rule. */}
+        <span className="absolute right-0 bg-surface pl-3">
           <button
             type="button"
             aria-label={t('read.playChapter') as string}
@@ -55,14 +55,14 @@ export const ChapterBlock = memo(function ChapterBlock({ chapter }: Props) {
               audioPlayback.ensureContext();
               void startPlaybackForVerses(chapter.id, chapter.verses, 0);
             }}
-            className="h-8 w-8 rounded-full flex items-center justify-center text-gold border border-gold/40 hover:bg-gold/10 active:scale-95 transition-all"
+            className="h-8 w-8 rounded-full flex items-center justify-center text-brand border border-brand/40 hover:bg-brand/10 active:scale-95 transition-all"
           >
             <PlayIcon />
           </button>
         </span>
       </header>
 
-      <div className="font-serif text-cream/95 text-[17px] leading-8 space-y-4">
+      <div className="font-serif text-ink/95 text-[17px] leading-8 space-y-4">
         {paragraphs.map((indices) => (
           <p key={indices[0]}>
             {indices.map((verseIndex, n) => (

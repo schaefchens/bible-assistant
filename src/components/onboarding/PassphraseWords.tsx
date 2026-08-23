@@ -24,11 +24,11 @@ export function PassphraseWords({ mnemonic }: { mnemonic: string }) {
 
   return (
     <>
-      <ol className="grid grid-cols-2 gap-x-3 gap-y-2 bg-navy-soft rounded-xl p-4">
+      <ol className="grid grid-cols-2 gap-x-3 gap-y-2 bg-surface-raised rounded-xl p-4">
         {words.map((w, i) => (
           <li key={i} className="flex items-baseline gap-2 text-sm font-mono">
-            <span className="text-gold-dim text-xs w-6 text-right tabular-nums">{i + 1}.</span>
-            <span className="text-cream">{w}</span>
+            <span className="text-brand-muted text-xs w-6 text-right tabular-nums">{i + 1}.</span>
+            <span className="text-ink">{w}</span>
           </li>
         ))}
       </ol>

@@ -14,7 +14,7 @@ export function MsSlider({
 }) {
   return (
     <div>
-      <label className="flex items-center justify-between text-xs text-cream-dim mb-1">
+      <label className="flex items-center justify-between text-xs text-ink-muted mb-1">
         <span>{label}</span>
         <span className="font-mono tabular-nums">{(value / 1000).toFixed(1)}s</span>
       </label>
@@ -25,7 +25,7 @@ export function MsSlider({
         step={100}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-gold"
+        className="w-full accent-brand"
       />
     </div>
   );

@@ -126,7 +126,7 @@ export function CardEditor({ card, onClose }: Props) {
             onChange={(e) => setEmoji(e.target.value)}
             maxLength={4}
             placeholder="✨"
-            className="w-16 bg-navy-soft rounded-xl px-3 py-2 text-cream text-center text-xl outline-none focus:ring-2 focus:ring-gold/60"
+            className="w-16 bg-surface-raised rounded-xl px-3 py-2 text-ink text-center text-xl outline-none focus:ring-2 focus:ring-brand/60"
           />
         </Field>
         <div className="flex-1">
@@ -134,7 +134,7 @@ export function CardEditor({ card, onClose }: Props) {
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-navy-soft rounded-xl px-3 py-2 text-cream outline-none focus:ring-2 focus:ring-gold/60"
+              className="w-full bg-surface-raised rounded-xl px-3 py-2 text-ink outline-none focus:ring-2 focus:ring-brand/60"
             />
           </Field>
         </div>
@@ -145,10 +145,10 @@ export function CardEditor({ card, onClose }: Props) {
           value={referencesText}
           onChange={(e) => setReferencesText(e.target.value)}
           rows={3}
-          className="w-full bg-navy-soft rounded-xl px-3 py-2 text-cream font-serif outline-none focus:ring-2 focus:ring-gold/60"
+          className="w-full bg-surface-raised rounded-xl px-3 py-2 text-ink font-serif outline-none focus:ring-2 focus:ring-brand/60"
           placeholder={t('cards.versesPlaceholder') as string}
         />
-        <span className="block text-[11px] text-cream-dim mt-1">{t('cards.versesHint')}</span>
+        <span className="block text-[11px] text-ink-muted mt-1">{t('cards.versesHint')}</span>
       </Field>
 
       <Field label={t('cards.notes')}>
@@ -156,7 +156,7 @@ export function CardEditor({ card, onClose }: Props) {
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={4}
-          className="w-full bg-navy-soft rounded-xl px-3 py-2 text-cream outline-none focus:ring-2 focus:ring-gold/60"
+          className="w-full bg-surface-raised rounded-xl px-3 py-2 text-ink outline-none focus:ring-2 focus:ring-brand/60"
         />
       </Field>
 
@@ -176,9 +176,9 @@ export function CardEditor({ card, onClose }: Props) {
                   'w-8 h-8 rounded-full border transition-all',
                   cls.swatch,
                   selected
-                    ? 'border-gold ring-2 ring-gold/60 scale-110'
+                    ? 'border-brand ring-2 ring-brand/60 scale-110'
                     : 'border-black/20 hover:scale-105',
-                  c === 'none' ? 'border-cream-dim/40' : '',
+                  c === 'none' ? 'border-ink-muted/40' : '',
                 ].join(' ')}
               />
             );
@@ -194,11 +194,11 @@ export function CardEditor({ card, onClose }: Props) {
               onClick={() => adjustTextScale(-TEXT_SCALE_STEP)}
               disabled={textScale <= TEXT_SCALE_MIN}
               aria-label={t('cards.textSizeSmaller') as string}
-              className="w-9 h-9 rounded-lg bg-navy-soft text-cream font-serif text-xs inline-flex items-center justify-center disabled:opacity-40 hover:bg-navy"
+              className="w-9 h-9 rounded-lg bg-surface-raised text-ink font-serif text-xs inline-flex items-center justify-center disabled:opacity-40 hover:bg-surface"
             >
               A
             </button>
-            <span className="w-14 text-center text-sm text-cream-dim tabular-nums">
+            <span className="w-14 text-center text-sm text-ink-muted tabular-nums">
               {Math.round(textScale * 100)}%
             </span>
             <button
@@ -206,13 +206,13 @@ export function CardEditor({ card, onClose }: Props) {
               onClick={() => adjustTextScale(TEXT_SCALE_STEP)}
               disabled={textScale >= TEXT_SCALE_MAX}
               aria-label={t('cards.textSizeLarger') as string}
-              className="w-9 h-9 rounded-lg bg-navy-soft text-cream font-serif text-xl inline-flex items-center justify-center disabled:opacity-40 hover:bg-navy"
+              className="w-9 h-9 rounded-lg bg-surface-raised text-ink font-serif text-xl inline-flex items-center justify-center disabled:opacity-40 hover:bg-surface"
             >
               A
             </button>
           </div>
           <span
-            className="flex-1 min-w-0 truncate font-serif text-cream"
+            className="flex-1 min-w-0 truncate font-serif text-ink"
             style={{ fontSize: `${textScale}em` }}
           >
             {title.trim() || (t('cards.cardTitle') as string)}
@@ -235,8 +235,8 @@ export function CardEditor({ card, onClose }: Props) {
                 className={
                   'rounded-full px-3 py-1 text-xs transition-colors ' +
                   (boardIds.includes(b.id)
-                    ? 'bg-gold text-navy'
-                    : 'bg-navy-soft text-cream-dim hover:text-cream')
+                    ? 'bg-brand text-on-brand'
+                    : 'bg-surface-raised text-ink-muted hover:text-ink')
                 }
               >
                 {b.name}
@@ -253,7 +253,7 @@ export function CardEditor({ card, onClose }: Props) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-xs uppercase tracking-wide text-gold-dim mb-1">{label}</span>
+      <span className="block text-xs uppercase tracking-wide text-brand-muted mb-1">{label}</span>
       {children}
     </label>
   );

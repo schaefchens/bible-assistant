@@ -27,9 +27,9 @@ export function KeyFailureBanner() {
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 pointer-events-none flex justify-center px-4 pb-4">
-      <div className="pointer-events-auto max-w-md w-full bg-navy-soft border border-red-500/40 rounded-2xl p-4 shadow-xl">
-        <p className="text-sm text-cream">{t('keyFailure.title')}</p>
-        <p className="text-xs text-cream-dim mt-1">{t('keyFailure.hint')}</p>
+      <div className="pointer-events-auto max-w-md w-full bg-surface-raised border border-red-500/40 rounded-2xl p-4 shadow-xl">
+        <p className="text-sm text-ink">{t('keyFailure.title')}</p>
+        <p className="text-xs text-ink-muted mt-1">{t('keyFailure.hint')}</p>
         <div className="flex gap-2 mt-3">
           <button
             type="button"

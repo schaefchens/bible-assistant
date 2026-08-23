@@ -145,10 +145,10 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
       <article
         onClick={onSelect}
         className={clsx(
-          'card-paper rounded-r-2xl rounded-l-md my-1 px-4 py-3 bg-navy-soft/20',
-          'border-l-2 border-gold/70 transition-all',
-          selected && 'border-l-4 border-gold ring-1 ring-gold/30',
-          isHighlighted && 'ring-2 ring-gold animate-pulse-soft',
+          'card-paper rounded-r-2xl rounded-l-md my-1 px-4 py-3 bg-surface-raised/20',
+          'border-l-2 border-brand/70 transition-all',
+          selected && 'border-l-4 border-brand ring-1 ring-brand/30',
+          isHighlighted && 'ring-2 ring-brand animate-pulse-soft',
         )}
       >
         {runs.map((run, ri) => {
@@ -176,13 +176,13 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
           }
           const isFirstRun = ri === 0;
           return (
-            <div key={`${run.headerKey}-${ri}`} className={ri > 0 ? 'mt-4 pt-4 border-t border-gold/15' : ''}>
+            <div key={`${run.headerKey}-${ri}`} className={ri > 0 ? 'mt-4 pt-4 border-t border-brand/15' : ''}>
               <header className="flex items-baseline justify-between mb-2 gap-2">
-                <h3 className="font-serif text-gold text-lg leading-tight">
+                <h3 className="font-serif text-brand text-lg leading-tight">
                   {headerLabel}
                 </h3>
                 <div className="flex items-baseline gap-2 shrink-0">
-                  <span className="text-[10px] uppercase tracking-wider text-gold-dim">
+                  <span className="text-[10px] uppercase tracking-wider text-brand-muted">
                     {run.translation}
                   </span>
                   {isFirstRun && (
@@ -194,14 +194,14 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
                         setMenuPos({ x: rect.left, y: rect.bottom + 4 });
                       }}
                       aria-label="More"
-                      className="text-cream-dim hover:text-cream transition-colors px-1 -mr-1"
+                      className="text-ink-muted hover:text-ink transition-colors px-1 -mr-1"
                     >
                       <DotsIcon />
                     </button>
                   )}
                 </div>
               </header>
-              <div className="font-serif text-cream/95 leading-7 space-y-1">
+              <div className="font-serif text-ink/95 leading-7 space-y-1">
                 {run.items.map((v) => {
                   const verseIdx = verses.indexOf(v);
                   return (
@@ -231,8 +231,8 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
                 }}
                 disabled={isProcessing}
                 className={clsx(
-                  'flex-1 min-w-0 h-10 px-1 text-[11px] leading-tight sm:text-sm rounded-xl border border-gold/30 text-gold',
-                  'hover:bg-gold/10 active:scale-[0.98] transition-all',
+                  'flex-1 min-w-0 h-10 px-1 text-[11px] leading-tight sm:text-sm rounded-xl border border-brand/30 text-brand',
+                  'hover:bg-brand/10 active:scale-[0.98] transition-all',
                   isProcessing && 'pointer-events-none',
                   isProcessing && pendingAction !== 'prev' && 'opacity-50',
                 )}
@@ -256,8 +256,8 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
                 }}
                 disabled={isProcessing}
                 className={clsx(
-                  'flex-1 min-w-0 h-10 px-1 text-[11px] leading-tight sm:text-sm rounded-xl border border-gold/30 text-gold',
-                  'hover:bg-gold/10 active:scale-[0.98] transition-all',
+                  'flex-1 min-w-0 h-10 px-1 text-[11px] leading-tight sm:text-sm rounded-xl border border-brand/30 text-brand',
+                  'hover:bg-brand/10 active:scale-[0.98] transition-all',
                   isProcessing && 'pointer-events-none',
                   isProcessing && pendingAction !== 'context' && 'opacity-50',
                 )}
@@ -281,8 +281,8 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
                 }}
                 disabled={isProcessing}
                 className={clsx(
-                  'flex-1 min-w-0 h-10 px-1 text-[11px] leading-tight sm:text-sm rounded-xl border border-gold/30 text-gold',
-                  'hover:bg-gold/10 active:scale-[0.98] transition-all',
+                  'flex-1 min-w-0 h-10 px-1 text-[11px] leading-tight sm:text-sm rounded-xl border border-brand/30 text-brand',
+                  'hover:bg-brand/10 active:scale-[0.98] transition-all',
                   isProcessing && 'pointer-events-none',
                   isProcessing && pendingAction !== 'continue' && 'opacity-50',
                 )}
@@ -336,7 +336,7 @@ function LoadingButtonLabel({ text }: { text: string }) {
 function PulseDot({ delay }: { delay: string }) {
   return (
     <span
-      className="w-1.5 h-1.5 rounded-full bg-gold/80 animate-pulse-soft"
+      className="w-1.5 h-1.5 rounded-full bg-brand/80 animate-pulse-soft"
       style={{ animationDelay: delay }}
     />
   );

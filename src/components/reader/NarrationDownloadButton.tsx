@@ -72,7 +72,7 @@ export function NarrationDownloadButton({ translation, bookId, chapter }: Props)
         onClick={() => cancel(target)}
         aria-label={t('read.narration.cancel') as string}
         title={t('read.narration.cancel') as string}
-        className="h-8 w-8 rounded-lg flex items-center justify-center text-gold"
+        className="h-8 w-8 rounded-lg flex items-center justify-center text-brand"
       >
         <ProgressRing pct={pct} />
       </button>
@@ -103,7 +103,7 @@ export function NarrationDownloadButton({ translation, bookId, chapter }: Props)
         }
         className={clsx(
           'h-8 w-8 rounded-lg flex items-center justify-center transition-all active:scale-95',
-          confirmingRemove ? 'text-red-400 bg-red-500/10' : 'text-gold',
+          confirmingRemove ? 'text-red-400 bg-red-500/10' : 'text-brand',
         )}
       >
         {confirmingRemove ? <TrashIcon /> : <CheckIcon />}
@@ -123,7 +123,7 @@ export function NarrationDownloadButton({ translation, bookId, chapter }: Props)
       }
       className={clsx(
         'h-8 w-8 rounded-lg flex items-center justify-center transition-all active:scale-95',
-        status === 'partial' ? 'text-gold-dim hover:text-gold' : 'text-cream-dim hover:text-cream',
+        status === 'partial' ? 'text-brand-muted hover:text-brand' : 'text-ink-muted hover:text-ink',
       )}
     >
       <DownloadIcon />
@@ -137,7 +137,7 @@ function ProgressRing({ pct }: { pct: number }) {
   const c = 2 * Math.PI * r;
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5 -rotate-90" aria-hidden="true">
-      <circle cx="12" cy="12" r={r} fill="none" strokeWidth="2.5" className="stroke-navy-soft" />
+      <circle cx="12" cy="12" r={r} fill="none" strokeWidth="2.5" className="stroke-surface-raised" />
       <circle
         cx="12"
         cy="12"
@@ -145,7 +145,7 @@ function ProgressRing({ pct }: { pct: number }) {
         fill="none"
         strokeWidth="2.5"
         strokeLinecap="round"
-        className="stroke-gold"
+        className="stroke-brand"
         strokeDasharray={c}
         strokeDashoffset={c * (1 - pct)}
       />

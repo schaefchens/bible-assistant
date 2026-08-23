@@ -79,7 +79,7 @@ export function FreeformCardItem({
       {selected && (
         <>
           {/* Selection outline — rotates with the card, ignores pointer events. */}
-          <div className="absolute inset-0 rounded-2xl ring-2 ring-gold pointer-events-none" />
+          <div className="absolute inset-0 rounded-2xl ring-2 ring-brand pointer-events-none" />
           {editMode && (
             <FreeformHandles
               cardId={card.id}

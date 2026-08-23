@@ -13,7 +13,7 @@ export function SegmentedControl<T extends string>({
 }: Props<T>) {
   const colsCls = cols === 3 ? 'grid-cols-3' : 'grid-cols-2';
   return (
-    <div className={`grid ${colsCls} bg-navy-soft rounded-xl p-1`}>
+    <div className={`grid ${colsCls} bg-surface-raised rounded-xl p-1`}>
       {options.map((opt) => (
         <button
           key={opt.value}
@@ -22,7 +22,7 @@ export function SegmentedControl<T extends string>({
           title={opt.title}
           className={
             'py-2 text-sm rounded-lg transition-colors ' +
-            (value === opt.value ? 'bg-gold text-navy' : 'text-cream-dim hover:text-cream')
+            (value === opt.value ? 'bg-brand text-on-brand' : 'text-ink-muted hover:text-ink')
           }
         >
           {opt.label}

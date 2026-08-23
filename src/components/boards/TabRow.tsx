@@ -126,7 +126,7 @@ export function TabRow({
 
   return (
     <div
-      className={`relative border-b-2 ${railBorder}${solidBackdrop ? ' bg-navy' : ''}`}
+      className={`relative border-b-2 ${railBorder}${solidBackdrop ? ' bg-surface' : ''}`}
       ref={wrapperRef}
     >
       <div className="flex items-stretch">
@@ -155,7 +155,7 @@ export function TabRow({
               type="button"
               onClick={() => setMenu('new')}
               aria-label={t('boards.new') as string}
-              className="shrink-0 -mb-[2px] px-3 py-2 text-base leading-none rounded-t-xl border border-b-0 border-navy-soft/70 bg-navy-deep/70 text-cream-dim hover:text-gold hover:bg-navy-soft/70 transition-colors"
+              className="shrink-0 -mb-[2px] px-3 py-2 text-base leading-none rounded-t-xl border border-b-0 border-surface-raised/70 bg-surface-sunken/70 text-ink-muted hover:text-brand hover:bg-surface-raised/70 transition-colors"
             >
               +
             </button>
@@ -168,7 +168,7 @@ export function TabRow({
               onClick={onToggleOrientation}
               aria-label={t('boards.toggleOrientation') as string}
               title={t('boards.toggleOrientation') as string}
-              className="btn-ghost text-cream-dim text-lg leading-none w-9 h-9 inline-flex items-center justify-center"
+              className="btn-ghost text-ink-muted text-lg leading-none w-9 h-9 inline-flex items-center justify-center"
             >
               {orientation === 'landscape' ? '▭' : '▯'}
             </button>
@@ -181,7 +181,7 @@ export function TabRow({
               aria-label={t(editMode ? 'boards.doneEditing' : 'boards.editLayout') as string}
               className={[
                 'text-lg leading-none w-9 h-9 inline-flex items-center justify-center rounded-full transition-colors',
-                editMode ? 'bg-gold/90 text-navy-deep' : 'btn-ghost text-cream-dim',
+                editMode ? 'bg-brand/90 text-on-brand' : 'btn-ghost text-ink-muted',
               ].join(' ')}
             >
               ✎
@@ -201,7 +201,7 @@ export function TabRow({
 
       {menu === 'root' && (
         <div
-          className="absolute right-2 top-full mt-1 z-30 bg-navy-soft rounded-xl shadow-lg border border-navy-soft/70 py-1 w-52"
+          className="absolute right-2 top-full mt-1 z-30 bg-surface-raised rounded-xl shadow-lg border border-surface-raised/70 py-1 w-52"
           role="menu"
         >
           <MenuItem onClick={() => setMenu('new')}>+ {t('boards.new')}</MenuItem>
@@ -340,10 +340,10 @@ function MenuItem({
       className={[
         'w-full text-left px-3 py-2 text-sm',
         disabled
-          ? 'text-cream-dim/40 cursor-not-allowed'
+          ? 'text-ink-muted/40 cursor-not-allowed'
           : danger
-            ? 'text-red-400 hover:bg-navy'
-            : 'text-cream hover:bg-navy',
+            ? 'text-red-400 hover:bg-surface'
+            : 'text-ink hover:bg-surface',
       ].join(' ')}
     >
       {children}
@@ -369,8 +369,8 @@ function BoardEditor({
   const [background, setBackground] = useState(initial?.background ?? '');
   const submit = () => void onSubmit({ name, emoji, color, background });
   return (
-    <div className="absolute right-2 top-full mt-1 z-30 bg-navy-soft rounded-xl shadow-lg border border-navy-soft/70 p-3 w-80 max-w-[calc(100vw-1rem)] space-y-3">
-      <div className="text-xs uppercase tracking-wider text-cream-dim">{title}</div>
+    <div className="absolute right-2 top-full mt-1 z-30 bg-surface-raised rounded-xl shadow-lg border border-surface-raised/70 p-3 w-80 max-w-[calc(100vw-1rem)] space-y-3">
+      <div className="text-xs uppercase tracking-wider text-ink-muted">{title}</div>
       <div className="flex gap-2">
         <input
           value={emoji}
@@ -382,7 +382,7 @@ function BoardEditor({
           maxLength={4}
           placeholder="✨"
           aria-label={t('boards.emoji') as string}
-          className="w-14 bg-navy rounded-lg px-2 py-1.5 text-cream text-center text-xl outline-none focus:ring-2 focus:ring-gold/60"
+          className="w-14 bg-surface rounded-lg px-2 py-1.5 text-ink text-center text-xl outline-none focus:ring-2 focus:ring-brand/60"
         />
         <input
           autoFocus
@@ -393,11 +393,11 @@ function BoardEditor({
             else if (e.key === 'Escape') onCancel();
           }}
           placeholder={t('boards.boardName') as string}
-          className="flex-1 bg-navy rounded-lg px-3 py-1.5 text-cream outline-none focus:ring-2 focus:ring-gold/60 text-sm"
+          className="flex-1 bg-surface rounded-lg px-3 py-1.5 text-ink outline-none focus:ring-2 focus:ring-brand/60 text-sm"
         />
       </div>
       <div>
-        <div className="text-xs text-cream-dim mb-1.5">{t('boards.color')}</div>
+        <div className="text-xs text-ink-muted mb-1.5">{t('boards.color')}</div>
         <div className="flex flex-wrap gap-2">
           {CARD_COLORS.map((c) => {
             const cls = colorClasses(c);
@@ -413,9 +413,9 @@ function BoardEditor({
                   'w-7 h-7 rounded-full border transition-all',
                   cls.swatch,
                   selected
-                    ? 'border-gold ring-2 ring-gold/60 scale-110'
+                    ? 'border-brand ring-2 ring-brand/60 scale-110'
                     : 'border-black/20 hover:scale-105',
-                  c === 'none' ? 'border-cream-dim/40' : '',
+                  c === 'none' ? 'border-ink-muted/40' : '',
                 ].join(' ')}
               />
             );
@@ -423,7 +423,7 @@ function BoardEditor({
         </div>
       </div>
       <div>
-        <div className="text-xs text-cream-dim mb-1.5">{t('boards.background')}</div>
+        <div className="text-xs text-ink-muted mb-1.5">{t('boards.background')}</div>
         <div className="flex gap-2">
           <input
             type="url"
@@ -437,7 +437,7 @@ function BoardEditor({
             }}
             placeholder="https://…"
             aria-label={t('boards.background') as string}
-            className="flex-1 min-w-0 bg-navy rounded-lg px-3 py-1.5 text-cream outline-none focus:ring-2 focus:ring-gold/60 text-sm"
+            className="flex-1 min-w-0 bg-surface rounded-lg px-3 py-1.5 text-ink outline-none focus:ring-2 focus:ring-brand/60 text-sm"
           />
           {background.trim() !== '' && (
             <button
@@ -482,6 +482,6 @@ function railBorderClass(color?: CardColor): string {
       return 'border-card-sky-bg';
     case 'none':
     default:
-      return 'border-gold/60';
+      return 'border-brand/60';
   }
 }

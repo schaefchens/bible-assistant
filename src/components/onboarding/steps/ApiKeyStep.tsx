@@ -37,9 +37,9 @@ export function ApiKeyStep() {
         subtitle={t('onboarding.wizard.apiKey.subtitle')}
       />
       {hasKey ? (
-        <div className="flex items-center justify-between gap-2 bg-navy-soft rounded-xl px-4 py-3">
-          <span className="font-mono text-sm text-cream">{masked ?? '••••••'}</span>
-          <span className="text-xs text-gold">✓ {t('onboarding.wizard.apiKey.saved')}</span>
+        <div className="flex items-center justify-between gap-2 bg-surface-raised rounded-xl px-4 py-3">
+          <span className="font-mono text-sm text-ink">{masked ?? '••••••'}</span>
+          <span className="text-xs text-brand">✓ {t('onboarding.wizard.apiKey.saved')}</span>
         </div>
       ) : (
         <div className="flex gap-2">
@@ -49,7 +49,7 @@ export function ApiKeyStep() {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={t('onboarding.wizard.apiKey.placeholder')}
-            className="flex-1 bg-navy-soft text-cream rounded-xl px-3 py-2 font-mono text-sm"
+            className="flex-1 bg-surface-raised text-ink rounded-xl px-3 py-2 font-mono text-sm"
           />
           <button
             type="button"

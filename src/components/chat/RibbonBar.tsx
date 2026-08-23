@@ -55,7 +55,7 @@ export function RibbonBar() {
   const lang: 'en' | 'de' = (i18n.language || 'en').startsWith('de') ? 'de' : 'en';
 
   return (
-    <div className="flex gap-2 overflow-x-auto no-scrollbar px-3 py-1.5 border-b border-navy-soft/40 bg-navy/60">
+    <div className="flex gap-2 overflow-x-auto no-scrollbar px-3 py-1.5 border-b border-surface-raised/40 bg-surface/60">
       {set.map((color) => {
         const r = slots[color] as Ribbon;
         const cls = RIBBON_CLASSES[color];
@@ -71,7 +71,7 @@ export function RibbonBar() {
             aria-label={t('chat.ribbon.resume', { color })}
             className={clsx(
               'shrink-0 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs',
-              'text-cream transition-colors active:scale-95',
+              'text-ink transition-colors active:scale-95',
               'disabled:opacity-40 disabled:pointer-events-none',
               cls.border,
               cls.tint,

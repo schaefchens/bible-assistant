@@ -15,7 +15,7 @@ export function AnnouncementsStep() {
         subtitle={t('onboarding.wizard.announcements.subtitle')}
       />
       <div className="space-y-3">
-        <label className="flex items-center gap-3 bg-navy-soft rounded-xl px-4 py-3 cursor-pointer">
+        <label className="flex items-center gap-3 bg-surface-raised rounded-xl px-4 py-3 cursor-pointer">
           <input
             type="checkbox"
             checked={readChapterHeadings}
@@ -23,7 +23,7 @@ export function AnnouncementsStep() {
           />
           <span className="text-sm">{t('onboarding.wizard.announcements.heading')}</span>
         </label>
-        <label className="flex items-center gap-3 bg-navy-soft rounded-xl px-4 py-3 cursor-pointer">
+        <label className="flex items-center gap-3 bg-surface-raised rounded-xl px-4 py-3 cursor-pointer">
           <input
             type="checkbox"
             checked={readVerseNumbers}

@@ -36,7 +36,7 @@ export function ReaderFooter({ onStep }: Props) {
   return (
     <nav
       ref={barRef}
-      className="flex items-stretch gap-2 px-3 py-2 border-t border-navy-soft/50 bg-navy/90 backdrop-blur"
+      className="flex items-stretch gap-2 px-3 py-2 border-t border-surface-raised/50 bg-surface/90 backdrop-blur"
     >
       <StepButton
         disabled={!prev || loading}
@@ -68,9 +68,9 @@ function StepButton({
       disabled={disabled}
       onClick={onClick}
       className={clsx(
-        'flex-1 min-w-0 h-10 px-2 rounded-xl border border-gold/30 text-gold',
+        'flex-1 min-w-0 h-10 px-2 rounded-xl border border-brand/30 text-brand',
         'text-[12px] sm:text-sm truncate',
-        'hover:bg-gold/10 active:scale-[0.98] transition-all',
+        'hover:bg-brand/10 active:scale-[0.98] transition-all',
         'disabled:opacity-35 disabled:pointer-events-none',
       )}
       {...rest}

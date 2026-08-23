@@ -59,7 +59,7 @@ function VoiceRow({
 
   return (
     <div>
-      <label className="block text-xs text-cream-dim mb-1">{label}</label>
+      <label className="block text-xs text-ink-muted mb-1">{label}</label>
       <div className="flex gap-2">
         <select
           value={value}
@@ -67,7 +67,7 @@ function VoiceRow({
             stop();
             onChange(e.target.value as VoiceId);
           }}
-          className="flex-1 bg-navy-soft text-cream rounded-xl px-3 py-2"
+          className="flex-1 bg-surface-raised text-ink rounded-xl px-3 py-2"
         >
           <option value="browser">{t('settings.browserVoice')}</option>
           {OPENAI_VOICE_OPTIONS.map((v) => (

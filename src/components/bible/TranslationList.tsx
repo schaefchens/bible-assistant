@@ -61,7 +61,7 @@ export function TranslationList({ value, onChange, className }: Props) {
         className={clsx(
           'w-full transition-colors border-l-2 flex items-start gap-3 pr-3',
           unavailable && 'opacity-50',
-          selected ? 'bg-gold/15 border-gold' : 'hover:bg-gold/5 border-transparent',
+          selected ? 'bg-brand/15 border-brand' : 'hover:bg-brand/5 border-transparent',
         )}
       >
         <button
@@ -85,8 +85,8 @@ export function TranslationList({ value, onChange, className }: Props) {
               'min-w-[3rem] px-2 py-0.5 rounded-md text-xs font-mono tracking-wide',
               'border',
               selected
-                ? 'border-gold/60 text-gold bg-gold/10'
-                : 'border-navy-soft/60 text-cream-dim bg-navy/40',
+                ? 'border-brand/60 text-brand bg-brand/10'
+                : 'border-surface-raised/60 text-ink-muted bg-surface/40',
             )}
           >
             {tr.code}
@@ -95,12 +95,12 @@ export function TranslationList({ value, onChange, className }: Props) {
             <span
               className={clsx(
                 'block font-serif text-sm leading-tight',
-                selected ? 'text-gold' : 'text-cream',
+                selected ? 'text-brand' : 'text-ink',
               )}
             >
               {tr.name}
             </span>
-            <span className="block text-xs text-cream-dim/80 mt-0.5">
+            <span className="block text-xs text-ink-muted/80 mt-0.5">
               {tr.year} · {langLabel} · {tr.blurb[lang]}
             </span>
           </span>
@@ -112,11 +112,11 @@ export function TranslationList({ value, onChange, className }: Props) {
 
   return (
     <div className={className}>
-      <h3 className="px-4 pt-2 pb-1 text-xs uppercase tracking-wider text-cream-dim/70 font-serif">
+      <h3 className="px-4 pt-2 pb-1 text-xs uppercase tracking-wider text-ink-muted/70 font-serif">
         {t('chat.bookPicker.languageEn')}
       </h3>
       {enTrans.map(renderRow)}
-      <h3 className="px-4 pt-4 pb-1 text-xs uppercase tracking-wider text-cream-dim/70 font-serif">
+      <h3 className="px-4 pt-4 pb-1 text-xs uppercase tracking-wider text-ink-muted/70 font-serif">
         {t('chat.bookPicker.languageDe')}
       </h3>
       {deTrans.map(renderRow)}

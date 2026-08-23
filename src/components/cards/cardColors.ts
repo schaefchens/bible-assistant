@@ -86,57 +86,57 @@ export function boardTabClasses(color?: CardColor): BoardTabClasses {
         active:
           'bg-card-yellow-bg text-card-yellow-fg border-card-yellow-bg shadow-[0_-2px_8px_-2px_rgba(212,186,107,0.4)]',
         inactive:
-          'bg-card-yellow-bg/25 text-cream-dim border-card-yellow-bg/40 hover:bg-card-yellow-bg/50 hover:text-card-yellow-fg',
+          'bg-card-yellow-bg/25 text-ink-muted border-card-yellow-bg/40 hover:bg-card-yellow-bg/50 hover:text-card-yellow-fg',
       };
     case 'amber':
       return {
         active:
           'bg-card-amber-bg text-card-amber-fg border-card-amber-bg shadow-[0_-2px_8px_-2px_rgba(207,152,102,0.4)]',
         inactive:
-          'bg-card-amber-bg/25 text-cream-dim border-card-amber-bg/40 hover:bg-card-amber-bg/50 hover:text-card-amber-fg',
+          'bg-card-amber-bg/25 text-ink-muted border-card-amber-bg/40 hover:bg-card-amber-bg/50 hover:text-card-amber-fg',
       };
     case 'coral':
       return {
         active:
           'bg-card-coral-bg text-card-coral-fg border-card-coral-bg shadow-[0_-2px_8px_-2px_rgba(210,138,138,0.4)]',
         inactive:
-          'bg-card-coral-bg/25 text-cream-dim border-card-coral-bg/40 hover:bg-card-coral-bg/50 hover:text-card-coral-fg',
+          'bg-card-coral-bg/25 text-ink-muted border-card-coral-bg/40 hover:bg-card-coral-bg/50 hover:text-card-coral-fg',
       };
     case 'rose':
       return {
         active:
           'bg-card-rose-bg text-card-rose-fg border-card-rose-bg shadow-[0_-2px_8px_-2px_rgba(201,138,175,0.4)]',
         inactive:
-          'bg-card-rose-bg/25 text-cream-dim border-card-rose-bg/40 hover:bg-card-rose-bg/50 hover:text-card-rose-fg',
+          'bg-card-rose-bg/25 text-ink-muted border-card-rose-bg/40 hover:bg-card-rose-bg/50 hover:text-card-rose-fg',
       };
     case 'lavender':
       return {
         active:
           'bg-card-lavender-bg text-card-lavender-fg border-card-lavender-bg shadow-[0_-2px_8px_-2px_rgba(168,157,207,0.4)]',
         inactive:
-          'bg-card-lavender-bg/25 text-cream-dim border-card-lavender-bg/40 hover:bg-card-lavender-bg/50 hover:text-card-lavender-fg',
+          'bg-card-lavender-bg/25 text-ink-muted border-card-lavender-bg/40 hover:bg-card-lavender-bg/50 hover:text-card-lavender-fg',
       };
     case 'sage':
       return {
         active:
           'bg-card-sage-bg text-card-sage-fg border-card-sage-bg shadow-[0_-2px_8px_-2px_rgba(143,178,159,0.4)]',
         inactive:
-          'bg-card-sage-bg/25 text-cream-dim border-card-sage-bg/40 hover:bg-card-sage-bg/50 hover:text-card-sage-fg',
+          'bg-card-sage-bg/25 text-ink-muted border-card-sage-bg/40 hover:bg-card-sage-bg/50 hover:text-card-sage-fg',
       };
     case 'sky':
       return {
         active:
           'bg-card-sky-bg text-card-sky-fg border-card-sky-bg shadow-[0_-2px_8px_-2px_rgba(136,179,216,0.4)]',
         inactive:
-          'bg-card-sky-bg/25 text-cream-dim border-card-sky-bg/40 hover:bg-card-sky-bg/50 hover:text-card-sky-fg',
+          'bg-card-sky-bg/25 text-ink-muted border-card-sky-bg/40 hover:bg-card-sky-bg/50 hover:text-card-sky-fg',
       };
     case 'none':
     default:
       return {
         active:
-          'bg-navy-soft text-gold border-gold/60 shadow-[0_-2px_8px_-2px_rgba(200,169,110,0.25)]',
+          'bg-surface-raised text-brand border-brand/60 shadow-[0_-2px_8px_-2px_rgba(200,169,110,0.25)]',
         inactive:
-          'bg-navy-deep/70 text-cream-dim border-navy-soft/70 hover:bg-navy-soft/70 hover:text-cream',
+          'bg-surface-sunken/70 text-ink-muted border-surface-raised/70 hover:bg-surface-raised/70 hover:text-ink',
       };
   }
 }

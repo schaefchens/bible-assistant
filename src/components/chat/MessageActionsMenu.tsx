@@ -46,7 +46,7 @@ export function MessageActionsMenu({ anchor, items, onClose }: Props) {
     <div
       ref={ref}
       style={{ left: x, top: Math.max(pad, y) }}
-      className="fixed z-50 min-w-[180px] rounded-xl bg-navy-deep border border-navy-soft shadow-xl py-1.5 text-sm"
+      className="fixed z-50 min-w-[180px] rounded-xl bg-surface-sunken border border-surface-raised shadow-xl py-1.5 text-sm"
       onClick={(e) => e.stopPropagation()}
     >
       {items.map((item) => (
@@ -61,7 +61,7 @@ export function MessageActionsMenu({ anchor, items, onClose }: Props) {
             'w-full text-left px-4 py-2 transition-colors',
             item.destructive
               ? 'text-red-400 hover:bg-red-500/10'
-              : 'text-cream hover:bg-navy-soft/60',
+              : 'text-ink hover:bg-surface-raised/60',
           )}
         >
           {item.label}
