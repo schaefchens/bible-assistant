@@ -74,7 +74,7 @@ add_tree() {
 }
 
 # The SPA itself
-for f in index.html manifest.webmanifest sw.js registerSW.js favicon-32.png apple-touch-icon.png; do
+for f in index.html privacy.html manifest.webmanifest sw.js registerSW.js favicon-32.png apple-touch-icon.png; do
   add_file "dist/$f" "$f"
 done
 add_tree dist/icons icons

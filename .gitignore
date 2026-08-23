@@ -28,6 +28,9 @@ android/keystore.properties
 # Server secrets — never commit
 public/secrets.php
 public/storage/
+# Live user dirs pulled off the server for inspection — these contain
+# secret.txt and openai_key.txt for real users.
+backup/
 
 # Local scratch (audio samples, reference Bibles, etc.)
 files/

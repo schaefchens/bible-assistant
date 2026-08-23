@@ -59,10 +59,10 @@ export function ImprintFooter() {
             67245 Lambsheim
             <br />
             <a
-              href="mailto:christoph.scharf+bibleassistant@scharfmedia.de"
+              href="mailto:app.support@schaefchens.de"
               className="text-gold hover:text-gold/80 break-all"
             >
-              christoph.scharf+bibleassistant@scharfmedia.de
+              app.support@schaefchens.de
             </a>
           </address>
         ) : (
