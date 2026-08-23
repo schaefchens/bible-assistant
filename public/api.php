@@ -585,6 +585,24 @@ function sha256ForCache(string $text, string $voiceStyle): string {
     return hash('sha256', $voiceStyle . "\x00" . $text);
 }
 
+/**
+ * Path segment identifying a voiceStyle, or '' for the default.
+ *
+ * Verse audio used to live at {voice}/{translation}/{book}/{chapter}/{verse}.mp3
+ * with the style folded only into the *staleness hash*. Two consequences, both
+ * bad: the server regenerated over the same file whenever two callers used
+ * different styles, and — worse — the client's mediaCache is keyed by URL, so a
+ * style change kept serving the previously cached bytes forever.
+ *
+ * The empty style deliberately keeps the old path. It is the overwhelming
+ * majority of the cache (voiceStyle needs a personal key), and inserting a
+ * segment for it would orphan every file already generated.
+ */
+function voiceStyleSegment(string $voiceStyle): string {
+    if ($voiceStyle === '') return '';
+    return '/style-' . substr(hash('sha256', $voiceStyle), 0, 16);
+}
+
 function cachedAlignmentMatches(string $alignmentFile, string $expectedHash): bool {
     $raw = @file_get_contents($alignmentFile);
     if ($raw === false || $raw === '') return false;
@@ -693,7 +711,12 @@ function handleTts(array $ctx): void {
         fail(400, 'missing tts params');
     }
 
-    $dir = AUDIO_DIR . "/{$voice}/{$translation}/{$bookId}/{$chapter}";
+    // One expression behind both the file path and the URL below, so they can't
+    // drift. NB sha256ForCache() keeps taking $voiceStyle even though the style
+    // is now in the path: changing its inputs would mark every existing file
+    // stale and regenerate the entire cache at OpenAI's prices.
+    $rel = "/{$voice}" . voiceStyleSegment($voiceStyle) . "/{$translation}/{$bookId}/{$chapter}";
+    $dir = AUDIO_DIR . $rel;
     @mkdir($dir, 0775, true);
     $audioFile = "{$dir}/{$verse}.mp3";
     $alignmentFile = "{$dir}/{$verse}.json";
@@ -721,8 +744,8 @@ function handleTts(array $ctx): void {
     }
 
     respond(200, [
-        'audioUrl' => BASE_PATH . AUDIO_BASE_URL . "/{$voice}/{$translation}/{$bookId}/{$chapter}/{$verse}.mp3",
-        'alignmentUrl' => BASE_PATH . AUDIO_BASE_URL . "/{$voice}/{$translation}/{$bookId}/{$chapter}/{$verse}.json",
+        'audioUrl' => BASE_PATH . AUDIO_BASE_URL . "{$rel}/{$verse}.mp3",
+        'alignmentUrl' => BASE_PATH . AUDIO_BASE_URL . "{$rel}/{$verse}.json",
         'cached' => $cached,
     ]);
 }
