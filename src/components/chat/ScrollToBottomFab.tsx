@@ -36,9 +36,9 @@ export function ScrollToBottomFab({ scrollRef, threshold = 200 }: Props) {
       }}
       className={clsx(
         'absolute right-4 bottom-3 z-20',
-        'h-10 w-10 rounded-full bg-navy-deep border border-gold/30 text-gold',
+        'h-10 w-10 rounded-full bg-surface-sunken border border-brand/30 text-brand',
         'shadow-lg flex items-center justify-center',
-        'hover:bg-navy-soft/80 active:scale-95 transition-all',
+        'hover:bg-surface-raised/80 active:scale-95 transition-all',
       )}
     >
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

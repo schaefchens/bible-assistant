@@ -53,7 +53,7 @@ export function CardPile({ cards, emptyLabel }: Props) {
   } | null>(null);
 
   if (cards.length === 0) {
-    return <p className="text-cream-dim italic px-4 py-6">{emptyLabel ?? '—'}</p>;
+    return <p className="text-ink-muted italic px-4 py-6">{emptyLabel ?? '—'}</p>;
   }
 
   const len = cards.length;

@@ -121,8 +121,8 @@ export function FloatingPlaybackBar() {
         }}
         className={clsx(
           'relative flex items-center gap-2',
-          'rounded-2xl bg-navy-deep/95 backdrop-blur',
-          'border border-gold/30 shadow-xl',
+          'rounded-2xl bg-surface-sunken/95 backdrop-blur',
+          'border border-brand/30 shadow-xl',
           'px-2 py-1',
           onRightSide && 'flex-row-reverse',
         )}
@@ -142,8 +142,8 @@ export function FloatingPlaybackBar() {
           className={clsx(
             'absolute -top-2 z-10 h-7 w-7 rounded-full',
             'flex items-center justify-center',
-            'bg-navy-deep border border-gold/40 text-cream-dim',
-            'shadow-md hover:text-cream active:scale-90 transition-all',
+            'bg-surface-sunken border border-brand/40 text-ink-muted',
+            'shadow-md hover:text-ink active:scale-90 transition-all',
             onRightSide ? '-right-1.5' : '-left-1.5',
           )}
         >
@@ -231,7 +231,7 @@ function TransportButton({
       onClick={onClick}
       className={clsx(
         'h-10 w-10 rounded-xl flex items-center justify-center shrink-0',
-        'text-cream hover:bg-navy-soft/70 active:scale-95 transition-all',
+        'text-ink hover:bg-surface-raised/70 active:scale-95 transition-all',
       )}
       {...rest}
     >
@@ -254,8 +254,8 @@ function ToggleButton({
         'h-9 w-9 rounded-lg flex items-center justify-center shrink-0',
         'active:scale-95 transition-all',
         active
-          ? 'bg-gold/20 text-gold'
-          : 'text-cream-dim hover:bg-navy-soft/70 hover:text-cream',
+          ? 'bg-brand/20 text-brand'
+          : 'text-ink-muted hover:bg-surface-raised/70 hover:text-ink',
       )}
       {...rest}
     >
@@ -282,7 +282,7 @@ function PlayButton({
       aria-label={ariaLabel}
       className={clsx(
         'h-12 w-12 rounded-full flex items-center justify-center shadow-md shrink-0',
-        'bg-gold text-navy active:scale-95 transition-all',
+        'bg-brand text-on-brand active:scale-95 transition-all',
         isLoading && 'animate-pulse-soft',
       )}
     >

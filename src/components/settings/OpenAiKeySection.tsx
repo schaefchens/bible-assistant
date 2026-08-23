@@ -51,11 +51,11 @@ export function OpenAiKeySection() {
 
   return (
     <div className="space-y-2">
-      <p className="text-xs text-cream-dim">{t('settings.openaiKey.hint')}</p>
+      <p className="text-xs text-ink-muted">{t('settings.openaiKey.hint')}</p>
       {hasKey ? (
         <>
-          <div className="flex items-center justify-between gap-2 bg-navy-soft rounded-xl px-3 py-2">
-            <span className="font-mono text-sm text-cream">{masked ?? '••••••'}</span>
+          <div className="flex items-center justify-between gap-2 bg-surface-raised rounded-xl px-3 py-2">
+            <span className="font-mono text-sm text-ink">{masked ?? '••••••'}</span>
             <button
               type="button"
               className="btn-ghost text-xs"
@@ -86,7 +86,7 @@ export function OpenAiKeySection() {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder="sk-..."
-            className="flex-1 bg-navy-soft text-cream rounded-xl px-3 py-2 font-mono text-sm"
+            className="flex-1 bg-surface-raised text-ink rounded-xl px-3 py-2 font-mono text-sm"
           />
           <button
             type="button"

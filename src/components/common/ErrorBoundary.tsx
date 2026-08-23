@@ -20,15 +20,15 @@ export class ErrorBoundary extends Component<Props, State> {
     const { error } = this.state;
     if (!error) return this.props.children;
     return (
-      <div className="p-4 text-cream font-mono text-sm space-y-3">
+      <div className="p-4 text-ink font-mono text-sm space-y-3">
         <div className="text-red-400 font-bold">Something crashed</div>
-        <div className="bg-navy-deep p-3 rounded text-xs whitespace-pre-wrap break-all">
+        <div className="bg-surface-sunken p-3 rounded text-xs whitespace-pre-wrap break-all">
           {error.message}
         </div>
         {error.stack && (
           <details className="text-xs">
-            <summary className="cursor-pointer text-cream-dim">stack</summary>
-            <pre className="bg-navy-deep p-3 rounded mt-1 whitespace-pre-wrap break-all">
+            <summary className="cursor-pointer text-ink-muted">stack</summary>
+            <pre className="bg-surface-sunken p-3 rounded mt-1 whitespace-pre-wrap break-all">
               {error.stack}
             </pre>
           </details>

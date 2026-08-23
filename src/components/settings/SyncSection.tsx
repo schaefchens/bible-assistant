@@ -83,15 +83,15 @@ export function SyncSection() {
         />
       </label>
 
-      <p className="text-xs text-cream-dim">
+      <p className="text-xs text-ink-muted">
         {syncEnabled ? t('settings.sync.onHint') : t('settings.sync.offHint')}
       </p>
 
-      {busy && <p className="text-xs text-gold">{t('settings.sync.working')}</p>}
+      {busy && <p className="text-xs text-brand">{t('settings.sync.working')}</p>}
 
       {syncEnabled && !busy && (
         <>
-          <p className="text-xs text-gold-dim">{t('settings.sync.writeDown')}</p>
+          <p className="text-xs text-brand-muted">{t('settings.sync.writeDown')}</p>
           {pendingOps > 0 && (
             <p className="text-xs text-amber-400">
               {online
@@ -102,11 +102,11 @@ export function SyncSection() {
         </>
       )}
 
-      {deleted && <p className="text-xs text-gold">{t('settings.sync.deleted')}</p>}
+      {deleted && <p className="text-xs text-brand">{t('settings.sync.deleted')}</p>}
       {error && <p className="text-xs text-rose-400">{error}</p>}
 
       <div className="pt-1">
-        <p className="text-xs text-cream-dim mb-2">{t('settings.sync.deleteHint')}</p>
+        <p className="text-xs text-ink-muted mb-2">{t('settings.sync.deleteHint')}</p>
         <button
           type="button"
           onClick={() => void onDelete()}

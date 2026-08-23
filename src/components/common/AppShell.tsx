@@ -76,7 +76,7 @@ export function AppShell() {
       </main>
 
       {showStatusBar && (
-        <div className="px-4 py-1 text-xs text-cream-dim flex items-center gap-2 border-t border-navy-soft bg-navy/90">
+        <div className="px-4 py-1 text-xs text-ink-muted flex items-center gap-2 border-t border-surface-raised bg-surface/90">
           <span className={clsx('h-2 w-2 rounded-full', online ? 'bg-emerald-500' : 'bg-amber-500')} />
           {online ? t('common.online') : t('common.offline')}
           {pendingOps > 0 && (
@@ -85,7 +85,7 @@ export function AppShell() {
         </div>
       )}
 
-      <nav className="pb-safe border-t border-navy-soft bg-navy grid grid-cols-5">
+      <nav className="pb-safe border-t border-surface-raised bg-surface grid grid-cols-5">
         <NavTab to="/" label={t('nav.chat')} icon={<ChatIcon />} />
         <NavTab to="/read" label={t('nav.read')} icon={<ReadIcon />} />
         <NavTab to="/cards" label={t('nav.cards')} icon={<CardsIcon />} />
@@ -120,8 +120,8 @@ function NavTab({
           'relative flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] tracking-wide transition-colors',
           'before:absolute before:top-0 before:left-1/2 before:-translate-x-1/2 before:h-0.5 before:rounded-b-full before:transition-all',
           isActive
-            ? 'text-gold before:w-8 before:bg-gold'
-            : 'text-cream-dim hover:text-cream before:w-0 before:bg-transparent',
+            ? 'text-brand before:w-8 before:bg-brand'
+            : 'text-ink-muted hover:text-ink before:w-0 before:bg-transparent',
         )
       }
     >

@@ -71,7 +71,7 @@ export function EyesFreeMode() {
 
   const overlay = (
     <div
-      className="fixed inset-0 z-[60] bg-navy-deep grid select-none"
+      className="fixed inset-0 z-[60] bg-surface-sunken grid select-none"
       style={{
         gridTemplateRows: '8vh 14vh minmax(0, 1fr) 18vh',
       }}
@@ -81,7 +81,7 @@ export function EyesFreeMode() {
         label={t('eyesFree.exit') as string}
         ariaLabel={t('eyesFree.exit') as string}
         icon={<ExitIcon />}
-        className="w-full h-full pt-safe bg-navy-soft text-cream-dim flex-row gap-2"
+        className="w-full h-full pt-safe bg-surface-raised text-ink-muted flex-row gap-2"
         labelClassName="text-[clamp(0.85rem,2.5vh,1.25rem)]"
         iconClassName="w-[clamp(1rem,3.5vh,1.75rem)] h-[clamp(1rem,3.5vh,1.75rem)]"
         onTap={exit}
@@ -96,7 +96,7 @@ export function EyesFreeMode() {
           label={t('eyesFree.prev') as string}
           ariaLabel={t('eyesFree.prev') as string}
           icon={<PrevIcon />}
-          className="w-full h-full bg-ribbon-blue text-navy-deep"
+          className="w-full h-full bg-ribbon-blue text-on-fill"
           labelClassName="text-[clamp(1.25rem,6vw,3rem)]"
           iconClassName="w-[clamp(2.5rem,14vw,5.5rem)] h-[clamp(2.5rem,14vw,5.5rem)]"
           onTap={() => navigateVerse(-1)}
@@ -106,7 +106,7 @@ export function EyesFreeMode() {
           label={centerLabel}
           ariaLabel={centerLabel}
           icon={isPlaying ? <PauseIcon /> : <PlayIcon />}
-          className="w-full h-full bg-gold-glow text-navy-deep"
+          className="w-full h-full bg-brand-bright text-on-brand"
           labelClassName="text-[clamp(1.5rem,7vw,3.5rem)]"
           iconClassName="w-[clamp(3rem,16vw,6rem)] h-[clamp(3rem,16vw,6rem)]"
           onTap={playOrResume}
@@ -116,7 +116,7 @@ export function EyesFreeMode() {
           label={t('eyesFree.next') as string}
           ariaLabel={t('eyesFree.next') as string}
           icon={<NextIcon />}
-          className="w-full h-full bg-ribbon-green text-navy-deep"
+          className="w-full h-full bg-ribbon-green text-on-fill"
           labelClassName="text-[clamp(1.25rem,6vw,3rem)]"
           iconClassName="w-[clamp(2.5rem,14vw,5.5rem)] h-[clamp(2.5rem,14vw,5.5rem)]"
           onTap={() => navigateVerse(1)}
@@ -132,7 +132,7 @@ export function EyesFreeMode() {
         }
         icon={<MicIcon active={listening} />}
         className={clsx(
-          'w-full h-full pb-safe text-navy-deep flex-row gap-4',
+          'w-full h-full pb-safe text-on-fill flex-row gap-4',
           listening ? 'bg-ribbon-red animate-pulse-soft' : 'bg-ribbon-red/85',
         )}
         labelClassName="text-[clamp(1.5rem,6vh,2.75rem)]"
@@ -340,8 +340,8 @@ function RollingTicker() {
                 // Distinction is by colour (and a subtle glow) only.
                 'font-serif font-bold leading-none transition-colors duration-150',
                 active
-                  ? 'text-gold-glow [text-shadow:0_0_18px_rgba(231,201,138,0.55)]'
-                  : 'text-cream-dim/70',
+                  ? 'text-brand-bright [text-shadow:0_0_18px_rgba(231,201,138,0.55)]'
+                  : 'text-ink-muted/70',
               )}
               style={{ fontSize: 'clamp(1.5rem, 6vw, 3rem)' }}
             >

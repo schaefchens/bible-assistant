@@ -52,12 +52,12 @@ export function RecoverPassphrase({
       <button
         type="button"
         onClick={onBack}
-        className="text-xs text-cream-dim self-start mb-4 hover:text-cream"
+        className="text-xs text-ink-muted self-start mb-4 hover:text-ink"
       >
         ← {t('common.back')}
       </button>
-      <h2 className="text-xl font-serif text-gold mb-2">{t('onboarding.recoverTitle')}</h2>
-      <p className="text-sm text-cream-dim mb-5">{t('onboarding.recoverHint')}</p>
+      <h2 className="text-xl font-serif text-brand mb-2">{t('onboarding.recoverTitle')}</h2>
+      <p className="text-sm text-ink-muted mb-5">{t('onboarding.recoverHint')}</p>
 
       <textarea
         value={value}
@@ -70,7 +70,7 @@ export function RecoverPassphrase({
         spellCheck={false}
         autoCapitalize="none"
         autoCorrect="off"
-        className="w-full bg-navy-soft text-cream rounded-xl px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-gold/60"
+        className="w-full bg-surface-raised text-ink rounded-xl px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-brand/60"
         placeholder="word word word…"
       />
 

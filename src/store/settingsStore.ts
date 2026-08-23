@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Locale, VoiceId } from '@/types/domain';
 import type { Translation } from '@/services/bible/bibleApi';
+import type { ThemeChoice } from '@/lib/theme';
 
 export type MicCorner = 'tl' | 'tr' | 'bl' | 'br';
 export type VerseNumberStyle = 'spoken' | 'plain';
@@ -13,6 +14,10 @@ export type AmbientSettings = {
 
 type SettingsState = {
   locale: Locale;
+  /** 'system' follows the OS; 'light' / 'dark' override it. Defaults to 'dark',
+   * which is what every existing install already looks like — the app was
+   * dark-only until now, so anything else would restyle it underneath people. */
+  theme: ThemeChoice;
   translation: Translation;
   voice: VoiceId;
   voiceStyle: string;
@@ -77,6 +82,7 @@ type SettingsState = {
    */
   syncEnabled: boolean;
   setLocale: (locale: Locale) => void;
+  setTheme: (theme: ThemeChoice) => void;
   setTranslation: (translation: Translation, fromUser?: boolean) => void;
   setVoice: (voice: VoiceId) => void;
   setVoiceStyle: (style: string) => void;
@@ -185,6 +191,7 @@ export const useSettingsStore = create<SettingsState>()(
       const initialLocale = detectLocale();
       return {
         locale: initialLocale,
+        theme: 'dark',
         translation: defaultTranslationFor(initialLocale),
         voice: 'echo',
         voiceStyle: '',
@@ -215,6 +222,7 @@ export const useSettingsStore = create<SettingsState>()(
         sessionPreferSharedKey: false,
         onboardingComplete: false,
         syncEnabled: false,
+        setTheme: (theme) => set({ theme }),
         setLocale: (locale) =>
           set((s) => ({
             locale,
@@ -264,7 +272,7 @@ export const useSettingsStore = create<SettingsState>()(
     },
     {
       name: 'ba.settings',
-      version: 14,
+      version: 15,
       // Don't persist server-derived state — hydrate fresh on every boot.
       // Otherwise an older "hasUserOpenAiKey: true" could outlive a key the
       // server has since cleared.
@@ -375,6 +383,13 @@ export const useSettingsStore = create<SettingsState>()(
           // which means it already has cards and boards on the server. Default
           // it to on so nothing is orphaned; a fresh install starts at false.
           prev = { ...prev, syncEnabled: true };
+        }
+        if (version < 15) {
+          // Explicitly 'dark', not 'system': the app had no light theme until
+          // now, so every existing install is a dark-theme install. Defaulting
+          // them to 'system' would repaint the app for anyone whose phone is in
+          // light mode, which is not a change they asked for.
+          prev = { ...prev, theme: 'dark' };
         }
         return prev as SettingsState;
       },

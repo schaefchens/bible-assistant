@@ -13,7 +13,7 @@ export function TranslationStep() {
         title={t('onboarding.wizard.translation.title')}
         subtitle={t('onboarding.wizard.translation.subtitle')}
       />
-      <div className="flex-1 min-h-0 rounded-xl border border-navy-soft/40 overflow-y-auto py-1">
+      <div className="flex-1 min-h-0 rounded-xl border border-surface-raised/40 overflow-y-auto py-1">
         <TranslationList
           value={translation}
           onChange={(code) => setTranslation(code, true)}

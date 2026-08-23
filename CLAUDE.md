@@ -38,6 +38,7 @@ This file is the orientation map. When changing code, find the relevant subsyste
 | Verse/reply/ambient playback (HTMLAudioElement) | `src/lib/elementTrackPlayer.ts`, `src/lib/ambientAudioBus.ts` |
 | Browser TTS engine (SpeechSynthesis) | `src/lib/browserTts.ts` singleton `browserTts` |
 | Persistent audio + alignment cache (IndexedDB) | `src/lib/mediaCache.ts` |
+| Theme application (palettes live in `src/index.css`) | `src/lib/theme.ts` |
 | Narration source chain (cached → server) | `src/services/narration/narrationSources.ts` |
 | Chapter narration download | `src/services/narration/downloadChapter.ts` + `src/store/narrationStore.ts` |
 | Native speech recognition | `src/lib/nativeSpeech.ts` (Whisper stays the fallback) |
@@ -103,7 +104,7 @@ All in `src/store/`. `(persist)` = survives reload via `zustand/middleware`.
 | --- | --- |
 | `usePlaybackStore` | **Source of truth for audio state**: status, current track, word index (drives `WordHighlighter`), volumes |
 | `useChatStore` | Conversation history, `isProcessing`, `currentTool` |
-| `useSettingsStore` *(persist v14 + migrations)* | User prefs: locale, translation, voices, reading/announcement prefs, ambient, mic corner, `syncEnabled` |
+| `useSettingsStore` *(persist v15 + migrations)* | User prefs: locale, `theme`, translation, voices, reading/announcement prefs, ambient, mic corner, `syncEnabled` |
 | `useLibraryStore` | Cards + boards + their order + the offline sync queue (flushed to `api.php`) |
 | `useRibbonsStore` *(persist)* | Colored bookmarks ("ribbons") |
 | `useGlobalVoiceStore` | Mic listening state, last voice response |
@@ -167,6 +168,53 @@ plus `src/components/reader/*`; the store is `useReaderStore`.
 - **Known limitation:** a voice command on `/read` still produces a *chat* reading (audio plays,
   the page doesn't follow). Same as `/cards` today; routing it into the reader needs a target-host
   field on `SendOpts`/`DispatchContext`.
+
+## Theming
+
+Colour tokens are named by **role, not hue** — `surface` / `surface-raised` /
+`surface-sunken`, `ink` / `ink-muted`, `brand` / `brand-muted` / `brand-bright`. The
+old `navy` / `cream` / `gold` names stopped being true the moment a light theme
+existed. Two extra roles exist because one name was doing two jobs:
+
+| token | meaning |
+| --- | --- |
+| `on-brand` | foreground on a **brand** fill — inverts with the theme (dark text on light gold, light text on dark brown) |
+| `on-fill` | foreground on a **pastel ribbon or card** fill — fixed dark in every theme, because those fills are light in every theme |
+
+`ribbon-*` and `card-*` are user-chosen *content* colours and deliberately do not
+follow the theme. The two exceptions are `card-none-*`, which is chrome.
+
+Three constraints, each of which breaks something quietly if ignored:
+
+- **Values are space-separated RGB channels, not hex.** Tailwind alpha modifiers
+  compile to `rgb(var(--token) / .4)`, and this codebase has ~173 of them. A hex
+  makes every one of them invalid.
+- **Palettes are declared on `[data-theme]`, not just `:root`.** An attribute
+  selector applies at any depth, which is what lets a subtree (a sepia reader)
+  carry its own palette without touching `lib/theme.ts`.
+- **Colour lives in `src/index.css`, not in TS.** `lib/theme.ts` decides *which*
+  palette is active and syncs what CSS can't reach (the `theme-color` meta tag,
+  `SystemBars.setStyle()`). It reads values back out of the cascade rather than
+  keeping a copy. `setPaletteVars()` is the seam for palettes that can't exist at
+  build time — a user contrast preset — and `THEME_TOKENS` is their contract.
+
+The light palette is **not** an inversion of the dark one: the dark theme's gold is
+2.1:1 on paper, a hard fail, so `brand` carries its own values chosen to mirror the
+dark theme's contrast ratios. Check a ratio before changing any of them.
+
+`--verse-tint-alpha` is the "currently reading" highlight's opacity, a number
+rather than a colour so the tint follows `brand` automatically and a contrast
+control has one knob. The inline (reader) variant adds 0.02, since with no inset
+bar the tint is the only cue.
+
+**Native chrome.** Android resources split into `values/` (light) and
+`values-night/` (dark), so system-bar *backgrounds* follow the device.
+`SystemBars.setStyle()` sets bar *icon* contrast at runtime — it has no background
+counterpart, so an in-app override that disagrees with the device (light theme on
+a dark phone) leaves the bars dark. Closing that needs a small native shim.
+
+Existing installs migrate to an explicit `'dark'`, not `'system'`: the app was
+dark-only before this, so following the OS would restyle people who never asked.
 
 ## Offline-first — what needs a network and what doesn't
 

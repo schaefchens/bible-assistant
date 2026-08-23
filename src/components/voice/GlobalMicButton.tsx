@@ -81,8 +81,8 @@ export function GlobalMicButton() {
           'h-14 w-14 rounded-full flex items-center justify-center shadow-xl',
           'transition-colors',
           isActive
-            ? 'bg-gold text-navy animate-pulse-soft'
-            : 'bg-navy-deep text-gold border border-gold/40',
+            ? 'bg-brand text-on-brand animate-pulse-soft'
+            : 'bg-surface-sunken text-brand border border-brand/40',
           error && !isActive && 'ring-2 ring-red-500/60',
         )}
       >

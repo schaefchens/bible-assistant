@@ -40,10 +40,10 @@ export function ChatHeader() {
 
   return (
     <>
-      <header className="flex items-center justify-between px-4 py-2 border-b border-navy-soft/50 bg-navy/90 backdrop-blur">
+      <header className="flex items-center justify-between px-4 py-2 border-b border-surface-raised/50 bg-surface/90 backdrop-blur">
         <div className="flex items-center gap-3">
           <BookChapterPicker />
-          <h1 className="font-serif text-gold text-base tracking-wide">
+          <h1 className="font-serif text-brand text-base tracking-wide">
             {t('chat.title')}
           </h1>
         </div>
@@ -54,7 +54,7 @@ export function ChatHeader() {
               onClick={() => void applyUpdate()}
               aria-label={t('updates.bannerAvailable') as string}
               title={t('updates.bannerAvailable') as string}
-              className="text-gold hover:text-gold/80 transition-colors animate-pulse"
+              className="text-brand hover:text-brand/80 transition-colors animate-pulse"
             >
               <svg
                 width="16"
@@ -80,8 +80,8 @@ export function ChatHeader() {
             className={clsx(
               'px-2 py-1 rounded-lg transition-colors',
               readingOnly
-                ? 'text-gold bg-gold/15'
-                : 'text-cream-dim hover:text-cream',
+                ? 'text-brand bg-brand/15'
+                : 'text-ink-muted hover:text-ink',
             )}
           >
             <ReadingViewIcon active={readingOnly} />
@@ -95,8 +95,8 @@ export function ChatHeader() {
             className={clsx(
               'px-2 py-1 rounded-lg transition-colors',
               hideComposer
-                ? 'text-gold bg-gold/15'
-                : 'text-cream-dim hover:text-cream',
+                ? 'text-brand bg-brand/15'
+                : 'text-ink-muted hover:text-ink',
             )}
           >
             <KeyboardIcon hidden={hideComposer} />
@@ -110,8 +110,8 @@ export function ChatHeader() {
             className={clsx(
               'px-2 py-1 rounded-lg transition-colors',
               eyesFree
-                ? 'text-gold bg-gold/15'
-                : 'text-cream-dim hover:text-cream',
+                ? 'text-brand bg-brand/15'
+                : 'text-ink-muted hover:text-ink',
             )}
           >
             <EyesFreeIcon active={eyesFree} />
@@ -124,7 +124,7 @@ export function ChatHeader() {
               const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
               setMenuPos({ x: rect.right - 200, y: rect.bottom + 4 });
             }}
-            className="text-cream-dim hover:text-cream disabled:opacity-30 px-2 py-1 transition-colors"
+            className="text-ink-muted hover:text-ink disabled:opacity-30 px-2 py-1 transition-colors"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
               <circle cx="12" cy="5" r="1.6" />

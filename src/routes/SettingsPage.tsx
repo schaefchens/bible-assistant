@@ -7,6 +7,7 @@ import {
 } from '@/store/settingsStore';
 import { VOICE_OPTIONS, type VoiceId } from '@/types/domain';
 import { getPassphrase } from '@/lib/passphrase';
+import type { ThemeChoice } from '@/lib/theme';
 import { PlaybackSettingsForm } from '@/components/playback/PlaybackSettingsForm';
 import { SegmentedControl } from '@/components/common/SegmentedControl';
 import { TranslationPickerSheet } from '@/components/bible/TranslationPickerSheet';
@@ -38,7 +39,7 @@ export function SettingsPage() {
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-6">
-      <h2 className="text-xl font-serif text-gold">{t('settings.title')}</h2>
+      <h2 className="text-xl font-serif text-brand">{t('settings.title')}</h2>
 
       <Section title={t('settings.language')}>
         <SegmentedControl
@@ -51,6 +52,19 @@ export function SettingsPage() {
         />
       </Section>
 
+      <Section title={t('settings.theme.title')}>
+        <SegmentedControl
+          cols={3}
+          value={settings.theme}
+          options={[
+            { value: 'system', label: t('settings.theme.system') },
+            { value: 'light', label: t('settings.theme.light') },
+            { value: 'dark', label: t('settings.theme.dark') },
+          ]}
+          onChange={(v) => settings.setTheme(v as ThemeChoice)}
+        />
+      </Section>
+
       <Section title={t('settings.translation')}>
         <button
           type="button"
@@ -58,7 +72,7 @@ export function SettingsPage() {
           aria-label={t('chat.bookPicker.changeTranslation') as string}
           className={clsx(
             'w-full flex items-center gap-3 rounded-xl px-3 py-2.5',
-            'bg-navy/60 border border-gold/30 hover:border-gold/60 hover:bg-navy/80',
+            'bg-surface/60 border border-brand/30 hover:border-brand/60 hover:bg-surface/80',
             'transition-colors text-left',
           )}
         >
@@ -66,16 +80,16 @@ export function SettingsPage() {
             className={clsx(
               'shrink-0 inline-flex items-center justify-center',
               'min-w-[3rem] px-2 py-0.5 rounded-md text-xs font-mono tracking-wide',
-              'border border-gold/60 text-gold bg-gold/10',
+              'border border-brand/60 text-brand bg-brand/10',
             )}
           >
             {currentTranslation.code}
           </span>
           <span className="flex-1 min-w-0">
-            <span className="block font-serif text-gold text-sm leading-tight truncate">
+            <span className="block font-serif text-brand text-sm leading-tight truncate">
               {currentTranslation.name}
             </span>
-            <span className="block text-xs text-cream-dim/80 mt-0.5">
+            <span className="block text-xs text-ink-muted/80 mt-0.5">
               {currentTranslation.year} ·{' '}
               {currentTranslation.language === 'de'
                 ? t('chat.bookPicker.languageDe')
@@ -91,7 +105,7 @@ export function SettingsPage() {
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="text-cream-dim shrink-0"
+            className="text-ink-muted shrink-0"
             aria-hidden="true"
           >
             <polyline points="9 18 15 12 9 6" />
@@ -113,10 +127,10 @@ export function SettingsPage() {
           allowedVoices={hasActivePersonalKey(settings) ? undefined : ['echo', 'browser']}
         />
         {settings.voice === 'browser' && (
-          <p className="mt-2 text-xs text-cream-dim">{t('settings.browserVoiceHint')}</p>
+          <p className="mt-2 text-xs text-ink-muted">{t('settings.browserVoiceHint')}</p>
         )}
         {!hasActivePersonalKey(settings) && (
-          <p className="mt-2 text-xs text-cream-dim">
+          <p className="mt-2 text-xs text-ink-muted">
             {t('settings.readingVoiceRestricted')}
           </p>
         )}
@@ -128,13 +142,13 @@ export function SettingsPage() {
             value={settings.voiceStyle}
             onChange={(e) => settings.setVoiceStyle(e.target.value)}
             placeholder={t('settings.voiceStyleHint')}
-            className="w-full bg-navy-soft text-cream rounded-xl px-3 py-2"
+            className="w-full bg-surface-raised text-ink rounded-xl px-3 py-2"
           />
         </Section>
       )}
 
       <Section title={t('settings.assistantVoice')}>
-        <p className="text-xs text-cream-dim mb-2">{t('settings.assistantVoiceHint')}</p>
+        <p className="text-xs text-ink-muted mb-2">{t('settings.assistantVoiceHint')}</p>
         <VoiceSelect
           value={settings.assistantVoice}
           onChange={(v) => settings.setAssistantVoice(v)}
@@ -151,7 +165,7 @@ export function SettingsPage() {
       </Section>
 
       <Section title={t('voice.mic.position')}>
-        <p className="text-xs text-cream-dim mb-2">{t('voice.mic.dragHint')}</p>
+        <p className="text-xs text-ink-muted mb-2">{t('voice.mic.dragHint')}</p>
         <MicCornerPicker
           value={settings.micCorner}
           onChange={(v) => settings.setMicCorner(v)}
@@ -196,18 +210,18 @@ export function SettingsPage() {
       </Section>
 
       <Section title={t('settings.identity')}>
-        <p className="text-xs text-cream-dim mb-2">{t('settings.identityHint')}</p>
+        <p className="text-xs text-ink-muted mb-2">{t('settings.identityHint')}</p>
         {!revealed ? (
           <button className="btn-ghost text-xs" onClick={() => setRevealed(true)}>
             {t('settings.reveal')}
           </button>
         ) : (
           <>
-            <ol className="grid grid-cols-2 gap-x-3 gap-y-2 bg-navy-soft rounded-xl p-4">
+            <ol className="grid grid-cols-2 gap-x-3 gap-y-2 bg-surface-raised rounded-xl p-4">
               {words.map((w, i) => (
                 <li key={i} className="flex items-baseline gap-2 text-sm font-mono">
-                  <span className="text-gold-dim text-xs w-6 text-right tabular-nums">{i + 1}.</span>
-                  <span className="text-cream">{w}</span>
+                  <span className="text-brand-muted text-xs w-6 text-right tabular-nums">{i + 1}.</span>
+                  <span className="text-ink">{w}</span>
                 </li>
               ))}
             </ol>
@@ -258,7 +272,7 @@ function VoiceSelect({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value as VoiceId)}
-      className="w-full bg-navy-soft text-cream rounded-xl px-3 py-2"
+      className="w-full bg-surface-raised text-ink rounded-xl px-3 py-2"
     >
       {options.map((v) => (
         <option key={v} value={v}>
@@ -272,7 +286,7 @@ function VoiceSelect({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h3 className="text-xs uppercase tracking-wide text-gold-dim mb-2">{title}</h3>
+      <h3 className="text-xs uppercase tracking-wide text-brand-muted mb-2">{title}</h3>
       {children}
     </section>
   );
@@ -302,8 +316,8 @@ function MicCornerPicker({
           className={
             'py-3 text-sm rounded-xl border transition-colors ' +
             (value === c.value
-              ? 'bg-gold/15 text-gold border-gold/60'
-              : 'bg-navy-soft text-cream-dim border-navy-soft hover:text-cream')
+              ? 'bg-brand/15 text-brand border-brand/60'
+              : 'bg-surface-raised text-ink-muted border-surface-raised hover:text-ink')
           }
         >
           {c.label}

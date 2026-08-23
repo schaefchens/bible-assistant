@@ -18,13 +18,13 @@ export function TagFilterBar({ allTags, selected, onToggle, onClear }: Props) {
     <div className="px-3 pt-1 pb-2">
       <div className="no-scrollbar flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 min-h-[30px]">
         <span
-          className="shrink-0 text-[10px] uppercase tracking-wide text-gold-dim"
+          className="shrink-0 text-[10px] uppercase tracking-wide text-brand-muted"
           style={LABEL_SHADOW}
         >
           {t('cards.filterByTags')}
         </span>
         {allTags.length === 0 && (
-          <span className="shrink-0 text-xs text-cream-dim italic" style={LABEL_SHADOW}>
+          <span className="shrink-0 text-xs text-ink-muted italic" style={LABEL_SHADOW}>
             {t('cards.noTagsYet')}
           </span>
         )}
@@ -32,7 +32,7 @@ export function TagFilterBar({ allTags, selected, onToggle, onClear }: Props) {
           type="button"
           onClick={onClear}
           className={[
-            'shrink-0 rounded-full px-2 py-1 text-xs bg-navy-soft text-cream-dim hover:text-cream',
+            'shrink-0 rounded-full px-2 py-1 text-xs bg-surface-raised text-ink-muted hover:text-ink',
             selected.length > 0 ? '' : 'invisible',
           ].join(' ')}
           aria-hidden={selected.length === 0}
@@ -51,8 +51,8 @@ export function TagFilterBar({ allTags, selected, onToggle, onClear }: Props) {
               className={[
                 'shrink-0 rounded-full px-3 py-1 text-xs transition-colors',
                 isSel
-                  ? 'bg-gold text-navy'
-                  : 'bg-navy-soft text-cream-dim hover:text-cream',
+                  ? 'bg-brand text-on-brand'
+                  : 'bg-surface-raised text-ink-muted hover:text-ink',
               ].join(' ')}
             >
               #{tag}

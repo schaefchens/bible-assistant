@@ -12,10 +12,11 @@ import { readingHosts } from '@/lib/readingHosts';
 import { getOpenAiKeyStatus } from '@/services/api/auth';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { useBiblePacksStore } from '@/store/biblePacksStore';
+import { applyTheme, applyThemeMode, watchSystemTheme } from '@/lib/theme';
 
 /**
  * App-boot side effects, kept out of AppShell's render body so the shell is a
- * thin layout component. Owns six independent effects; all the
+ * thin layout component. Owns seven independent effects; all the
  * passphrase-gated ones no-op until `hasPassphrase` is true:
  *   1. tear down any audio session left alive by an iOS PWA suspend
  *   2. persist a "last reading" slot as the active verse advances
@@ -23,10 +24,12 @@ import { useBiblePacksStore } from '@/store/biblePacksStore';
  *   4. hydrate the personal-OpenAI-key status (and prune now-disallowed voices)
  *   5. prefetch the selected ambient track
  *   6. finish any Bible pack the user asked for but couldn't download yet
+ *   7. keep the theme in step with the setting and with the OS
  */
 export function useAppInitialization(hasPassphrase: boolean): void {
   const init = useLibraryStore((s) => s.init);
   const setOnline = useLibraryStore((s) => s.setOnline);
+  const theme = useSettingsStore((s) => s.theme);
   const ambientEnabled = useSettingsStore((s) => s.ambient.enabled);
   const ambientTrackId = useSettingsStore((s) => s.ambient.trackId);
 
@@ -130,6 +133,15 @@ export function useAppInitialization(hasPassphrase: boolean): void {
       cancelled = true;
     };
   }, [hasPassphrase, ambientEnabled, ambientTrackId]);
+
+  // 7. Theme. main.tsx applies it once before the first paint; this keeps it
+  // current afterwards — when the user changes the setting, and (while the
+  // setting is 'system') when the OS flips appearance under us.
+  useEffect(() => {
+    applyTheme(theme);
+    if (theme !== 'system') return;
+    return watchSystemTheme(applyThemeMode);
+  }, [theme]);
 
   // 6. Finish downloading any Bible the user has asked for. Runs at boot and
   // again on every reconnect, so a translation chosen in airplane mode arrives

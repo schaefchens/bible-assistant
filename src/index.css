@@ -3,8 +3,67 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
+  /*
+   * Theme tokens.
+   *
+   * Values are space-separated RGB *channels*, not hex, because Tailwind's alpha
+   * modifiers (`bg-brand/40` — 173 of them in this codebase) compile to
+   * `rgb(var(--token) / 0.4)`. Hand a hex to that and every one of them breaks.
+   * See the `rgb(var(--x) / <alpha-value>)` colours in tailwind.config.js.
+   *
+   * Declared on `[data-theme]` rather than only on `:root` on purpose: an
+   * attribute selector applies at any depth, so a subtree can carry its own
+   * palette. That is what a per-reader theme (sepia, night) will need, and it
+   * costs nothing now.
+   *
+   * Dark is the bare `:root` default so the first paint is correct before any JS
+   * runs, and matches the native splash. src/lib/theme.ts owns switching.
+   */
+  :root,
+  [data-theme='dark'] {
     color-scheme: dark;
+
+    --surface: 26 26 46; /* #1a1a2e */
+    --surface-raised: 38 38 63; /* #26263f */
+    --surface-sunken: 15 15 30; /* #0f0f1e */
+    --ink: 232 224 208; /* #e8e0d0 */
+    --ink-muted: 189 182 169; /* #bdb6a9 */
+    --brand: 200 169 110; /* #c8a96e */
+    --brand-muted: 156 132 86; /* #9c8456 */
+    --brand-bright: 231 201 138; /* #e7c98a */
+    --on-brand: 26 26 46; /* dark text on light gold */
+    --card-none-bg: 45 45 73; /* #2d2d49 */
+    --card-none-fg: 232 224 208;
+    /* Alpha for the "currently reading" tint. A number, not a colour, so every
+       token above stays in one format — and so a contrast control has a single
+       knob to turn. Light gold on a dark ground reads at 10%. */
+    --verse-tint-alpha: 0.1;
+  }
+
+  [data-theme='light'] {
+    color-scheme: light;
+
+    --surface: 247 243 234; /* #f7f3ea — warm paper, not stark white */
+    --surface-raised: 255 255 255; /* #ffffff — lifts off the paper */
+    --surface-sunken: 232 224 208; /* #e8e0d0 */
+    --ink: 34 31 25; /* #221f19  14.8:1 on surface */
+    --ink-muted: 92 85 72; /* #5c5548   6.7:1 */
+    /* The dark palette's gold is 2.1:1 on paper — a hard fail — so the brand
+       inverts rather than carrying over. These three mirror the dark theme's
+       ratios: 5.6 / 4.7 / 8.4 against 7.6 / 4.8 / higher. */
+    --brand: 122 92 44; /* #7a5c2c   5.6:1 */
+    --brand-muted: 133 104 59; /* #85683b  4.7:1, matching dark's 4.75 */
+    --brand-bright: 90 67 32; /* #5a4320   8.4:1 — "brighter" means more
+                                  emphasis, which on paper means darker */
+    --on-brand: 253 251 246; /* light text on the dark brown fill, 6.0:1 */
+    --card-none-bg: 255 255 255;
+    --card-none-fg: 34 31 25;
+    /* Higher than the dark theme's: a dark brown at 10% on paper is nearly
+       invisible, where light gold at 10% on navy is not. */
+    --verse-tint-alpha: 0.16;
+  }
+
+  :root {
     -webkit-text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
 
@@ -27,7 +86,7 @@
   }
 
   body {
-    @apply bg-navy text-cream font-sans antialiased;
+    @apply bg-surface text-ink font-sans antialiased;
     overscroll-behavior: none;
   }
 
@@ -51,17 +110,17 @@
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors active:scale-[0.98];
   }
   .btn-primary {
-    @apply btn bg-gold text-navy hover:bg-gold-glow;
+    @apply btn bg-brand text-on-brand hover:bg-brand-bright;
   }
   .btn-ghost {
-    @apply btn bg-navy-soft text-cream hover:bg-navy-soft/80;
+    @apply btn bg-surface-raised text-ink hover:bg-surface-raised/80;
   }
 
   .word {
     @apply transition-colors duration-75;
   }
   .word-active {
-    @apply text-gold-glow;
+    @apply text-brand-bright;
   }
 
   /* Verse-level "currently reading" indicator. The base class always reserves
@@ -74,8 +133,8 @@
     transition: background-color 200ms ease, box-shadow 200ms ease;
   }
   .verse-current {
-    background-color: rgba(200, 169, 110, 0.1);
-    box-shadow: inset 3px 0 0 #c8a96e;
+    background-color: rgb(var(--brand) / var(--verse-tint-alpha));
+    box-shadow: inset 3px 0 0 rgb(var(--brand));
   }
 
   /* Inline variant for the reader's flowing prose, where verses share a
@@ -92,16 +151,18 @@
     box-decoration-break: clone;
   }
   .verse-inline.verse-current {
-    background-color: rgba(200, 169, 110, 0.12);
+    /* A shade stronger than the block variant: with no inset bar to help, the
+       tint is the only cue that this is the verse being read. */
+    background-color: rgb(var(--brand) / calc(var(--verse-tint-alpha) + 0.02));
     box-shadow: none;
   }
 
   /* Chapter heading in the reader: small-caps Georgia with wide tracking,
-     centered in a gap punched out of the rule that runs behind it. The `bg-navy`
+     centered in a gap punched out of the rule that runs behind it. The `bg-surface`
      on the heading itself is what masks the rule — the reader page paints no
      background of its own, so this matches the body exactly. */
   .chapter-heading {
-    @apply font-serif text-gold;
+    @apply font-serif text-brand;
     font-variant-caps: small-caps;
     letter-spacing: 0.14em;
   }
@@ -112,7 +173,7 @@
      can't interact with `.verse-inline`'s background, which wraps across lines
      via box-decoration-break and would paint raggedly around a float. */
   .chapter-initial {
-    @apply text-gold font-serif;
+    @apply text-brand font-serif;
     font-size: 2.2em;
     /* Near-zero so the oversized glyph doesn't inflate the first line's box. */
     line-height: 0.7;
@@ -120,7 +181,7 @@
   }
 
   .message-selected {
-    @apply ring-2 ring-gold/60;
+    @apply ring-2 ring-brand/60;
   }
 
   .perspective {
@@ -176,13 +237,13 @@
     @apply whitespace-pre-wrap;
   }
   .markdown-body strong {
-    @apply text-cream font-semibold;
+    @apply text-ink font-semibold;
   }
   .markdown-body em {
     @apply italic;
   }
   .markdown-body a {
-    @apply text-gold underline underline-offset-2 break-words;
+    @apply text-brand underline underline-offset-2 break-words;
   }
   .markdown-body ul,
   .markdown-body ol {
@@ -201,32 +262,32 @@
   .markdown-body h2,
   .markdown-body h3,
   .markdown-body h4 {
-    @apply font-serif text-gold;
+    @apply font-serif text-brand;
   }
   .markdown-body h1 { @apply text-lg; }
   .markdown-body h2 { @apply text-base; }
   .markdown-body h3,
-  .markdown-body h4 { @apply text-sm uppercase tracking-wide text-gold-dim; }
+  .markdown-body h4 { @apply text-sm uppercase tracking-wide text-brand-muted; }
   .markdown-body blockquote {
-    @apply border-l-2 border-gold/40 pl-3 text-cream/85 italic;
+    @apply border-l-2 border-brand/40 pl-3 text-ink/85 italic;
   }
   .markdown-body code {
-    @apply font-mono text-[0.9em] bg-navy-soft/70 rounded px-1 py-0.5;
+    @apply font-mono text-[0.9em] bg-surface-raised/70 rounded px-1 py-0.5;
   }
   .markdown-body pre {
-    @apply bg-navy-soft/70 rounded-lg p-3 overflow-x-auto;
+    @apply bg-surface-raised/70 rounded-lg p-3 overflow-x-auto;
   }
   .markdown-body pre code {
     @apply bg-transparent p-0;
   }
   .markdown-body hr {
-    @apply border-navy-soft/60 my-3;
+    @apply border-surface-raised/60 my-3;
   }
   .markdown-body table {
     @apply w-full text-sm;
   }
   .markdown-body th,
   .markdown-body td {
-    @apply px-2 py-1 border border-navy-soft/60 text-left;
+    @apply px-2 py-1 border border-surface-raised/60 text-left;
   }
 }

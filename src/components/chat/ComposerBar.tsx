@@ -30,7 +30,7 @@ export function ComposerBar() {
     <form
       ref={containerRef}
       onSubmit={handleSubmit}
-      className="relative flex items-end gap-2 p-3 pb-safe border-t border-navy-soft bg-navy"
+      className="relative flex items-end gap-2 p-3 pb-safe border-t border-surface-raised bg-surface"
     >
       <textarea
         value={text}
@@ -43,7 +43,7 @@ export function ComposerBar() {
         }}
         placeholder={t('chat.placeholder')}
         rows={1}
-        className="flex-1 resize-none bg-navy-soft text-cream rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-gold/60 max-h-32"
+        className="flex-1 resize-none bg-surface-raised text-ink rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-brand/60 max-h-32"
         disabled={isProcessing}
       />
       <button

@@ -24,8 +24,8 @@ export function MicSnapTargets({ visible, activeCorner }: Props) {
           className={clsx(
             'absolute h-24 w-24 rounded-2xl border-2 border-dashed transition-all',
             activeCorner === tgt.corner
-              ? 'border-gold bg-gold/15 scale-105'
-              : 'border-gold/40 bg-navy-deep/40',
+              ? 'border-brand bg-brand/15 scale-105'
+              : 'border-brand/40 bg-surface-sunken/40',
           )}
         />
       ))}

@@ -48,7 +48,7 @@ export function SuggestionChips({ onPick, hidden }: Props) {
     <div
       className={clsx(
         'flex gap-2 overflow-x-auto no-scrollbar px-3 py-2',
-        'border-b border-navy-soft/40 bg-navy/60',
+        'border-b border-surface-raised/40 bg-surface/60',
       )}
     >
       {visibleChips.map((chip) => (
@@ -62,8 +62,8 @@ export function SuggestionChips({ onPick, hidden }: Props) {
             onPick(resolved);
           }}
           className={clsx(
-            'shrink-0 rounded-full border border-gold/30 px-3 py-1.5 text-xs',
-            'text-gold hover:bg-gold/10 active:scale-95 transition-all',
+            'shrink-0 rounded-full border border-brand/30 px-3 py-1.5 text-xs',
+            'text-brand hover:bg-brand/10 active:scale-95 transition-all',
             'disabled:opacity-40 disabled:pointer-events-none',
           )}
         >

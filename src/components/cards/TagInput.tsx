@@ -44,13 +44,13 @@ export function TagInput({ value, onChange, placeholder }: Props) {
   return (
     <div className="relative">
       <div
-        className="flex flex-wrap items-center gap-1.5 bg-navy-soft rounded-xl px-2 py-2 min-h-[2.75rem] cursor-text focus-within:ring-2 focus-within:ring-gold/60"
+        className="flex flex-wrap items-center gap-1.5 bg-surface-raised rounded-xl px-2 py-2 min-h-[2.75rem] cursor-text focus-within:ring-2 focus-within:ring-brand/60"
         onClick={() => inputRef.current?.focus()}
       >
         {value.map((tag) => (
           <span
             key={tag}
-            className="inline-flex items-center gap-1 bg-gold/20 text-cream rounded-full pl-2 pr-1 py-0.5 text-xs"
+            className="inline-flex items-center gap-1 bg-brand/20 text-ink rounded-full pl-2 pr-1 py-0.5 text-xs"
           >
             #{tag}
             <button
@@ -59,7 +59,7 @@ export function TagInput({ value, onChange, placeholder }: Props) {
                 e.stopPropagation();
                 remove(tag);
               }}
-              className="rounded-full w-4 h-4 inline-flex items-center justify-center text-cream-dim hover:text-cream hover:bg-black/20"
+              className="rounded-full w-4 h-4 inline-flex items-center justify-center text-ink-muted hover:text-ink hover:bg-black/20"
               aria-label={`Remove ${tag}`}
             >
               ×
@@ -83,11 +83,11 @@ export function TagInput({ value, onChange, placeholder }: Props) {
             }
           }}
           placeholder={value.length === 0 ? placeholder : ''}
-          className="flex-1 min-w-[6rem] bg-transparent outline-none text-cream text-sm py-1"
+          className="flex-1 min-w-[6rem] bg-transparent outline-none text-ink text-sm py-1"
         />
       </div>
       {focused && suggestions.length > 0 && (
-        <div className="absolute z-10 mt-1 left-0 right-0 bg-navy-soft rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+        <div className="absolute z-10 mt-1 left-0 right-0 bg-surface-raised rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto">
           {suggestions.map((s) => (
             <button
               key={s}
@@ -96,7 +96,7 @@ export function TagInput({ value, onChange, placeholder }: Props) {
                 e.preventDefault();
                 commit(s);
               }}
-              className="w-full text-left px-3 py-1.5 text-sm text-cream hover:bg-navy"
+              className="w-full text-left px-3 py-1.5 text-sm text-ink hover:bg-surface"
             >
               #{s}
             </button>

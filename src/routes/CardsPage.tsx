@@ -101,17 +101,17 @@ export function CardsPage() {
 
   return (
     <div className="flex-1 overflow-y-auto pb-3 flex flex-col">
-      <div className="relative border-b-2 border-gold/60">
+      <div className="relative border-b-2 border-brand/60">
         <div className="flex items-stretch">
           <div className="flex-1 flex items-center gap-1 px-2 pt-2 pb-1">
-            <div className="shrink-0 px-3 py-1 text-sm font-serif text-cream-dim">
+            <div className="shrink-0 px-3 py-1 text-sm font-serif text-ink-muted">
               {t('boards.cardCount', { count: cards.length })}
             </div>
             <button
               type="button"
               onClick={newCard}
               aria-label={t('cards.new') as string}
-              className="shrink-0 px-3 py-1 text-base leading-none rounded-xl border border-navy-soft/70 bg-navy-deep/70 text-cream-dim hover:text-gold hover:bg-navy-soft/70 transition-colors"
+              className="shrink-0 px-3 py-1 text-base leading-none rounded-xl border border-surface-raised/70 bg-surface-sunken/70 text-ink-muted hover:text-brand hover:bg-surface-raised/70 transition-colors"
             >
               +
             </button>
@@ -125,7 +125,7 @@ export function CardsPage() {
       </div>
       {cards.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6 py-16 text-center">
-          <p className="text-cream-dim max-w-xs">{t('cards.empty')}</p>
+          <p className="text-ink-muted max-w-xs">{t('cards.empty')}</p>
           <button
             onClick={newCard}
             className="btn-primary text-base px-6 py-3 rounded-xl"
@@ -200,7 +200,7 @@ function KebabMenu({
       </button>
       {open && (
         <div
-          className="absolute right-0 top-full mt-1 z-30 bg-navy-soft rounded-xl shadow-lg border border-navy-soft/70 py-1 w-52"
+          className="absolute right-0 top-full mt-1 z-30 bg-surface-raised rounded-xl shadow-lg border border-surface-raised/70 py-1 w-52"
           role="menu"
           onClick={(e) => {
             if (e.target instanceof HTMLElement && e.target.closest('[role="menuitem"]')) {
@@ -227,7 +227,7 @@ function MenuItem({
       type="button"
       role="menuitem"
       onClick={onClick}
-      className="w-full text-left px-3 py-2 text-sm text-cream hover:bg-navy"
+      className="w-full text-left px-3 py-2 text-sm text-ink hover:bg-surface"
     >
       {children}
     </button>

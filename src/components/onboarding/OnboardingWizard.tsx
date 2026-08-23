@@ -80,7 +80,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
 
   if (recovering) {
     return (
-      <div className="flex flex-col h-full pt-safe pb-safe px-safe bg-navy text-cream">
+      <div className="flex flex-col h-full pt-safe pb-safe px-safe bg-surface text-ink">
         <div className="flex-1 overflow-y-auto px-6 py-8 flex flex-col">
           <RecoverPassphrase onDone={onDone} onBack={() => setRecovering(false)} />
         </div>
@@ -89,7 +89,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <div className="flex flex-col h-full pt-safe pb-safe bg-navy text-cream">
+    <div className="flex flex-col h-full pt-safe pb-safe bg-surface text-ink">
       <div className="flex-1 min-h-0 px-6 py-6 flex flex-col">
         <div className="max-w-md mx-auto w-full flex flex-col flex-1 min-h-0">
           <header className="flex items-center justify-between gap-4 mb-8">
@@ -98,7 +98,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
               <button
                 type="button"
                 onClick={onDone}
-                className="text-xs text-cream-dim hover:text-cream whitespace-nowrap"
+                className="text-xs text-ink-muted hover:text-ink whitespace-nowrap"
               >
                 {t('onboarding.wizard.skip')} →
               </button>
@@ -154,7 +154,7 @@ function Progress({ idx, total }: { idx: number; total: number }) {
           key={i}
           className={clsx(
             'h-1.5 rounded-full transition-all',
-            i === idx ? 'w-8 bg-gold' : i < idx ? 'w-6 bg-gold/60' : 'w-6 bg-navy-soft',
+            i === idx ? 'w-8 bg-brand' : i < idx ? 'w-6 bg-brand/60' : 'w-6 bg-surface-raised',
           )}
         />
       ))}

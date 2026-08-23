@@ -77,17 +77,17 @@ export function VoiceOverlay() {
   return (
     <div
       style={overlayStyle}
-      className="rounded-2xl bg-navy-deep border border-gold/30 shadow-2xl p-4 text-sm text-cream"
+      className="rounded-2xl bg-surface-sunken border border-brand/30 shadow-2xl p-4 text-sm text-ink"
     >
       <div className="flex items-center justify-between mb-2">
         <span
           className={clsx(
             'inline-flex items-center gap-2 text-xs',
-            listening ? 'text-gold' : 'text-cream-dim',
+            listening ? 'text-brand' : 'text-ink-muted',
           )}
         >
           {listening && (
-            <span className="inline-block w-2 h-2 rounded-full bg-gold animate-pulse-soft" />
+            <span className="inline-block w-2 h-2 rounded-full bg-brand animate-pulse-soft" />
           )}
           {listening ? t('voice.overlay.listening') : t('app.title')}
         </span>
@@ -95,21 +95,21 @@ export function VoiceOverlay() {
           type="button"
           aria-label={t('voice.overlay.dismiss')}
           onClick={dismiss}
-          className="text-cream-dim hover:text-cream transition-colors px-1"
+          className="text-ink-muted hover:text-ink transition-colors px-1"
         >
           ×
         </button>
       </div>
 
       {transcript && !lastResponse && (
-        <p className="font-serif italic text-cream/90 mb-2 line-clamp-3">
+        <p className="font-serif italic text-ink/90 mb-2 line-clamp-3">
           {transcript || '…'}
         </p>
       )}
 
       {lastResponse?.kind === 'reading' && (
         <div className="mb-2">
-          <p className="font-serif text-gold mb-1">{lastResponse.reference}</p>
+          <p className="font-serif text-brand mb-1">{lastResponse.reference}</p>
           <button
             type="button"
             onClick={() => audioPlayback.toggle()}
@@ -121,7 +121,7 @@ export function VoiceOverlay() {
       )}
 
       {lastResponse?.kind === 'reply' && (
-        <p className="font-serif text-cream/95 mb-2 leading-relaxed line-clamp-4">
+        <p className="font-serif text-ink/95 mb-2 leading-relaxed line-clamp-4">
           {lastResponse.text}
         </p>
       )}
@@ -130,7 +130,7 @@ export function VoiceOverlay() {
         <button
           type="button"
           onClick={openInChat}
-          className="w-full h-9 rounded-lg border border-gold/30 text-gold text-xs hover:bg-gold/10 transition-colors"
+          className="w-full h-9 rounded-lg border border-brand/30 text-brand text-xs hover:bg-brand/10 transition-colors"
         >
           {t('voice.overlay.openInChat')} →
         </button>

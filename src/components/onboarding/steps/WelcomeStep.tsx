@@ -11,13 +11,13 @@ export function WelcomeStep({ onRestore }: { onRestore: () => void }) {
   const { t } = useTranslation();
   return (
     <div className="flex-1 flex flex-col justify-center max-w-md mx-auto w-full text-center">
-      <h1 className="text-3xl font-serif text-gold mb-3">{t('app.title')}</h1>
-      <p className="text-cream-dim mb-2">{t('onboarding.wizard.welcome.subtitle')}</p>
-      <p className="text-xs text-cream-dim/70">{t('onboarding.wizard.welcome.offline')}</p>
+      <h1 className="text-3xl font-serif text-brand mb-3">{t('app.title')}</h1>
+      <p className="text-ink-muted mb-2">{t('onboarding.wizard.welcome.subtitle')}</p>
+      <p className="text-xs text-ink-muted/70">{t('onboarding.wizard.welcome.offline')}</p>
       <button
         type="button"
         onClick={onRestore}
-        className="text-xs text-gold hover:text-gold/80 mt-8 underline underline-offset-4"
+        className="text-xs text-brand hover:text-brand/80 mt-8 underline underline-offset-4"
       >
         {t('onboarding.wizard.welcome.restore')}
       </button>

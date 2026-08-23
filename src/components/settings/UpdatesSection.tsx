@@ -55,14 +55,14 @@ export function UpdatesSection() {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-cream-dim font-mono">
+      <p className="text-xs text-ink-muted font-mono">
         {t('settings.updates.version', {
           commit: __GIT_COMMIT__,
           date: buildDate,
         })}
       </p>
       {Capacitor.isNativePlatform() ? (
-        <p className="text-xs text-cream-dim">{t('settings.updates.nativeHint')}</p>
+        <p className="text-xs text-ink-muted">{t('settings.updates.nativeHint')}</p>
       ) : (
         <button
           type="button"

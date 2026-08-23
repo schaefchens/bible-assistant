@@ -59,7 +59,7 @@ export function StorageSection() {
 
   return (
     <div className="space-y-2">
-      <p className="text-xs text-cream-dim">
+      <p className="text-xs text-ink-muted">
         {usage
           ? t('settings.storage.summary', {
               total: mb(usage.total),
@@ -68,12 +68,12 @@ export function StorageSection() {
             })
           : t('settings.storage.loading')}
       </p>
-      <p className="text-xs text-cream-dim/70">{t('settings.storage.hint')}</p>
+      <p className="text-xs text-ink-muted/70">{t('settings.storage.hint')}</p>
       <button
         type="button"
         onClick={() => void onClear()}
         disabled={clearing}
-        className="text-sm text-cream-dim hover:text-cream border border-navy-soft rounded-xl px-3 py-2 transition-colors disabled:opacity-60"
+        className="text-sm text-ink-muted hover:text-ink border border-surface-raised rounded-xl px-3 py-2 transition-colors disabled:opacity-60"
       >
         {clearing
           ? t('settings.storage.clearing')

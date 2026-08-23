@@ -203,6 +203,12 @@
   "settings": {
     "title": "Settings",
     "language": "Language",
+    "theme": {
+      "title": "Appearance",
+      "system": "System",
+      "light": "Light",
+      "dark": "Dark"
+    },
     "translation": "Bible translation",
     "voice": "Voice",
     "voiceStyle": "Voice style (optional)",

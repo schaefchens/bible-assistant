@@ -34,10 +34,10 @@ export function NarrationFallbackNotice() {
       <button
         type="button"
         onClick={() => setVisible(false)}
-        className="pointer-events-auto mt-2 max-w-md w-full text-left bg-navy-soft border border-gold/30 rounded-2xl px-4 py-3 shadow-xl"
+        className="pointer-events-auto mt-2 max-w-md w-full text-left bg-surface-raised border border-brand/30 rounded-2xl px-4 py-3 shadow-xl"
       >
-        <p className="text-sm text-cream">{t('narrationFallback.title')}</p>
-        <p className="text-xs text-cream-dim mt-1">{t('narrationFallback.hint')}</p>
+        <p className="text-sm text-ink">{t('narrationFallback.title')}</p>
+        <p className="text-xs text-ink-muted mt-1">{t('narrationFallback.hint')}</p>
       </button>
     </div>
   );

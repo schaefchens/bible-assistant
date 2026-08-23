@@ -37,7 +37,7 @@ export function ReaderHeader({ onOpenTranslations }: Props) {
     : t('read.title');
 
   return (
-    <header className="flex items-center justify-between gap-2 px-4 py-2 border-b border-navy-soft/50 bg-navy/90 backdrop-blur">
+    <header className="flex items-center justify-between gap-2 px-4 py-2 border-b border-surface-raised/50 bg-surface/90 backdrop-blur">
       <BookChapterPicker
         onPick={(bookId, chapter) => {
           void goTo({ translation, bookId, chapter });
@@ -47,7 +47,7 @@ export function ReaderHeader({ onOpenTranslations }: Props) {
             type="button"
             onClick={open}
             aria-label={t('read.pickChapter') as string}
-            className="flex items-center gap-1.5 min-w-0 text-gold hover:text-gold-glow transition-colors"
+            className="flex items-center gap-1.5 min-w-0 text-brand hover:text-brand-bright transition-colors"
           >
             <span className="font-serif text-lg truncate">{label}</span>
             <ChevronDown />
@@ -67,7 +67,7 @@ export function ReaderHeader({ onOpenTranslations }: Props) {
           type="button"
           onClick={onOpenTranslations}
           aria-label={t('read.switchTranslation') as string}
-          className="px-2 py-1 text-[10px] uppercase tracking-wider text-gold-dim hover:text-gold transition-colors"
+          className="px-2 py-1 text-[10px] uppercase tracking-wider text-brand-muted hover:text-brand transition-colors"
         >
           {translation}
         </button>
@@ -79,7 +79,7 @@ export function ReaderHeader({ onOpenTranslations }: Props) {
           title={t('settings.reader.endlessScroll') as string}
           className={clsx(
             'h-8 w-8 rounded-lg flex items-center justify-center transition-all active:scale-95',
-            endless ? 'bg-gold/20 text-gold' : 'text-cream-dim hover:text-cream',
+            endless ? 'bg-brand/20 text-brand' : 'text-ink-muted hover:text-ink',
           )}
         >
           <ScrollIcon />

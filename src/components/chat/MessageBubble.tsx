@@ -67,12 +67,12 @@ export function MessageBubble({ message, selected, onSelect, onReask }: Props) {
         className={clsx(
           'group relative rounded-2xl px-4 py-3 transition-all max-w-[85%]',
           isUser
-            ? 'bg-navy-soft/60 ml-auto'
-            : 'bg-navy-soft/30 mr-auto border-l-2 border-transparent',
-          !isUser && 'font-serif text-cream/95',
+            ? 'bg-surface-raised/60 ml-auto'
+            : 'bg-surface-raised/30 mr-auto border-l-2 border-transparent',
+          !isUser && 'font-serif text-ink/95',
           selected && 'message-selected',
-          !isUser && selected && 'border-gold',
-          isHighlighted && 'ring-2 ring-gold animate-pulse-soft',
+          !isUser && selected && 'border-brand',
+          isHighlighted && 'ring-2 ring-brand animate-pulse-soft',
         )}
       >
         {message.text && (
@@ -87,7 +87,7 @@ export function MessageBubble({ message, selected, onSelect, onReask }: Props) {
           )
         )}
         {message.toolCalls && message.toolCalls.length > 0 && !message.text && (
-          <p className="text-xs text-cream-dim italic">
+          <p className="text-xs text-ink-muted italic">
             {message.toolCalls.map((tc) => tc.name).join(', ')}
           </p>
         )}
