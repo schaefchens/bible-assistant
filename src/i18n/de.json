@@ -74,7 +74,8 @@
       "changeTranslation": "Übersetzung wechseln",
       "back": "Zurück",
       "languageEn": "Englisch",
-      "languageDe": "Deutsch"
+      "languageDe": "Deutsch",
+      "readingLists": "Leselisten"
     }
   },
   "playback": {
@@ -268,7 +269,7 @@
     "pauseBetweenVerses": "Pause zwischen Versen",
     "pauseBetweenChapters": "Pause zwischen Kapiteln",
     "autoPlay": "Nächste Passage automatisch wiedergeben",
-    "autoPlayHint": "Liest mit dem nächsten Kapitel (oder den nächsten ~5 Versen) weiter, bis du stoppst.",
+    "autoPlayHint": "Liest weiter mit der nächsten Stelle – dem nächsten Kapitel, den nächsten ~5 Versen oder dem nächsten Eintrag der Leseliste – bis du stoppst.",
     "storage": {
       "title": "Heruntergeladene Audios",
       "loading": "Wird geprüft…",
@@ -445,6 +446,54 @@
       "downloaded": "Heruntergeladen — spielt offline",
       "cancel": "Download abbrechen",
       "removeConfirm": "Zum Entfernen erneut tippen"
-    }
+    },
+    "endOfList": "Ende der Liste.",
+    "startOfList": "Anfang der Liste."
+  },
+  "lists": {
+    "title": "Leselisten",
+    "subtitle": "Pläne und eigene Listen zum Lesen",
+    "empty": "Noch keine Leselisten. Erstelle eine für einen Leseplan – oder für die Stellen, zu denen du immer wieder zurückkommst.",
+    "new": "Neue Liste",
+    "newName": "Neue Leseliste",
+    "name": "Name",
+    "namePlaceholder": "Bibel in einem Jahr",
+    "description": "Beschreibung",
+    "descriptionPlaceholder": "Optional – wofür diese Liste ist",
+    "untitled": "Liste ohne Namen",
+    "edit": "Bearbeiten",
+    "done": "Fertig",
+    "delete": "Liste löschen",
+    "confirmDelete": "„{{name}}“ löschen? Der Fortschritt wird mitgelöscht.",
+    "entries_one": "{{count}} Stelle",
+    "entries_other": "{{count}} Stellen",
+    "chapters_one": "{{count}} Kapitel",
+    "chapters_other": "{{count}} Kapitel",
+    "emptyList": "In dieser Liste ist noch nichts.",
+    "progress": "{{done}} von {{total}} gelesen",
+    "day": "Tag {{number}}",
+    "dayTitle": "Titel des Tages",
+    "addDay": "Tag hinzufügen",
+    "deleteDay": "Diesen Tag entfernen",
+    "addPassage": "Stelle hinzufügen",
+    "addPassagePlaceholder": "1. Mose 1-3; LUT; Morgen",
+    "addPassageHint": "Ein Buch („Johannes“), ein Kapitel („Johannes 3“), eine Spanne („1. Mose 1-3“) oder Verse („Ps 23,1-6“). Optional „; Übersetzung; Notiz“. Eine pro Zeile.",
+    "addFromPicker": "Aus der Bibel wählen",
+    "unparsed_one": "{{count}} Zeile nicht erkannt – prüfe die Angabe.",
+    "unparsed_other": "{{count}} Zeilen nicht erkannt – prüfe die Angaben.",
+    "removeEntry": "Diese Stelle entfernen",
+    "moveUp": "Nach oben",
+    "moveDown": "Nach unten",
+    "markDone": "Als gelesen markieren",
+    "markNotDone": "Als ungelesen markieren",
+    "openPassage": "Im Leser öffnen",
+    "current": "Hier bist du",
+    "reset": "Fortschritt zurücksetzen",
+    "confirmReset": "Alle Häkchen in dieser Liste entfernen?",
+    "manage": "Listen verwalten",
+    "play": "Diese Liste vorlesen",
+    "continue": "Fortsetzen",
+    "start": "Lesen beginnen",
+    "inList": "In dieser Liste"
   }
 }

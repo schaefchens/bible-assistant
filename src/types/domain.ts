@@ -72,6 +72,12 @@ export type ChatMessage = {
    * (no verse range). Drives the heading-announcement phrasing on
    * tap-to-play. Defaults to false (treat as a specific verse range). */
   headingWholeChapter?: boolean;
+  /** The reading-list entry this message's verses came from, when it was played
+   * as part of a list. Together these are the `ListProvenance` the chat host
+   * reports, which is what keeps a list playing as a list from the chat screen
+   * — see `lib/readingHosts.ts`. */
+  listId?: string;
+  entryId?: string;
   createdAt: number;
 };
 
@@ -193,5 +199,85 @@ export type Board = {
    * placement. Stale entries (card removed/deleted) are harmless. */
   freeform?: Record<string, FreeformCardLayout>;
   createdAt: number;
+  updatedAt: number;
+};
+
+/**
+ * One passage in a reading list: a whole book, one chapter, a span of
+ * chapters, or verse ranges inside a chapter.
+ *
+ * Stored structurally (numbers, not strings) for the same reason
+ * {@link CardReference} is: the display text is locale-dependent and the verse
+ * text is translation-dependent, so both are resolved at read time.
+ */
+export type ReadingEntry = {
+  /**
+   * Stable within its list. It is the reorder key, the progress tick's key,
+   * and part of the playback group id — which is why the same passage listed
+   * twice stays two entries a plan can track separately.
+   */
+  id: string;
+  bookId: number;
+  /** `undefined` → every chapter of the book, in order. */
+  chapter?: number;
+  /** Last chapter of a multi-chapter entry ("Genesis 1-3"). Requires `chapter`. */
+  chapterEnd?: number;
+  /** `undefined` → the whole chapter. Only meaningful with a single `chapter`. */
+  ranges?: VerseRange[];
+  /** Overrides the active translation for this entry only. */
+  translation?: Translation;
+  /** Free text shown beside the reference ("Morning", "Memorize this"). */
+  label?: string;
+};
+
+/**
+ * One ordered group of entries — a day of a plan.
+ *
+ * Rendered as "Day N" from its index unless `title` says otherwise, so a
+ * weekly plan can call its groups "Week 3" without a second data shape.
+ */
+export type ReadingDay = {
+  id: string;
+  title?: string;
+  entries: ReadingEntry[];
+};
+
+/**
+ * A reading list: a compiled sequence of passages, either a structured plan or
+ * a plain custom list.
+ *
+ * Named `ReadingList` rather than "reading" because `reading`, `ReadingGroup`
+ * and `ReadingHost` already mean "a playback group bound to verses" throughout
+ * `lib/` — see `lib/readingHosts.ts`.
+ */
+export type ReadingList = {
+  id: string;
+  name: string;
+  description?: string;
+  /**
+   * Always at least one day. A plain list is a single untitled day, which the
+   * UI renders flat with no day headings — one shape, two presentations.
+   */
+  days: ReadingDay[];
+  color?: CardColor;
+  emoji?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+/**
+ * Progress through one list, keyed by `listId`.
+ *
+ * Merged by **union of `completed`**, not last-write-wins: two devices working
+ * different days of the same plan must not erase each other's ticks. Only
+ * `currentEntryId` follows `updatedAt`, because "where am I" genuinely has one
+ * newest answer. Both the client pull and the server writer implement this.
+ */
+export type ReadingProgress = {
+  listId: string;
+  /** Entry ids finished, in no meaningful order. */
+  completed: string[];
+  /** The entry to resume at. */
+  currentEntryId?: string;
   updatedAt: number;
 };

@@ -4,6 +4,7 @@ import { AppShell } from '@/components/common/AppShell';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { ChatPage } from '@/routes/ChatPage';
 import { ReadPage } from '@/routes/ReadPage';
+import { ReadingListsPage } from '@/routes/ReadingListsPage';
 import { CardsPage } from '@/routes/CardsPage';
 import { BoardsPage } from '@/routes/BoardsPage';
 import { SettingsPage } from '@/routes/SettingsPage';
@@ -31,6 +32,8 @@ export default function App() {
           <Route element={<AppShell />}>
             <Route index element={<ChatPage />} />
             <Route path="read" element={<ReadPage />} />
+            <Route path="lists" element={<ReadingListsPage />} />
+            <Route path="lists/:id" element={<ReadingListsPage />} />
             <Route path="cards" element={<CardsPage />} />
             <Route path="cards/:id" element={<CardsPage />} />
             <Route path="boards" element={<BoardsPage />} />

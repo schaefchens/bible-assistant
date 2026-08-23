@@ -1,6 +1,6 @@
 import { useChatStore } from '@/store/chatStore';
 import { formatReference } from '@/services/bible/bookCatalog';
-import type { Locale, VerseSummary } from '@/types/domain';
+import type { ChatMessage, Locale, VerseSummary } from '@/types/domain';
 import type { ReadingGroup, ReadingGroupId, ReadingHost } from './readingHosts';
 
 /**
@@ -14,22 +14,14 @@ export const chatReadingHost: ReadingHost = {
   getGroup(id: ReadingGroupId): ReadingGroup | null {
     const msg = useChatStore.getState().messages.find((m) => m.id === id);
     if (!msg?.verses?.length) return null;
-    return {
-      id,
-      verses: msg.verses,
-      wholeChapter: msg.headingWholeChapter ?? false,
-    };
+    return toGroup(msg);
   },
 
   listGroups(): ReadingGroup[] {
     const out: ReadingGroup[] = [];
     for (const m of useChatStore.getState().messages) {
       if (!m.verses?.length) continue;
-      out.push({
-        id: m.id,
-        verses: m.verses,
-        wholeChapter: m.headingWholeChapter ?? false,
-      });
+      out.push(toGroup(m));
     }
     return out;
   },
@@ -58,11 +50,25 @@ export const chatReadingHost: ReadingHost = {
       verses,
       historyNote: opts.historyNote,
       headingWholeChapter: opts.wholeChapter,
+      listId: opts.provenance?.listId,
+      entryId: opts.provenance?.entryId,
       createdAt: Date.now(),
     });
     return Promise.resolve(id);
   },
 };
+
+function toGroup(msg: ChatMessage): ReadingGroup {
+  return {
+    id: msg.id,
+    verses: msg.verses ?? [],
+    wholeChapter: msg.headingWholeChapter ?? false,
+    provenance:
+      msg.listId && msg.entryId
+        ? { listId: msg.listId, entryId: msg.entryId }
+        : undefined,
+  };
+}
 
 /**
  * "(Played aloud: Galatians 5:22-26; Galatians 6:1-5.)" — the assistant turn's

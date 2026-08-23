@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Card, Board } from '@/types/domain';
+import type { Card, Board, ReadingList, ReadingProgress } from '@/types/domain';
 
 export type LocalCard = Card & {
   dirty?: 0 | 1;
@@ -11,6 +11,17 @@ export type LocalBoard = Board & {
   deleted?: 0 | 1;
 };
 
+export type LocalReadingList = ReadingList & {
+  dirty?: 0 | 1;
+  deleted?: 0 | 1;
+};
+
+/** No `deleted` flag: progress dies with its list, and a tombstone would
+ * outlive the only thing that gives it meaning. */
+export type LocalReadingProgress = ReadingProgress & {
+  dirty?: 0 | 1;
+};
+
 export type SyncOp = {
   id?: number;
   op:
@@ -19,7 +30,10 @@ export type SyncOp = {
     | 'cardOrder.set'
     | 'board.upsert'
     | 'board.delete'
-    | 'boardOrder.set';
+    | 'boardOrder.set'
+    | 'readingList.upsert'
+    | 'readingList.delete'
+    | 'readingProgress.set';
   payload: unknown;
   createdAt: number;
   attempts: number;
@@ -68,6 +82,8 @@ class BibleAssistantDb extends Dexie {
   preferences!: Table<Preference, string>;
   mediaCache!: Table<CachedMedia, string>;
   narration!: Table<NarrationEntry, string>;
+  readingLists!: Table<LocalReadingList, string>;
+  readingProgress!: Table<LocalReadingProgress, string>;
 
   constructor() {
     super('bible-assistant');
@@ -138,6 +154,21 @@ class BibleAssistantDb extends Dexie {
       preferences: '&key',
       mediaCache: '&url, lastUsedAt, pinned',
       narration: '&key',
+    });
+    // v9 adds reading lists (user-compiled sequences of passages — plans and
+    // custom lists) and their progress. Progress is a separate table rather
+    // than a field on the list because it is written far more often than the
+    // list itself and merges differently: `completed` unions across devices
+    // while the list is last-write-wins.
+    this.version(9).stores({
+      cards: 'id, title, updatedAt, dirty',
+      boards: 'id, name, updatedAt, dirty',
+      syncQueue: '++id, op, createdAt',
+      preferences: '&key',
+      mediaCache: '&url, lastUsedAt, pinned',
+      narration: '&key',
+      readingLists: 'id, name, updatedAt, dirty',
+      readingProgress: '&listId, updatedAt, dirty',
     });
   }
 }

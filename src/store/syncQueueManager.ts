@@ -1,6 +1,7 @@
 import { db, type SyncOp } from '@/db/dexie';
 import { ApiError } from '@/services/api/client';
 import { useSettingsStore } from '@/store/settingsStore';
+import type { ReadingProgress } from '@/types/domain';
 
 /**
  * Whether the user has opted into mirroring their library to the server.
@@ -65,6 +66,32 @@ export async function enqueueOrderSync(
   await db.syncQueue.add({
     op,
     payload: { order, updatedAt },
+    createdAt: Date.now(),
+    attempts: 0,
+  });
+  return true;
+}
+
+/**
+ * Enqueue one list's reading progress. Collapses like an order sync, but *per
+ * list*: working through a plan produces one of these per entry finished, and
+ * only the newest matters — while another list's pending progress must survive.
+ *
+ * Returns whether it was queued (false when sync is off), like enqueueOp.
+ */
+export async function enqueueProgressSync(progress: ReadingProgress): Promise<boolean> {
+  if (!syncEnabled()) return false;
+  const pending = await db.syncQueue.where('op').equals('readingProgress.set').toArray();
+  const stale = pending
+    .filter((o) => (o.payload as Partial<ReadingProgress> | null)?.listId === progress.listId)
+    .map((o) => o.id)
+    .filter((id): id is number => typeof id === 'number');
+  if (stale.length > 0) {
+    await db.syncQueue.bulkDelete(stale);
+  }
+  await db.syncQueue.add({
+    op: 'readingProgress.set',
+    payload: progress,
     createdAt: Date.now(),
     attempts: 0,
   });

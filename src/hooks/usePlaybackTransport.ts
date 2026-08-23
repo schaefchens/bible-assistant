@@ -39,7 +39,7 @@ export function useReadingVerses(
     groupId ? s.messages.find((m) => m.id === groupId)?.verses : undefined,
   );
   const readerVerses = useReaderStore((s) =>
-    groupId ? s.chapters[groupId]?.verses : undefined,
+    groupId ? s.segments[groupId]?.verses : undefined,
   );
   return chatVerses ?? readerVerses;
 }

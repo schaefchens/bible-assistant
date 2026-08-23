@@ -19,6 +19,11 @@ export type ToolName =
   | 'remove_card_from_board'
   | 'arrange_card'
   | 'list_boards'
+  | 'list_reading_lists'
+  | 'create_reading_list'
+  | 'update_reading_list'
+  | 'delete_reading_list'
+  | 'play_reading_list'
   | 'set_language'
   | 'set_translation'
   | 'set_voice'
@@ -41,6 +46,9 @@ export const READ_TOOL_NAMES: ReadonlySet<ToolName> = new Set<ToolName>([
   'read_verses',
   'random_verse',
   'continue_from_ribbon',
+  // Starting a reading list reads scripture aloud, so the audio is the reply
+  // here too — without this the model would also narrate what it just started.
+  'play_reading_list',
 ]);
 
 export function isReadTool(name: ToolName): boolean {
@@ -55,6 +63,23 @@ export type ToolArgs = {
     chapter?: number;
     translation?: Translation;
   };
+  list_reading_lists: Record<string, never>;
+  create_reading_list: {
+    name: string;
+    description?: string;
+    passages?: string[];
+    days?: { title?: string; passages: string[] }[];
+  };
+  update_reading_list: {
+    list: string;
+    name?: string;
+    description?: string;
+    addPassages?: string[];
+    addDay?: { title?: string; passages: string[] };
+    removePassages?: string[];
+  };
+  delete_reading_list: { list: string };
+  play_reading_list: { list: string; restart?: boolean };
   create_card: {
     title: string;
     references: string[];
@@ -428,6 +453,129 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'list_reading_lists',
+      description:
+        'List the user\'s reading lists with their passages and how far through each they are. ' +
+        'Call this before updating, playing or deleting one, to resolve the name the user said.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_reading_list',
+      description:
+        'Create a reading list: an ordered compilation of passages that plays as a playlist and ' +
+        'can be read through over time. Use for reading plans ("take me through the gospels in 30 days") ' +
+        'and for custom collections ("my favourite psalms"). Give either `passages` for a plain list, ' +
+        'or `days` when the plan is structured — one entry per day/session.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          description: { type: 'string' },
+          passages: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Each entry is "Passage[; Translation][; Note]". A passage is a whole book ("John"), ' +
+              'a chapter ("John 3"), a span of chapters ("Genesis 1-3") or verses ("Psalm 23:1-6"). ' +
+              'Optionally pin a translation code (ESV, S00, LUT…) and/or add a short note shown with the ' +
+              'passage, e.g. "Genesis 1-3; LUT; Morning". An entry that cannot be parsed is rejected and reported.',
+          },
+          days: {
+            type: 'array',
+            description:
+              'Structured plan: each element is one day (or week, or session) with its own passages. ' +
+              'Days are titled "Day 1", "Day 2"… automatically unless you give a title.',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string' },
+                passages: { type: 'array', items: { type: 'string' } },
+              },
+              required: ['passages'],
+            },
+          },
+        },
+        required: ['name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_reading_list',
+      description:
+        'Change an existing reading list. The "list" field accepts a list id OR its name ' +
+        '(case-insensitive). Only the fields you pass are changed.',
+      parameters: {
+        type: 'object',
+        properties: {
+          list: { type: 'string' },
+          name: { type: 'string', description: 'Rename the list.' },
+          description: { type: 'string' },
+          addPassages: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Append passages to the last day. ' + 'Each entry is "Passage[; Translation][; Note]". A passage is a whole book ("John"), ' +
+              'a chapter ("John 3"), a span of chapters ("Genesis 1-3") or verses ("Psalm 23:1-6"). ' +
+              'Optionally pin a translation code (ESV, S00, LUT…) and/or add a short note shown with the ' +
+              'passage, e.g. "Genesis 1-3; LUT; Morning". An entry that cannot be parsed is rejected and reported.',
+          },
+          addDay: {
+            type: 'object',
+            description: 'Append a new day with these passages.',
+            properties: {
+              title: { type: 'string' },
+              passages: { type: 'array', items: { type: 'string' } },
+            },
+            required: ['passages'],
+          },
+          removePassages: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Remove entries whose passage matches, e.g. "Psalm 23:1-6". Matching ignores notes and translation.',
+          },
+        },
+        required: ['list'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_reading_list',
+      description:
+        'Delete a reading list and its progress. The "list" field accepts an id or a name. Irreversible.',
+      parameters: {
+        type: 'object',
+        properties: { list: { type: 'string' } },
+        required: ['list'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'play_reading_list',
+      description:
+        'Read a reading list aloud in the reader, resuming where the user left off, and keep going ' +
+        'through the list until it ends or they stop. Pass restart:true to begin again from the first passage.',
+      parameters: {
+        type: 'object',
+        properties: {
+          list: { type: 'string' },
+          restart: { type: 'boolean' },
+        },
+        required: ['list'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'set_language',
       description: 'Switch UI language (en or de).',
       parameters: {
@@ -658,6 +806,7 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
       `Wenn der Benutzer einfach "weiterlesen", "weiter", "lies weiter" oder "die nächsten Verse" sagt OHNE ein Lesezeichen zu nennen: rufe "read_verses" mit dem nächsten Versabschnitt auf. Schau in den letzten "(Played aloud: …)"-Systemnotizen, was zuletzt gelesen wurde, und bestimme die folgenden Verse selbst (gleiches Kapitel falls noch Verse übrig, sonst Anfang des nächsten Kapitels). "(Played aloud: …)" ist ausschließlich eine Verlaufs-Markierung — gib diese Phrase NIEMALS selbst als Antworttext aus; nutze immer das read_verses-Tool, um zu lesen.`,
       `Lesezeichen (Ribbons): Es gibt fünf farbige Lesezeichen (gold, blue, red, green, purple). "save_ribbon" speichert die aktuelle Leseposition; "continue_from_ribbon" liest ab dem gespeicherten Lesezeichen weiter. Rufe diese Tools NUR auf, wenn der Benutzer ausdrücklich "Lesezeichen", "Ribbon" oder eine der Farben erwähnt. "Weiterlesen" ohne Erwähnung eines Lesezeichens ist KEIN Ribbon-Befehl. Wenn keine Farbe genannt wurde, lass das Argument color weg — bei save_ribbon ist gold die Vorgabe, bei continue_from_ribbon wird automatisch das einzige gesetzte Lesezeichen verwendet.`,
       `Wiedergabe-Einstellungen sind per Sprachbefehl steuerbar: "set_playback_rate" für Tempo ("lies schneller/langsamer"), "set_music" für Musik an/aus/Titel/Lautstärke ("Musik aus", "Musik leiser", "spiel Forest Hymn"), "set_reader_preferences" für Auto-Play / Auto-Scroll / Vers-Wiederholung, "set_announcements" für Kapitel-Ansage / Vers-Nummern / Pausen, "set_mic_position" um das Mikrofon in eine Ecke zu schieben. Übergib nur die Felder, die der Benutzer wirklich erwähnt hat — keine Default-Werte für nicht genannte Optionen erfinden.`,
+      `Leselisten sind zusammengestellte Reihen von Stellen — Lesepläne ("nimm mich in 30 Tagen durch die Evangelien") oder eigene Sammlungen ("meine liebsten Psalmen"). "create_reading_list" erstellt eine (nutze "days", wenn der Plan nach Tagen gegliedert ist, sonst "passages"), "update_reading_list" ändert sie, "list_reading_lists" zeigt sie mit dem Fortschritt, "play_reading_list" liest sie ab der letzten Stelle weiter vor, "delete_reading_list" löscht sie. Eine Stelle darf ein ganzes Buch ("John"), ein Kapitel ("John 3"), eine Spanne ("Genesis 1-3") oder Verse ("Psalm 23:1-6") sein — immer mit englischen Buchnamen. Rufe zuerst "list_reading_lists" auf, wenn der Benutzer eine Liste beim Namen nennt.`,
       `Freihändig-Modus: "enter_eyes_free_mode" öffnet einen Vollbild-Modus mit fünf großen Tastflächen (oben Beenden, unten Mikro, links/rechts vor/zurück, Mitte Play/Pause). Nutze dieses Tool bei "Freihändig-Modus", "Großtasten", "blind bedienen" o.ä. "exit_eyes_free_mode" schließt ihn wieder ("zurück zum Chat", "Freihändig beenden").`,
     ].join(' ');
   }
@@ -674,6 +823,7 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
     `When the user says simply "continue reading", "read on", "next verses", "weiterlesen" or similar WITHOUT mentioning a ribbon/bookmark: call "read_verses" with the next slice. Look at the most recent "(Played aloud: …)" system notes to see what was just read and figure out the next verses yourself (continue in the same chapter if verses remain, otherwise start the next chapter). "(Played aloud: …)" is only a history marker — NEVER emit that phrase as your own reply text; always call read_verses to actually read.`,
     `Ribbons (bookmarks): there are five colored ribbons (gold, blue, red, green, purple). "save_ribbon" stores the current reading position; "continue_from_ribbon" resumes from a saved ribbon. ONLY call these tools when the user explicitly mentions "ribbon", "bookmark", "Lesezeichen", or names a color. Plain "continue reading" / "weiterlesen" is NOT a ribbon command. If no color is given, omit the color argument — save_ribbon defaults to "gold" and continue_from_ribbon automatically uses the single saved ribbon when there's exactly one.`,
     `Playback settings are voice-controllable: "set_playback_rate" for tempo ("read faster", "slow down", "normal speed"), "set_music" for music on/off/track/volume ("music off", "play the forest track", "music louder"), "set_reader_preferences" for auto-play / auto-scroll / repeat-verse, "set_announcements" for chapter headings / verse numbers / pause durations, "set_mic_position" to move the mic to a corner. Only pass the fields the user actually mentioned — never invent defaults for fields they didn't talk about. The current values are provided in the next system message; use them to compute relative changes ("a bit louder" = current + ~0.1, "much faster" = ~1.3) and DO NOT ask the user for fields you can derive (e.g. "turn music on" should reuse the already-selected track — only ask if no track is selected).`,
+    `Reading lists are compiled sequences of passages — reading plans ("take me through the gospels in 30 days") or custom collections ("my favourite psalms"). "create_reading_list" makes one (use "days" when the plan is split by day, otherwise "passages"), "update_reading_list" changes it, "list_reading_lists" shows them with progress, "play_reading_list" reads one aloud from where the user left off and keeps going to its end, "delete_reading_list" removes it. A passage may be a whole book ("John"), a chapter ("John 3"), a span ("Genesis 1-3") or verses ("Psalm 23:1-6"), always with English book names. Call "list_reading_lists" first when the user names a list, to resolve it. Like read_verses, play_reading_list needs NO text reply — the reading is the answer.`,
     `Hands-free / eyes-free mode: "enter_eyes_free_mode" opens a fullscreen overlay with five giant touch zones (top = exit, bottom = mic, left/right = previous/next verse, center = play/pause). Call it on "hands-free", "eyes-free", "open the big buttons", "blind mode" etc. "exit_eyes_free_mode" closes it again ("back to chat", "exit hands-free").`,
   ].join(' ');
 }

@@ -24,6 +24,11 @@ declare(strict_types=1);
  *   boards.delete         { id }
  *   boards.order.get (GET) Per-user board tab order: { order: string[], updatedAt: number }.
  *   boards.order.set      { order: string[], updatedAt: number }
+ *   readingLists.list (GET)  Per-user reading list array.
+ *   readingLists.upsert      { readingList }
+ *   readingLists.delete      { id }
+ *   readingProgress.list (GET) Per-user progress array, one row per list.
+ *   readingProgress.set      { progress } — completed[] merges by union.
  *   recording.upload      multipart: audio + bookId, chapter, verse, translation
  *   account.delete        Erase everything stored for this identity.
  *   ambient.list (GET)    List ambient music tracks under storage/ambient/.
@@ -394,6 +399,7 @@ $ctx = authenticate();
 $ACCOUNT_ACTIONS = [
     'cards.upsert', 'cards.delete', 'cards.order.set',
     'boards.upsert', 'boards.delete', 'boards.order.set',
+    'readingLists.upsert', 'readingLists.delete', 'readingProgress.set',
     'auth.openaiKey.set', 'recording.upload',
 ];
 if (in_array($action, $ACCOUNT_ACTIONS, true)) {
@@ -467,6 +473,21 @@ switch ($action) {
         break;
     case 'boards.order.set':
         handleOrderSet($ctx['userDir'] . '/boardOrder.json');
+        break;
+    case 'readingLists.list':
+        handleListJson($ctx['userDir'] . '/readingLists.json', 'readingLists');
+        break;
+    case 'readingLists.upsert':
+        handleUpsertItem($ctx['userDir'] . '/readingLists.json', 'readingList', 'readingLists');
+        break;
+    case 'readingLists.delete':
+        handleDeleteReadingList($ctx['userDir']);
+        break;
+    case 'readingProgress.list':
+        handleListJson($ctx['userDir'] . '/readingProgress.json', 'progress');
+        break;
+    case 'readingProgress.set':
+        handleUpsertProgress($ctx['userDir'] . '/readingProgress.json');
         break;
     case 'recording.upload':
         handleRecordingUpload($ctx);
@@ -1031,6 +1052,98 @@ function handleDeleteItem(string $path, string $listKey): void {
 
     writeJsonFile($path, $items);
     respond(200, [$listKey => $items]);
+}
+
+/**
+ * Delete a reading list *and* its progress, which has no meaning without it.
+ * The two live in separate files for the same reason they are separate tables
+ * on the client: progress is written far more often and merges differently.
+ */
+function handleDeleteReadingList(string $userDir): void {
+    $body = readJsonBody();
+    $id = $body['id'] ?? null;
+    if (!is_string($id) || $id === '') fail(400, 'id required');
+
+    $listPath = $userDir . '/readingLists.json';
+    $lists = file_exists($listPath) ? json_decode(@file_get_contents($listPath) ?: '[]', true) : [];
+    if (!is_array($lists)) $lists = [];
+    $lists = array_values(array_filter($lists, fn($it) => ($it['id'] ?? null) !== $id));
+    writeJsonFile($listPath, $lists);
+
+    $progressPath = $userDir . '/readingProgress.json';
+    if (file_exists($progressPath)) {
+        $rows = json_decode(@file_get_contents($progressPath) ?: '[]', true);
+        if (!is_array($rows)) $rows = [];
+        $rows = array_values(array_filter($rows, fn($it) => ($it['listId'] ?? null) !== $id));
+        writeJsonFile($progressPath, $rows);
+    }
+
+    respond(200, ['readingLists' => $lists]);
+}
+
+/**
+ * Store one list's progress, merging rather than replacing.
+ *
+ * `completed` is unioned with whatever is already here and `currentEntryId`
+ * follows the newer `updatedAt` — the same rule as the client's
+ * mergeReadingProgress, and it has to exist on both sides: a device that ticks
+ * an entry without having pulled first would otherwise erase another device's
+ * ticks the moment it pushed.
+ */
+function handleUpsertProgress(string $path): void {
+    $body = readJsonBody();
+    $incoming = $body['progress'] ?? null;
+    if (!is_array($incoming) || empty($incoming['listId']) || !is_string($incoming['listId'])) {
+        fail(400, 'progress with listId required');
+    }
+    $listId = $incoming['listId'];
+    $completed = isset($incoming['completed']) && is_array($incoming['completed'])
+        ? array_values(array_filter($incoming['completed'], 'is_string'))
+        : [];
+    $updatedAt = isset($incoming['updatedAt']) && is_numeric($incoming['updatedAt'])
+        ? (int)$incoming['updatedAt']
+        : 0;
+    $currentEntryId = isset($incoming['currentEntryId']) && is_string($incoming['currentEntryId'])
+        ? $incoming['currentEntryId']
+        : null;
+
+    $rows = file_exists($path) ? json_decode(@file_get_contents($path) ?: '[]', true) : [];
+    if (!is_array($rows)) $rows = [];
+
+    $merged = [
+        'listId' => $listId,
+        'completed' => $completed,
+        'updatedAt' => $updatedAt,
+    ];
+    if ($currentEntryId !== null) $merged['currentEntryId'] = $currentEntryId;
+
+    $found = false;
+    foreach ($rows as $i => $existing) {
+        if (($existing['listId'] ?? null) !== $listId) continue;
+        $found = true;
+        $existingCompleted = isset($existing['completed']) && is_array($existing['completed'])
+            ? array_values(array_filter($existing['completed'], 'is_string'))
+            : [];
+        $existingUpdatedAt = isset($existing['updatedAt']) && is_numeric($existing['updatedAt'])
+            ? (int)$existing['updatedAt']
+            : 0;
+        $merged['completed'] = array_values(array_unique(array_merge($existingCompleted, $completed)));
+        $merged['updatedAt'] = max($existingUpdatedAt, $updatedAt);
+        // Only the newer write gets to say where the reader is.
+        if ($existingUpdatedAt > $updatedAt) {
+            if (isset($existing['currentEntryId']) && is_string($existing['currentEntryId'])) {
+                $merged['currentEntryId'] = $existing['currentEntryId'];
+            } else {
+                unset($merged['currentEntryId']);
+            }
+        }
+        $rows[$i] = $merged;
+        break;
+    }
+    if (!$found) $rows[] = $merged;
+
+    writeJsonFile($path, $rows);
+    respond(200, ['progress' => $merged]);
 }
 
 function handleOrderGet(string $path): void {

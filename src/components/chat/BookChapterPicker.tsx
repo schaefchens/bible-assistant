@@ -1,16 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { useChatStore } from '@/store/chatStore';
+import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useCommandPipeline } from '@/hooks/useCommandPipeline';
 import { BOOKS, getBookById } from '@/services/bible/bookCatalog';
 import { getTranslationInfo } from '@/services/bible/translationCatalog';
+import {
+  expandList,
+  formatSegment,
+  type SegmentRef,
+} from '@/services/reading/readingSequence';
+import { progressStats } from '@/services/reading/readingProgress';
 import { TranslationList } from '@/components/bible/TranslationList';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
+import { playSegmentInChat } from '@/lib/readingListPlayback';
 
-type View = 'books' | 'chapters' | 'translations';
+type View = 'books' | 'chapters' | 'translations' | 'lists' | 'segments';
 
 function BackChevron() {
   return (
@@ -50,6 +59,49 @@ function BookIcon({ className }: { className?: string }) {
   );
 }
 
+function ListIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <line x1="9" y1="6" x2="20" y2="6" />
+      <line x1="9" y1="12" x2="20" y2="12" />
+      <line x1="9" y1="18" x2="20" y2="18" />
+      <circle cx="4.5" cy="6" r="1.3" fill="currentColor" />
+      <circle cx="4.5" cy="12" r="1.3" fill="currentColor" />
+      <circle cx="4.5" cy="18" r="1.3" fill="currentColor" />
+    </svg>
+  );
+}
+
+function ChevronRight() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="text-ink-muted shrink-0"
+      aria-hidden="true"
+    >
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  );
+}
+
 type Props = {
   /**
    * What a chapter tap does. Omitted → the chat behaviour: ask the AI to read
@@ -57,12 +109,30 @@ type Props = {
    * navigate instead of going through the model.
    */
   onPick?: (bookId: number, chapter: number) => void;
+  /**
+   * What tapping a reading-list passage does. Omitted → read it aloud in the
+   * chat, the same thing tapping a chapter does there. The reader passes its own
+   * handler so the page navigates instead.
+   */
+  onPickSegment?: (ref: SegmentRef) => void;
   /** Custom trigger. Omitted → the small book-glyph icon button. */
   trigger?: (open: () => void) => React.ReactNode;
+  /**
+   * Show the reading lists. Opt-in rather than default because this sheet is
+   * also used *inside* the reading-list editor to pick a passage, where a link
+   * back out to the list index would be a trap.
+   */
+  showReadingLists?: boolean;
 };
 
-export function BookChapterPicker({ onPick, trigger }: Props = {}) {
+export function BookChapterPicker({
+  onPick,
+  onPickSegment,
+  trigger,
+  showReadingLists,
+}: Props = {}) {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const isProcessing = useChatStore((s) => s.isProcessing);
   const translation = useSettingsStore((s) => s.translation);
   const setTranslation = useSettingsStore((s) => s.setTranslation);
@@ -70,6 +140,9 @@ export function BookChapterPicker({ onPick, trigger }: Props = {}) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>('books');
   const [selectedBookId, setSelectedBookId] = useState<number>(1);
+  const [selectedListId, setSelectedListId] = useState<string | null>(null);
+  const readingLists = useLibraryStore((s) => s.readingLists);
+  const readingProgress = useLibraryStore((s) => s.readingProgress);
 
   const lang: 'en' | 'de' = (i18n.language || 'en').startsWith('de') ? 'de' : 'en';
   const { ot, nt } = useMemo(
@@ -112,12 +185,36 @@ export function BookChapterPicker({ onPick, trigger }: Props = {}) {
     </button>
   );
 
+  const selectedList = selectedListId
+    ? readingLists.find((l) => l.id === selectedListId) ?? null
+    : null;
+  const segments = useMemo(
+    () => (selectedList ? expandList(selectedList, translation) : []),
+    [selectedList, translation],
+  );
+
   const headerTitle =
     view === 'translations'
       ? t('chat.bookPicker.translations')
       : view === 'chapters'
         ? bookLabel(selectedBook)
-        : t('chat.bookPicker.title');
+        : view === 'lists'
+          ? t('lists.title')
+          : view === 'segments'
+            ? selectedList?.name || t('lists.untitled')
+            : t('chat.bookPicker.title');
+
+  /** Where the sheet's back chevron goes — one level up, not always home. */
+  const backTo: View = view === 'segments' ? 'lists' : 'books';
+
+  const pickSegment = (ref: SegmentRef) => {
+    // Keep this on both paths: the sheet tap is the user gesture that unlocks
+    // the audio context on iOS.
+    audioPlayback.ensureContext();
+    if (onPickSegment) onPickSegment(ref);
+    else void playSegmentInChat(ref);
+    setOpen(false);
+  };
 
   const openSheet = () => {
     setView('books');
@@ -172,7 +269,7 @@ export function BookChapterPicker({ onPick, trigger }: Props = {}) {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setView('books')}
+                    onClick={() => setView(backTo)}
                     aria-label={t('chat.bookPicker.back') as string}
                     className="text-ink-muted hover:text-ink transition-colors -ml-1 px-1 flex items-center gap-1 min-w-0"
                   >
@@ -215,6 +312,39 @@ export function BookChapterPicker({ onPick, trigger }: Props = {}) {
                           ? t('chat.bookPicker.languageDe')
                           : t('chat.bookPicker.languageEn')}
                       </span>
+                    </span>
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="text-ink-muted shrink-0"
+                      aria-hidden="true"
+                    >
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+
+              {view === 'books' && showReadingLists && (
+                <div className="px-5 pb-3 border-b border-surface-raised/40">
+                  <button
+                    type="button"
+                    onClick={() => setView('lists')}
+                    className={clsx(
+                      'w-full flex items-center gap-3 rounded-xl px-3 py-2.5',
+                      'bg-surface/60 border border-brand/30 hover:border-brand/60 hover:bg-surface/80',
+                      'transition-colors text-left',
+                    )}
+                  >
+                    <ListIcon className="text-brand shrink-0" />
+                    <span className="flex-1 min-w-0 font-serif text-brand text-sm truncate">
+                      {t('chat.bookPicker.readingLists')}
                     </span>
                     <svg
                       width="18"
@@ -288,6 +418,115 @@ export function BookChapterPicker({ onPick, trigger }: Props = {}) {
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {view === 'lists' && (
+                <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-safe">
+                  {readingLists.length === 0 ? (
+                    <p className="py-8 text-center text-ink-muted text-sm leading-relaxed">
+                      {t('lists.empty')}
+                    </p>
+                  ) : (
+                    <ul className="py-2 space-y-1">
+                      {readingLists.map((list) => {
+                        const stats = progressStats(list, readingProgress[list.id]);
+                        return (
+                          <li key={list.id}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedListId(list.id);
+                                setView('segments');
+                              }}
+                              className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-brand/10 active:bg-brand/15 transition-colors"
+                            >
+                              <span className="flex-1 min-w-0">
+                                <span className="block font-serif text-ink text-sm truncate">
+                                  {list.emoji ? `${list.emoji} ` : ''}
+                                  {list.name || t('lists.untitled')}
+                                </span>
+                                <span className="block text-[11px] text-ink-muted mt-0.5">
+                                  {t('lists.progress', { done: stats.done, total: stats.total })}
+                                </span>
+                              </span>
+                              <ChevronRight />
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      navigate('/lists');
+                    }}
+                    className="w-full mt-1 mb-3 h-10 rounded-xl border border-brand/30 text-brand text-sm hover:bg-brand/10 transition-colors"
+                  >
+                    {t('lists.manage')}
+                  </button>
+                </div>
+              )}
+
+              {view === 'segments' && (
+                <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-safe">
+                  {segments.length === 0 ? (
+                    <p className="py-8 text-center text-ink-muted text-sm">
+                      {t('lists.emptyList')}
+                    </p>
+                  ) : (
+                    <ul className="py-2">
+                      {segments.map((seg, i) => {
+                        const done =
+                          !!seg.entryId &&
+                          !!selectedList &&
+                          (readingProgress[selectedList.id]?.completed.includes(seg.entryId) ??
+                            false);
+                        const current =
+                          !!seg.entryId &&
+                          !!selectedList &&
+                          readingProgress[selectedList.id]?.currentEntryId === seg.entryId;
+                        // Day heading whenever the day changes, so a plan reads
+                        // as days rather than as one long column of references.
+                        const newDay =
+                          seg.dayIndex !== undefined &&
+                          seg.dayIndex !== segments[i - 1]?.dayIndex;
+                        return (
+                          <li key={`${seg.entryId ?? seg.bookId}:${seg.chapter}:${i}`}>
+                            {newDay && segments.some((s) => s.dayIndex !== 0) && (
+                              <h3 className="px-3 pt-3 pb-1 text-[11px] uppercase tracking-wider text-ink-muted/70 font-serif">
+                                {seg.dayTitle || t('lists.day', { number: (seg.dayIndex ?? 0) + 1 })}
+                              </h3>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => pickSegment(seg)}
+                              className={clsx(
+                                'w-full flex items-baseline gap-2 rounded-xl px-3 py-2 text-left transition-colors',
+                                current ? 'bg-brand/10' : 'hover:bg-brand/10 active:bg-brand/15',
+                              )}
+                            >
+                              <span
+                                className={clsx(
+                                  'font-serif text-sm truncate',
+                                  done ? 'text-ink-muted line-through' : 'text-ink',
+                                )}
+                              >
+                                {formatSegment(seg, lang)}
+                              </span>
+                              {seg.label && (
+                                <span className="text-[11px] text-ink-muted truncate">
+                                  {seg.label}
+                                </span>
+                              )}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
                 </div>
               )}
 

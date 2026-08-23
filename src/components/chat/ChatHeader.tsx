@@ -42,7 +42,7 @@ export function ChatHeader() {
     <>
       <header className="flex items-center justify-between px-4 py-2 border-b border-surface-raised/50 bg-surface/90 backdrop-blur">
         <div className="flex items-center gap-3">
-          <BookChapterPicker />
+          <BookChapterPicker showReadingLists />
           <h1 className="font-serif text-brand text-base tracking-wide">
             {t('chat.title')}
           </h1>
