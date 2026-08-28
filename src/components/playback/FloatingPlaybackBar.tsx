@@ -36,16 +36,15 @@ export function FloatingPlaybackBar() {
   const setAutoScroll = useSettingsStore((s) => s.setAutoScrollReader);
 
   const [sheetOpen, setSheetOpen] = useState(false);
-  // Which route the bar was dismissed on, rather than a plain boolean: a bar
-  // closed in chat shouldn't leave the reader with no play button, and deriving
-  // it from the route means no extra effect to reset it on navigation.
-  const [dismissedOn, setDismissedOn] = useState<string | null>(null);
-  const dismissed = dismissedOn === location.pathname;
+  // App-wide, not per-route: closing the bar is a request to be rid of it, and
+  // a route-keyed dismissal made it reappear on the next screen — and then on
+  // the first one again as soon as you closed it there.
+  const [dismissed, setDismissed] = useState(false);
 
   // Bring the bar back whenever playback resumes (new reading, Space, ↓, etc.).
   useEffect(() => {
     if (status === 'playing' || status === 'loading') {
-      setDismissedOn(null);
+      setDismissed(false);
     }
   }, [status]);
 
@@ -95,7 +94,7 @@ export function FloatingPlaybackBar() {
 
   const handleClose = () => {
     audioPlayback.stop();
-    setDismissedOn(location.pathname);
+    setDismissed(true);
   };
 
   return (
