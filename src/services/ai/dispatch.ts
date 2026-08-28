@@ -5,7 +5,6 @@ import { toVerseSummaries } from '@/services/bible/verseSummaries';
 import { effectiveReadingVoice, effectiveVoiceStyle } from '@/store/settingsStore';
 import type { Translation } from '@/services/bible/bibleApi';
 import {
-  BOOKS,
   findBookByName,
   formatRangeList,
   formatReference,
@@ -28,6 +27,12 @@ import {
 import { getAmbientTracks } from '@/services/api/ambient';
 import { buildPlaybackPlan } from '@/lib/playbackPlan';
 import { cryptoRandomInt } from '@/lib/cryptoRandom';
+import {
+  pickRandomBook,
+  pickUniformChapter,
+  pickWeightedChapter,
+} from '@/services/bible/randomPassage';
+import { isChapterMissing } from '@/services/bible/chapterSources';
 import { clamp01 } from '@/lib/math';
 import {
   advanceOneVerse,
@@ -108,7 +113,7 @@ type ToolHandler<N extends ToolName> = (
 const TOOL_REGISTRY: { [N in ToolName]: ToolHandler<N> } = {
   read_verses: (args, ctx) => handleReadVerses(args, ctx, true),
   lookup_verses: (args, ctx) => handleReadVerses(args, ctx, false),
-  random_verse: (args, ctx) => handleRandomVerse(args, ctx),
+  random_passage: (args, ctx) => handleRandomPassage(args, ctx),
   create_card: (args) => handleCreateCard(args),
   update_card: (args) => handleUpdateCard(args),
   delete_card: (args) => handleDeleteCard(args),
@@ -296,14 +301,72 @@ async function handleReadVerses(
   };
 }
 
-async function handleRandomVerse(
-  args: ToolArgs['random_verse'],
+/** How many chapters a draw may burn through before giving up. Only a chapter
+ * the *draw* chose is ever redrawn, and only when the chosen translation
+ * genuinely lacks it (versification gaps — see CLAUDE.md): the catalog is
+ * English versification, so LUT has no Malachi 4 to read. A chapter the user
+ * named is an error, not a redraw. */
+const RANDOM_DRAW_ATTEMPTS = 5;
+
+/** Ceiling on `count`. Each draw is a full reading queued behind the last, so
+ * a mistyped 50 would be an hour of audio nobody asked for. */
+const MAX_RANDOM_COUNT = 5;
+
+/**
+ * Draws `count` passages and reads them. One call per request rather than one
+ * per passage: the pipeline drops a repeated draw with identical arguments (it
+ * is how the model used to re-roll a request it thought had failed), so
+ * "three random verses" has to be expressible in a single call.
+ */
+async function handleRandomPassage(
+  args: ToolArgs['random_passage'],
+  ctx: DispatchContext,
+): Promise<ToolDispatchResult> {
+  const count = Math.min(Math.max(Math.round(args.count ?? 1), 1), MAX_RANDOM_COUNT);
+  const references: string[] = [];
+  for (let i = 0; i < count; i++) {
+    if (ctx.signal?.aborted) break;
+    const drawn = await drawOnePassage(args, ctx);
+    // A failed draw mid-way still reports what already played, so the model
+    // isn't told the whole thing failed and prompted to try again.
+    if (!drawn.ok) {
+      return references.length > 0 ? drawnResult(references) : drawn;
+    }
+    const ref = (drawn.data as { reference?: string } | undefined)?.reference;
+    if (ref) references.push(ref);
+  }
+  return drawnResult(references);
+}
+
+/**
+ * The draw's report. `alreadyRead` and the note are there because the model's
+ * reflex after a draw is to call `read_verses` for what it just got back — a
+ * wasted round-trip at best, and for a multi-draw it invented a reference with
+ * all three mashed together. The pipeline drops those reads either way; this
+ * stops them being issued.
+ */
+function drawnResult(references: string[]): ToolDispatchResult {
+  return {
+    ok: true,
+    data: {
+      reference: references[0] ?? '',
+      references,
+      count: references.length,
+      alreadyRead: true,
+      note: `All ${references.length} requested passage(s) are already playing: ${references.join('; ')}. The request is fulfilled — do not call read_verses for them, do not draw again, and reply with empty content.`,
+    },
+  };
+}
+
+async function drawOnePassage(
+  args: ToolArgs['random_passage'],
   ctx: DispatchContext,
 ): Promise<ToolDispatchResult> {
   const { translation: defaultTrans } = useSettingsStore.getState();
   const translation = args.translation ?? defaultTrans;
+  const unit = args.unit ?? 'verse';
 
-  // Resolve book scope
+  // Book scope, when the user asked for one ("a random psalm").
   let bookId: number | undefined;
   if (args.book) {
     const found = findBookByName(args.book);
@@ -311,36 +374,77 @@ async function handleRandomVerse(
     bookId = found.id;
   }
 
-  // Pick a random book if not specified
-  if (bookId === undefined) {
-    bookId = BOOKS[cryptoRandomInt(BOOKS.length)].id;
+  if (unit === 'book') {
+    const book = bookId !== undefined ? getBookById(bookId) : pickRandomBook();
+    if (!book) return { ok: false, error: `unknown book id ${bookId}` };
+    // A whole book is thousands of verses of TTS, and auto-continuation carries
+    // on from wherever a reading starts — so "pick me a book" opens it at 1:1
+    // rather than queueing the lot.
+    return handleReadVerses({ reference: `${book.nameEn} 1`, translation }, ctx, true);
   }
-  const book = getBookById(bookId);
-  if (!book) return { ok: false, error: `unknown book id ${bookId}` };
 
-  // Resolve / pick chapter
-  let chapter = args.chapter;
-  if (chapter !== undefined) {
-    if (chapter < 1 || chapter > book.chapters) {
-      return { ok: false, error: `chapter ${chapter} out of range for ${book.nameEn}` };
+  // A chapter the user pinned is theirs: validate it, never redraw it.
+  const fixedChapter = bookId !== undefined ? args.chapter : undefined;
+  if (fixedChapter !== undefined) {
+    const book = getBookById(bookId!);
+    if (!book) return { ok: false, error: `unknown book id ${bookId}` };
+    if (fixedChapter < 1 || fixedChapter > book.chapters) {
+      return { ok: false, error: `chapter ${fixedChapter} out of range for ${book.nameEn}` };
     }
-  } else {
-    chapter = cryptoRandomInt(book.chapters) + 1;
   }
 
-  // Fetch the chapter to learn verse count, then pick a verse
-  const verses = await getChapter(translation, bookId, chapter);
-  if (verses.length === 0) {
-    return { ok: false, error: `no verses returned for ${book.nameEn} ${chapter}` };
-  }
-  const picked = verses[cryptoRandomInt(verses.length)];
+  let lastError = '';
+  for (let attempt = 0; attempt < RANDOM_DRAW_ATTEMPTS; attempt++) {
+    const pick =
+      fixedChapter !== undefined
+        ? { bookId: bookId!, chapter: fixedChapter }
+        : unit === 'chapter'
+          ? pickUniformChapter(bookId)
+          : pickWeightedChapter(bookId);
+    const book = getBookById(pick.bookId);
+    if (!book) return { ok: false, error: `unknown book id ${pick.bookId}` };
 
-  // Delegate to the standard read flow so the user hears it and sees it.
-  return handleReadVerses(
-    { reference: `${book.nameEn} ${chapter}:${picked.verse}`, translation },
-    ctx,
-    true,
-  );
+    // Whole-chapter reads go straight out; a verse draw needs the text anyway
+    // to know how many verses this translation actually has. getChapter is
+    // memoized, so handleReadVerses' own fetch below is free either way.
+    let verses;
+    try {
+      verses = await getChapter(translation, pick.bookId, pick.chapter);
+    } catch (e) {
+      if (fixedChapter === undefined && isChapterMissing(e)) {
+        lastError = `${book.nameEn} ${pick.chapter} not in ${translation}`;
+        continue;
+      }
+      throw e;
+    }
+    if (verses.length === 0) {
+      lastError = `no verses returned for ${book.nameEn} ${pick.chapter}`;
+      if (fixedChapter === undefined) continue;
+      return { ok: false, error: lastError };
+    }
+
+    // Delegate to the standard read flow so the user hears it and sees it.
+    if (unit === 'chapter') {
+      return handleReadVerses(
+        { reference: `${book.nameEn} ${pick.chapter}`, translation },
+        ctx,
+        true,
+      );
+    }
+    // The verse comes from the text that came back, not from the weight table,
+    // so a translation with a shorter chapter can't yield a missing verse.
+    const picked = verses[cryptoRandomInt(verses.length)];
+    return handleReadVerses(
+      { reference: `${book.nameEn} ${pick.chapter}:${picked.verse}`, translation },
+      ctx,
+      true,
+    );
+  }
+
+  return {
+    ok: false,
+    error: `no readable chapter after ${RANDOM_DRAW_ATTEMPTS} draws (${lastError})`,
+  };
 }
 
 async function handleCreateCard(args: ToolArgs['create_card']): Promise<ToolDispatchResult> {

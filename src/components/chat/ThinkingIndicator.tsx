@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useChatStore } from '@/store/chatStore';
 
-const READ_TOOLS = new Set(['read_verses', 'lookup_verses', 'random_verse', 'continue_from_ribbon']);
+const READ_TOOLS = new Set(['read_verses', 'lookup_verses', 'random_passage', 'continue_from_ribbon']);
 const CARD_TOOLS = new Set([
   'create_card',
   'update_card',

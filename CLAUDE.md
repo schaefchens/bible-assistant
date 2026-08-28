@@ -21,6 +21,9 @@ This file is the orientation map. When changing code, find the relevant subsyste
   "simplify" it back to one shared bitmap.
 - `npm run bible:build` / `bible:verify` — regenerate the offline Bible packs, and diff them
   against golden fixtures from the PHP parser. **Run verify after touching either parser.**
+- `npm run bible:counts` — regenerate `src/services/bible/verseCounts.ts` (verses per chapter)
+  from the KJV pack. Only needed if the packs or the book catalog change; it asserts the two
+  agree and that the totals are still 1,189 chapters / 31,102 verses.
 - `./scripts/deploy.sh [--dry-run]` — deploy the PWA + PHP over SFTP. Uses an explicit
   allow-list: it must never upload `storage/` (live user data) or `secrets.php`.
 - `npm run lint` — ESLint. Note: a handful of pre-existing `react-hooks/refs` errors live in `EyesFreeMode.tsx`, `FloatingPlaybackBar.tsx`, and `CardStack.tsx`; don't add new ones.
@@ -68,6 +71,52 @@ mic / text input
             └─ assistant reply (if no read action) → speakAssistantReply → TTS
 ```
 Reading aloud is the response: pure `read_verses` turns emit **no** chat text, only audio (logged as a `historyNote` so the model can later "continue reading").
+
+### Random passages — the model must never roll its own
+
+`random_passage` (`unit: 'verse' | 'chapter' | 'book'`, plus `count` for several at once) is
+the only way a random pick is made. Both system prompts say so in as many words, because a
+model asked to "pick a random verse" does not sample — it returns John 3:16, Jeremiah 29:11,
+Philippians 4:13, forever.
+
+**One ask is one draw, and the pipeline enforces it.** A reading tool's result has to read as
+*done*, or gpt-4o-mini treats it as a failure and tries again: the duplicate-read guard used
+to answer a repeated `read_verses` with `count: 0`, the model read that as "the passage came
+back empty", drew again, and asking for one random verse reliably played **three** — one per
+round until `MAX_TOOL_LOOPS` cut it off. So `useCommandPipeline` now intercepts both shapes of
+going round again, and both replies say the request is already fulfilled rather than reporting
+nothing read:
+
+- `read_verses` for a reference already played this turn (`playedKeys`) — the model's "I picked
+  X, now I'll read X" reflex;
+- `random_passage` with identical arguments (`drawnKeys`) — a re-roll, not a second passage.
+
+`count` exists *because* of that second guard: with identical calls dropped, "three random
+verses" has to be one call, and the handler draws and reads three. The draw's own result says
+so too (`alreadyRead` plus the passages by name), which is what stopped the follow-up
+`read_verses` being issued at all — worth keeping in mind for any new tool whose effect is
+audio rather than data.
+
+A *themed* ask ("a verse about hope") is deliberately **not** routed here — that's the model
+resolving a reference, which is what it's good at.
+
+The draw itself is `services/bible/randomPassage.ts` on `lib/cryptoRandom.ts`
+(`crypto.getRandomValues` + rejection sampling, never `Math.random()`), and its one
+non-obvious rule is **what gets weighted**:
+
+- a **verse** draw picks the chapter *weighted by how many verses it holds*
+  (`VERSE_COUNTS`), which is what makes it uniform across all 31,102 verses. Drawing
+  book → chapter → verse uniformly at each step, as this used to, made any given verse of
+  Obadiah ~400× likelier than any given verse of Psalms;
+- a **chapter** draw is uniform over the 1,189 chapters (Psalms gets 150 tickets, Obadiah 1);
+- a **book** draw is uniform over the 66, and opens it at chapter 1 — a whole book is
+  thousands of verses of TTS, and auto-continuation carries on from wherever a reading starts.
+
+Only the *chapter* comes from the table; the verse is drawn from the text that actually came
+back, so a translation with a shorter chapter can't yield a verse number it doesn't have. For
+the same reason a drawn chapter the translation lacks entirely is **redrawn** (up to
+`RANDOM_DRAW_ATTEMPTS`) rather than erroring — the catalog is English versification. A chapter
+the *user* named is never redrawn; that's a real error.
 
 ### Reading hosts — how playback finds its verses
 

@@ -15,6 +15,7 @@
     "icons": "node scripts/icons/buildIcons.mjs",
     "bible:build": "node scripts/bible/buildPacks.mjs",
     "bible:verify": "node scripts/bible/verifyPacks.mjs",
+    "bible:counts": "node scripts/bible/buildVerseCounts.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

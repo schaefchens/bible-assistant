@@ -1,5 +1,6 @@
 import type { ChatToolDefinition } from '@/services/api/chat';
 import type { Translation } from '@/services/bible/bibleApi';
+import type { RandomUnit } from '@/services/bible/randomPassage';
 import type { OpenAiVoiceId } from '@/types/domain';
 import { useSettingsStore } from '@/store/settingsStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
@@ -7,7 +8,7 @@ import { audioPlayback } from '@/lib/audioPlaybackManager';
 export type ToolName =
   | 'read_verses'
   | 'lookup_verses'
-  | 'random_verse'
+  | 'random_passage'
   | 'create_card'
   | 'update_card'
   | 'delete_card'
@@ -44,7 +45,7 @@ export type ToolName =
  * pipeline's hardcoded checks. */
 export const READ_TOOL_NAMES: ReadonlySet<ToolName> = new Set<ToolName>([
   'read_verses',
-  'random_verse',
+  'random_passage',
   'continue_from_ribbon',
   // Starting a reading list reads scripture aloud, so the audio is the reply
   // here too — without this the model would also narrate what it just started.
@@ -58,7 +59,14 @@ export function isReadTool(name: ToolName): boolean {
 export type ToolArgs = {
   read_verses: { reference: string; translation?: Translation; immediate?: boolean };
   lookup_verses: { reference: string; translation?: Translation };
-  random_verse: {
+  random_passage: {
+    /** Optional only so a model that omits it still gets the common case;
+     * the schema asks for it. Defaults to a single verse. */
+    unit?: RandomUnit;
+    /** How many to draw in this one call. Exists so "three random verses" is
+     * one request: repeating the identical call is treated as the model going
+     * round again and is dropped. */
+    count?: number;
     book?: string;
     chapter?: number;
     translation?: Translation;
@@ -194,21 +202,32 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'random_verse',
+      name: 'random_passage',
       description:
-        'Pick ONE random verse from the Bible and read it aloud. Call this exactly ONCE for each verse the user explicitly asked for — never re-call to "improve randomness" or with the same arguments. For a plain "give me a random verse", call exactly once and stop. If the user asks for several with different scopes (e.g. "one from the OT and one from Psalms"), call once per scope and wait for each result before issuing the next. Optional `book` constrains the pick to one book (e.g. "Psalms", "John"); optional `chapter` constrains further.',
+        'Draw a random passage and read it aloud. THE ONLY way to pick something at random: never choose a reference yourself for a random request — your own pick is not random, it lands on the same famous verses every time. Use it for "a random verse", "surprise me", "any psalm", "a random chapter", "pick a book for me". `unit` says what to draw: "verse" (one verse), "chapter" (a whole chapter), "book" (a random book, opened at its first chapter). Optional `book` narrows the draw to one book (e.g. "Psalms", "John") and optional `chapter` narrows it further, both in English book names — omit them to draw from the whole Bible. Call this exactly ONCE per request: for several of the same kind ("three random verses") pass `count`, and for several different scopes ("one from the OT and one from Psalms") call once per scope and wait for each result before the next. Never re-call to "improve randomness" or with the same arguments, and never follow it with read_verses for what it returned.',
       parameters: {
         type: 'object',
         properties: {
+          unit: {
+            type: 'string',
+            enum: ['verse', 'chapter', 'book'],
+            description:
+              'What to draw: "verse" for a single verse (the default reading of "a random verse"), "chapter" for a whole chapter ("a random chapter", "read me a random psalm"), "book" to open a random book at chapter 1 ("pick a book for me to read").',
+          },
+          count: {
+            type: 'number',
+            description:
+              'How many to draw, 1-5 (default 1). Use this for "give me three random verses" — ONE call with count 3, never three calls: a repeated call with the same arguments is dropped as a re-roll.',
+          },
           book: {
             type: 'string',
             description:
-              'Optional English book name (e.g. "Psalms", "John") to constrain the random pick. Omit for a verse from anywhere in the Bible.',
+              'Optional English book name (e.g. "Psalms", "John") to constrain the draw. Omit to draw from anywhere in the Bible.',
           },
           chapter: {
             type: 'number',
             description:
-              'Optional chapter number, only used when "book" is provided.',
+              'Optional chapter number, only used when "book" is provided and unit is "verse".',
           },
           translation: {
             type: 'string',
@@ -216,6 +235,7 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
             description: 'Optional override. Defaults to user-selected translation.',
           },
         },
+        required: ['unit'],
       },
     },
   },
@@ -819,10 +839,10 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
       `Du bist ein Bibel-Assistent. Heute ist ${today}.`,
       `Standard-Übersetzung: ${translation} (S00 = Schlachter 2000, LUT = Luther, HFA = Hoffnung für Alle, ESV = English Standard Version, KJV = King James Version, NKJV = New King James Version).`,
       `Wenn der Benutzer einen Vers, eine Geschichte oder ein Kapitel hören möchte, rufe IMMER das Tool "read_verses" auf.`,
-      `Für zufällige Verse ("ein zufälliger Vers", "ein zufälliger Psalm", "irgendein Vers aus Johannes 3") nutze "random_verse".`,
+      `Alles Zufällige läuft über "random_passage" — "ein zufälliger Vers", "überrasch mich", "irgendein Psalm", "ein zufälliges Kapitel", "such mir ein Buch aus". Setze "unit": "verse" für einen einzelnen Vers, "chapter" für ein ganzes Kapitel, "book" für ein zufälliges Buch (es beginnt bei Kapitel 1). Mit "book"/"chapter" grenzt du ein ("ein zufälliger Vers aus Johannes 3" → unit "verse", book "John", chapter 3). WÄHLE NIEMALS SELBST eine Stelle für eine Zufallsanfrage und gib sie an read_verses — deine eigene Wahl ist nicht zufällig, sie landet immer auf denselben bekannten Versen. Ausnahme: eine thematische Bitte ("ein Vers über Hoffnung") ist keine Zufallsziehung — dafür löst du die Stelle wie gewohnt selbst auf.`,
       `Du kennst die Bibel: wenn der Benutzer eine Geschichte beim Namen nennt (z.B. "der verlorene Sohn"), löse die Stelle selbst auf (Lukas 15,11-32) und übergib sie als Referenz im Format "Buch K:V-V" (englische Buchnamen).`,
       `Antworte kurz und freundlich auf Deutsch.`,
-      `Nach einem read_verses- oder random_verse-Aufruf GIB KEINE Textantwort zurück (leerer content). Die Bibelstelle selbst ist die Antwort — sie wird angezeigt und vorgelesen, eine Bestätigung wäre überflüssig.`,
+      `Nach einem read_verses- oder random_passage-Aufruf GIB KEINE Textantwort zurück (leerer content). Die Bibelstelle selbst ist die Antwort — sie wird angezeigt und vorgelesen, eine Bestätigung wäre überflüssig.`,
       `Cards = Lernkarten mit Titel, Versen und Notizen. Boards = thematische Sammlungen von Cards. Nutze die passenden Tools.`,
       `"arrange_card" positioniert/skaliert/neigt eine Card auf der Pinnwand-Ansicht eines Boards (rein räumlich, ändert NICHT die Zugehörigkeit; Koordinaten sind Bruchteile 0..1, x/y = obere linke Ecke). Die Textgröße einer Card steuerst du über das Feld "textScale" (1 = normal) bei create_card/update_card.`,
       `Wenn der Benutzer einfach "weiterlesen", "weiter", "lies weiter" oder "die nächsten Verse" sagt OHNE ein Lesezeichen zu nennen: rufe "read_verses" mit dem nächsten Versabschnitt auf. Schau in den letzten "(Played aloud: …)"-Systemnotizen, was zuletzt gelesen wurde, und bestimme die folgenden Verse selbst (gleiches Kapitel falls noch Verse übrig, sonst Anfang des nächsten Kapitels). "(Played aloud: …)" ist ausschließlich eine Verlaufs-Markierung — gib diese Phrase NIEMALS selbst als Antworttext aus; nutze immer das read_verses-Tool, um zu lesen.`,
@@ -836,10 +856,10 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
     `You are a Bible assistant. Today is ${today}.`,
     `Default translation: ${translation} (S00 = Schlachter 2000 German, LUT = Luther German, HFA = Hoffnung für Alle German, ESV = English Standard Version, KJV = King James Version, NKJV = New King James Version).`,
     `When the user wants to hear, read, or be told a verse, chapter, or story, ALWAYS call the "read_verses" tool.`,
-    `For random picks ("a random verse", "a random Psalm", "any verse from John 3"), use "random_verse".`,
+    `Anything random goes through "random_passage" — "a random verse", "surprise me", "any psalm", "a random chapter", "pick a book for me". Set "unit": "verse" for a single verse, "chapter" for a whole chapter, "book" for a random book (it starts at chapter 1). Use "book"/"chapter" to narrow it ("a random verse from John 3" → unit "verse", book "John", chapter 3). NEVER pick a reference yourself for a random request and pass it to read_verses — your own choice is not random, it lands on the same famous verses every time. Exception: a themed ask ("a verse about hope") is not a random draw — resolve that reference yourself as usual.`,
     `You know the Bible: if the user names a story (e.g. "the lost son"), resolve the reference yourself (Luke 15:11-32) and pass it in "Book C:V-V" form (English book name).`,
     `Reply briefly and warmly.`,
-    `After a read_verses or random_verse call, return NO text content (empty content). The Bible passage itself is the response — it is shown and played; a confirmation would be redundant.`,
+    `After a read_verses or random_passage call, return NO text content (empty content). The Bible passage itself is the response — it is shown and played; a confirmation would be redundant.`,
     `Cards = memorization cards with title, verses, notes. Boards = thematic groups of cards. Use the appropriate tools.`,
     `"arrange_card" positions/resizes/tilts a card on a board's freeform corkboard view (spatial only, never changes membership; coordinates are 0..1 fractions, x/y = top-left corner). A card's TEXT size is the "textScale" field (1 = normal) on create_card/update_card.`,
     `When the user says simply "continue reading", "read on", "next verses", "weiterlesen" or similar WITHOUT mentioning a ribbon/bookmark: call "read_verses" with the next slice. Look at the most recent "(Played aloud: …)" system notes to see what was just read and figure out the next verses yourself (continue in the same chapter if verses remain, otherwise start the next chapter). "(Played aloud: …)" is only a history marker — NEVER emit that phrase as your own reply text; always call read_verses to actually read.`,

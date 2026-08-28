@@ -62,6 +62,20 @@ function referenceKey(input: string): string | null {
   return `${parsed.bookId}:${parsed.chapter}:${start}:${end}`;
 }
 
+/** Identity of a random draw: same arguments, same request. Built field by
+ * field rather than from the raw JSON so key order or an omitted default can't
+ * make one call look like two. */
+function drawKey(args: Record<string, unknown>): string {
+  const part = (v: unknown) => (v === undefined || v === null ? '' : String(v));
+  return [
+    part(args.unit ?? 'verse'),
+    part(args.count ?? 1),
+    part(args.book),
+    part(args.chapter),
+    part(args.translation),
+  ].join('|');
+}
+
 function newId(): string {
   return crypto.randomUUID();
 }
@@ -164,11 +178,16 @@ export function useCommandPipeline() {
       const readReferences: string[] = [];
       // Canonical keys of passages already played this turn. Used to silently
       // ignore the gpt-4o-mini tic of issuing `read_verses` with the exact
-      // reference just returned by `random_verse`/`continue_from_ribbon` — that
+      // reference just returned by `random_passage`/`continue_from_ribbon` — that
       // duplicate would otherwise pile verses on the message and stomp on the
       // already-started playback. Different references (multi-read flows) are
       // unaffected.
       const playedKeys = new Set<string>();
+      // The draws already made this turn, keyed by their arguments. One ask for
+      // a random verse is one draw: repeating the identical call is the model
+      // going round again, not a second passage the user asked for. Different
+      // arguments ("one from the OT and one from Psalms") still go through.
+      const drawnKeys = new Set<string>();
       while (loops < MAX_TOOL_LOOPS) {
         if (controller.signal.aborted) break;
         loops++;
@@ -178,7 +197,7 @@ export function useCommandPipeline() {
             tools: TOOL_DEFINITIONS,
             model: 'gpt-4o-mini',
             // Sequential tool calls: the model must see each result before issuing
-            // the next. Prevents parallel/duplicate `random_verse` spam while
+            // the next. Prevents parallel/duplicate `random_passage` spam while
             // still allowing legit multi-read flows (e.g. "one from OT, one from
             // NT, one from Psalms") by calling the tool once per verse.
             parallel_tool_calls: false,
@@ -200,31 +219,52 @@ export function useCommandPipeline() {
             const isRead = isReadTool(name);
             if (isRead) didReadAction = true;
 
-            // Skip a `read_verses` whose reference matches one already played
-            // this turn. This neutralizes the model's "I picked X, now I'll
-            // read X" follow-up after `random_verse`, without limiting how many
-            // distinct verses the user can request.
+            // Two ways the model goes round again after a reading, both
+            // intercepted here rather than dispatched:
+            //   - `read_verses` for a reference already played this turn — its
+            //     "I picked X, now I'll read X" follow-up, which would pile the
+            //     verses on the message and stomp on the started playback;
+            //   - `random_passage` with the identical arguments — a second roll
+            //     of the same request.
+            // Neither limits what the user can actually ask for: a different
+            // reference, or a draw with a different scope, passes through.
+            const parsedArgs = parseJsonSafe(tc.function.arguments) as Record<string, unknown>;
+            let repeated = false;
             if (name === 'read_verses') {
-              const parsedArgs = parseJsonSafe(tc.function.arguments) as {
-                reference?: unknown;
-              };
               const refStr = typeof parsedArgs.reference === 'string' ? parsedArgs.reference : '';
               const key = refStr ? referenceKey(refStr) : null;
-              if (key && playedKeys.has(key)) {
-                const data = { reference: refStr, count: 0, duplicate: true };
-                summaries.push({
-                  id: tc.id,
-                  name: tc.function.name,
-                  args: parsedArgs as Record<string, unknown>,
-                  result: data,
-                });
-                history.push({
-                  role: 'tool',
-                  tool_call_id: tc.id,
-                  content: JSON.stringify({ ok: true, data }),
-                });
-                continue;
-              }
+              repeated = !!key && playedKeys.has(key);
+            } else if (name === 'random_passage') {
+              const key = drawKey(parsedArgs);
+              repeated = drawnKeys.has(key);
+              drawnKeys.add(key);
+            }
+            if (repeated) {
+              // Deliberately *not* `count: 0` — that read as "the passage came
+              // back empty", and the model answered it by drawing again, three
+              // times over, until MAX_TOOL_LOOPS cut it off. The result has to
+              // say the request is already fulfilled.
+              const played =
+                (typeof parsedArgs.reference === 'string' ? parsedArgs.reference : '') ||
+                readReferences[readReferences.length - 1] ||
+                '';
+              const data = {
+                reference: played,
+                alreadyRead: true,
+                note: 'This passage is already playing from this turn — the request is fulfilled. Do not read it again, do not draw another passage, and reply with empty content.',
+              };
+              summaries.push({
+                id: tc.id,
+                name: tc.function.name,
+                args: parsedArgs,
+                result: data,
+              });
+              history.push({
+                role: 'tool',
+                tool_call_id: tc.id,
+                content: JSON.stringify({ ok: true, data }),
+              });
+              continue;
             }
 
             useChatStore.getState().setCurrentTool(name);
@@ -232,23 +272,27 @@ export function useCommandPipeline() {
               messageId: assistantMsg.id,
               signal: controller.signal,
             });
-            if (
-              isRead &&
-              result.ok &&
-              result.data &&
-              typeof result.data === 'object' &&
-              'reference' in result.data &&
-              typeof (result.data as { reference: unknown }).reference === 'string'
-            ) {
-              const ref = (result.data as { reference: string }).reference;
-              readReferences.push(ref);
-              const key = referenceKey(ref);
-              if (key) playedKeys.add(key);
+            if (isRead && result.ok && result.data && typeof result.data === 'object') {
+              // `references` (plural) is how a multi-draw reports what it read;
+              // everything else reports the one `reference`. Both are recorded
+              // whole, so the history note names every passage and each one is
+              // covered by the duplicate guard.
+              const data = result.data as { reference?: unknown; references?: unknown };
+              const refs = Array.isArray(data.references)
+                ? data.references.filter((r): r is string => typeof r === 'string')
+                : typeof data.reference === 'string'
+                  ? [data.reference]
+                  : [];
+              for (const ref of refs) {
+                readReferences.push(ref);
+                const key = referenceKey(ref);
+                if (key) playedKeys.add(key);
+              }
             }
             summaries.push({
               id: tc.id,
               name: tc.function.name,
-              args: parseJsonSafe(tc.function.arguments),
+              args: parsedArgs,
               result: result.ok ? result.data : undefined,
               error: result.ok ? undefined : result.error,
             });
