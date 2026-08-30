@@ -453,7 +453,39 @@
       "removeConfirm": "Zum Entfernen erneut tippen"
     },
     "endOfList": "Ende der Liste.",
-    "startOfList": "Anfang der Liste."
+    "startOfList": "Anfang der Liste.",
+    "appearance": {
+      "title": "Schriftbild",
+      "open": "Schriftbild anpassen",
+      "paper": "Papier",
+      "papers": {
+        "theme": "App-Design",
+        "paper": "Papier",
+        "sepia": "Sepia",
+        "grey": "Grau",
+        "night": "Nacht",
+        "black": "Schwarz"
+      },
+      "paperTint": "Papierton",
+      "inkTint": "Schriftton",
+      "contrast": "Kontrast",
+      "contrastHint": "Wie weit Papier und Schrift auseinanderliegen. Dicht beieinander verblasst die Schrift, weiter auseinander wird sie kräftiger.",
+      "belowAa": "unter AA",
+      "textSize": "Schriftgröße",
+      "lineSpacing": "Zeilenabstand",
+      "typeface": "Schriftart",
+      "serif": "Serif",
+      "sans": "Sans",
+      "margins": "Zeilenbreite",
+      "marginsFull": "Volle Breite",
+      "marginsChars": "{{n}} Zeichen",
+      "dualColumn": "Zwei Spalten",
+      "dualColumnHint": "Nur auf breiten Bildschirmen — im Hochformat bleibt es einspaltig.",
+      "reset": "Auf Standard zurücksetzen",
+      "preview": "Vorschau",
+      "sampleReference": "Psalm 23,1",
+      "sampleText": "Der HERR ist mein Hirte, mir wird nichts mangeln."
+    }
   },
   "lists": {
     "title": "Leselisten",

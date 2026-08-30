@@ -5,6 +5,7 @@ import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { RATE_CYCLE } from '@/hooks/usePlaybackTransport';
 import { getAmbientTracks, type AmbientTrack } from '@/services/api/ambient';
 import { MsSlider } from '@/components/common/MsSlider';
+import { RangeSlider } from '@/components/common/RangeSlider';
 
 export function PlaybackSettingsForm() {
   const { t } = useTranslation();
@@ -343,21 +344,15 @@ function VolumeSlider({
   onChange: (v: number) => void;
 }) {
   return (
-    <div>
-      <label className="flex items-center justify-between text-xs text-ink-muted mb-1">
-        <span>{label}</span>
-        <span className="font-mono tabular-nums">{Math.round(value * 100)}%</span>
-      </label>
-      <input
-        type="range"
-        min={0}
-        max={1}
-        step={0.01}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-brand"
-      />
-    </div>
+    <RangeSlider
+      label={label}
+      value={value}
+      min={0}
+      max={1}
+      step={0.01}
+      onChange={onChange}
+      format={(v) => `${Math.round(v * 100)}%`}
+    />
   );
 }
 

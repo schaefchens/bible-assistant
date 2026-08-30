@@ -94,9 +94,12 @@ export function WordHighlighter({
   return (
     <Tag
       data-verse-key={`${groupId}:${verseIndex}`}
+      // No font, size or leading of its own: those are the reading surface's
+      // (src/lib/readingAppearance.ts), and both containers that mount this are
+      // one. Setting them here would silently outrank the user's choice.
       className={clsx(
-        'font-serif text-ink scroll-mt-16',
-        inline ? 'verse-inline' : 'verse leading-relaxed',
+        'text-ink scroll-mt-16',
+        inline ? 'verse-inline' : 'verse',
         isCurrent && 'verse-current',
       )}
     >

@@ -8,6 +8,7 @@ import {
 import { VOICE_OPTIONS, type VoiceId } from '@/types/domain';
 import { getPassphrase } from '@/lib/passphrase';
 import type { ThemeChoice } from '@/lib/theme';
+import { ReadingAppearanceForm } from '@/components/reader/ReadingAppearanceForm';
 import { PlaybackSettingsForm } from '@/components/playback/PlaybackSettingsForm';
 import { SegmentedControl } from '@/components/common/SegmentedControl';
 import { TranslationPickerSheet } from '@/components/bible/TranslationPickerSheet';
@@ -63,6 +64,10 @@ export function SettingsPage() {
           ]}
           onChange={(v) => settings.setTheme(v as ThemeChoice)}
         />
+      </Section>
+
+      <Section title={t('read.appearance.title')}>
+        <ReadingAppearanceForm />
       </Section>
 
       <Section title={t('settings.translation')}>

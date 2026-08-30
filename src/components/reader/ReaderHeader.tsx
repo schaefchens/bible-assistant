@@ -17,13 +17,15 @@ type Props = {
    * viewport and sit in the middle of the page while "closed".
    */
   onOpenTranslations: () => void;
+  /** Opens the reading-appearance sheet. Owned by ReadPage for the same reason. */
+  onOpenAppearance: () => void;
 };
 
 /**
  * The reader's top bar: what you're reading (tap to jump), which translation
  * (tap to switch), and the paged/endless toggle.
  */
-export function ReaderHeader({ onOpenTranslations }: Props) {
+export function ReaderHeader({ onOpenTranslations, onOpenAppearance }: Props) {
   const { t, i18n } = useTranslation();
   const lang: 'en' | 'de' = (i18n.language || 'en').startsWith('de') ? 'de' : 'en';
 
@@ -118,6 +120,15 @@ export function ReaderHeader({ onOpenTranslations }: Props) {
         >
           <ScrollIcon />
         </button>
+        <button
+          type="button"
+          onClick={onOpenAppearance}
+          aria-label={t('read.appearance.open') as string}
+          title={t('read.appearance.open') as string}
+          className="h-8 w-8 rounded-lg flex items-center justify-center text-ink-muted hover:text-ink transition-all active:scale-95"
+        >
+          <TypeIcon />
+        </button>
       </div>
     </header>
   );
@@ -138,6 +149,16 @@ function ChevronDown() {
       aria-hidden="true"
     >
       <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+/** Type glyph: a small A beside a large one, the universal "text settings" mark. */
+function TypeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M6.1 14.2h3.3l.7 2.1h1.8L8.6 7.7H7L3.7 16.3h1.7l.7-2.1zm1.6-4.9 1.2 3.5H6.5l1.2-3.5z" />
+      <path d="M16.3 19.3h2.2l1 2.7h2.2L17.9 9.6h-1.9L11.9 22h2.1l1-2.7zm1.1-6.8 1.6 4.9h-3.2l1.6-4.9z" />
     </svg>
   );
 }

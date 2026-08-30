@@ -1,4 +1,5 @@
 import { memo, useCallback, useMemo } from 'react';
+import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { WordHighlighter } from '@/components/playback/WordHighlighter';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
@@ -7,6 +8,7 @@ import { playFromVerseWord, startPlaybackForVerses } from '@/lib/startPlayback';
 import { formatRangeList, formatReference } from '@/services/bible/bookCatalog';
 import { isWholeChapter } from '@/services/reading/readingSequence';
 import type { LoadedSegment } from '@/store/readerStore';
+import { useSettingsStore } from '@/store/settingsStore';
 
 type Props = { segment: LoadedSegment };
 
@@ -24,6 +26,7 @@ export const SegmentBlock = memo(function SegmentBlock({ segment }: Props) {
   const { ref, verses, id } = segment;
 
   const paragraphs = useMemo(() => groupIntoParagraphs(verses), [verses]);
+  const dualColumn = useSettingsStore((s) => s.readingAppearance.dualColumn);
 
   const handleWordTap = useCallback(
     (verseIndex: number, wordIndex: number) => {
@@ -47,11 +50,14 @@ export const SegmentBlock = memo(function SegmentBlock({ segment }: Props) {
   return (
     // The generous bottom padding is the segment separator: together with the
     // ruled heading below it, a new chapter is unmistakable while scrolling.
-    <section data-segment-id={id} className="pb-16">
+    <section
+      data-segment-id={id}
+      className={clsx('reading-column pb-16', dualColumn && 'is-dual')}
+    >
       <header className="relative flex items-center justify-center mb-6">
         {/* A rule spanning the column, with the heading punching a gap in it. */}
         <span aria-hidden className="absolute inset-x-0 top-1/2 h-px bg-brand/20" />
-        <h2 className="chapter-heading relative bg-surface px-5 text-lg">{heading}</h2>
+        <h2 className="chapter-heading relative bg-surface px-5 text-[1.1em]">{heading}</h2>
         {/* Absolutely positioned so it can't pull the heading off centre. Its own
             bg-surface opens a matching gap in the rule. */}
         <span className="absolute right-0 bg-surface pl-3">
@@ -73,12 +79,12 @@ export const SegmentBlock = memo(function SegmentBlock({ segment }: Props) {
       </header>
 
       {subheading && (
-        <p className="-mt-4 mb-5 text-center text-[11px] uppercase tracking-wider text-brand-muted">
+        <p className="-mt-4 mb-5 text-center text-[0.65em] uppercase tracking-wider text-brand-muted">
           {subheading}
         </p>
       )}
 
-      <div className="font-serif text-ink/95 text-[17px] leading-8 space-y-4">
+      <div className="reading-prose text-ink/95 space-y-4">
         {paragraphs.map((indices) => (
           <p key={indices[0]}>
             {indices.map((verseIndex, n) => (

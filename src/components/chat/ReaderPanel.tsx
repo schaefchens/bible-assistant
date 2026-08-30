@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useChatStore } from '@/store/chatStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { playFromVerseWord } from '@/lib/startPlayback';
 import { useCommandPipeline } from '@/hooks/useCommandPipeline';
 import { useContinueReading } from '@/hooks/useContinueReading';
 import { WordHighlighter } from '@/components/playback/WordHighlighter';
+import { useReadingSurface } from '@/hooks/useReadingSurface';
+import { paintsOwnPaper } from '@/lib/readingAppearance';
 import { getBookById } from '@/services/bible/bookCatalog';
 import { MessageActionsMenu, type MessageActionItem } from './MessageActionsMenu';
 import { copyText, shareText } from '@/lib/nativeBridge';
@@ -24,6 +27,10 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
   const isHighlighted = highlightedId === message.id;
   const { send } = useCommandPipeline();
   const cont = useContinueReading(message, send);
+
+  const surfaceRef = useRef<HTMLElement>(null);
+  const surfaceClass = useReadingSurface(surfaceRef);
+  const ownPaper = useSettingsStore((s) => paintsOwnPaper(s.readingAppearance));
 
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [pendingAction, setPendingAction] = useState<
@@ -143,10 +150,16 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
   return (
     <>
       <article
+        ref={surfaceRef}
         onClick={onSelect}
         className={clsx(
-          'card-paper rounded-r-2xl rounded-l-md my-1 px-4 py-3 bg-surface-raised/20',
+          surfaceClass,
+          'card-paper rounded-r-2xl rounded-l-md my-1 px-4 py-3',
           'border-l-2 border-brand/70 transition-all',
+          // Until the user picks a paper of their own this is chat furniture and
+          // keeps its translucent bubble; once they have, the verses deserve to
+          // sit on it.
+          ownPaper ? 'bg-surface' : 'bg-surface-raised/20',
           selected && 'border-l-4 border-brand ring-1 ring-brand/30',
           isHighlighted && 'ring-2 ring-brand animate-pulse-soft',
         )}
@@ -178,7 +191,7 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
           return (
             <div key={`${run.headerKey}-${ri}`} className={ri > 0 ? 'mt-4 pt-4 border-t border-brand/15' : ''}>
               <header className="flex items-baseline justify-between mb-2 gap-2">
-                <h3 className="font-serif text-brand text-lg leading-tight">
+                <h3 className="font-serif text-brand text-[1.1em] leading-tight">
                   {headerLabel}
                 </h3>
                 <div className="flex items-baseline gap-2 shrink-0">
@@ -201,7 +214,7 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
                   )}
                 </div>
               </header>
-              <div className="font-serif text-ink/95 leading-7 space-y-1">
+              <div className="text-ink/95 space-y-1">
                 {run.items.map((v) => {
                   const verseIdx = verses.indexOf(v);
                   return (
