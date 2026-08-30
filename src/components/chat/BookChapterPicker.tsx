@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
@@ -23,6 +22,7 @@ import { ProgressBar } from '@/components/reading/ProgressBar';
 import { TranslationList } from '@/components/bible/TranslationList';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { playSegmentInChat } from '@/lib/readingListPlayback';
+import { BottomSheet } from '@/components/common/BottomSheet';
 
 type View = 'books' | 'chapters' | 'translations' | 'lists';
 
@@ -45,23 +45,6 @@ function clampIndex(value: number, length: number): number {
   return Math.min(Math.max(value, 0), Math.max(0, length - 1));
 }
 
-function BackChevron() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <polyline points="15 18 9 12 15 6" />
-    </svg>
-  );
-}
 
 function BookIcon({ className }: { className?: string }) {
   return (
@@ -471,391 +454,342 @@ export function BookChapterPicker({
         </button>
       )}
 
-      {createPortal(
-        <>
-          <div
-            aria-hidden={!open}
-            onClick={() => setOpen(false)}
-            className={clsx(
-              'fixed inset-0 z-40 bg-black/50 transition-opacity duration-200',
-              open ? 'opacity-100' : 'pointer-events-none opacity-0',
-            )}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={headerTitle as string}
-            className={clsx(
-              'fixed left-0 right-0 bottom-0 z-50',
-              'rounded-t-3xl bg-surface-sunken border-t border-brand/30 shadow-2xl',
-              'transition-transform duration-300 ease-out will-change-transform',
-              open ? 'translate-y-0' : 'translate-y-full',
-            )}
-            style={{ maxHeight: '85vh' }}
-          >
-            <div className="flex flex-col" style={{ maxHeight: '85vh' }}>
-              <div className="flex flex-col items-center pt-2 pb-1">
-                <div className="h-1.5 w-12 rounded-full bg-ink/20" />
-              </div>
-              <div className="flex items-center justify-between px-5 pb-3 gap-2">
-                {view === 'books' ? (
-                  <h2 className="font-serif text-brand text-lg truncate">{headerTitle}</h2>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setView('books')}
-                    aria-label={t('chat.bookPicker.back') as string}
-                    className="text-ink-muted hover:text-ink transition-colors -ml-1 px-1 flex items-center gap-1 min-w-0"
-                  >
-                    <BackChevron />
-                    <span className="font-serif text-brand text-lg truncate">
-                      {headerTitle}
-                    </span>
-                  </button>
-                )}
+      <BottomSheet
+        open={open}
+        onClose={() => setOpen(false)}
+        title={headerTitle}
+        // Only the sub-views can go back; the book grid is the root.
+        onBack={view === 'books' ? undefined : () => setView('books')}
+      >
+        {view === 'books' && (
+          <div className="px-5 pb-3 border-b border-surface-raised/40">
+            <button
+              type="button"
+              onClick={() => setView('translations')}
+              aria-label={t('chat.bookPicker.changeTranslation') as string}
+              className={clsx(
+                'w-full flex items-center gap-3 rounded-xl px-3 py-2.5',
+                'bg-surface/60 border border-brand/30 hover:border-brand/60 hover:bg-surface/80',
+                'transition-colors text-left',
+              )}
+            >
+              <BookIcon className="text-brand shrink-0" />
+              <span className="flex-1 min-w-0">
+                <span className="block font-serif text-brand text-sm leading-tight truncate">
+                  {currentTranslation.name}
+                </span>
+                <span className="block text-xs text-ink-muted/80 mt-0.5">
+                  {currentTranslation.year} ·{' '}
+                  {currentTranslation.language === 'de'
+                    ? t('chat.bookPicker.languageDe')
+                    : t('chat.bookPicker.languageEn')}
+                </span>
+              </span>
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-ink-muted shrink-0"
+                aria-hidden="true"
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {view === 'books' && showReadingLists && (
+          <div className="px-5 pb-3 border-b border-surface-raised/40">
+            <div
+              className={clsx(
+                'flex items-center gap-1 rounded-xl pl-3 pr-1.5 py-1',
+                'bg-surface/60 border transition-colors',
+                lockedList
+                  ? 'border-brand/60'
+                  : 'border-brand/30 hover:border-brand/60',
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => setView('lists')}
+                className="flex-1 min-w-0 flex items-center gap-3 py-1.5 text-left"
+              >
+                <ListIcon className="text-brand shrink-0" />
+                <span className="flex-1 min-w-0 font-serif text-brand text-sm truncate">
+                  {lockedList
+                    ? `${lockedList.emoji ? `${lockedList.emoji} ` : ''}${lockedList.name || t('lists.untitled')}`
+                    : t('chat.bookPicker.readingLists')}
+                </span>
+                {!lockedList && <ChevronRight />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  navigate(lockedList ? `/lists/${lockedList.id}` : '/lists');
+                }}
+                aria-label={t('lists.manage') as string}
+                title={t('lists.manage') as string}
+                className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-ink-muted hover:text-brand hover:bg-brand/10 transition-colors"
+              >
+                <PencilIcon />
+              </button>
+
+              {/* Clearing the selection is its own control, because
+                  picking a chapter is no longer reachable while a list is
+                  showing its passages instead of the books. */}
+              {lockedList && (
                 <button
                   type="button"
-                  onClick={() => setOpen(false)}
-                  aria-label={t('common.close') as string}
-                  className="text-ink-muted hover:text-ink transition-colors text-2xl leading-none px-2 shrink-0"
+                  onClick={() => void setSource(BIBLE_SOURCE)}
+                  aria-label={t('chat.bookPicker.clearList') as string}
+                  title={t('chat.bookPicker.clearList') as string}
+                  className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-ink-muted hover:text-brand hover:bg-brand/10 transition-colors text-xl leading-none"
                 >
                   ×
                 </button>
-              </div>
-
-              {view === 'books' && (
-                <div className="px-5 pb-3 border-b border-surface-raised/40">
-                  <button
-                    type="button"
-                    onClick={() => setView('translations')}
-                    aria-label={t('chat.bookPicker.changeTranslation') as string}
-                    className={clsx(
-                      'w-full flex items-center gap-3 rounded-xl px-3 py-2.5',
-                      'bg-surface/60 border border-brand/30 hover:border-brand/60 hover:bg-surface/80',
-                      'transition-colors text-left',
-                    )}
-                  >
-                    <BookIcon className="text-brand shrink-0" />
-                    <span className="flex-1 min-w-0">
-                      <span className="block font-serif text-brand text-sm leading-tight truncate">
-                        {currentTranslation.name}
-                      </span>
-                      <span className="block text-xs text-ink-muted/80 mt-0.5">
-                        {currentTranslation.year} ·{' '}
-                        {currentTranslation.language === 'de'
-                          ? t('chat.bookPicker.languageDe')
-                          : t('chat.bookPicker.languageEn')}
-                      </span>
-                    </span>
-                    <svg
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="text-ink-muted shrink-0"
-                      aria-hidden="true"
-                    >
-                      <polyline points="9 18 15 12 9 6" />
-                    </svg>
-                  </button>
-                </div>
-              )}
-
-              {view === 'books' && showReadingLists && (
-                <div className="px-5 pb-3 border-b border-surface-raised/40">
-                  <div
-                    className={clsx(
-                      'flex items-center gap-1 rounded-xl pl-3 pr-1.5 py-1',
-                      'bg-surface/60 border transition-colors',
-                      lockedList
-                        ? 'border-brand/60'
-                        : 'border-brand/30 hover:border-brand/60',
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setView('lists')}
-                      className="flex-1 min-w-0 flex items-center gap-3 py-1.5 text-left"
-                    >
-                      <ListIcon className="text-brand shrink-0" />
-                      <span className="flex-1 min-w-0 font-serif text-brand text-sm truncate">
-                        {lockedList
-                          ? `${lockedList.emoji ? `${lockedList.emoji} ` : ''}${lockedList.name || t('lists.untitled')}`
-                          : t('chat.bookPicker.readingLists')}
-                      </span>
-                      {!lockedList && <ChevronRight />}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpen(false);
-                        navigate(lockedList ? `/lists/${lockedList.id}` : '/lists');
-                      }}
-                      aria-label={t('lists.manage') as string}
-                      title={t('lists.manage') as string}
-                      className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-ink-muted hover:text-brand hover:bg-brand/10 transition-colors"
-                    >
-                      <PencilIcon />
-                    </button>
-
-                    {/* Clearing the selection is its own control, because
-                        picking a chapter is no longer reachable while a list is
-                        showing its passages instead of the books. */}
-                    {lockedList && (
-                      <button
-                        type="button"
-                        onClick={() => void setSource(BIBLE_SOURCE)}
-                        aria-label={t('chat.bookPicker.clearList') as string}
-                        title={t('chat.bookPicker.clearList') as string}
-                        className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-ink-muted hover:text-brand hover:bg-brand/10 transition-colors text-xl leading-none"
-                      >
-                        ×
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {view === 'books' && !lockedList && (
-                <div className="flex flex-1 min-h-0 pb-safe">
-                  <div className="w-1/2 flex flex-col border-r border-surface-raised/40">
-                    <h3 className="shrink-0 px-3 pt-2 pb-2 text-xs uppercase tracking-wider text-ink-muted/70 font-serif border-b border-surface-raised/40">
-                      {t('chat.bookPicker.oldTestament')}
-                    </h3>
-                    <div className="flex-1 min-h-0 overflow-y-auto py-1">
-                      {ot.map(renderBookButton)}
-                    </div>
-                  </div>
-                  <div className="w-1/2 flex flex-col">
-                    <h3 className="shrink-0 px-3 pt-2 pb-2 text-xs uppercase tracking-wider text-ink-muted/70 font-serif border-b border-surface-raised/40">
-                      {t('chat.bookPicker.newTestament')}
-                    </h3>
-                    <div className="flex-1 min-h-0 overflow-y-auto py-1">
-                      {nt.map(renderBookButton)}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {view === 'chapters' && (
-                <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-safe">
-                  <div className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-9 gap-2">
-                    {chapters.map((chapter) => (
-                      <button
-                        key={chapter}
-                        type="button"
-                        // Only the chat path can be busy; a reader jump is
-                        // always available.
-                        disabled={onPick ? false : isProcessing}
-                        onClick={() => {
-                          // Keep this on both paths: the sheet tap is the user
-                          // gesture that unlocks the audio context on iOS.
-                          audioPlayback.ensureContext();
-                          if (onPick) {
-                            onPick(selectedBook.id, chapter);
-                          } else {
-                            void send(`Read ${selectedBook.nameEn} ${chapter}`);
-                          }
-                          setOpen(false);
-                        }}
-                        className={clsx(
-                          'aspect-square rounded-xl bg-surface border border-surface-raised/50',
-                          'text-ink text-sm font-mono',
-                          'hover:bg-brand/10 hover:border-brand/40 active:scale-95',
-                          'transition-colors',
-                          'disabled:opacity-40 disabled:pointer-events-none',
-                        )}
-                      >
-                        {chapter}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {view === 'books' && lockedList && (
-                <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-safe">
-                  {dayGroups.length === 0 ? (
-                    <p className="py-8 text-center text-ink-muted text-sm">
-                      {t('lists.emptyList')}
-                    </p>
-                  ) : (
-                    <>
-                      <div className="pt-1 pb-3">
-                        <ProgressBar fraction={lockedStats.fraction} />
-                        <div className="mt-1.5 flex items-center justify-between gap-2">
-                          <p className="min-w-0 text-[11px] text-ink-muted truncate">
-                            {t('lists.progress', lockedStats)}
-                            {' · '}
-                            {t('lists.chapters', { count: listChapterCount(lockedList) })}
-                          </p>
-                          {resumeSegment && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                audioPlayback.ensureContext();
-                                if (onContinue) onContinue(resumeSegment);
-                                else void playSegmentInChat(resumeSegment);
-                                setOpen(false);
-                              }}
-                              className="h-8 shrink-0 px-3 rounded-lg bg-brand text-on-brand text-sm flex items-center gap-1.5 active:scale-95 transition-transform"
-                            >
-                              <PlayGlyph />
-                              {lockedStats.done > 0 && lockedStats.done < lockedStats.total
-                                ? t('lists.continue')
-                                : t('lists.start')}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* One step at a time — a day of a plan, or ten passages of
-                          a plain list. The neighbours are named rather than
-                          listed: a ninety-day plan is not something to scroll,
-                          and rows this size don't fit three abreast on a phone. */}
-                      <div className="flex items-center justify-between gap-2 pb-1">
-                        <PagerButton
-                          onClick={() => stepBrowse(-1)}
-                          disabled={!canBrowseBack}
-                          label={t('chat.bookPicker.earlier') as string}
-                          side="start"
-                        >
-                          {grouped && canBrowseBack ? dayPagerLabel(focusDay - 1) : null}
-                        </PagerButton>
-                        <span
-                          className={clsx(
-                            'flex items-center gap-1 min-w-0 rounded-full px-3 py-1',
-                            'text-[12px] uppercase tracking-wider font-serif',
-                            currentGroup?.done
-                              ? 'bg-brand/10 text-brand-muted'
-                              : 'bg-brand/15 text-brand',
-                          )}
-                        >
-                          {currentGroup?.done && <CheckMark />}
-                          <span className="truncate">
-                            {grouped
-                              ? dayLabel(focusDay)
-                              : t('chat.bookPicker.pageOf', { page: page + 1, total: pageCount })}
-                          </span>
-                        </span>
-                        <PagerButton
-                          onClick={() => stepBrowse(1)}
-                          disabled={!canBrowseOn}
-                          label={t('chat.bookPicker.later') as string}
-                          side="end"
-                        >
-                          {grouped && canBrowseOn ? dayPagerLabel(focusDay + 1) : null}
-                        </PagerButton>
-                      </div>
-
-                      {/* A touch more than the list screen's `space-y-1`: these
-                          rows carry no play button, so they're 36px rather than
-                          44px and the same gap reads tighter between them. */}
-                      <ul className="space-y-1.5 pb-3">
-                        {visiblePassages.map((seg, i) => (
-                          <li key={`${seg.entryId ?? seg.bookId}:${seg.chapter}:${i}`}>
-                            <PassageRow
-                              text={formatSegment(seg, lang)}
-                              detail={passageDetail([
-                                seg.label,
-                                seg.translationPinned ? seg.translation : undefined,
-                              ])}
-                              done={
-                                !!seg.entryId &&
-                                (lockedProgress?.completed.includes(seg.entryId) ?? false)
-                              }
-                              current={!!seg.entryId && seg.entryId === currentEntryId}
-                              onToggle={
-                                seg.entryId
-                                  ? () =>
-                                      void setEntryDone(
-                                        lockedList.id,
-                                        seg.entryId as string,
-                                        !(lockedProgress?.completed.includes(
-                                          seg.entryId as string,
-                                        ) ?? false),
-                                      )
-                                  : undefined
-                              }
-                              onOpen={() => pickSegment(seg)}
-                            />
-                          </li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {view === 'lists' && (
-                <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-safe">
-                  {readingLists.length === 0 ? (
-                    <p className="py-8 text-center text-ink-muted text-sm leading-relaxed">
-                      {t('lists.empty')}
-                    </p>
-                  ) : (
-                    <ul className="py-2 space-y-1">
-                      {readingLists.map((list) => {
-                        const stats = progressStats(list, readingProgress[list.id]);
-                        return (
-                          <li key={list.id}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void setSource({ kind: 'list', listId: list.id });
-                                setView('books');
-                              }}
-                              className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-brand/10 active:bg-brand/15 transition-colors"
-                            >
-                              <span className="flex-1 min-w-0">
-                                <span className="block font-serif text-ink text-sm truncate">
-                                  {list.emoji ? `${list.emoji} ` : ''}
-                                  {list.name || t('lists.untitled')}
-                                </span>
-                                <span className="block text-[11px] text-ink-muted mt-0.5">
-                                  {t('lists.progress', { done: stats.done, total: stats.total })}
-                                </span>
-                              </span>
-                              <ChevronRight />
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOpen(false);
-                      navigate('/lists');
-                    }}
-                    className="w-full mt-1 mb-3 h-10 rounded-xl border border-brand/30 text-brand text-sm hover:bg-brand/10 transition-colors"
-                  >
-                    {t('lists.manage')}
-                  </button>
-                </div>
-              )}
-
-              {view === 'translations' && (
-                <TranslationList
-                  value={translation}
-                  onChange={(code) => {
-                    setTranslation(code, true);
-                    setView('books');
-                  }}
-                  className="flex-1 min-h-0 overflow-y-auto pb-safe"
-                />
               )}
             </div>
           </div>
-        </>,
-        document.body,
-      )}
+        )}
+
+        {view === 'books' && !lockedList && (
+          <div className="flex flex-1 min-h-0 pb-safe">
+            <div className="w-1/2 flex flex-col border-r border-surface-raised/40">
+              <h3 className="shrink-0 px-3 pt-2 pb-2 text-xs uppercase tracking-wider text-ink-muted/70 font-serif border-b border-surface-raised/40">
+                {t('chat.bookPicker.oldTestament')}
+              </h3>
+              <div className="flex-1 min-h-0 overflow-y-auto py-1">
+                {ot.map(renderBookButton)}
+              </div>
+            </div>
+            <div className="w-1/2 flex flex-col">
+              <h3 className="shrink-0 px-3 pt-2 pb-2 text-xs uppercase tracking-wider text-ink-muted/70 font-serif border-b border-surface-raised/40">
+                {t('chat.bookPicker.newTestament')}
+              </h3>
+              <div className="flex-1 min-h-0 overflow-y-auto py-1">
+                {nt.map(renderBookButton)}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {view === 'chapters' && (
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-safe">
+            <div className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-9 gap-2">
+              {chapters.map((chapter) => (
+                <button
+                  key={chapter}
+                  type="button"
+                  // Only the chat path can be busy; a reader jump is
+                  // always available.
+                  disabled={onPick ? false : isProcessing}
+                  onClick={() => {
+                    // Keep this on both paths: the sheet tap is the user
+                    // gesture that unlocks the audio context on iOS.
+                    audioPlayback.ensureContext();
+                    if (onPick) {
+                      onPick(selectedBook.id, chapter);
+                    } else {
+                      void send(`Read ${selectedBook.nameEn} ${chapter}`);
+                    }
+                    setOpen(false);
+                  }}
+                  className={clsx(
+                    'aspect-square rounded-xl bg-surface border border-surface-raised/50',
+                    'text-ink text-sm font-mono',
+                    'hover:bg-brand/10 hover:border-brand/40 active:scale-95',
+                    'transition-colors',
+                    'disabled:opacity-40 disabled:pointer-events-none',
+                  )}
+                >
+                  {chapter}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {view === 'books' && lockedList && (
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-safe">
+            {dayGroups.length === 0 ? (
+              <p className="py-8 text-center text-ink-muted text-sm">
+                {t('lists.emptyList')}
+              </p>
+            ) : (
+              <>
+                <div className="pt-1 pb-3">
+                  <ProgressBar fraction={lockedStats.fraction} />
+                  <div className="mt-1.5 flex items-center justify-between gap-2">
+                    <p className="min-w-0 text-[11px] text-ink-muted truncate">
+                      {t('lists.progress', lockedStats)}
+                      {' · '}
+                      {t('lists.chapters', { count: listChapterCount(lockedList) })}
+                    </p>
+                    {resumeSegment && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          audioPlayback.ensureContext();
+                          if (onContinue) onContinue(resumeSegment);
+                          else void playSegmentInChat(resumeSegment);
+                          setOpen(false);
+                        }}
+                        className="h-8 shrink-0 px-3 rounded-lg bg-brand text-on-brand text-sm flex items-center gap-1.5 active:scale-95 transition-transform"
+                      >
+                        <PlayGlyph />
+                        {lockedStats.done > 0 && lockedStats.done < lockedStats.total
+                          ? t('lists.continue')
+                          : t('lists.start')}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* One step at a time — a day of a plan, or ten passages of
+                    a plain list. The neighbours are named rather than
+                    listed: a ninety-day plan is not something to scroll,
+                    and rows this size don't fit three abreast on a phone. */}
+                <div className="flex items-center justify-between gap-2 pb-1">
+                  <PagerButton
+                    onClick={() => stepBrowse(-1)}
+                    disabled={!canBrowseBack}
+                    label={t('chat.bookPicker.earlier') as string}
+                    side="start"
+                  >
+                    {grouped && canBrowseBack ? dayPagerLabel(focusDay - 1) : null}
+                  </PagerButton>
+                  <span
+                    className={clsx(
+                      'flex items-center gap-1 min-w-0 rounded-full px-3 py-1',
+                      'text-[12px] uppercase tracking-wider font-serif',
+                      currentGroup?.done
+                        ? 'bg-brand/10 text-brand-muted'
+                        : 'bg-brand/15 text-brand',
+                    )}
+                  >
+                    {currentGroup?.done && <CheckMark />}
+                    <span className="truncate">
+                      {grouped
+                        ? dayLabel(focusDay)
+                        : t('chat.bookPicker.pageOf', { page: page + 1, total: pageCount })}
+                    </span>
+                  </span>
+                  <PagerButton
+                    onClick={() => stepBrowse(1)}
+                    disabled={!canBrowseOn}
+                    label={t('chat.bookPicker.later') as string}
+                    side="end"
+                  >
+                    {grouped && canBrowseOn ? dayPagerLabel(focusDay + 1) : null}
+                  </PagerButton>
+                </div>
+
+                {/* A touch more than the list screen's `space-y-1`: these
+                    rows carry no play button, so they're 36px rather than
+                    44px and the same gap reads tighter between them. */}
+                <ul className="space-y-1.5 pb-3">
+                  {visiblePassages.map((seg, i) => (
+                    <li key={`${seg.entryId ?? seg.bookId}:${seg.chapter}:${i}`}>
+                      <PassageRow
+                        text={formatSegment(seg, lang)}
+                        detail={passageDetail([
+                          seg.label,
+                          seg.translationPinned ? seg.translation : undefined,
+                        ])}
+                        done={
+                          !!seg.entryId &&
+                          (lockedProgress?.completed.includes(seg.entryId) ?? false)
+                        }
+                        current={!!seg.entryId && seg.entryId === currentEntryId}
+                        onToggle={
+                          seg.entryId
+                            ? () =>
+                                void setEntryDone(
+                                  lockedList.id,
+                                  seg.entryId as string,
+                                  !(lockedProgress?.completed.includes(
+                                    seg.entryId as string,
+                                  ) ?? false),
+                                )
+                            : undefined
+                        }
+                        onOpen={() => pickSegment(seg)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        )}
+
+        {view === 'lists' && (
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-safe">
+            {readingLists.length === 0 ? (
+              <p className="py-8 text-center text-ink-muted text-sm leading-relaxed">
+                {t('lists.empty')}
+              </p>
+            ) : (
+              <ul className="py-2 space-y-1">
+                {readingLists.map((list) => {
+                  const stats = progressStats(list, readingProgress[list.id]);
+                  return (
+                    <li key={list.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void setSource({ kind: 'list', listId: list.id });
+                          setView('books');
+                        }}
+                        className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-brand/10 active:bg-brand/15 transition-colors"
+                      >
+                        <span className="flex-1 min-w-0">
+                          <span className="block font-serif text-ink text-sm truncate">
+                            {list.emoji ? `${list.emoji} ` : ''}
+                            {list.name || t('lists.untitled')}
+                          </span>
+                          <span className="block text-[11px] text-ink-muted mt-0.5">
+                            {t('lists.progress', { done: stats.done, total: stats.total })}
+                          </span>
+                        </span>
+                        <ChevronRight />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                navigate('/lists');
+              }}
+              className="w-full mt-1 mb-3 h-10 rounded-xl border border-brand/30 text-brand text-sm hover:bg-brand/10 transition-colors"
+            >
+              {t('lists.manage')}
+            </button>
+          </div>
+        )}
+
+        {view === 'translations' && (
+          <TranslationList
+            value={translation}
+            onChange={(code) => {
+              setTranslation(code, true);
+              setView('books');
+            }}
+            className="flex-1 min-h-0 overflow-y-auto pb-safe"
+          />
+        )}
+      </BottomSheet>
     </>
   );
 }
