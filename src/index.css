@@ -157,6 +157,46 @@
     box-shadow: none;
   }
 
+  /* ------------------------------------------------------------------ *
+   * The reading surface — the Bible text itself, sized and measured by the
+   * user (src/lib/readingAppearance.ts). Only the text takes these; app
+   * chrome deliberately doesn't, so the controls that undo an unreadable
+   * setting stay readable.
+   *
+   * The fallbacks are today's values (`text-[17px] leading-8`), so a surface
+   * whose vars were never written renders exactly as it always has.
+   * ------------------------------------------------------------------ */
+  .reading-surface {
+    font-size: var(--reading-font-size, 17px);
+    line-height: var(--reading-line-height, 1.88);
+  }
+
+  /* Line length. `ch` rather than rem so the measure stays constant in
+     characters as the text size changes — which is the whole point of a
+     measure. `none` (the top of the slider) means the column is uncapped. */
+  .reading-column {
+    max-width: var(--reading-measure, none);
+    margin-inline: auto;
+  }
+
+  /* Two columns are gated on viewport width **here, in CSS**, not on the
+     setting: a phone in portrait has no room for them, and a user who turned
+     this on for their tablet must not get 20-character columns on their
+     phone. The setting is a preference; this is the constraint. */
+  @media (min-width: 768px) {
+    .reading-column.is-dual {
+      max-width: calc(var(--reading-measure, 40ch) * 2 + 2.5rem);
+    }
+    .reading-column.is-dual .reading-prose {
+      column-count: 2;
+      column-gap: 2.5rem;
+    }
+    /* A chapter's opening line must not be orphaned at the foot of column one. */
+    .reading-column.is-dual .reading-prose > p {
+      break-inside: avoid-column;
+    }
+  }
+
   /* Chapter heading in the reader: small-caps Georgia with wide tracking,
      centered in a gap punched out of the rule that runs behind it. The `bg-surface`
      on the heading itself is what masks the rule — the reader page paints no

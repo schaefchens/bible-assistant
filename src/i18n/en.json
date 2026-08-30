@@ -453,7 +453,39 @@
       "removeConfirm": "Tap again to remove this download"
     },
     "endOfList": "End of the list.",
-    "startOfList": "Start of the list."
+    "startOfList": "Start of the list.",
+    "appearance": {
+      "title": "Reading text",
+      "open": "Adjust the reading text",
+      "paper": "Paper",
+      "papers": {
+        "theme": "App theme",
+        "paper": "Paper",
+        "sepia": "Sepia",
+        "grey": "Grey",
+        "night": "Night",
+        "black": "Black"
+      },
+      "paperTint": "Paper tint",
+      "inkTint": "Text tint",
+      "contrast": "Contrast",
+      "contrastHint": "How far apart the paper and the text sit. Close together fades the text away; further apart makes it stark.",
+      "belowAa": "below AA",
+      "textSize": "Text size",
+      "lineSpacing": "Line spacing",
+      "typeface": "Typeface",
+      "serif": "Serif",
+      "sans": "Sans",
+      "margins": "Line width",
+      "marginsFull": "Full width",
+      "marginsChars": "{{n}} characters",
+      "dualColumn": "Two columns",
+      "dualColumnHint": "On wide screens only — a phone in portrait keeps one column.",
+      "reset": "Reset to default",
+      "preview": "Preview",
+      "sampleReference": "Psalm 23:1",
+      "sampleText": "The LORD is my shepherd; I shall not want."
+    }
   },
   "lists": {
     "title": "Reading lists",

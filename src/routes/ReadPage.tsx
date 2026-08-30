@@ -5,6 +5,8 @@ import { ReaderFooter } from '@/components/reader/ReaderFooter';
 import { SegmentBlock } from '@/components/reader/SegmentBlock';
 import { ChapterUnavailableCard } from '@/components/reader/ChapterUnavailableCard';
 import { TranslationPickerSheet } from '@/components/bible/TranslationPickerSheet';
+import { ReadingAppearanceSheet } from '@/components/reader/ReadingAppearanceSheet';
+import { ReadingSurface } from '@/components/reader/ReadingSurface';
 import { useAutoScrollActiveVerse } from '@/hooks/useAutoScrollActiveVerse';
 import { useEndlessChapters } from '@/hooks/useEndlessChapters';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
@@ -46,6 +48,7 @@ export function ReadPage() {
   const endless = useSettingsStore((s) => s.readerEndlessScroll);
 
   const [translationOpen, setTranslationOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
 
   useAutoScrollActiveVerse(scrollRef);
   const { sentinelRef, loadPrevious } = useEndlessChapters(scrollRef);
@@ -117,13 +120,23 @@ export function ReadPage() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <ReaderHeader onOpenTranslations={() => setTranslationOpen(true)} />
+      <ReaderHeader
+        onOpenTranslations={() => setTranslationOpen(true)}
+        onOpenAppearance={() => setAppearanceOpen(true)}
+      />
 
       {/* One scroll container for every loaded chapter — that's what
           useAutoScrollActiveVerse needs to find the active verse. pb-28 keeps
           the last verse clear of the mic and the floating playback bar, which
-          anchor above the bottom nav. */}
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 pt-4 pb-28">
+          anchor above the bottom nav.
+          It is also the reading surface, so the user's paper reaches the edges
+          of the scroller: the padding is inside its background box. The header
+          and footer are deliberately outside — a page dialled down to invisible
+          must still show the button that undoes it. */}
+      <ReadingSurface
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto bg-surface px-4 pt-4 pb-28"
+      >
         {canLoadPrevious && (
           <button
             type="button"
@@ -165,7 +178,7 @@ export function ReadPage() {
             {source.kind === 'list' ? t('read.endOfList') : t('read.endOfBible')}
           </p>
         )}
-      </div>
+      </ReadingSurface>
 
       {!endless && <ReaderFooter onStep={step} />}
 
@@ -178,6 +191,11 @@ export function ReadPage() {
           jumpToTop();
         }}
         onClose={() => setTranslationOpen(false)}
+      />
+
+      <ReadingAppearanceSheet
+        open={appearanceOpen}
+        onClose={() => setAppearanceOpen(false)}
       />
     </div>
   );

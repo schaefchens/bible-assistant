@@ -172,7 +172,7 @@ All in `src/store/`. `(persist)` = survives reload via `zustand/middleware`.
 | --- | --- |
 | `usePlaybackStore` | **Source of truth for audio state**: status, current track, word index (drives `WordHighlighter`), volumes |
 | `useChatStore` | Conversation history, `isProcessing`, `currentTool` |
-| `useSettingsStore` *(persist v15 + migrations)* | User prefs: locale, `theme`, translation, voices, reading/announcement prefs, ambient, mic corner, `syncEnabled` |
+| `useSettingsStore` *(persist v16 + migrations)* | User prefs: locale, `theme`, `readingAppearance`, translation, voices, reading/announcement prefs, ambient, mic corner, `syncEnabled` |
 | `useLibraryStore` | Cards + boards + their order, reading lists + per-list progress, and the offline sync queue (flushed to `api.php`) |
 | `useRibbonsStore` *(persist)* | Colored bookmarks ("ribbons") |
 | `useGlobalVoiceStore` | Mic listening state, last voice response |
@@ -444,6 +444,74 @@ a dark phone) leaves the bars dark. Closing that needs a small native shim.
 
 Existing installs migrate to an explicit `'dark'`, not `'system'`: the app was
 dark-only before this, so following the OS would restyle people who never asked.
+
+### Reading appearance — the user's own paper and ink
+
+`settings.readingAppearance` (`lib/readingAppearance.ts`, edited through the
+reader's `Aa` sheet and a mirrored section in `/settings`) governs **the Bible
+text only**: the reader column and chat verse panels. App chrome — headers,
+footers, nav, and the sheet itself — deliberately stays on the app theme, because
+the contrast control can be taken to zero on purpose and the button that undoes
+that has to remain visible. `BottomSheet` portals to `document.body`, so the sheet
+is outside the surface's subtree for free.
+
+Colour is **derived, not stored**. A preset gives a paper and an ink in OKLCH;
+the two tint sliders override their hues (forcing a chroma floor, or tinting a
+neutral grey would visibly do nothing); the contrast slider then slides the ink
+toward the paper and past it — `ink' = paper + (ink - paper) * k`, `k = 1` being
+the preset untouched. OKLCH and not sRGB because "distance" has to mean
+*perceptual* distance.
+
+**The paper is pinned.** An earlier version moved both around their midpoint,
+which made every contrast change a change of page brightness too — a lot to
+happen under one control, and on a tinted preset it went muddy on the way down
+(a fixed chroma reads as far more saturated at mid lightness than at the ends,
+so softening sepia turned the page olive). Now the paper is whatever the preset
+says at every setting, and the slider only decides how strongly the text is
+printed on it. Chroma and hue converge along with the lightness, so `k = 0`
+lands the ink *exactly* on the paper rather than merely at its luminance —
+without that the text survives its own contrast as a colour. Both are capped at
+`min(k, 1)` so pushing past the preset drives lightness apart without
+over-saturating.
+
+`k` scales the **brand** distance too: left at full strength, collapsing the
+contrast left a page whose verses had vanished while its chapter heading and drop
+cap still shouted.
+
+`setPaletteVars()` was left in `lib/theme.ts` for exactly this and is now its only
+caller. Three things about the derivation are load-bearing:
+
+- **Only nine tokens are written.** The surface carries a `[data-theme]` chosen by
+  the resolved paper's *lightness*, which brings in the rest from `index.css` —
+  `--verse-tint-alpha` above all, so the reading tint follows the paper rather
+  than the app. A bright paper under the dark app theme still highlights legibly.
+- **The gold is read back out of the cascade**, from a *detached probe* element,
+  and only its lightness is re-placed relative to the paper. `index.css` stays the
+  one place a colour is written down, and the heading stays legible on a paper its
+  author never saw. The probe is why: the derived tokens are inline styles on the
+  same element that carries `data-theme`, so reading the base back off it would
+  chase its own tail.
+- **The app's mode is an argument, not a DOM read** (`useDocumentThemeMode()`).
+  `lib/theme.ts` writes `<html data-theme>` from an effect, so sampling it during
+  render is one tick stale on every theme switch and never notices the OS flipping
+  appearance at all.
+
+The default (`paper: 'theme'`, contrast 1, no tints) emits **no** colour vars and
+no `data-theme` — `isDefaultPalette()` short-circuits — so an install that never
+opens the sheet renders exactly as it did before the feature existed.
+
+Type is three custom properties (`--reading-font-size`, `--reading-line-height`,
+`--reading-measure`) on `.reading-surface`, whose fallbacks are today's values;
+`SegmentBlock` and `WordHighlighter` therefore carry **no** size, leading or family
+of their own, and headings use `em` so they track the body instead of shrinking
+away from it. The measure is in `ch` so it stays constant in *characters* as the
+size changes. Everything is written imperatively through a ref, never as a `style`
+prop, so dragging a slider repaints without re-rendering the verse tree.
+
+**Two columns are gated in CSS** (`@media (min-width: 768px)`), not on the setting:
+a phone in portrait has no room for them, and someone who turned it on for their
+tablet must not get 20-character columns on their phone. The setting is a
+preference; the media query is the constraint.
 
 ## Offline-first — what needs a network and what doesn't
 

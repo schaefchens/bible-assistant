@@ -3,6 +3,10 @@ import { persist } from 'zustand/middleware';
 import type { Locale, VoiceId } from '@/types/domain';
 import type { Translation } from '@/services/bible/bibleApi';
 import type { ThemeChoice } from '@/lib/theme';
+import {
+  DEFAULT_READING_APPEARANCE,
+  type ReadingAppearance,
+} from '@/lib/readingAppearance';
 
 export type MicCorner = 'tl' | 'tr' | 'bl' | 'br';
 export type VerseNumberStyle = 'spoken' | 'plain';
@@ -53,6 +57,15 @@ type SettingsState = {
   /** Reader screen: load the next/previous chapter as you scroll, instead of
    * turning one chapter at a time with the prev/next buttons. */
   readerEndlessScroll: boolean;
+  /**
+   * How the Bible text itself is printed — paper, ink, contrast, size, measure.
+   * Applies to the reader column and to chat verse panels, never to app chrome:
+   * the controls that undo an unreadable setting have to stay readable.
+   *
+   * Its default is a no-op (see DEFAULT_READING_APPEARANCE), so an install that
+   * never opens the sheet looks exactly as it did before the feature existed.
+   */
+  readingAppearance: ReadingAppearance;
   /** Whether the server has a personal OpenAI key on file for this user.
    * Hydrated from auth.openaiKey.status on boot; transient (not persisted). */
   hasUserOpenAiKey: boolean;
@@ -104,6 +117,8 @@ type SettingsState = {
   setPauseBetweenChaptersMs: (v: number) => void;
   setAutoPlayReading: (v: boolean) => void;
   setReaderEndlessScroll: (v: boolean) => void;
+  setReadingAppearance: (patch: Partial<ReadingAppearance>) => void;
+  resetReadingAppearance: () => void;
   setUserOpenAiKeyStatus: (hasKey: boolean, masked: string | null) => void;
   setSessionPreferSharedKey: (v: boolean) => void;
   setOnboardingComplete: (v: boolean) => void;
@@ -217,6 +232,7 @@ export const useSettingsStore = create<SettingsState>()(
         pauseBetweenChaptersMs: 0,
         autoPlayReading: false,
         readerEndlessScroll: false,
+        readingAppearance: DEFAULT_READING_APPEARANCE,
         hasUserOpenAiKey: false,
         userOpenAiKeyMasked: null,
         sessionPreferSharedKey: false,
@@ -259,6 +275,12 @@ export const useSettingsStore = create<SettingsState>()(
         setAutoPlayReading: (autoPlayReading) => set({ autoPlayReading }),
         setReaderEndlessScroll: (readerEndlessScroll) =>
           set({ readerEndlessScroll }),
+        // Patch-shaped like setAmbient: the sheet drives nine controls, and a
+        // whole-object setter would make every one of them restate the rest.
+        setReadingAppearance: (patch) =>
+          set((s) => ({ readingAppearance: { ...s.readingAppearance, ...patch } })),
+        resetReadingAppearance: () =>
+          set({ readingAppearance: DEFAULT_READING_APPEARANCE }),
         setUserOpenAiKeyStatus: (hasKey, masked) =>
           set({ hasUserOpenAiKey: hasKey, userOpenAiKeyMasked: masked }),
         setSessionPreferSharedKey: (sessionPreferSharedKey) =>
@@ -272,7 +294,7 @@ export const useSettingsStore = create<SettingsState>()(
     },
     {
       name: 'ba.settings',
-      version: 15,
+      version: 16,
       // Don't persist server-derived state — hydrate fresh on every boot.
       // Otherwise an older "hasUserOpenAiKey: true" could outlive a key the
       // server has since cleared.
@@ -390,6 +412,18 @@ export const useSettingsStore = create<SettingsState>()(
           // them to 'system' would repaint the app for anyone whose phone is in
           // light mode, which is not a change they asked for.
           prev = { ...prev, theme: 'dark' };
+        }
+        if (version < 16) {
+          // Spread over the defaults rather than replacing, matching the v2
+          // `ambient` block: a later build can add a field to the shape without
+          // needing another migration to backfill it.
+          prev = {
+            ...prev,
+            readingAppearance: {
+              ...DEFAULT_READING_APPEARANCE,
+              ...(prev.readingAppearance ?? {}),
+            },
+          };
         }
         return prev as SettingsState;
       },
