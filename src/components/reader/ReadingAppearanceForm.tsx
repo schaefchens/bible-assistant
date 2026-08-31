@@ -35,10 +35,10 @@ const AA_RATIO = 4.5;
  * The reading-appearance controls, mounted both in the reader's sheet and in
  * Settings — the same dual-mount arrangement `PlaybackSettingsForm` uses.
  *
- * Every control writes straight to the store rather than to local state, so the
- * page behind the sheet re-paints as the slider moves. The preview above the
- * controls exists because a sheet covers most of the reader; it is a real
- * `ReadingSurface`, not a mock-up, so what it shows is what the page does.
+ * Every control writes straight to the store rather than to local state, so both
+ * the preview and the page behind the sheet re-paint as the slider moves.
+ * `ReadingAppearancePreview` is a separate export rather than a child, so the
+ * sheet can pin it while only these controls scroll.
  */
 export function ReadingAppearanceForm() {
   const { t } = useTranslation();
@@ -53,8 +53,6 @@ export function ReadingAppearanceForm() {
 
   return (
     <div className="space-y-6">
-      <Preview />
-
       <Field label={t('read.appearance.paper')}>
         <div className="flex items-center justify-between gap-2">
           {READING_PAPER_IDS.map((id) => (
@@ -193,9 +191,16 @@ export function ReadingAppearanceForm() {
   );
 }
 
-/** A real reading surface, one verse wide, with the "currently reading" tint on
- *  so the brand colour and the highlight are part of what's being previewed. */
-function Preview() {
+/**
+ * A real reading surface, one verse wide, with the "currently reading" tint on
+ * so the brand colour and the highlight are part of what's being previewed.
+ *
+ * Deliberately *not* part of `ReadingAppearanceForm`: the sheet pins it above
+ * the scrolling controls, because a slider whose effect has scrolled off screen
+ * is a slider you cannot use. Settings, whose whole page scrolls anyway, just
+ * renders the two in order.
+ */
+export function ReadingAppearancePreview() {
   const { t } = useTranslation();
   return (
     <ReadingSurface className="rounded-xl border border-brand/25 bg-surface px-4 py-3 overflow-hidden">

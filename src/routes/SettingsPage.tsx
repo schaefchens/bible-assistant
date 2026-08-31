@@ -8,7 +8,10 @@ import {
 import { VOICE_OPTIONS, type VoiceId } from '@/types/domain';
 import { getPassphrase } from '@/lib/passphrase';
 import type { ThemeChoice } from '@/lib/theme';
-import { ReadingAppearanceForm } from '@/components/reader/ReadingAppearanceForm';
+import {
+  ReadingAppearanceForm,
+  ReadingAppearancePreview,
+} from '@/components/reader/ReadingAppearanceForm';
 import { PlaybackSettingsForm } from '@/components/playback/PlaybackSettingsForm';
 import { SegmentedControl } from '@/components/common/SegmentedControl';
 import { TranslationPickerSheet } from '@/components/bible/TranslationPickerSheet';
@@ -67,7 +70,12 @@ export function SettingsPage() {
       </Section>
 
       <Section title={t('read.appearance.title')}>
-        <ReadingAppearanceForm />
+        {/* No pinning here — the whole page scrolls, so the preview is simply
+            the first thing in the section. */}
+        <div className="space-y-6">
+          <ReadingAppearancePreview />
+          <ReadingAppearanceForm />
+        </div>
       </Section>
 
       <Section title={t('settings.translation')}>
