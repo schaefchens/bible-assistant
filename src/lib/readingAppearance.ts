@@ -79,7 +79,7 @@ export type ReadingAppearance = {
 };
 
 export const CONTRAST_MIN = 0;
-export const CONTRAST_MAX = 1.5;
+export const CONTRAST_MAX = 1.25;
 export const FONT_SIZE_MIN = 14;
 export const FONT_SIZE_MAX = 30;
 export const LINE_HEIGHT_MIN = 1.3;
@@ -120,11 +120,14 @@ type PaperChip = { paperL: number; inkL: number; defaultColor: string };
  * cascade, so it follows whatever the app palette is.
  */
 export const READING_PAPERS: Record<Exclude<ReadingPaperId, 'theme'>, PaperChip> = {
-  paper: { paperL: 0.972, inkL: 0.255, defaultColor: '#8a7a52' },
-  sepia: { paperL: 0.925, inkL: 0.31, defaultColor: '#8a6a3a' },
-  grey: { paperL: 0.86, inkL: 0.27, defaultColor: '#808080' },
-  night: { paperL: 0.216, inkL: 0.905, defaultColor: '#5a5a8c' },
-  black: { paperL: 0.05, inkL: 0.82, defaultColor: '#808080' },
+  // The defaults are not hand-picked: each is the colour whose saturation, once
+  // transferred to that chip's paper lightness, reproduces the hand-tuned preset
+  // this model replaced. Tapping a chip therefore looks as it always did.
+  paper: { paperL: 0.972, inkL: 0.255, defaultColor: '#8e866e' },
+  sepia: { paperL: 0.925, inkL: 0.31, defaultColor: '#9b8259' },
+  grey: { paperL: 0.86, inkL: 0.27, defaultColor: '#868686' },
+  night: { paperL: 0.216, inkL: 0.905, defaultColor: '#857eb4' },
+  black: { paperL: 0.05, inkL: 0.82, defaultColor: '#868686' },
 };
 
 /**
@@ -203,6 +206,19 @@ const BRAND_BRIGHT_DL = 0.59;
 /** Keep the gold a gold: below this it is mud, above it it is white. */
 const BRAND_L_MIN = 0.18;
 const BRAND_L_MAX = 0.92;
+
+/**
+ * The ink never reaches pure black or pure white.
+ *
+ * In OKLab, L = 0 is black and L = 1 is white *whatever* chroma you hand them —
+ * so letting the contrast slider drive the ink to either end silently threw the
+ * page's colour away. Above about k = 1.1 every chip collapsed to black-on-white
+ * or white-on-black and the colour picker appeared to do nothing at all. Holding
+ * a little lightness back at each end costs a few points of contrast ratio (the
+ * worst case is still past AAA) and keeps the ink the colour it was chosen to be.
+ */
+const INK_L_MIN = 0.12;
+const INK_L_MAX = 0.93;
 
 const RAISED_DL = 0.045;
 const SUNKEN_DL = 0.052;
@@ -344,7 +360,9 @@ export function resolveReadingPalette(
   // decides how strongly the text is printed on it. Moving both around their
   // midpoint (which this used to do) made every contrast change a change of
   // paper as well, which is a lot to have happen under one control.
-  const k = a.contrast;
+  // Clamped on read, not on write: a value persisted before CONTRAST_MAX came
+  // down would otherwise stay past the end of its own slider.
+  const k = clamp(a.contrast, CONTRAST_MIN, CONTRAST_MAX);
   const paperOk: Oklch = paperHue;
   // Chroma and hue converge on the paper's along with the lightness, so k = 0
   // lands the ink *exactly* on the paper rather than merely at its luminance —
@@ -353,7 +371,7 @@ export function resolveReadingPalette(
   // not start over-saturating the text.
   const inkOk: Oklch = {
     ...mixOklch(paperOk, inkHue, Math.min(k, 1)),
-    l: clamp(paperOk.l + (inkHue.l - paperOk.l) * k, 0, 1),
+    l: clamp(paperOk.l + (inkHue.l - paperOk.l) * k, INK_L_MIN, INK_L_MAX),
   };
 
   const paper = oklchToSrgb(paperOk);
