@@ -143,12 +143,33 @@ export function contrastRatio(a: Rgb, b: Rgb): number {
 
 /** Linear interpolation in OKLCH, taking the short way round the hue circle. */
 export function mixOklch(from: Oklch, to: Oklch, t: number): Oklch {
-  let dh = ((to.h - from.h + 540) % 360) - 180;
-  // A neutral endpoint has no hue to travel to; hold the other's.
-  if (to.c < 1e-4 || from.c < 1e-4) dh = 0;
   return {
     l: from.l + (to.l - from.l) * t,
     c: from.c + (to.c - from.c) * t,
-    h: (from.h + dh * t + 360) % 360,
+    h: mixHue(from, to, t),
   };
+}
+
+/**
+ * A neutral has no meaningful hue — `srgbToOklch` reports 0 for it rather than
+ * atan2's noise — so rotating to or from one would travel through hues neither
+ * end asked for. Hold whichever end *has* chroma instead, for the whole ramp;
+ * the chroma interpolation alone then fades that hue in or out.
+ *
+ * Getting this wrong is not subtle: zeroing the delta (which holds `from`'s hue
+ * unconditionally) meant that mixing a neutral paper toward a tinted ink threw
+ * the ink's hue away and printed it in the paper's nominal 0 — so on the grey
+ * and black papers the ink tint did nothing at all, and landed on a red-brown
+ * whatever the user chose.
+ */
+const NEUTRAL_C = 1e-4;
+
+function mixHue(from: Oklch, to: Oklch, t: number): number {
+  const fromNeutral = from.c < NEUTRAL_C;
+  const toNeutral = to.c < NEUTRAL_C;
+  if (fromNeutral && toNeutral) return from.h;
+  if (fromNeutral) return to.h;
+  if (toNeutral) return from.h;
+  const dh = ((to.h - from.h + 540) % 360) - 180;
+  return (from.h + dh * t + 360) % 360;
 }

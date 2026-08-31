@@ -116,9 +116,18 @@ export const READING_PAPER_IDS: ReadingPaperId[] = [
  * Chroma forced on when a tint slider is used. Without a floor, tinting the
  * neutral grey paper (c = 0) would do nothing at all — hue is meaningless
  * without chroma to carry it — and the slider would look broken.
+ *
+ * The two differ because the sRGB gamut does. Measured headroom (largest
+ * in-gamut chroma, min/median across hues) is 0.013/0.019 at the light paper's
+ * L 0.97 but 0.044/0.074 at the ink's L 0.26 — a light surface simply cannot
+ * hold much colour, while dark text can hold three times as much. The ink's
+ * floor started at the paper's and was invisible for it: not clipped, just far
+ * too timid for the room available. Anything above the *minimum* clips
+ * gracefully on the least accommodating hues (oklchToSrgb gives up chroma, not
+ * hue), which is the right trade for a control whose whole job is to be seen.
  */
 const TINT_CHROMA_PAPER = 0.026;
-const TINT_CHROMA_INK = 0.02;
+const TINT_CHROMA_INK = 0.06;
 
 /** How far the gold sits from the paper, in OKLab L. Measured off the two
  *  hand-tuned palettes in index.css, which agree to within 0.05. */
