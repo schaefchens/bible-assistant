@@ -1,6 +1,6 @@
-Wähle die Farbe der Seite, auf der du liest.
+Mikrofon und Wiedergabe sind jetzt ein Element.
 
-• Jedes Papier — Papier, Sepia, Grau, Nacht, Schwarz — trägt jetzt eine eigene Farbe, aus einer Palette gewählt, und die Schrift folgt ihr.
-• Der Kontrastregler wäscht diese Farbe am oberen Ende nicht mehr aus.
-• Die Vorschau bleibt beim Einstellen stehen, statt wegzuscrollen.
-• Einstellungen neu gebaut: sechs Kategorien, immer nur eine offen, statt einer langen Seite.
+• Neu: eine Leiste über der Navigation — volle Breite, verdeckt keinen Text, und ab jetzt die Voreinstellung.
+• Abspielen sitzt mittig, Zurück und Weiter daneben, dazu zwei Tasten für ein paar Wörter vor und zurück.
+• Der Freihändig-Modus ist von jeder Seite erreichbar, nicht mehr nur vom Chat.
+• Lieber schwebend? Lange drücken und in eine Ecke ziehen — dort fahren die Regler aus dem Mikrofon aus.

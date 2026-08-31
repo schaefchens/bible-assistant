@@ -1,6 +1,6 @@
-Choose the colour of the page you read on.
+The microphone and the player are one control now.
 
-• Each paper — Paper, Sepia, Grey, Night, Black — now carries a colour of its own, picked from a grid, and the text follows it.
-• The contrast slider no longer washes that colour out towards the top of its range.
-• The preview stays put while you adjust things, instead of scrolling away.
-• Settings rebuilt: six categories, one open at a time, in place of one long page.
+• New: a bar above the navigation — full width, covers none of the text, and the default from now on.
+• Play sits in the middle with Previous and Next beside it, plus two buttons that jump a few words either way.
+• Hands-free mode is reachable from every screen, not just Chat.
+• Prefer it floating? Long-press and drag it to a corner, where the controls extend out of the microphone.
