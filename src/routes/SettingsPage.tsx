@@ -8,11 +8,10 @@ import {
 import { VOICE_OPTIONS, type VoiceId } from '@/types/domain';
 import { getPassphrase } from '@/lib/passphrase';
 import type { ThemeChoice } from '@/lib/theme';
-import {
-  ReadingAppearanceForm,
-  ReadingAppearancePreview,
-} from '@/components/reader/ReadingAppearanceForm';
-import { PlaybackSettingsForm } from '@/components/playback/PlaybackSettingsForm';
+import { ReadingAppearanceSheet } from '@/components/reader/ReadingAppearanceSheet';
+import { PlaybackSettingsSheet } from '@/components/playback/PlaybackSettingsSheet';
+import { SettingsGroup, SettingsField } from '@/components/settings/SettingsGroup';
+import { SettingsRow } from '@/components/settings/SettingsRow';
 import { SegmentedControl } from '@/components/common/SegmentedControl';
 import { TranslationPickerSheet } from '@/components/bible/TranslationPickerSheet';
 import { OpenAiKeySection } from '@/components/settings/OpenAiKeySection';
@@ -23,7 +22,6 @@ import { DangerZone } from '@/components/settings/DangerZone';
 import { ImprintFooter } from '@/components/settings/ImprintFooter';
 import { getTranslationInfo } from '@/services/bible/translationCatalog';
 import { copyText } from '@/lib/nativeBridge';
-import clsx from 'clsx';
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -33,6 +31,8 @@ export function SettingsPage() {
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [translationPickerOpen, setTranslationPickerOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [playbackOpen, setPlaybackOpen] = useState(false);
   const currentTranslation = getTranslationInfo(settings.translation);
 
   const onCopy = async () => {
@@ -45,86 +45,199 @@ export function SettingsPage() {
     <div className="flex-1 overflow-y-auto p-4 space-y-6">
       <h2 className="text-xl font-serif text-brand">{t('settings.title')}</h2>
 
-      <Section title={t('settings.language')}>
-        <SegmentedControl
-          value={settings.locale}
-          options={[
-            { value: 'en', label: 'English' },
-            { value: 'de', label: 'Deutsch' },
-          ]}
-          onChange={(v) => settings.setLocale(v as 'en' | 'de')}
+      <SettingsGroup title={t('settings.groups.general')}>
+        <SettingsField label={t('settings.language')}>
+          <SegmentedControl
+            value={settings.locale}
+            options={[
+              { value: 'en', label: 'English' },
+              { value: 'de', label: 'Deutsch' },
+            ]}
+            onChange={(v) => settings.setLocale(v as 'en' | 'de')}
+          />
+        </SettingsField>
+        <SettingsField label={t('settings.theme.title')}>
+          <SegmentedControl
+            cols={3}
+            value={settings.theme}
+            options={[
+              { value: 'system', label: t('settings.theme.system') },
+              { value: 'light', label: t('settings.theme.light') },
+              { value: 'dark', label: t('settings.theme.dark') },
+            ]}
+            onChange={(v) => settings.setTheme(v as ThemeChoice)}
+          />
+        </SettingsField>
+      </SettingsGroup>
+
+      {/* The three groups that already had a sheet are rows that open it. The
+          rest stays on the page: a sheet holding one checkbox is a worse place
+          for it than the page is. */}
+      <SettingsGroup title={t('settings.groups.reading')}>
+        <SettingsRow
+          label={t('settings.groups.appearanceRow')}
+          value={`${t(`read.appearance.papers.${settings.readingAppearance.paper}`)} \u00b7 ${settings.readingAppearance.fontSize}px`}
+          onClick={() => setAppearanceOpen(true)}
         />
-      </Section>
-
-      <Section title={t('settings.theme.title')}>
-        <SegmentedControl
-          cols={3}
-          value={settings.theme}
-          options={[
-            { value: 'system', label: t('settings.theme.system') },
-            { value: 'light', label: t('settings.theme.light') },
-            { value: 'dark', label: t('settings.theme.dark') },
-          ]}
-          onChange={(v) => settings.setTheme(v as ThemeChoice)}
-        />
-      </Section>
-
-      <Section title={t('read.appearance.title')}>
-        {/* No pinning here — the whole page scrolls, so the preview is simply
-            the first thing in the section. */}
-        <div className="space-y-6">
-          <ReadingAppearancePreview />
-          <ReadingAppearanceForm />
-        </div>
-      </Section>
-
-      <Section title={t('settings.translation')}>
-        <button
-          type="button"
+        <SettingsRow
+          label={t('settings.translation')}
+          ariaLabel={t('chat.bookPicker.changeTranslation') as string}
+          value={
+            <span className="inline-flex items-center gap-2 min-w-0">
+              <span className="shrink-0 px-1.5 py-0.5 rounded-md text-[11px] font-mono border border-brand/50 text-brand bg-brand/10">
+                {currentTranslation.code}
+              </span>
+              <span className="truncate">{currentTranslation.name}</span>
+            </span>
+          }
           onClick={() => setTranslationPickerOpen(true)}
-          aria-label={t('chat.bookPicker.changeTranslation') as string}
-          className={clsx(
-            'w-full flex items-center gap-3 rounded-xl px-3 py-2.5',
-            'bg-surface/60 border border-brand/30 hover:border-brand/60 hover:bg-surface/80',
-            'transition-colors text-left',
+        />
+      </SettingsGroup>
+
+      <SettingsGroup title={t('settings.groups.speech')}>
+        <SettingsRow
+          label={t('settings.groups.playback')}
+          value={
+            settings.ambient.enabled
+              ? t('settings.groups.musicOn')
+              : t('settings.groups.musicOff')
+          }
+          onClick={() => setPlaybackOpen(true)}
+        />
+        <SettingsField label={t('settings.voice')}>
+          <VoiceSelect
+            value={settings.voice}
+            onChange={(v) => settings.setVoice(v)}
+            allowedVoices={hasActivePersonalKey(settings) ? undefined : ['echo', 'browser']}
+          />
+          {settings.voice === 'browser' && (
+            <p className="mt-2 text-xs text-ink-muted">{t('settings.browserVoiceHint')}</p>
           )}
+          {!hasActivePersonalKey(settings) && (
+            <p className="mt-2 text-xs text-ink-muted">
+              {t('settings.readingVoiceRestricted')}
+            </p>
+          )}
+        </SettingsField>
+
+        {/* Only meaningful with a personal key on a non-browser voice, so it is
+            absent rather than disabled the rest of the time. */}
+        {settings.voice !== 'browser' && hasActivePersonalKey(settings) && (
+          <SettingsField label={t('settings.voiceStyle')}>
+            <input
+              value={settings.voiceStyle}
+              onChange={(e) => settings.setVoiceStyle(e.target.value)}
+              placeholder={t('settings.voiceStyleHint')}
+              className="w-full bg-surface-raised text-ink rounded-xl px-3 py-2"
+            />
+          </SettingsField>
+        )}
+
+        <SettingsField
+          label={t('settings.assistantVoice')}
+          hint={t('settings.assistantVoiceHint')}
         >
-          <span
-            className={clsx(
-              'shrink-0 inline-flex items-center justify-center',
-              'min-w-[3rem] px-2 py-0.5 rounded-md text-xs font-mono tracking-wide',
-              'border border-brand/60 text-brand bg-brand/10',
-            )}
-          >
-            {currentTranslation.code}
-          </span>
-          <span className="flex-1 min-w-0">
-            <span className="block font-serif text-brand text-sm leading-tight truncate">
-              {currentTranslation.name}
-            </span>
-            <span className="block text-xs text-ink-muted/80 mt-0.5">
-              {currentTranslation.year} ·{' '}
-              {currentTranslation.language === 'de'
-                ? t('chat.bookPicker.languageDe')
-                : t('chat.bookPicker.languageEn')}
-            </span>
-          </span>
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="text-ink-muted shrink-0"
-            aria-hidden="true"
-          >
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </button>
-      </Section>
+          <VoiceSelect
+            value={settings.assistantVoice}
+            onChange={(v) => settings.setAssistantVoice(v)}
+            allowedVoices={hasActivePersonalKey(settings) ? undefined : ['browser']}
+          />
+          <label className="flex items-center gap-2 mt-3">
+            <input
+              type="checkbox"
+              checked={settings.speakAssistant}
+              onChange={(e) => settings.setSpeakAssistant(e.target.checked)}
+            />
+            <span className="text-sm">{t('settings.speakAssistant')}</span>
+          </label>
+        </SettingsField>
+      </SettingsGroup>
+
+      <SettingsGroup title={t('settings.groups.mic')}>
+        <SettingsField label={t('voice.mic.position')} hint={t('voice.mic.dragHint')}>
+          <MicCornerPicker
+            value={settings.micCorner}
+            onChange={(v) => settings.setMicCorner(v)}
+          />
+        </SettingsField>
+        <SettingsField>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={settings.useWhisperFallback}
+              onChange={(e) => settings.setUseWhisperFallback(e.target.checked)}
+            />
+            <span className="text-sm">{t('settings.whisperFallback')}</span>
+          </label>
+          <label className="flex items-center gap-2 mt-2">
+            <input
+              type="checkbox"
+              checked={settings.micSoundEnabled}
+              onChange={(e) => settings.setMicSoundEnabled(e.target.checked)}
+            />
+            <span className="text-sm">{t('settings.micSound')}</span>
+          </label>
+          <label className="flex items-center gap-2 mt-2">
+            <input
+              type="checkbox"
+              checked={settings.thinkingSoundEnabled}
+              onChange={(e) => settings.setThinkingSoundEnabled(e.target.checked)}
+            />
+            <span className="text-sm">{t('settings.thinkingSound')}</span>
+          </label>
+        </SettingsField>
+      </SettingsGroup>
+
+      <SettingsGroup title={t('settings.groups.account')}>
+        <SettingsField label={t('settings.openaiKey.title')}>
+          <OpenAiKeySection />
+        </SettingsField>
+        <SettingsField label={t('settings.sync.title')}>
+          <SyncSection />
+        </SettingsField>
+        <SettingsField label={t('settings.identity')} hint={t('settings.identityHint')}>
+          {!revealed ? (
+            <button className="btn-ghost text-xs" onClick={() => setRevealed(true)}>
+              {t('settings.reveal')}
+            </button>
+          ) : (
+            <>
+              <ol className="grid grid-cols-2 gap-x-3 gap-y-2 bg-surface-raised rounded-xl p-4">
+                {words.map((w, i) => (
+                  <li key={i} className="flex items-baseline gap-2 text-sm font-mono">
+                    <span className="text-brand-muted text-xs w-6 text-right tabular-nums">
+                      {i + 1}.
+                    </span>
+                    <span className="text-ink">{w}</span>
+                  </li>
+                ))}
+              </ol>
+              <div className="flex gap-2 mt-3">
+                <button className="btn-ghost text-xs" onClick={onCopy}>
+                  {copied ? '\u2713 ' + t('settings.copy') : t('settings.copy')}
+                </button>
+                <button className="btn-ghost text-xs" onClick={() => setRevealed(false)}>
+                  {t('settings.hide')}
+                </button>
+              </div>
+            </>
+          )}
+        </SettingsField>
+      </SettingsGroup>
+
+      <SettingsGroup title={t('settings.groups.app')}>
+        <SettingsField label={t('settings.storage.title')}>
+          <StorageSection />
+        </SettingsField>
+        <SettingsField label={t('settings.updates.title')}>
+          <UpdatesSection />
+        </SettingsField>
+        <SettingsField label={t('settings.dangerZone.title')}>
+          <DangerZone />
+        </SettingsField>
+      </SettingsGroup>
+
+      <ImprintFooter />
 
       <TranslationPickerSheet
         open={translationPickerOpen}
@@ -132,137 +245,11 @@ export function SettingsPage() {
         onChange={(code) => settings.setTranslation(code, true)}
         onClose={() => setTranslationPickerOpen(false)}
       />
-
-      <Section title={t('settings.voice')}>
-        <VoiceSelect
-          value={settings.voice}
-          onChange={(v) => settings.setVoice(v)}
-          allowedVoices={hasActivePersonalKey(settings) ? undefined : ['echo', 'browser']}
-        />
-        {settings.voice === 'browser' && (
-          <p className="mt-2 text-xs text-ink-muted">{t('settings.browserVoiceHint')}</p>
-        )}
-        {!hasActivePersonalKey(settings) && (
-          <p className="mt-2 text-xs text-ink-muted">
-            {t('settings.readingVoiceRestricted')}
-          </p>
-        )}
-      </Section>
-
-      {settings.voice !== 'browser' && hasActivePersonalKey(settings) && (
-        <Section title={t('settings.voiceStyle')}>
-          <input
-            value={settings.voiceStyle}
-            onChange={(e) => settings.setVoiceStyle(e.target.value)}
-            placeholder={t('settings.voiceStyleHint')}
-            className="w-full bg-surface-raised text-ink rounded-xl px-3 py-2"
-          />
-        </Section>
-      )}
-
-      <Section title={t('settings.assistantVoice')}>
-        <p className="text-xs text-ink-muted mb-2">{t('settings.assistantVoiceHint')}</p>
-        <VoiceSelect
-          value={settings.assistantVoice}
-          onChange={(v) => settings.setAssistantVoice(v)}
-          allowedVoices={hasActivePersonalKey(settings) ? undefined : ['browser']}
-        />
-        <label className="flex items-center gap-2 mt-3">
-          <input
-            type="checkbox"
-            checked={settings.speakAssistant}
-            onChange={(e) => settings.setSpeakAssistant(e.target.checked)}
-          />
-          <span className="text-sm">{t('settings.speakAssistant')}</span>
-        </label>
-      </Section>
-
-      <Section title={t('voice.mic.position')}>
-        <p className="text-xs text-ink-muted mb-2">{t('voice.mic.dragHint')}</p>
-        <MicCornerPicker
-          value={settings.micCorner}
-          onChange={(v) => settings.setMicCorner(v)}
-        />
-      </Section>
-
-      <Section title={t('settings.microphone')}>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={settings.useWhisperFallback}
-            onChange={(e) => settings.setUseWhisperFallback(e.target.checked)}
-          />
-          <span className="text-sm">{t('settings.whisperFallback')}</span>
-        </label>
-        <label className="flex items-center gap-2 mt-2">
-          <input
-            type="checkbox"
-            checked={settings.micSoundEnabled}
-            onChange={(e) => settings.setMicSoundEnabled(e.target.checked)}
-          />
-          <span className="text-sm">{t('settings.micSound')}</span>
-        </label>
-        <label className="flex items-center gap-2 mt-2">
-          <input
-            type="checkbox"
-            checked={settings.thinkingSoundEnabled}
-            onChange={(e) => settings.setThinkingSoundEnabled(e.target.checked)}
-          />
-          <span className="text-sm">{t('settings.thinkingSound')}</span>
-        </label>
-      </Section>
-
-      <PlaybackSettingsForm />
-
-      <Section title={t('settings.openaiKey.title')}>
-        <OpenAiKeySection />
-      </Section>
-
-      <Section title={t('settings.sync.title')}>
-        <SyncSection />
-      </Section>
-
-      <Section title={t('settings.identity')}>
-        <p className="text-xs text-ink-muted mb-2">{t('settings.identityHint')}</p>
-        {!revealed ? (
-          <button className="btn-ghost text-xs" onClick={() => setRevealed(true)}>
-            {t('settings.reveal')}
-          </button>
-        ) : (
-          <>
-            <ol className="grid grid-cols-2 gap-x-3 gap-y-2 bg-surface-raised rounded-xl p-4">
-              {words.map((w, i) => (
-                <li key={i} className="flex items-baseline gap-2 text-sm font-mono">
-                  <span className="text-brand-muted text-xs w-6 text-right tabular-nums">{i + 1}.</span>
-                  <span className="text-ink">{w}</span>
-                </li>
-              ))}
-            </ol>
-            <div className="flex gap-2 mt-3">
-              <button className="btn-ghost text-xs" onClick={onCopy}>
-                {copied ? '✓ ' + t('settings.copy') : t('settings.copy')}
-              </button>
-              <button className="btn-ghost text-xs" onClick={() => setRevealed(false)}>
-                {t('settings.hide')}
-              </button>
-            </div>
-          </>
-        )}
-      </Section>
-
-      <Section title={t('settings.storage.title')}>
-        <StorageSection />
-      </Section>
-
-      <Section title={t('settings.updates.title')}>
-        <UpdatesSection />
-      </Section>
-
-      <Section title={t('settings.dangerZone.title')}>
-        <DangerZone />
-      </Section>
-
-      <ImprintFooter />
+      <ReadingAppearanceSheet
+        open={appearanceOpen}
+        onClose={() => setAppearanceOpen(false)}
+      />
+      <PlaybackSettingsSheet open={playbackOpen} onClose={() => setPlaybackOpen(false)} />
     </div>
   );
 }
@@ -293,15 +280,6 @@ function VoiceSelect({
         </option>
       ))}
     </select>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section>
-      <h3 className="text-xs uppercase tracking-wide text-brand-muted mb-2">{title}</h3>
-      {children}
-    </section>
   );
 }
 

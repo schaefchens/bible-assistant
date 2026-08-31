@@ -317,6 +317,18 @@
     "reader": {
       "endlessScroll": "Endloses Scrollen",
       "endlessScrollHint": "Nächstes Kapitel beim Scrollen automatisch laden, statt Seiten zu blättern."
+    },
+    "groups": {
+      "general": "Allgemein",
+      "reading": "Lesen",
+      "speech": "Stimme & Wiedergabe",
+      "mic": "Mikrofon",
+      "account": "Konto & Sync",
+      "app": "Daten & App",
+      "playback": "Wiedergabe",
+      "appearanceRow": "Schriftbild",
+      "musicOn": "Musik an",
+      "musicOff": "Musik aus"
     }
   },
   "chatReader": {
