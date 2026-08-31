@@ -35,20 +35,32 @@ export function SettingsGroup({
         className,
       )}
     >
+      {/* A title bar, not another row. Colour alone did not separate the two:
+          the header and the rows under it shared a size, a weight and a
+          padding, so an open group read as a list of four equal things. Case,
+          weight and a fill do the work that colour could not. */}
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
         className={clsx(
-          'w-full flex items-center gap-3 px-3 py-3 text-left transition-colors',
-          open ? 'text-brand' : 'text-ink hover:bg-brand/5 active:bg-brand/10',
+          'w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors',
+          open
+            ? 'bg-brand/10 text-brand'
+            : 'text-ink-muted hover:bg-brand/5 hover:text-ink active:bg-brand/10',
         )}
       >
-        <span className="flex-1 text-sm font-medium">{title}</span>
+        <span className="flex-1 text-[13px] font-semibold uppercase tracking-wider">
+          {title}
+        </span>
         <Caret open={open} />
       </button>
       {open && (
-        <div className="border-t border-brand/10 divide-y divide-brand/10">{children}</div>
+        // Sunken, and indented a notch further than the bar above it, so the
+        // contents sit visibly *inside* the category rather than beside it.
+        <div className="bg-surface-sunken/25 border-t border-brand/15 divide-y divide-brand/10">
+          {children}
+        </div>
       )}
     </section>
   );
@@ -65,7 +77,7 @@ export function SettingsField({
   children: React.ReactNode;
 }) {
   return (
-    <div className="px-3 py-3">
+    <div className="px-4 py-3">
       {label && <p className="text-sm text-ink mb-2">{label}</p>}
       {hint && <p className="text-xs text-ink-muted mb-2 -mt-1">{hint}</p>}
       {children}

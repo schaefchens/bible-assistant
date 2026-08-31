@@ -26,7 +26,7 @@ export function SettingsRow({
       onClick={onClick}
       aria-label={ariaLabel ?? label}
       className={clsx(
-        'w-full flex items-center gap-3 px-3 py-3 text-left',
+        'w-full flex items-center gap-3 px-4 py-3 text-left',
         'hover:bg-brand/5 active:bg-brand/10 transition-colors',
       )}
     >
