@@ -294,7 +294,7 @@ export const useSettingsStore = create<SettingsState>()(
     },
     {
       name: 'ba.settings',
-      version: 16,
+      version: 17,
       // Don't persist server-derived state — hydrate fresh on every boot.
       // Otherwise an older "hasUserOpenAiKey: true" could outlive a key the
       // server has since cleared.
@@ -422,6 +422,28 @@ export const useSettingsStore = create<SettingsState>()(
             readingAppearance: {
               ...DEFAULT_READING_APPEARANCE,
               ...(prev.readingAppearance ?? {}),
+            },
+          };
+        }
+        if (version < 17) {
+          // The two hue sliders became one colour per chip. Nothing to carry
+          // over: a hue with no chroma to sit on described a different model,
+          // and the chips' own defaults are a better starting point than a
+          // half-translated one. Only the colour fields reset; size, spacing,
+          // typeface, measure, columns and contrast are all kept.
+          const { paperHue, inkHue, ...kept } =
+            (prev.readingAppearance ?? {}) as ReadingAppearance & {
+              paperHue?: unknown;
+              inkHue?: unknown;
+            };
+          void paperHue;
+          void inkHue;
+          prev = {
+            ...prev,
+            readingAppearance: {
+              ...DEFAULT_READING_APPEARANCE,
+              ...kept,
+              paperColors: {},
             },
           };
         }

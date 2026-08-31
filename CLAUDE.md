@@ -455,12 +455,27 @@ the contrast control can be taken to zero on purpose and the button that undoes
 that has to remain visible. `BottomSheet` portals to `document.body`, so the sheet
 is outside the surface's subtree for free.
 
-Colour is **derived, not stored**. A preset gives a paper and an ink in OKLCH;
-the two tint sliders override their hues (forcing a chroma floor, or tinting a
-neutral grey would visibly do nothing); the contrast slider then slides the ink
-toward the paper and past it — `ink' = paper + (ink - paper) * k`, `k = 1` being
-the preset untouched. OKLCH and not sRGB because "distance" has to mean
-*perceptual* distance.
+Colour is **derived, not stored**, and it derives from **one colour per chip**.
+A chip supplies the *lightness pair* — which end is paper, which is ink, how far
+apart — and the colour picked for it supplies hue and saturation. One brown gives
+a cream page with brown-black text on the light chips and a dark-brown page with
+cream text on the dark ones, so a chip keeps its character and the colour is what
+changes. Per chip rather than shared, so recolouring Night can't turn Sepia blue.
+The contrast slider then slides the ink toward the paper and past it —
+`ink' = paper + (ink - paper) * k`, `k = 1` being the chip untouched. OKLCH and
+not sRGB because "distance" has to mean *perceptual* distance.
+
+**Saturation is always a fraction of the gamut, never an absolute chroma.** sRGB
+holds about four times more chroma at the ink's L 0.26 than at a near-white
+paper's L 0.97 (`maxChromaFor()` measures it), so any single absolute value is
+invisible at one end or clipped at the other. A pick therefore carries its
+saturation *relative to its own lightness* — `main.c / maxChromaFor(main.l,
+main.h)` — and spends that same share of the very different room each end has.
+The swatch grid's three rows are fractions for the same reason: as absolutes they
+clamped together, and all three produced an identical page on four chips out of
+five. This one mistake has now been made three times in this feature (the ink
+tint floor, the swatch levels, and the first hue sliders); absolute chroma is the
+trap.
 
 **The paper is pinned.** An earlier version moved both around their midpoint,
 which made every contrast change a change of page brightness too — a lot to

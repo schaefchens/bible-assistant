@@ -3,6 +3,7 @@ import {
   clamp,
   contrastRatio,
   cssColor,
+  maxChromaFor,
   mixOklch,
   oklchToSrgb,
   parseChannels,
@@ -16,10 +17,21 @@ import type { ThemeMode, ThemeToken } from '@/lib/theme';
  * The reading surface's appearance: what the Bible text is printed on, in what
  * ink, at what size.
  *
- * The colour part is a *derivation*, not a stored palette. A preset supplies a
- * paper and an ink in OKLCH; the two tint sliders override their hues; the
- * contrast slider then slides the ink toward the paper and past it, with the
- * paper held where the preset put it:
+ * The colour part is a *derivation*, not a stored palette, and it derives from
+ * **one** colour. A chip supplies the lightness pair — which end is paper, which
+ * is ink, and how far apart — while the colour picked for that chip supplies the
+ * hue and how saturated the page is. So one brown gives a cream page with
+ * brown-black text on the light chips and a dark-brown page with cream text on
+ * the dark ones; a chip always keeps its character, and the colour is what
+ * changes.
+ *
+ * Chroma is scaled by `maxChromaFor()` at each end's lightness rather than being
+ * a fixed number, because sRGB has ~4× more room at the ink's lightness than at
+ * a near-white paper's. An earlier version used one absolute floor for both and
+ * was invisible on paper while overshooting in ink.
+ *
+ * The contrast slider then slides the ink toward the paper and past it, with the
+ * paper held where the chip put it:
  *
  *     ink' = paper + (ink - paper) * k
  *
@@ -44,9 +56,15 @@ export type ReadingFontFamily = 'serif' | 'sans';
 
 export type ReadingAppearance = {
   paper: ReadingPaperId;
-  /** Hue override in degrees, or null for the preset's own. */
-  paperHue: number | null;
-  inkHue: number | null;
+  /**
+   * The colour picked *for each chip*, as `#rrggbb`; absent means that chip's
+   * own default. Per chip rather than shared so a chip keeps its name honest —
+   * recolouring Night must not turn Sepia blue — and so switching between them
+   * is switching between two finished looks, not re-picking a colour.
+   *
+   * Only the hue and chroma are used; the lightness comes from the chip.
+   */
+  paperColors: Partial<Record<ReadingPaperId, string>>;
   /** 0 … CONTRAST_MAX; 1 is the preset untouched. */
   contrast: number;
   /** px */
@@ -78,8 +96,7 @@ export const MEASURE_MAX = 90;
  */
 export const DEFAULT_READING_APPEARANCE: ReadingAppearance = {
   paper: 'theme',
-  paperHue: null,
-  inkHue: null,
+  paperColors: {},
   contrast: 1,
   fontSize: 17,
   lineHeight: 1.88,
@@ -88,20 +105,85 @@ export const DEFAULT_READING_APPEARANCE: ReadingAppearance = {
   dualColumn: false,
 };
 
-type PaperPreset = { paper: Oklch; ink: Oklch };
+/** A chip: where the paper and the ink sit on the lightness axis, and the colour
+ *  it wears until the user picks another. */
+type PaperChip = { paperL: number; inkL: number; defaultColor: string };
 
 /**
- * The built-in papers. Each pair sits between 9.9:1 and 14.6:1 at contrast 1, so
- * every preset starts comfortably past AAA and the slider has room in both
- * directions. `theme` has no entry — it resolves from the live cascade.
+ * The built-in chips. The lightness pairs are what give each its character —
+ * three light steps, two dark — and every pair sits between 9.9:1 and 14.6:1 at
+ * contrast 1, so all of them start past AAA with room to move either way.
+ *
+ * `defaultColor` only contributes hue and chroma; its own lightness is ignored.
+ * Grey and Black default to a true neutral, which is the point of them.
+ * `theme` has no entry — its lightnesses and its colour come from the live
+ * cascade, so it follows whatever the app palette is.
  */
-export const READING_PAPERS: Record<Exclude<ReadingPaperId, 'theme'>, PaperPreset> = {
-  paper: { paper: { l: 0.972, c: 0.01, h: 90 }, ink: { l: 0.255, c: 0.012, h: 70 } },
-  sepia: { paper: { l: 0.925, c: 0.035, h: 80 }, ink: { l: 0.31, c: 0.038, h: 50 } },
-  grey: { paper: { l: 0.86, c: 0, h: 0 }, ink: { l: 0.27, c: 0, h: 0 } },
-  night: { paper: { l: 0.216, c: 0.045, h: 290 }, ink: { l: 0.905, c: 0.022, h: 88 } },
-  black: { paper: { l: 0.05, c: 0, h: 0 }, ink: { l: 0.82, c: 0, h: 0 } },
+export const READING_PAPERS: Record<Exclude<ReadingPaperId, 'theme'>, PaperChip> = {
+  paper: { paperL: 0.972, inkL: 0.255, defaultColor: '#8a7a52' },
+  sepia: { paperL: 0.925, inkL: 0.31, defaultColor: '#8a6a3a' },
+  grey: { paperL: 0.86, inkL: 0.27, defaultColor: '#808080' },
+  night: { paperL: 0.216, inkL: 0.905, defaultColor: '#5a5a8c' },
+  black: { paperL: 0.05, inkL: 0.82, defaultColor: '#808080' },
 };
+
+/**
+ * The hues the swatch grid offers, and how saturated each row is — **as a
+ * fraction of the chroma available at that lightness**, never as an absolute.
+ *
+ * This is the same lesson as the tint floors, one layer up. Absolute chroma
+ * levels (0.045 / 0.09 / 0.16) exceeded the headroom at every lightness except
+ * the middle, so `min(request, headroom)` clamped them together: all three rows
+ * produced an *identical* page on Paper, Night and Black, and only Grey used the
+ * full set. Two thirds of the grid was dead on four chips out of five.
+ *
+ * As fractions, every chip gets three genuinely distinct steps scaled to what it
+ * can hold, and a row is equally saturated across hues — an absolute 0.09 is
+ * near the limit for yellow and unremarkable for blue.
+ *
+ * The top stops short of 1: sitting exactly on the gamut boundary is where
+ * `oklchToSrgb`'s chroma reduction starts fighting the hue, and a page is a
+ * background rather than a highlight.
+ */
+const SWATCH_HUES = [30, 60, 90, 150, 200, 250, 290, 340];
+const SWATCH_LEVELS = [0.3, 0.6, 0.9];
+
+/** Rendered at a mid lightness so every hue reads clearly whichever chip is
+ *  selected — the swatch shows the *colour*, the preview above shows the page. */
+const SWATCH_L = 0.62;
+
+/** "No colour": a page tinted by nothing, whatever its chip's lightness. */
+export const TINT_NEUTRAL: string = hexOf({ l: SWATCH_L, c: 0, h: 0 });
+
+/** A swatch at `level` of the chroma its hue can hold at the swatch lightness. */
+function swatchHex(h: number, level: number): string {
+  return hexOf({ l: SWATCH_L, c: maxChromaFor(SWATCH_L, h) * level, h });
+}
+
+/**
+ * The hue × saturation matrix, in row-major order: one row per level in
+ * SWATCH_LEVELS, one column per hue in SWATCH_HUES. Kept rectangular (and the
+ * neutral kept out of it) so the grid can be laid out as rows of equal
+ * saturation — mixed into one array of 25, the levels straddle the rows and the
+ * grid reads as noise.
+ */
+export const TINT_SWATCH_COLUMNS = SWATCH_HUES.length;
+
+export const TINT_SWATCHES: string[] = SWATCH_LEVELS.flatMap((level) =>
+  SWATCH_HUES.map((h) => swatchHex(h, level)),
+);
+
+function hexOf(col: Oklch): string {
+  const { r, g, b } = oklchToSrgb(col);
+  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function parseHex(hex: string): Rgb | null {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
 
 export const READING_PAPER_IDS: ReadingPaperId[] = [
   'theme',
@@ -112,22 +194,6 @@ export const READING_PAPER_IDS: ReadingPaperId[] = [
   'black',
 ];
 
-/**
- * Chroma forced on when a tint slider is used. Without a floor, tinting the
- * neutral grey paper (c = 0) would do nothing at all — hue is meaningless
- * without chroma to carry it — and the slider would look broken.
- *
- * The two differ because the sRGB gamut does. Measured headroom (largest
- * in-gamut chroma, min/median across hues) is 0.013/0.019 at the light paper's
- * L 0.97 but 0.044/0.074 at the ink's L 0.26 — a light surface simply cannot
- * hold much colour, while dark text can hold three times as much. The ink's
- * floor started at the paper's and was invisible for it: not clipped, just far
- * too timid for the room available. Anything above the *minimum* clips
- * gracefully on the least accommodating hues (oklchToSrgb gives up chroma, not
- * hue), which is the right trade for a control whose whole job is to be seen.
- */
-const TINT_CHROMA_PAPER = 0.026;
-const TINT_CHROMA_INK = 0.06;
 
 /** How far the gold sits from the paper, in OKLab L. Measured off the two
  *  hand-tuned palettes in index.css, which agree to within 0.05. */
@@ -149,7 +215,7 @@ const INK_MUTED_MIX = 0.25;
  * a fresh install renders byte-identically to the build before this feature.
  */
 export function isDefaultPalette(a: ReadingAppearance): boolean {
-  return a.paper === 'theme' && a.contrast === 1 && a.paperHue === null && a.inkHue === null;
+  return a.paper === 'theme' && a.contrast === 1 && a.paperColors.theme === undefined;
 }
 
 /**
@@ -195,11 +261,6 @@ function basePalette(mode: ThemeMode): { surface: Rgb; ink: Rgb; brand: Rgb } {
   return found;
 }
 
-function withHue(base: Oklch, hue: number | null, tintChroma: number): Oklch {
-  if (hue === null) return base;
-  return { l: base.l, c: Math.max(base.c, tintChroma), h: ((hue % 360) + 360) % 360 };
-}
-
 export type ReadingPalette = {
   /** Which `[data-theme]` block the surface should carry, or null when the
    *  appearance is the default and should simply inherit. */
@@ -212,27 +273,69 @@ export type ReadingPalette = {
 };
 
 /**
- * The paper/ink pair a given appearance starts from, before contrast.
+ * The chip a given appearance is on, resolved.
  *
  * `appMode` is passed in rather than read off `<html>` so the derivation is a
  * function of its inputs: the attribute is written from an effect, so sampling
  * it here would be a render behind every theme switch, and would never notice
  * the OS flipping appearance at all. `useDocumentThemeMode()` supplies it.
  */
-export function basePaperInk(a: ReadingAppearance, appMode: ThemeMode): PaperPreset {
-  if (a.paper !== 'theme') return READING_PAPERS[a.paper];
+export function chipOf(id: ReadingPaperId, appMode: ThemeMode): PaperChip {
+  if (id !== 'theme') return READING_PAPERS[id];
+  // The app's own palette, so 'theme' is genuinely "as the app looks".
   const base = basePalette(appMode);
-  return { paper: srgbToOklch(base.surface), ink: srgbToOklch(base.ink) };
+  return {
+    paperL: srgbToOklch(base.surface).l,
+    inkL: srgbToOklch(base.ink).l,
+    defaultColor: cssHex(base.surface),
+  };
+}
+
+function cssHex(rgb: Rgb): string {
+  return `#${[rgb.r, rgb.g, rgb.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** The colour in force for a chip — the user's pick, else the chip's default. */
+export function mainColorFor(
+  a: ReadingAppearance,
+  id: ReadingPaperId,
+  appMode: ThemeMode,
+): string {
+  return a.paperColors[id] ?? chipOf(id, appMode).defaultColor;
+}
+
+/**
+ * Paper and ink for a chip and a colour: lightness from the chip, hue from the
+ * colour, chroma from the colour but capped by what each lightness can hold.
+ */
+function paperInkFor(chip: PaperChip, mainColor: string): { paper: Oklch; ink: Oklch } {
+  const rgb = parseHex(mainColor);
+  const main = rgb ? srgbToOklch(rgb) : { l: 0.5, c: 0, h: 0 };
+
+  // Carry the pick's saturation *relative to its own lightness*, not its raw
+  // chroma. That is what transfers a colour intact onto a near-white paper and
+  // a near-black ink at once: each end spends the same share of the very
+  // different room it has. Raw chroma clamps to the same value at both.
+  const room = maxChromaFor(main.l, main.h);
+  const saturation = room > 1e-4 ? Math.min(1, main.c / room) : 0;
+
+  const at = (l: number): Oklch => ({
+    l,
+    c: maxChromaFor(l, main.h) * saturation,
+    h: main.h,
+  });
+  return { paper: at(chip.paperL), ink: at(chip.inkL) };
 }
 
 export function resolveReadingPalette(
   a: ReadingAppearance,
   appMode: ThemeMode,
 ): ReadingPalette {
-  const base = basePaperInk(a, appMode);
-
-  const paperHue = withHue(base.paper, a.paperHue, TINT_CHROMA_PAPER);
-  const inkHue = withHue(base.ink, a.inkHue, TINT_CHROMA_INK);
+  const chip = chipOf(a.paper, appMode);
+  const { paper: paperHue, ink: inkHue } = paperInkFor(
+    chip,
+    mainColorFor(a, a.paper, appMode),
+  );
 
   // The paper is fixed; only the ink travels, toward it and past it.
   //
@@ -327,23 +430,13 @@ export function setReadingVars(el: HTMLElement, a: ReadingAppearance): void {
   );
 }
 
-/** The two colours a preset chip shows, as CSS colours. */
+/** The two colours a chip shows on its own button, honouring its picked colour. */
 export function paperSwatch(
+  a: ReadingAppearance,
   id: ReadingPaperId,
   appMode: ThemeMode,
 ): { paper: string; ink: string } {
-  const base = basePaperInk({ ...DEFAULT_READING_APPEARANCE, paper: id }, appMode);
-  return { paper: cssColor(oklchToSrgb(base.paper)), ink: cssColor(oklchToSrgb(base.ink)) };
+  const { paper, ink } = paperInkFor(chipOf(id, appMode), mainColorFor(a, id, appMode));
+  return { paper: cssColor(oklchToSrgb(paper)), ink: cssColor(oklchToSrgb(ink)) };
 }
 
-/** Stops for a hue slider's track, previewing what each position does. */
-export function hueTrackGradient(base: Oklch, tintChroma: number): string {
-  const stops: string[] = [];
-  for (let h = 0; h <= 360; h += 30) {
-    stops.push(cssColor(oklchToSrgb({ l: base.l, c: Math.max(base.c, tintChroma), h })));
-  }
-  return `linear-gradient(to right, ${stops.join(', ')})`;
-}
-
-export const PAPER_TINT_CHROMA = TINT_CHROMA_PAPER;
-export const INK_TINT_CHROMA = TINT_CHROMA_INK;

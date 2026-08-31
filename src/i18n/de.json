@@ -466,8 +466,8 @@
         "night": "Nacht",
         "black": "Schwarz"
       },
-      "paperTint": "Papierton",
-      "inkTint": "Schriftton",
+      "colour": "Farbe",
+      "neutral": "Ohne Farbe",
       "contrast": "Kontrast",
       "contrastHint": "Wie weit Papier und Schrift auseinanderliegen. Dicht beieinander verblasst die Schrift, weiter auseinander wird sie kräftiger.",
       "belowAa": "unter AA",

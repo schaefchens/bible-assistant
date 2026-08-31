@@ -105,6 +105,28 @@ export function oklchToSrgb(col: Oklch): Rgb {
   };
 }
 
+/**
+ * The most chroma sRGB can actually hold at a given lightness and hue.
+ *
+ * This is why one picked colour can tint a near-white paper *and* near-black
+ * text without looking wrong on either: the two have wildly different room.
+ * Measured across hues, headroom is ~0.019 (median) at L 0.97 but ~0.074 at
+ * L 0.26 — nearly four times as much. Scaling a tint by this instead of using
+ * one absolute value is the difference between a tint that reads on both and
+ * one that is invisible on paper and garish in ink.
+ */
+export function maxChromaFor(l: number, h: number): number {
+  let lo = 0;
+  let hi = 0.4;
+  // 20 halvings resolves to <1e-6, far finer than a channel step.
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2;
+    if (inGamut(oklchToLinear({ l, c: mid, h }))) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
 /* ----------------------------------------------------------- token channels */
 
 /** `{r:247,g:243,b:234}` → `"247 243 234"`, the theme-token format. */

@@ -466,8 +466,8 @@
         "night": "Night",
         "black": "Black"
       },
-      "paperTint": "Paper tint",
-      "inkTint": "Text tint",
+      "colour": "Colour",
+      "neutral": "No colour",
       "contrast": "Contrast",
       "contrastHint": "How far apart the paper and the text sit. Close together fades the text away; further apart makes it stark.",
       "belowAa": "below AA",

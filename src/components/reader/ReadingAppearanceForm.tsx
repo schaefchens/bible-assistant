@@ -4,21 +4,22 @@ import { RangeSlider } from '@/components/common/RangeSlider';
 import { SegmentedControl } from '@/components/common/SegmentedControl';
 import { ReadingSurface } from '@/components/reader/ReadingSurface';
 import {
-  basePaperInk,
   CONTRAST_MAX,
   CONTRAST_MIN,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
-  hueTrackGradient,
-  INK_TINT_CHROMA,
   LINE_HEIGHT_MAX,
   LINE_HEIGHT_MIN,
+  mainColorFor,
   MEASURE_MAX,
   MEASURE_MIN,
-  PAPER_TINT_CHROMA,
   paperSwatch,
   READING_PAPER_IDS,
   resolveReadingPalette,
+  TINT_NEUTRAL,
+  TINT_SWATCH_COLUMNS,
+  TINT_SWATCHES,
+  type ReadingAppearance,
   type ReadingFontFamily,
   type ReadingPaperId,
 } from '@/lib/readingAppearance';
@@ -46,8 +47,8 @@ export function ReadingAppearanceForm() {
   const reset = useSettingsStore((s) => s.resetReadingAppearance);
 
   const appMode = useDocumentThemeMode();
-  const base = basePaperInk(a, appMode);
   const palette = resolveReadingPalette(a, appMode);
+  const mainColor = mainColorFor(a, a.paper, appMode);
   const belowAa = palette.ratio < AA_RATIO;
 
   return (
@@ -60,37 +61,54 @@ export function ReadingAppearanceForm() {
             <PaperChip
               key={id}
               id={id}
+              appearance={a}
               appMode={appMode}
               selected={a.paper === id}
               label={t(`read.appearance.papers.${id}`)}
-              // Picking a paper drops the tints with it: they are adjustments
-              // *to* a preset, and carrying a previous paper's hue onto a new
-              // one makes choosing "Sepia" not produce sepia.
-              onSelect={() => set({ paper: id, paperHue: null, inkHue: null })}
+              // Just a selection: each chip carries its own colour, so
+              // switching between them is switching between two finished looks.
+              onSelect={() => set({ paper: id })}
             />
           ))}
         </div>
       </Field>
 
-      <RangeSlider
-        label={t('read.appearance.paperTint')}
-        value={a.paperHue ?? base.paper.h}
-        min={0}
-        max={360}
-        step={1}
-        onChange={(paperHue) => set({ paperHue })}
-        track={hueTrackGradient(base.paper, PAPER_TINT_CHROMA)}
-      />
-
-      <RangeSlider
-        label={t('read.appearance.inkTint')}
-        value={a.inkHue ?? base.ink.h}
-        min={0}
-        max={360}
-        step={1}
-        onChange={(inkHue) => set({ inkHue })}
-        track={hueTrackGradient(base.ink, INK_TINT_CHROMA)}
-      />
+      <Field label={t('read.appearance.colour')}>
+        {/* Per chip: recolouring Night must not recolour Sepia. */}
+        {(() => {
+          const pick = (hex: string) =>
+            set({ paperColors: { ...a.paperColors, [a.paper]: hex } });
+          const chosen = (hex: string) => mainColor.toLowerCase() === hex.toLowerCase();
+          return (
+            <div className="flex items-start gap-3">
+              <ColourSwatch
+                hex={TINT_NEUTRAL}
+                neutral
+                selected={chosen(TINT_NEUTRAL)}
+                label={t('read.appearance.neutral')}
+                onSelect={() => pick(TINT_NEUTRAL)}
+              />
+              {/* Capped rather than fluid: an aspect-square cell in a fluid grid
+                  grows to 160px on a desktop. Rows are equal-saturation. */}
+              <div
+                className="grid gap-2 flex-1 max-w-[19rem]"
+                style={{
+                  gridTemplateColumns: `repeat(${TINT_SWATCH_COLUMNS}, minmax(0, 1fr))`,
+                }}
+              >
+                {TINT_SWATCHES.map((hex) => (
+                  <ColourSwatch
+                    key={hex}
+                    hex={hex}
+                    selected={chosen(hex)}
+                    onSelect={() => pick(hex)}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+      </Field>
 
       <RangeSlider
         label={t('read.appearance.contrast')}
@@ -196,18 +214,20 @@ function Preview() {
 
 function PaperChip({
   id,
+  appearance,
   appMode,
   label,
   selected,
   onSelect,
 }: {
   id: ReadingPaperId;
+  appearance: ReadingAppearance;
   appMode: ThemeMode;
   label: string;
   selected: boolean;
   onSelect: () => void;
 }) {
-  const swatch = paperSwatch(id, appMode);
+  const swatch = paperSwatch(appearance, id, appMode);
   return (
     <button
       type="button"
@@ -234,6 +254,46 @@ function PaperChip({
       >
         {label}
       </span>
+    </button>
+  );
+}
+
+/** One pick in the colour grid. The neutral swatch is marked with a slash rather
+ *  than left as a grey circle, since "grey" and "no colour" look identical. */
+function ColourSwatch({
+  hex,
+  neutral = false,
+  selected,
+  label,
+  onSelect,
+}: {
+  hex: string;
+  neutral?: boolean;
+  selected: boolean;
+  label?: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      aria-label={label ?? hex}
+      title={label ?? hex}
+      className={clsx(
+        'relative h-7 w-7 shrink-0 rounded-full border transition-all',
+        selected ? 'border-brand ring-2 ring-brand/50 scale-110' : 'border-ink/15',
+      )}
+      style={{ background: hex }}
+    >
+      {neutral && (
+        <span
+          aria-hidden
+          className="absolute inset-0 flex items-center justify-center text-[10px] text-on-fill"
+        >
+          &#8709;
+        </span>
+      )}
     </button>
   );
 }
