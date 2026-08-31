@@ -26,7 +26,7 @@ This file is the orientation map. When changing code, find the relevant subsyste
   agree and that the totals are still 1,189 chapters / 31,102 verses.
 - `./scripts/deploy.sh [--dry-run]` — deploy the PWA + PHP over SFTP. Uses an explicit
   allow-list: it must never upload `storage/` (live user data) or `secrets.php`.
-- `npm run lint` — ESLint. Note: a handful of pre-existing `react-hooks/refs` errors live in `EyesFreeMode.tsx`, `FloatingPlaybackBar.tsx`, and `CardStack.tsx`; don't add new ones.
+- `npm run lint` — ESLint. Note: a handful of pre-existing `react-hooks/refs` errors live in `EyesFreeMode.tsx`, plus one `exhaustive-deps` warning in `CardStack.tsx`; don't add new ones. `set-state-in-effect` is an error here — adjust state during render (guarded) instead, the way `AppShell` and `MicDock` do.
 
 ## Entry points
 | Concern | File |
@@ -35,6 +35,7 @@ This file is the orientation map. When changing code, find the relevant subsyste
 | App init (audio teardown, last-reading, network, key hydration, ambient prefetch, pack retry) | `src/hooks/useAppInitialization.ts` — six independent effects |
 | Voice/text command pipeline | `src/hooks/useCommandPipeline.ts` (`send()`), tool loop in `src/services/ai/orchestrate.ts` |
 | Global mic / push-to-talk | `src/hooks/useGlobalVoice.ts` + `src/components/voice/*` |
+| The floating mic + transport (one element) | `src/components/voice/MicDock.tsx` + `src/components/playback/TransportArm.tsx` |
 | AI tool definitions (the model's API) | `src/services/ai/tools.ts` |
 | AI tool dispatch (the handlers) | `src/services/ai/dispatch.ts` (table-driven `TOOL_REGISTRY`) |
 | Audio engine (OpenAI TTS) | `src/lib/audioPlaybackManager.ts` singleton `audioPlayback` |
@@ -198,6 +199,62 @@ is playback-group → verses, via `src/lib/readingHosts.ts` (see above).
 - `use*` is reserved for **React hooks** (`hooks/`) and **Zustand store hooks** (`store/`).
 - `lib/` singletons are camelCase nouns: `audioPlayback`, `browserTts`.
 - `services/` modules export plain functions, not singletons.
+
+## The mic dock — one floating control, not two
+
+`src/components/voice/MicDock.tsx` is the app's single floater: a mic button with
+the playback transport extending out of it. It replaced a mic in one corner and a
+playback bar in the *opposite* one, which meant two positions, two long-press
+drags and two dismissals all kept in sync through an `oppositeCorner` helper — and
+a user who dragged one to where the other was got them swapping places.
+
+The mic is the anchor: bigger (`MIC_SIZE`), always present, and it never moves
+when the arm opens. That falls out of the container being `position: fixed`
+anchored by *the corner's own edge* (`right` for `tr`/`br`, `left` otherwise) and
+never by width, so the capsule can grow and shrink inward with nothing else
+shifting. `getMicAnchor` is shared with `VoiceOverlay`, which stacks below the
+dock and so has to know `MIC_SIZE` too.
+
+Four things about it are load-bearing:
+
+- **The capsule's width is measured, never assumed.** The row inside it is
+  `max-content` and a `ResizeObserver` reports its natural width, because the
+  arm's contents change with the route (the two reading toggles are
+  reading-routes-only) *and* with the viewport (both hide under 360px, where the
+  full arm plus a 64px mic overruns an iPhone SE). Hard-coding the open width
+  meant re-deriving it on every one of those changes.
+- **Content is pinned to the mic-facing edge** (`justify-end` on a right-hand
+  corner, `justify-start` on a left one). Shrinking the capsule then clips the
+  *far* end, so the arm reads as retracting into the mic rather than being sliced
+  off beside it. Everything but the grip also fades, because the capsule's
+  rounded cap alone leaves a hard edge through the middle of an icon.
+- **The tuck is geometry, not a guess.** `OVERLAP = 20` hides the capsule's
+  rounded end behind the mic's circle at *every* y only because the capsule is
+  44 tall against a 64 mic — at the capsule's corners the circle still reaches
+  23px in. Change `CAPSULE_H`, `MIC_SIZE` or `OVERLAP` and re-check that, or a
+  pale cap pokes out of the mic's side. `NEAR_GAP` then keeps the first control
+  clear of the mic, which is why the near padding isn't the far padding.
+- **Group order flips with the corner; `Prev | Play | Next` never does.** The
+  transport sits next to the mic (nearest the thumb) with the extras beyond it,
+  which means reversing the *groups* on a left-hand corner — but each group keeps
+  its own left-to-right order, because a mirrored transport is unreadable.
+
+**The arm opens by itself and the grip is an override, not a setting.** Anything
+but `status === 'idle'` opens it — `paused` included, because pausing must not
+take away the button you'd resume with — and the grip's override is *spent the
+moment that automatic answer changes*, so collapsing the arm during one reading
+doesn't leave it shut for the next. That expiry is a guarded state adjustment
+during render (as in `AppShell`), not an effect: `set-state-in-effect` is a lint
+error here, and an effect would render the stale answer first, which is a visible
+flap.
+
+Dragging shows **the mic alone** — the ghost has to sit under the finger, and with
+the arm attached that means measuring a box whose width is mid-animation. It
+returns when the drop lands.
+
+There is no hard-stop button any more. The old bar's `×` both stopped audio and
+dismissed the bar app-wide; collapsing covers the dismissal, and pause covers the
+rest.
 
 ## The reader screen (`/read`)
 

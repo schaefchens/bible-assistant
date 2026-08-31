@@ -18,12 +18,12 @@ type Bindings = {
 };
 
 /**
- * Generic long-press-to-drag-into-corner hook used by both the mic and the
- * playback bar. The caller provides what to do with the dropped corner (the
- * mic writes `setMicCorner` directly; the bar writes `oppositeCorner` of the
- * drop so the two stay in opposing slots).
+ * Long-press-to-drag-the-dock-into-a-corner. This used to be a generic hook
+ * with a caller-supplied drop handler, because the mic and the playback bar
+ * both dragged and had to land in opposing corners; there is one dock now, so
+ * the drop just writes `micCorner`.
  */
-export function useCornerDrag(onDrop: (corner: MicCorner) => void): {
+export function useMicDrag(): {
   state: DragState;
   bindings: Bindings;
 } {
@@ -36,13 +36,6 @@ export function useCornerDrag(onDrop: (corner: MicCorner) => void): {
   const startRef = useRef<{ x: number; y: number } | null>(null);
   const draggingRef = useRef(false);
   const draggedThisCycleRef = useRef(false);
-  // Ref the callback so the pointer-listener effect never re-runs because of
-  // its identity (prevents a render → effect → setState loop when a caller
-  // passes an unstable callback).
-  const onDropRef = useRef(onDrop);
-  useEffect(() => {
-    onDropRef.current = onDrop;
-  }, [onDrop]);
 
   const cleanup = useCallback(() => {
     if (timerRef.current !== null) {
@@ -71,7 +64,10 @@ export function useCornerDrag(onDrop: (corner: MicCorner) => void): {
         width: window.innerWidth,
         height: window.innerHeight,
       });
-      onDropRef.current(corner);
+      // getState() rather than a selector: nothing here needs to re-render
+      // when the corner changes, and a subscription would re-run the
+      // pointer-listener effect mid-gesture.
+      useSettingsStore.getState().setMicCorner(corner);
       hapticTap();
       draggedThisCycleRef.current = true;
       cleanup();
@@ -161,10 +157,4 @@ export function useCornerDrag(onDrop: (corner: MicCorner) => void): {
   }, []);
 
   return { state, bindings: { onPointerDown, onContextMenu, consumeClickIfDragged } };
-}
-
-/** Thin wrapper kept for the existing mic caller — writes directly to `setMicCorner`. */
-export function useMicDrag() {
-  const setMicCorner = useSettingsStore((s) => s.setMicCorner);
-  return useCornerDrag(setMicCorner);
 }

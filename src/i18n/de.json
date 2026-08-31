@@ -90,7 +90,9 @@
     "previous": "Zurück",
     "next": "Weiter",
     "close": "Schließen",
-    "loading": "Lade Audio…"
+    "loading": "Lade Audio…",
+    "showControls": "Wiedergabesteuerung anzeigen",
+    "hideControls": "Wiedergabesteuerung ausblenden"
   },
   "eyesFree": {
     "exit": "Beenden",

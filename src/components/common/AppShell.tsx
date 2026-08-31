@@ -12,10 +12,9 @@ import { useReadingHostFocus } from '@/hooks/useReadingHostFocus';
 import { getPassphrase } from '@/lib/passphrase';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { VoiceController } from '@/components/voice/VoiceController';
-import { GlobalMicButton } from '@/components/voice/GlobalMicButton';
+import { MicDock } from '@/components/voice/MicDock';
 import { VoiceOverlay } from '@/components/voice/VoiceOverlay';
 import { EyesFreeMode } from '@/components/voice/EyesFreeMode';
-import { FloatingPlaybackBar } from '@/components/playback/FloatingPlaybackBar';
 import { UpdateBanner } from '@/components/common/UpdateBanner';
 import { KeyFailureBanner } from '@/components/common/KeyFailureBanner';
 import { NarrationFallbackNotice } from '@/components/common/NarrationFallbackNotice';
@@ -94,8 +93,7 @@ export function AppShell() {
       </nav>
 
       <VoiceController />
-      <GlobalMicButton />
-      <FloatingPlaybackBar />
+      <MicDock />
       <VoiceOverlay />
       <EyesFreeMode />
     </div>

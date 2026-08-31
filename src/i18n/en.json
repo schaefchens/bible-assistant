@@ -90,7 +90,9 @@
     "previous": "Previous",
     "next": "Next",
     "close": "Close",
-    "loading": "Loading audio…"
+    "loading": "Loading audio…",
+    "showControls": "Show playback controls",
+    "hideControls": "Hide playback controls"
   },
   "eyesFree": {
     "exit": "Exit",

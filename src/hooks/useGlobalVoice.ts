@@ -13,7 +13,7 @@ let registeredStop: VoiceAction | null = null;
 
 /**
  * Imperative control surface for the single global voice pipeline. Components
- * (GlobalMicButton, EyesFreeMode) drive the mic through this instead of
+ * (MicDock, EyesFreeMode) drive the mic through this instead of
  * mounting their own `useSpeechRecognition`/`usePushToTalk` — there must be
  * exactly one pipeline (one mic capture, one `~`-key listener, one set of
  * cues). Read state from `useGlobalVoiceStore`.

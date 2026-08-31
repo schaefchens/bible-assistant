@@ -8,9 +8,9 @@ import { useGlobalVoiceStore } from '@/store/globalVoiceStore';
 import { useChatStore } from '@/store/chatStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { usePlaybackStore } from '@/store/playbackStore';
-import { getMicAnchor } from './MicAnchor';
+import { getMicAnchor, MIC_SIZE } from './MicAnchor';
 
-const OVERLAY_GAP = 76; // mic size (56) + breathing room
+const OVERLAY_GAP = MIC_SIZE + 20; // clear the mic, plus breathing room
 
 export function VoiceOverlay() {
   const { t } = useTranslation();

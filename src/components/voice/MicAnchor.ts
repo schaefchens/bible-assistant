@@ -3,6 +3,11 @@ import type { MicCorner } from '@/store/settingsStore';
 const PAD = 12;
 const BOTTOM_NAV_H = 56; // measured nav grid height (icon + label), excl. safe area
 
+/** Diameter of the dock's mic button. Exported because everything that has to
+ * clear the mic — the voice overlay, the drag ghost's offset — has to agree
+ * with it, and it changed once already. */
+export const MIC_SIZE = 64;
+
 export type AnchorStyle = {
   position: 'fixed';
   top?: number;
@@ -84,15 +89,6 @@ export function getMicAnchor(opts: {
     case 'br':
     default:
       return { position: 'fixed', bottom, right };
-  }
-}
-
-export function oppositeCorner(c: MicCorner): MicCorner {
-  switch (c) {
-    case 'tl': return 'tr';
-    case 'tr': return 'tl';
-    case 'bl': return 'br';
-    case 'br': return 'bl';
   }
 }
 
