@@ -23,6 +23,8 @@ import { ImprintFooter } from '@/components/settings/ImprintFooter';
 import { getTranslationInfo } from '@/services/bible/translationCatalog';
 import { copyText } from '@/lib/nativeBridge';
 
+type GroupId = 'general' | 'reading' | 'speech' | 'mic' | 'account' | 'app';
+
 export function SettingsPage() {
   const { t } = useTranslation();
   const settings = useSettingsStore();
@@ -33,6 +35,14 @@ export function SettingsPage() {
   const [translationPickerOpen, setTranslationPickerOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [playbackOpen, setPlaybackOpen] = useState(false);
+  // One category at a time, and none to start: collapsed, the whole screen is
+  // six choices rather than a wall of controls. Transient on purpose — which
+  // group you last had open is not a preference worth persisting.
+  const [openGroup, setOpenGroup] = useState<GroupId | null>(null);
+  const groupProps = (id: GroupId) => ({
+    open: openGroup === id,
+    onToggle: () => setOpenGroup((cur) => (cur === id ? null : id)),
+  });
   const currentTranslation = getTranslationInfo(settings.translation);
 
   const onCopy = async () => {
@@ -42,10 +52,10 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-6">
-      <h2 className="text-xl font-serif text-brand">{t('settings.title')}</h2>
+    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <h2 className="text-xl font-serif text-brand mb-1">{t('settings.title')}</h2>
 
-      <SettingsGroup title={t('settings.groups.general')}>
+      <SettingsGroup title={t('settings.groups.general')} {...groupProps('general')}>
         <SettingsField label={t('settings.language')}>
           <SegmentedControl
             value={settings.locale}
@@ -73,7 +83,7 @@ export function SettingsPage() {
       {/* The three groups that already had a sheet are rows that open it. The
           rest stays on the page: a sheet holding one checkbox is a worse place
           for it than the page is. */}
-      <SettingsGroup title={t('settings.groups.reading')}>
+      <SettingsGroup title={t('settings.groups.reading')} {...groupProps('reading')}>
         <SettingsRow
           label={t('settings.groups.appearanceRow')}
           value={`${t(`read.appearance.papers.${settings.readingAppearance.paper}`)} \u00b7 ${settings.readingAppearance.fontSize}px`}
@@ -94,7 +104,7 @@ export function SettingsPage() {
         />
       </SettingsGroup>
 
-      <SettingsGroup title={t('settings.groups.speech')}>
+      <SettingsGroup title={t('settings.groups.speech')} {...groupProps('speech')}>
         <SettingsRow
           label={t('settings.groups.playback')}
           value={
@@ -153,7 +163,7 @@ export function SettingsPage() {
         </SettingsField>
       </SettingsGroup>
 
-      <SettingsGroup title={t('settings.groups.mic')}>
+      <SettingsGroup title={t('settings.groups.mic')} {...groupProps('mic')}>
         <SettingsField label={t('voice.mic.position')} hint={t('voice.mic.dragHint')}>
           <MicCornerPicker
             value={settings.micCorner}
@@ -188,7 +198,7 @@ export function SettingsPage() {
         </SettingsField>
       </SettingsGroup>
 
-      <SettingsGroup title={t('settings.groups.account')}>
+      <SettingsGroup title={t('settings.groups.account')} {...groupProps('account')}>
         <SettingsField label={t('settings.openaiKey.title')}>
           <OpenAiKeySection />
         </SettingsField>
@@ -225,7 +235,7 @@ export function SettingsPage() {
         </SettingsField>
       </SettingsGroup>
 
-      <SettingsGroup title={t('settings.groups.app')}>
+      <SettingsGroup title={t('settings.groups.app')} {...groupProps('app')}>
         <SettingsField label={t('settings.storage.title')}>
           <StorageSection />
         </SettingsField>
