@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   hasActivePersonalKey,
   useSettingsStore,
-  type MicCorner,
+  type MicPosition,
 } from '@/store/settingsStore';
 import { VOICE_OPTIONS, type VoiceId } from '@/types/domain';
 import { getPassphrase } from '@/lib/passphrase';
@@ -165,7 +165,7 @@ export function SettingsPage() {
 
       <SettingsGroup title={t('settings.groups.mic')} {...groupProps('mic')}>
         <SettingsField label={t('voice.mic.position')} hint={t('voice.mic.dragHint')}>
-          <MicCornerPicker
+          <MicPositionPicker
             value={settings.micCorner}
             onChange={(v) => settings.setMicCorner(v)}
           />
@@ -293,35 +293,39 @@ function VoiceSelect({
   );
 }
 
-function MicCornerPicker({
+/** Four floating corners, plus the docked bar — which spans both columns,
+ * because that is the shape of the thing it selects. */
+function MicPositionPicker({
   value,
   onChange,
 }: {
-  value: MicCorner;
-  onChange: (v: MicCorner) => void;
+  value: MicPosition;
+  onChange: (v: MicPosition) => void;
 }) {
   const { t } = useTranslation();
-  const corners: { value: MicCorner; label: string }[] = [
+  const positions: { value: MicPosition; label: string; wide?: boolean }[] = [
     { value: 'tl', label: t('voice.mic.tl') },
     { value: 'tr', label: t('voice.mic.tr') },
     { value: 'bl', label: t('voice.mic.bl') },
     { value: 'br', label: t('voice.mic.br') },
+    { value: 'bar', label: t('voice.mic.bar'), wide: true },
   ];
   return (
     <div className="grid grid-cols-2 gap-2">
-      {corners.map((c) => (
+      {positions.map((p) => (
         <button
-          key={c.value}
+          key={p.value}
           type="button"
-          onClick={() => onChange(c.value)}
+          onClick={() => onChange(p.value)}
           className={
             'py-3 text-sm rounded-xl border transition-colors ' +
-            (value === c.value
+            (p.wide ? 'col-span-2 ' : '') +
+            (value === p.value
               ? 'bg-brand/15 text-brand border-brand/60'
               : 'bg-surface-raised text-ink-muted border-surface-raised hover:text-ink')
           }
         >
-          {c.label}
+          {p.label}
         </button>
       ))}
     </div>

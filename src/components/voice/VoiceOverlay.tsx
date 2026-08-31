@@ -8,16 +8,15 @@ import { useGlobalVoiceStore } from '@/store/globalVoiceStore';
 import { useChatStore } from '@/store/chatStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { usePlaybackStore } from '@/store/playbackStore';
-import { getMicAnchor, MIC_SIZE } from './MicAnchor';
-
-const OVERLAY_GAP = MIC_SIZE + 20; // clear the mic, plus breathing room
+import { getOverlayAnchor } from './MicAnchor';
 
 export function VoiceOverlay() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
-  const corner = useSettingsStore((s) => s.micCorner);
+  const position = useSettingsStore((s) => s.micCorner);
   const bottomBarHeight = useUiLayoutStore((s) => s.bottomBarHeight);
+  const dockBarHeight = useUiLayoutStore((s) => s.dockBarHeight);
 
   const overlayOpen = useGlobalVoiceStore((s) => s.overlayOpen);
   const listening = useGlobalVoiceStore((s) => s.listening);
@@ -65,14 +64,13 @@ export function VoiceOverlay() {
     if (!listening && !transcript && !lastResponse) return null;
   }
 
-  // Anchor near mic — opposite vertical side stays the same, just nudge the
-  // overlay inward from the mic.
-  const anchorBase = getMicAnchor({ corner, bottomBarHeight });
-  const overlayStyle: React.CSSProperties = { position: 'fixed', zIndex: 49, maxWidth: 320 };
-  if (anchorBase.top !== undefined) overlayStyle.top = anchorBase.top + OVERLAY_GAP;
-  if (anchorBase.bottom !== undefined) overlayStyle.bottom = anchorBase.bottom + OVERLAY_GAP;
-  if (anchorBase.left !== undefined) overlayStyle.left = anchorBase.left;
-  if (anchorBase.right !== undefined) overlayStyle.right = anchorBase.right;
+  // Clear of the dock, on the dock's own side — which is a different sum
+  // floating than it is docked, so MicAnchor owns it.
+  const overlayStyle: React.CSSProperties = {
+    ...getOverlayAnchor({ position, bottomBarHeight, dockBarHeight }),
+    zIndex: 49,
+    maxWidth: 320,
+  };
 
   return (
     <div

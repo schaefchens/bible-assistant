@@ -92,7 +92,9 @@
     "close": "Schließen",
     "loading": "Lade Audio…",
     "showControls": "Wiedergabesteuerung anzeigen",
-    "hideControls": "Wiedergabesteuerung ausblenden"
+    "hideControls": "Wiedergabesteuerung ausblenden",
+    "seekBack": "{{words}} Wörter zurück",
+    "seekForward": "{{words}} Wörter vor"
   },
   "eyesFree": {
     "exit": "Beenden",
@@ -201,7 +203,8 @@
       "tr": "Oben rechts",
       "bl": "Unten links",
       "br": "Unten rechts",
-      "dragHint": "Lange drücken und ziehen, um zu verschieben"
+      "dragHint": "Lange drücken und ziehen, um zu verschieben",
+      "bar": "Leiste über der Navigation"
     },
     "ribbon": {
       "noCurrent": "Starte zuerst eine Lesung oder gib eine Stelle an.",

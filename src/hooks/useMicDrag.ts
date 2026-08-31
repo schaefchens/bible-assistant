@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSettingsStore, type MicCorner } from '@/store/settingsStore';
-import { cornerForPoint } from '@/components/voice/MicAnchor';
+import { useSettingsStore, type MicPosition } from '@/store/settingsStore';
+import { positionForPoint } from '@/components/voice/MicAnchor';
 import { LONG_PRESS_MS, MOVE_TOLERANCE_PX } from '@/lib/gestureConstants';
 import { hapticTap, ImpactStyle } from '@/lib/nativeBridge';
 
 type DragState = {
   dragging: boolean;
   ghost: { x: number; y: number } | null;
-  activeCorner: MicCorner | null;
+  activePosition: MicPosition | null;
 };
 
 type Bindings = {
@@ -30,7 +30,7 @@ export function useMicDrag(): {
   const [state, setState] = useState<DragState>({
     dragging: false,
     ghost: null,
-    activeCorner: null,
+    activePosition: null,
   });
   const timerRef = useRef<number | null>(null);
   const startRef = useRef<{ x: number; y: number } | null>(null);
@@ -44,7 +44,7 @@ export function useMicDrag(): {
     }
     startRef.current = null;
     draggingRef.current = false;
-    setState({ dragging: false, ghost: null, activeCorner: null });
+    setState({ dragging: false, ghost: null, activePosition: null });
   }, []);
 
   useEffect(() => {
@@ -52,22 +52,22 @@ export function useMicDrag(): {
     const onMove = (e: PointerEvent) => {
       if (!draggingRef.current) return;
       e.preventDefault();
-      const corner = cornerForPoint(e.clientX, e.clientY, {
+      const position = positionForPoint(e.clientX, e.clientY, {
         width: window.innerWidth,
         height: window.innerHeight,
       });
-      setState({ dragging: true, ghost: { x: e.clientX, y: e.clientY }, activeCorner: corner });
+      setState({ dragging: true, ghost: { x: e.clientX, y: e.clientY }, activePosition: position });
     };
     const onUp = (e: PointerEvent) => {
       if (!draggingRef.current) return;
-      const corner = cornerForPoint(e.clientX, e.clientY, {
+      const position = positionForPoint(e.clientX, e.clientY, {
         width: window.innerWidth,
         height: window.innerHeight,
       });
       // getState() rather than a selector: nothing here needs to re-render
-      // when the corner changes, and a subscription would re-run the
+      // when the position changes, and a subscription would re-run the
       // pointer-listener effect mid-gesture.
-      useSettingsStore.getState().setMicCorner(corner);
+      useSettingsStore.getState().setMicCorner(position);
       hapticTap();
       draggedThisCycleRef.current = true;
       cleanup();
@@ -136,7 +136,7 @@ export function useMicDrag(): {
       setState({
         dragging: true,
         ghost: { x: startRef.current.x, y: startRef.current.y },
-        activeCorner: cornerForPoint(startRef.current.x, startRef.current.y, {
+        activePosition: positionForPoint(startRef.current.x, startRef.current.y, {
           width: window.innerWidth,
           height: window.innerHeight,
         }),

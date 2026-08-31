@@ -190,8 +190,8 @@ function handleSetVoice(args: ToolArgs['set_voice']): ToolDispatchResult {
 }
 
 function handleSetMicPosition(args: ToolArgs['set_mic_position']): ToolDispatchResult {
-  useSettingsStore.getState().setMicCorner(args.corner);
-  return { ok: true, data: { corner: args.corner } };
+  useSettingsStore.getState().setMicCorner(args.position);
+  return { ok: true, data: { position: args.position } };
 }
 
 function handleSetEyesFree(value: boolean): ToolDispatchResult {

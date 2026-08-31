@@ -16,6 +16,10 @@ import type { VerseSummary } from '@/types/domain';
 
 export const RATE_CYCLE = [0.85, 1.0, 1.15, 1.3] as const;
 
+/** Words a single seek step covers. Shared by the ← / → keys and the docked
+ * bar's seek buttons, which are meant to be the same gesture. */
+export const SEEK_WORD_STEP = 5;
+
 /** Whether *anything* anywhere is playable — gates the floating playback bar.
  * Reactive, so it has to be a hook: the host registry itself is not a store. */
 export function useHasAnyReading(): boolean {

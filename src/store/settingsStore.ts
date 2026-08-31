@@ -8,7 +8,27 @@ import {
   type ReadingAppearance,
 } from '@/lib/readingAppearance';
 
+/** The four free-floating slots. Still its own type: hit-testing a drop and
+ * the corner anchoring genuinely only deal in these. */
 export type MicCorner = 'tl' | 'tr' | 'bl' | 'br';
+/** Where the mic dock lives. `'bar'` is the docked, full-width strip above the
+ * bottom nav — in flow rather than floating, so it covers no content. The
+ * persisted field is still called `micCorner`; renaming it would cost a
+ * migration and buy nothing. */
+export type MicPosition = MicCorner | 'bar';
+
+/**
+ * Where a *new* install puts the dock: docked, not floating. It covers no
+ * content, its controls are laid out for a thumb, and it doesn't have to be
+ * discovered — a floating capsule in a corner does.
+ *
+ * Deliberately not applied to existing installs. `micCorner` has been persisted
+ * since v1 and is in `partialize`, so rehydration keeps whatever they chose (or
+ * silently accepted) and no migration touches it — the same reasoning as the
+ * v15 theme backfill: following a new default would rearrange the app for people
+ * who never asked. The v<2 backfill below stays on `'br'` for that reason too.
+ */
+export const DEFAULT_MIC_POSITION: MicPosition = 'bar';
 export type VerseNumberStyle = 'spoken' | 'plain';
 export type AmbientSettings = {
   enabled: boolean;
@@ -29,7 +49,7 @@ type SettingsState = {
   speakAssistant: boolean;
   useWhisperFallback: boolean;
   translationOverridden: boolean;
-  micCorner: MicCorner;
+  micCorner: MicPosition;
   ambient: AmbientSettings;
   speechVolume: number;
   autoScrollReader: boolean;
@@ -102,7 +122,7 @@ type SettingsState = {
   setAssistantVoice: (voice: VoiceId) => void;
   setSpeakAssistant: (value: boolean) => void;
   setUseWhisperFallback: (value: boolean) => void;
-  setMicCorner: (corner: MicCorner) => void;
+  setMicCorner: (position: MicPosition) => void;
   setAmbient: (patch: Partial<AmbientSettings>) => void;
   setSpeechVolume: (v: number) => void;
   setAutoScrollReader: (v: boolean) => void;
@@ -217,7 +237,7 @@ export const useSettingsStore = create<SettingsState>()(
         speakAssistant: true,
         useWhisperFallback: true,
         translationOverridden: false,
-        micCorner: 'br',
+        micCorner: DEFAULT_MIC_POSITION,
         ambient: DEFAULT_AMBIENT,
         speechVolume: 1,
         autoScrollReader: true,
@@ -310,7 +330,7 @@ export const useSettingsStore = create<SettingsState>()(
         if (version < 2) {
           prev = {
             ...prev,
-            micCorner: (prev.micCorner as MicCorner | undefined) ?? 'br',
+            micCorner: (prev.micCorner as MicPosition | undefined) ?? 'br',
             ambient: { ...DEFAULT_AMBIENT, ...(prev.ambient ?? {}) },
           };
         }

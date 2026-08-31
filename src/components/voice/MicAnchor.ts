@@ -1,4 +1,4 @@
-import type { MicCorner } from '@/store/settingsStore';
+import type { MicCorner, MicPosition } from '@/store/settingsStore';
 
 const PAD = 12;
 const BOTTOM_NAV_H = 56; // measured nav grid height (icon + label), excl. safe area
@@ -7,6 +7,14 @@ const BOTTOM_NAV_H = 56; // measured nav grid height (icon + label), excl. safe 
  * clear the mic — the voice overlay, the drag ghost's offset — has to agree
  * with it, and it changed once already. */
 export const MIC_SIZE = 64;
+
+/**
+ * How much of the viewport's bottom edge drops onto the docked bar rather than
+ * a corner. Wide and shallow, because the bar *is* the bottom edge — and the
+ * two bottom corner targets are drawn above it (`MicSnapTargets`), so what the
+ * finger is over and where it will land can't disagree.
+ */
+export const BAR_DROP_BAND = 120;
 
 export type AnchorStyle = {
   position: 'fixed';
@@ -58,6 +66,11 @@ export function safeAreaInset(side: 'top' | 'right' | 'bottom' | 'left'): number
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * Where a *floating* dock sits. Takes `MicCorner`, not `MicPosition`, so the
+ * docked bar — which is laid out in flow by `MicDock` and has no anchor at all
+ * — cannot be routed through corner geometry by mistake.
+ */
 export function getMicAnchor(opts: {
   corner: MicCorner | undefined;
   /** Height of the page's own bottom bar (chat composer, reader pager), from
@@ -92,11 +105,53 @@ export function getMicAnchor(opts: {
   }
 }
 
-export function cornerForPoint(
+/**
+ * Where the voice overlay sits: clear of the dock, on the dock's own side.
+ *
+ * This lives here rather than in `VoiceOverlay` because "clear of the dock"
+ * means two different sums. Floating, the overlay has to step over the mic
+ * itself. Docked, the bar is in flow above the nav and the page's own bar
+ * (composer, pager) is above *that*, so the overlay clears the lot and the mic
+ * doesn't come into it.
+ */
+export function getOverlayAnchor(opts: {
+  position: MicPosition | undefined;
+  bottomBarHeight: number;
+  /** Height of the docked bar, 0 in every floating position. */
+  dockBarHeight: number;
+}): AnchorStyle {
+  if (opts.position === 'bar') {
+    return {
+      position: 'fixed',
+      bottom:
+        PAD +
+        safeAreaInset('bottom') +
+        BOTTOM_NAV_H +
+        opts.dockBarHeight +
+        opts.bottomBarHeight,
+      right: PAD + safeAreaInset('right'),
+    };
+  }
+  const base = getMicAnchor({
+    corner: opts.position,
+    bottomBarHeight: opts.bottomBarHeight,
+  });
+  const gap = MIC_SIZE + 20;
+  return {
+    ...base,
+    ...(base.top !== undefined ? { top: base.top + gap } : {}),
+    ...(base.bottom !== undefined ? { bottom: base.bottom + gap } : {}),
+  };
+}
+
+/** Which slot a drop at (x, y) lands in. The bottom band is the docked bar; the
+ * rest of the viewport is quadrants. */
+export function positionForPoint(
   x: number,
   y: number,
   viewport: { width: number; height: number },
-): MicCorner {
+): MicPosition {
+  if (y >= viewport.height - BAR_DROP_BAND) return 'bar';
   const left = x < viewport.width / 2;
   const top = y < viewport.height / 2;
   if (top && left) return 'tl';

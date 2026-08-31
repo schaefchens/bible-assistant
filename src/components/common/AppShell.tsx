@@ -84,6 +84,11 @@ export function AppShell() {
         </div>
       )}
 
+      {/* Above the nav and inside the column: docked, the mic bar takes its own
+          space rather than covering the page. Floating, it renders fixed and
+          this slot costs nothing. */}
+      <MicDock />
+
       <nav className="pb-safe border-t border-surface-raised bg-surface grid grid-cols-5">
         <NavTab to="/" label={t('nav.chat')} icon={<ChatIcon />} />
         <NavTab to="/read" label={t('nav.read')} icon={<ReadIcon />} />
@@ -93,7 +98,6 @@ export function AppShell() {
       </nav>
 
       <VoiceController />
-      <MicDock />
       <VoiceOverlay />
       <EyesFreeMode />
     </div>

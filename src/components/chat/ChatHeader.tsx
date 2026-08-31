@@ -8,6 +8,7 @@ import { useUpdateStore, applyUpdate } from '@/lib/pwaUpdate';
 import { cancelAllActivity } from '@/hooks/useCommandPipeline';
 import { MessageActionsMenu, type MessageActionItem } from './MessageActionsMenu';
 import { BookChapterPicker } from './BookChapterPicker';
+import { EyesFreeIcon } from '@/components/voice/EyesFreeIcon';
 
 export function ChatHeader() {
   const { t } = useTranslation();
@@ -167,30 +168,6 @@ function ReadingViewIcon({ active }: { active: boolean }) {
           <line x1="14.5" y1="9" x2="17.5" y2="9" />
         </>
       )}
-    </svg>
-  );
-}
-
-// Target / "tap me anywhere" glyph for the hands-free toggle: a ring with
-// four radial ticks and a filled center dot when the mode is active.
-function EyesFreeIcon({ active }: { active: boolean }) {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="3" fill={active ? 'currentColor' : 'none'} />
-      <circle cx="12" cy="12" r="7" />
-      <line x1="12" y1="2" x2="12" y2="4" />
-      <line x1="12" y1="20" x2="12" y2="22" />
-      <line x1="2" y1="12" x2="4" y2="12" />
-      <line x1="20" y1="12" x2="22" y2="12" />
     </svg>
   );
 }

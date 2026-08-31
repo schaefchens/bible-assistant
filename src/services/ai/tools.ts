@@ -2,7 +2,7 @@ import type { ChatToolDefinition } from '@/services/api/chat';
 import type { Translation } from '@/services/bible/bibleApi';
 import type { RandomUnit } from '@/services/bible/randomPassage';
 import type { OpenAiVoiceId } from '@/types/domain';
-import { useSettingsStore } from '@/store/settingsStore';
+import { useSettingsStore, type MicPosition } from '@/store/settingsStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 
 export type ToolName =
@@ -142,7 +142,7 @@ export type ToolArgs = {
     pauseBetweenVersesMs?: number;
     pauseBetweenChaptersMs?: number;
   };
-  set_mic_position: { corner: 'tl' | 'tr' | 'bl' | 'br' };
+  set_mic_position: { position: MicPosition };
   save_ribbon: {
     color?: 'gold' | 'blue' | 'red' | 'green' | 'purple';
     position?: { reference: string; translation?: Translation };
@@ -747,18 +747,18 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
     function: {
       name: 'set_mic_position',
       description:
-        'Move the floating microphone to a corner. The playback bar (when visible) sits in the opposite corner automatically.',
+        'Move the microphone and its playback controls, which are one element. Either docked as a full-width bar above the bottom navigation, or floating in one of the four corners.',
       parameters: {
         type: 'object',
         properties: {
-          corner: {
+          position: {
             type: 'string',
-            enum: ['tl', 'tr', 'bl', 'br'],
+            enum: ['bar', 'tl', 'tr', 'bl', 'br'],
             description:
-              'tl = top-left, tr = top-right, bl = bottom-left, br = bottom-right.',
+              'bar = docked above the bottom navigation (the default), tl = top-left, tr = top-right, bl = bottom-left, br = bottom-right.',
           },
         },
-        required: ['corner'],
+        required: ['position'],
       },
     },
   },
@@ -864,7 +864,7 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
     `"arrange_card" positions/resizes/tilts a card on a board's freeform corkboard view (spatial only, never changes membership; coordinates are 0..1 fractions, x/y = top-left corner). A card's TEXT size is the "textScale" field (1 = normal) on create_card/update_card.`,
     `When the user says simply "continue reading", "read on", "next verses", "weiterlesen" or similar WITHOUT mentioning a ribbon/bookmark: call "read_verses" with the next slice. Look at the most recent "(Played aloud: …)" system notes to see what was just read and figure out the next verses yourself (continue in the same chapter if verses remain, otherwise start the next chapter). "(Played aloud: …)" is only a history marker — NEVER emit that phrase as your own reply text; always call read_verses to actually read.`,
     `Ribbons (bookmarks): there are five colored ribbons (gold, blue, red, green, purple). "save_ribbon" stores the current reading position; "continue_from_ribbon" resumes from a saved ribbon. ONLY call these tools when the user explicitly mentions "ribbon", "bookmark", "Lesezeichen", or names a color. Plain "continue reading" / "weiterlesen" is NOT a ribbon command. If no color is given, omit the color argument — save_ribbon defaults to "gold" and continue_from_ribbon automatically uses the single saved ribbon when there's exactly one.`,
-    `Playback settings are voice-controllable: "set_playback_rate" for tempo ("read faster", "slow down", "normal speed"), "set_music" for music on/off/track/volume ("music off", "play the forest track", "music louder"), "set_reader_preferences" for auto-play / auto-scroll / repeat-verse, "set_announcements" for chapter headings / verse numbers / pause durations, "set_mic_position" to move the mic to a corner. Only pass the fields the user actually mentioned — never invent defaults for fields they didn't talk about. The current values are provided in the next system message; use them to compute relative changes ("a bit louder" = current + ~0.1, "much faster" = ~1.3) and DO NOT ask the user for fields you can derive (e.g. "turn music on" should reuse the already-selected track — only ask if no track is selected).`,
+    `Playback settings are voice-controllable: "set_playback_rate" for tempo ("read faster", "slow down", "normal speed"), "set_music" for music on/off/track/volume ("music off", "play the forest track", "music louder"), "set_reader_preferences" for auto-play / auto-scroll / repeat-verse, "set_announcements" for chapter headings / verse numbers / pause durations, "set_mic_position" to dock the mic bar at the bottom or float it in a corner. Only pass the fields the user actually mentioned — never invent defaults for fields they didn't talk about. The current values are provided in the next system message; use them to compute relative changes ("a bit louder" = current + ~0.1, "much faster" = ~1.3) and DO NOT ask the user for fields you can derive (e.g. "turn music on" should reuse the already-selected track — only ask if no track is selected).`,
     `Reading lists are compiled sequences of passages — reading plans ("take me through the gospels in 30 days") or custom collections ("my favourite psalms"). "create_reading_list" makes one (for anything long ALWAYS use "plan" — e.g. cover ["bible"], days 365 — otherwise "days" or "passages"), "update_reading_list" changes it, "list_reading_lists" shows them with progress, "play_reading_list" reads one aloud from where the user left off and keeps going to its end, "delete_reading_list" removes it. A passage may be a whole book ("John"), a chapter ("John 3"), a span ("Genesis 1-3") or verses ("Psalm 23:1-6"), always with English book names. Call "list_reading_lists" first when the user names a list, to resolve it. Like read_verses, play_reading_list needs NO text reply — the reading is the answer. After creating or changing a list, reply in ONE short sentence and do NOT list the days or passages back: the user can see the list, and a year plan read aloud takes minutes.`,
     `Hands-free / eyes-free mode: "enter_eyes_free_mode" opens a fullscreen overlay with five giant touch zones (top = exit, bottom = mic, left/right = previous/next verse, center = play/pause). Call it on "hands-free", "eyes-free", "open the big buttons", "blind mode" etc. "exit_eyes_free_mode" closes it again ("back to chat", "exit hands-free").`,
   ].join(' ');
@@ -907,7 +907,7 @@ export function playbackStatePrompt(currentTrackTitle: string | null): string {
     `  pauseBetweenVersesMs: ${s.pauseBetweenVersesMs}`,
     `  pauseBetweenChaptersMs: ${s.pauseBetweenChaptersMs}`,
     `set_mic_position:`,
-    `  corner: ${s.micCorner}`,
+    `  position: ${s.micCorner}`,
   ];
   return lines.join('\n');
 }

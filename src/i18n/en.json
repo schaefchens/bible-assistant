@@ -92,7 +92,9 @@
     "close": "Close",
     "loading": "Loading audio…",
     "showControls": "Show playback controls",
-    "hideControls": "Hide playback controls"
+    "hideControls": "Hide playback controls",
+    "seekBack": "Back {{words}} words",
+    "seekForward": "Forward {{words}} words"
   },
   "eyesFree": {
     "exit": "Exit",
@@ -201,7 +203,8 @@
       "tr": "Top right",
       "bl": "Bottom left",
       "br": "Bottom right",
-      "dragHint": "Long-press and drag to move"
+      "dragHint": "Long-press and drag to move",
+      "bar": "Bar above the navigation"
     },
     "ribbon": {
       "noCurrent": "Start reading first or specify a passage.",

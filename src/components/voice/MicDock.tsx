@@ -1,14 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
-import { useTranslation } from 'react-i18next';
-import { useSettingsStore } from '@/store/settingsStore';
+import {
+  useSettingsStore,
+  DEFAULT_MIC_POSITION,
+  type MicCorner,
+} from '@/store/settingsStore';
 import { useUiLayoutStore } from '@/store/uiLayoutStore';
 import { useGlobalVoiceStore } from '@/store/globalVoiceStore';
 import { usePlaybackStore } from '@/store/playbackStore';
-import { voiceControl, PTT_HOTKEY } from '@/hooks/useGlobalVoice';
 import { useMicDrag } from '@/hooks/useMicDrag';
+import { useDockBarHeight } from '@/hooks/useBottomBarHeight';
 import { useHasAnyReading } from '@/hooks/usePlaybackTransport';
-import { TransportArm, HANDLE_W } from '@/components/playback/TransportArm';
+import {
+  TransportArm,
+  TransportSpread,
+  HANDLE_W,
+} from '@/components/playback/TransportControls';
+import { MicButton } from './MicButton';
 import { getMicAnchor, MIC_SIZE } from './MicAnchor';
 import { MicSnapTargets } from './MicSnapTargets';
 
@@ -25,34 +33,44 @@ const FAR_PAD = 8;
 const BORDER = 2;
 
 /**
- * The single floating control: a mic button with the playback transport
- * extending out of it. One element, one corner, one drag gesture — it replaces
- * the separate mic and playback bar, which lived in opposing corners and had to
- * keep their two positions, two drags and two dismissals in sync.
+ * The app's single playback + voice control, in one of five positions: floating
+ * in any corner, or docked as a full-width bar above the bottom nav.
  *
- * The mic is the anchor and stays put; the capsule grows and shrinks *inward*
- * from it, which works because the container is anchored by the corner's own
- * edge (`right` or `left`), never by width.
+ * The two are genuinely different layouts rather than one parameterised by
+ * position, because a corner has no room and the bar has nothing but room:
  *
- * The arm opens by itself while there is something to control and closes when
- * playback goes idle; the grip is a manual override of that, not a setting (see
- * `override` below).
+ * |            | floating corner                      | docked bar               |
+ * | ---        | ---                                  | ---                      |
+ * | placement  | `position: fixed`, over the content   | in flow, above the nav   |
+ * | transport  | a capsule extending out of the mic    | spread across the width  |
+ * | when idle  | collapses to the mic plus a grip      | stays out                |
+ *
+ * Docked, it takes its own space in `AppShell`'s column, so it covers nothing —
+ * which is the point of choosing it over a floater. That does mean the fixed
+ * things above it can't see it in the flex column, hence `useDockBarHeight`.
+ *
+ * Both positions drag: long-press anywhere on the dock and drop on one of the
+ * five targets (`MicSnapTargets`). Dragging shows the mic alone, because the
+ * ghost has to sit under the finger and with the transport attached that means
+ * measuring a box whose width is mid-animation.
  */
 export function MicDock() {
-  const { t } = useTranslation();
-  const corner = useSettingsStore((s) => s.micCorner) ?? 'br';
+  const position = useSettingsStore((s) => s.micCorner) ?? DEFAULT_MIC_POSITION;
   const bottomBarHeight = useUiLayoutStore((s) => s.bottomBarHeight);
 
-  // Pure consumer of the single voice pipeline (mounted by <VoiceController/>).
-  const listening = useGlobalVoiceStore((s) => s.listening);
-  const pttRecording = useGlobalVoiceStore((s) => s.pttRecording);
   const micAvailable = useGlobalVoiceStore((s) => s.available);
-  const error = useGlobalVoiceStore((s) => s.error);
-
   const hasReadings = useHasAnyReading();
   const status = usePlaybackStore((s) => s.status);
 
   const { state: dragState, bindings } = useMicDrag();
+  const dragging = dragState.dragging && !!dragState.ghost;
+  const asBar = position === 'bar';
+
+  // Publish the docked bar's height for the fixed floaters above it. The hook
+  // resets it to 0 when the ref's element unmounts, which is exactly what
+  // dragging out of the bar position should do.
+  const barRef = useRef<HTMLDivElement | null>(null);
+  useDockBarHeight(barRef);
 
   // Anything but idle is something worth having the controls out for — pausing
   // must not snatch away the button you'd resume with.
@@ -75,11 +93,7 @@ export function MicDock() {
   // route (the two reading toggles) and the viewport (they hide when narrow).
   const rowRef = useRef<HTMLDivElement | null>(null);
   const [rowW, setRowW] = useState(0);
-
-  const dragging = dragState.dragging && !!dragState.ghost;
-  // Dragging shows the mic alone: the ghost has to sit under the finger, and
-  // with the arm attached that means measuring a box whose width is animating.
-  const showArm = hasReadings && !dragging;
+  const showArm = !asBar && hasReadings && !dragging;
 
   useEffect(() => {
     const el = rowRef.current;
@@ -95,128 +109,121 @@ export function MicDock() {
 
   if (!micAvailable && !hasReadings) return null;
 
-  const anchorStyle = getMicAnchor({ corner, bottomBarHeight });
-  const dockStyle: React.CSSProperties = dragging
-    ? {
-        position: 'fixed',
-        left: dragState.ghost!.x - MIC_SIZE / 2,
-        top: dragState.ghost!.y - MIC_SIZE / 2,
-        transition: 'none',
+  // Long-press-to-drag, and one place to swallow the tap that ends the drag so
+  // no button inside the dock needs to know the gesture exists (capture, so it
+  // never reaches the button's own onClick).
+  const dragBindings = {
+    onPointerDown: bindings.onPointerDown,
+    onContextMenu: bindings.onContextMenu,
+    onClickCapture: (e: React.MouseEvent) => {
+      if (bindings.consumeClickIfDragged()) {
+        e.preventDefault();
+        e.stopPropagation();
       }
-    : {
-        ...anchorStyle,
-        transition:
-          'top 150ms ease, bottom 150ms ease, left 150ms ease, right 150ms ease',
-      };
+    },
+  };
+  const noSelect: React.CSSProperties = {
+    touchAction: 'none',
+    userSelect: 'none',
+    WebkitUserSelect: 'none',
+    WebkitTouchCallout: 'none',
+  };
 
-  const onRightSide = corner === 'tr' || corner === 'br';
+  const mic = micAvailable ? <MicButton /> : null;
+  const onRightSide = position === 'tr' || position === 'br';
   // With no mic there is nothing to tuck under, so the capsule stands alone.
   const tucked = micAvailable;
   const nearPad = tucked ? OVERLAP + NEAR_GAP : FAR_PAD;
   const capsuleW =
     (expanded ? Math.max(rowW, HANDLE_W) : HANDLE_W) + nearPad + FAR_PAD + BORDER;
 
-  const isActive = listening || pttRecording;
-  const micLabel = listening
-    ? (t('chat.listening') as string)
-    : pttRecording
-      ? (t('chat.pushToTalk') as string)
-      : (t('chat.holdToSpeak') as string);
-
   return (
     <>
       <MicSnapTargets
         visible={dragState.dragging}
-        activeCorner={dragState.activeCorner}
+        activePosition={dragState.activePosition}
       />
 
-      <div
-        style={{
-          ...dockStyle,
-          zIndex: 50,
-          touchAction: 'none',
-          userSelect: 'none',
-          WebkitUserSelect: 'none',
-          WebkitTouchCallout: 'none',
-        }}
-        onPointerDown={bindings.onPointerDown}
-        onContextMenu={bindings.onContextMenu}
-        // One place swallows the tap that ends a drag, so no button inside the
-        // dock needs to know the gesture exists. Capture, so it never reaches
-        // the button's own onClick.
-        onClickCapture={(e) => {
-          if (bindings.consumeClickIfDragged()) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-        }}
-        className={clsx('flex items-center', onRightSide && 'flex-row-reverse')}
-      >
-        {micAvailable && (
-          <button
-            type="button"
-            aria-label={micLabel}
-            title={
-              error ??
-              (t('voice.mic.dragHint') as string) +
-                ' · ' +
-                (t('chat.pushToTalkHint', { key: PTT_HOTKEY }) as string)
-            }
-            style={{ height: MIC_SIZE, width: MIC_SIZE }}
-            onClick={async () => {
-              if (listening) {
-                await voiceControl.stop();
-              } else {
-                await voiceControl.start();
-              }
-            }}
-            className={clsx(
-              // Above the capsule, whose near end runs underneath it.
-              'relative z-10 shrink-0 rounded-full flex items-center justify-center',
-              'shadow-xl transition-colors',
-              isActive
-                ? 'bg-brand text-on-brand animate-pulse-soft'
-                : 'bg-surface-sunken text-brand border border-brand/40',
-              error && !isActive && 'ring-2 ring-red-500/60',
+      {asBar ? (
+        <div
+          ref={barRef}
+          style={noSelect}
+          {...dragBindings}
+          className="flex items-center px-1.5 py-1 border-t border-surface-raised bg-surface"
+        >
+          {/* Hidden rather than unmounted while dragging: the bar has to keep
+              its height or the whole page reflows under the finger, and the
+              height comes from what's in it. */}
+          <div className={clsx('flex flex-1 items-center min-w-0', dragging && 'invisible')}>
+            {hasReadings ? (
+              // The mic goes *inside* the transport's grid, which is the only
+              // way Play lands on the bar's centre line rather than half a mic
+              // to the left of it.
+              <TransportSpread trailing={mic} />
+            ) : (
+              <div className="flex flex-1 justify-end">{mic}</div>
             )}
-          >
-            <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-              <line x1="12" y1="19" x2="12" y2="23" />
-              <line x1="8" y1="23" x2="16" y2="23" />
-            </svg>
-          </button>
-        )}
-
-        {showArm && (
+          </div>
+        </div>
+      ) : (
+        !dragging && (
           <div
             style={{
-              width: capsuleW,
-              height: CAPSULE_H,
-              transition: 'width 240ms cubic-bezier(.22,.61,.36,1)',
-              ...(onRightSide
-                ? { paddingRight: nearPad, paddingLeft: FAR_PAD, marginRight: tucked ? -OVERLAP : 0 }
-                : { paddingLeft: nearPad, paddingRight: FAR_PAD, marginLeft: tucked ? -OVERLAP : 0 }),
+              ...getMicAnchor({ corner: position as MicCorner, bottomBarHeight }),
+              ...noSelect,
+              zIndex: 50,
+              transition:
+                'top 150ms ease, bottom 150ms ease, left 150ms ease, right 150ms ease',
             }}
-            className={clsx(
-              'flex items-center overflow-hidden rounded-full',
-              'bg-surface-sunken/95 backdrop-blur border border-brand/30 shadow-xl',
-              // Content is pinned to the mic-facing edge, so shrinking the
-              // capsule clips the far end and the arm reads as retracting into
-              // the mic rather than being cut off next to it.
-              onRightSide ? 'justify-end' : 'justify-start',
-            )}
+            {...dragBindings}
+            className={clsx('flex items-center', onRightSide && 'flex-row-reverse')}
           >
-            <TransportArm
-              rowRef={rowRef}
-              expanded={expanded}
-              onToggle={toggle}
-              onRightSide={onRightSide}
-            />
+            {mic}
+
+            {hasReadings && (
+              <div
+                style={{
+                  width: capsuleW,
+                  height: CAPSULE_H,
+                  transition: 'width 240ms cubic-bezier(.22,.61,.36,1)',
+                  ...(onRightSide
+                    ? { paddingRight: nearPad, paddingLeft: FAR_PAD, marginRight: tucked ? -OVERLAP : 0 }
+                    : { paddingLeft: nearPad, paddingRight: FAR_PAD, marginLeft: tucked ? -OVERLAP : 0 }),
+                }}
+                className={clsx(
+                  'flex items-center overflow-hidden rounded-full',
+                  'bg-surface-sunken/95 backdrop-blur border border-brand/30 shadow-xl',
+                  // Content is pinned to the mic-facing edge, so shrinking the
+                  // capsule clips the far end and the arm reads as retracting
+                  // into the mic rather than being cut off next to it.
+                  onRightSide ? 'justify-end' : 'justify-start',
+                )}
+              >
+                <TransportArm
+                  rowRef={rowRef}
+                  expanded={expanded}
+                  onToggle={toggle}
+                  onRightSide={onRightSide}
+                />
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        )
+      )}
+
+      {dragging && micAvailable && (
+        <div
+          style={{
+            position: 'fixed',
+            left: dragState.ghost!.x - MIC_SIZE / 2,
+            top: dragState.ghost!.y - MIC_SIZE / 2,
+            zIndex: 50,
+            ...noSelect,
+          }}
+        >
+          <MicButton ghost />
+        </div>
+      )}
     </>
   );
 }

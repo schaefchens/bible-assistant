@@ -3,6 +3,7 @@ import {
   navigateVerse,
   togglePlayOrStart,
   seekByWords,
+  SEEK_WORD_STEP,
 } from './usePlaybackTransport';
 
 function isTypingTarget(t: EventTarget | null): boolean {
@@ -29,7 +30,7 @@ export function useChatNavigation() {
 
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault();
-        seekByWords(e.key === 'ArrowLeft' ? -5 : 5);
+        seekByWords(e.key === 'ArrowLeft' ? -SEEK_WORD_STEP : SEEK_WORD_STEP);
       }
     }
     window.addEventListener('keydown', onKey);
