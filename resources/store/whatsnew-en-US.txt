@@ -1,7 +1,6 @@
-Make the Bible text your own.
+Choose the colour of the page you read on.
 
-• Choose the paper and the ink: Paper, Sepia, Grey, Night or Black — or tint either one yourself.
-• A contrast slider decides how strongly the text is printed. Soften it right down for reading at night, or push it past stark.
-• Set the text size, the line spacing, the typeface and how wide a line runs.
-• Two columns on a tablet or a wide screen.
-• Applies to the reader and to passages in chat.
+• Each paper — Paper, Sepia, Grey, Night, Black — now carries a colour of its own, picked from a grid, and the text follows it.
+• The contrast slider no longer washes that colour out towards the top of its range.
+• The preview stays put while you adjust things, instead of scrolling away.
+• Settings rebuilt: six categories, one open at a time, in place of one long page.

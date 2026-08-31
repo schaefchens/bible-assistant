@@ -1,7 +1,6 @@
-Mach dir das Schriftbild zu eigen.
+Wähle die Farbe der Seite, auf der du liest.
 
-• Wähle Papier und Schrift: Papier, Sepia, Grau, Nacht oder Schwarz — oder färbe beides selbst ein.
-• Ein Kontrastregler bestimmt, wie kräftig der Text gedruckt ist. Ganz weich zum Lesen am Abend, oder härter als der Standard.
-• Schriftgröße, Zeilenabstand, Schriftart und Zeilenbreite stellst du selbst ein.
-• Zwei Spalten auf Tablet und breitem Bildschirm.
-• Gilt für den Leser und für Stellen im Chat.
+• Jedes Papier — Papier, Sepia, Grau, Nacht, Schwarz — trägt jetzt eine eigene Farbe, aus einer Palette gewählt, und die Schrift folgt ihr.
+• Der Kontrastregler wäscht diese Farbe am oberen Ende nicht mehr aus.
+• Die Vorschau bleibt beim Einstellen stehen, statt wegzuscrollen.
+• Einstellungen neu gebaut: sechs Kategorien, immer nur eine offen, statt einer langen Seite.
