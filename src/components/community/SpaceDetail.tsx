@@ -201,6 +201,11 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
             </SmallButton>
           )}
           <p className="text-xs text-ink-muted">{t('community.shareHint')}</p>
+          {/* With auto-approval the code really is the whole gate, which is the
+              one case where the hint above would understate things. */}
+          {space.approval === 'auto' && (
+            <p className="text-xs text-brand-muted">{t('community.shareHintAuto')}</p>
+          )}
         </section>
 
         {pending.length > 0 && (

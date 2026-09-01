@@ -368,9 +368,11 @@ export type Space = {
   ephemeralHours?: number;
   approval: SpaceApproval;
   /**
-   * The capability that grants read access, minted client-side because it
-   * embeds a fingerprint of the author's key — see `lib/spaceCode.ts`.
-   * Absent until the space is first shared; rotating it revokes everyone.
+   * How this space is found — an address, not a key. Holding it lets somebody
+   * *ask* to read; `approval` decides whether asking is enough. Minted
+   * client-side because a generated code commits to the author's signing key
+   * (see `lib/spaceCode.ts`). Absent until the space is first shared; replacing
+   * it drops every existing reader, since a membership is per code.
    */
   shareCode?: string;
   createdAt: number;
@@ -409,7 +411,7 @@ export type Post = {
   sigVersion?: string;
 };
 
-/** A space I follow. Keyed by its share code, which is what identifies it. */
+/** A space I follow. Keyed by its share code, which is how it is addressed. */
 export type Subscription = {
   code: string;
   spaceName: string;
@@ -418,10 +420,13 @@ export type Subscription = {
   ownerAvatarUrl?: string;
   status: 'pending' | 'accepted' | 'revoked';
   /**
-   * Pinned once, at subscribe time, after the key matched the fingerprint
-   * carried in the pasted code. Every post from this space must verify
-   * against it; a key that changes later is an explicit re-pin prompt, never
-   * a silent adoption.
+   * The author's signing key, pinned once at subscribe time — after matching
+   * the fingerprint in the pasted code where the code carried one, else on
+   * first contact. Every post from this space must verify against it, and a key
+   * that changes later is an explicit re-pin prompt, never a silent adoption.
+   *
+   * Unrelated to access, which is `status`: pinning is about *who wrote this*,
+   * accepting is about *may I read it*.
    */
   pinnedKey: string;
   keyPinnedAt: number;

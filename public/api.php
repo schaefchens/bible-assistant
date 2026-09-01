@@ -56,7 +56,13 @@ if (!defined('OPENAI_API_KEY')) {
 const STORAGE_DIR = __DIR__ . '/storage';
 const USERS_DIR = STORAGE_DIR . '/users';
 const AUDIO_DIR = STORAGE_DIR . '/audio';
-/** code -> {userId, spaceId}. The only way to name somebody else's space. */
+/**
+ * code -> {userId, spaceId}. The only way to name somebody else's space.
+ *
+ * Denied to HTTP below: these files map codes to the accounts that own them,
+ * so serving or listing them would hand out every space on the server. That is
+ * about not leaking the *directory*, not about the codes being secrets.
+ */
 const SHARES_DIR = STORAGE_DIR . '/shares';
 /** Content-addressed profile pictures. Served statically, unlike everything
  * else a user owns — see the note where the directory is created. */
@@ -159,10 +165,9 @@ if (!file_exists($usersHtaccessPath)) {
     );
 }
 
-// Same treatment for shares/ — a share code IS the read capability for a
-// space, and these files map codes to the userId that owns them. Listing or
-// fetching them over HTTP would hand out every space on the server. PHP keeps
-// reading via the filesystem.
+// Same treatment for shares/ — these files map codes to the userId that owns
+// them, so listing or fetching them over HTTP would enumerate every space on
+// the server. PHP keeps reading via the filesystem.
 $sharesHtaccessPath = SHARES_DIR . '/.htaccess';
 if (!file_exists($sharesHtaccessPath)) {
     @file_put_contents(
@@ -1551,6 +1556,10 @@ function handleOpenAiKeyClear(array $ctx): void {
 //  1. **A share code is the only way to name a space.** No action takes a
 //     target userId — the caller supplies a code, and SHARES_DIR resolves it.
 //     That keeps uuids (which are valid X-User-Id values) out of the API.
+//     A code is an *address*, not a key: it lets a caller ask to read, and
+//     `space.feed` still answers only a member the owner accepted. The one
+//     exception is a space set to auto-approval, where the owner has said the
+//     code is enough.
 //  2. **Nothing user-authored is echoed verbatim to another user.** Every
 //     record that crosses between accounts goes through a sanitize* function
 //     that whitelists fields, so one person cannot inject arbitrary JSON into
@@ -1658,8 +1667,12 @@ function sanitizeSubscription(array $su): array {
 
 /**
  * Crockford base32, 16 characters — see src/lib/spaceCode.ts, which mints them.
- * The alphabet excludes I, L, O and U, so this also rejects anything that
- * could be a path segment surprise.
+ * The alphabet excludes I, L, O and U, so this also rejects anything that could
+ * be a path segment surprise.
+ *
+ * **Widen this together with `normalizeSpaceCode` on the client** if named
+ * codes are added: the result becomes a filename under SHARES_DIR, so whatever
+ * shape is allowed here has to stay traversal-proof.
  */
 function normalizeShareCode(mixed $v): string {
     $code = strtoupper(safeString($v, 32));
@@ -1863,10 +1876,14 @@ function handleSpaceDelete(array $ctx): void {
 /**
  * Point a share code at one of the caller's spaces, replacing any previous one.
  *
- * The code is minted client-side because it embeds a fingerprint of the
+ * The code is minted client-side because a generated one commits to the
  * author's public key (src/lib/spaceCode.ts) — the server has no key material
  * and could not produce one. All this does is publish the mapping and retire
- * the old code, which is what revokes every existing subscriber.
+ * the old one.
+ *
+ * Retiring a code drops that space's memberships, so replacing it is how an
+ * owner starts over on who may read. Not because the old code was a key, but
+ * because a membership is a decision about a particular invitation.
  */
 function handleSpaceCodeSet(array $ctx): void {
     $body = readJsonBody();

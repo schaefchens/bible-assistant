@@ -20,6 +20,7 @@ import {
 } from '../../src/lib/postSignature.ts';
 import { postParagraphs, postToUnits } from '../../src/services/community/postUnits.ts';
 import {
+  codeCarriesFingerprint,
   codeMatchesKey,
   formatSpaceCode,
   keyFingerprint,
@@ -136,11 +137,24 @@ check('a minted code is the documented length and shape', () => {
   assert.equal(formatSpaceCode(code), `${code.slice(0, 5)}-${code.slice(5, 10)}-${code.slice(10)}`);
 });
 
-check('a code commits to its own key and to no other', () => {
+check('a generated code commits to its own key and to no other', () => {
   const code = mintSpaceCode(keyHex);
+  assert.equal(codeCarriesFingerprint(code), true);
   assert.equal(codeMatchesKey(code, keyHex), true);
   const other = bytesToHex(deriveSigningKey(generateMnemonic(wordlist, 128)).publicKey);
   assert.equal(codeMatchesKey(code, other), false);
+});
+
+check('a code with no fingerprint has nothing to check, and says so', () => {
+  // The shape a future named code would have. codeMatchesKey is vacuously
+  // true there, which is why callers that care must ask
+  // codeCarriesFingerprint rather than reading `true` as "key confirmed".
+  const named = 'christoph/gedanken';
+  assert.equal(codeCarriesFingerprint(named), false);
+  assert.equal(codeMatchesKey(named, keyHex), true);
+  assert.equal(formatSpaceCode(named), named);
+  // Not accepted yet — widening this is a deliberate change in two places.
+  assert.equal(normalizeSpaceCode(named), null);
 });
 
 check('a tampered fingerprint half stops matching', () => {

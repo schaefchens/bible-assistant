@@ -404,12 +404,20 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   },
 
   /**
-   * Subscribe to a space from a code someone gave you.
+   * Ask to read a space, from a code someone gave you.
    *
-   * The fingerprint check is the load-bearing step: it ties the key the server
-   * hands back to the person who handed you the code, over a channel the
-   * server does not control. A mismatch throws rather than warning — there is
-   * no benign reading of it.
+   * The code only *locates* the space — this call creates a request, and the
+   * owner accepting it is what grants access (`status` comes back `'pending'`
+   * unless they set the space to auto-approval). So a subscription row can
+   * exist for a while with nothing readable behind it, which is why
+   * `refreshSubscriptions` retries.
+   *
+   * The key we pin is a separate question from access. When the code carries a
+   * fingerprint (every generated one does) it is checked first, which ties the
+   * key to the person who sent the code over a channel the server does not
+   * control; a mismatch throws, because there is no benign reading of it. A
+   * code with no fingerprint — a future named one — pins on first contact
+   * instead, and the author's fingerprint is comparable by hand in Settings.
    */
   subscribe: async (rawCode) => {
     const code = normalizeSpaceCode(rawCode);
@@ -417,9 +425,8 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     if (!get().profile) throw new Error('profile_required');
 
     const res = await api.requestSpace(code);
-    if (!res.owner.authorKey || !codeMatchesKey(code, res.owner.authorKey)) {
-      throw new Error('key_mismatch');
-    }
+    if (!res.owner.authorKey) throw new Error('failed');
+    if (!codeMatchesKey(code, res.owner.authorKey)) throw new Error('key_mismatch');
 
     const now = Date.now();
     const existing = get().subscriptions.find((s) => s.code === code);
@@ -430,7 +437,8 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
       ownerName: res.owner.displayName,
       ownerAvatarUrl: res.owner.avatarUrl ?? undefined,
       status: res.status === 'blocked' ? 'revoked' : res.status,
-      // Pinned once. A later key change is a re-pin decision, not a silent one.
+      // Pinned once, on first contact. A later change is a re-pin decision the
+      // user makes, never a silent adoption — see refreshSubscriptions.
       pinnedKey: existing?.pinnedKey ?? res.owner.authorKey,
       keyPinnedAt: existing?.keyPinnedAt ?? now,
       addedAt: existing?.addedAt ?? now,

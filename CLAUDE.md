@@ -692,14 +692,42 @@ Stated plainly, because signing invites over-claiming:
   a signed per-space manifest with a serial number, which last-write-wins sync across the
   author's own devices would fight. Known limitation.
 
-**The share code is what binds a key to a person.** A signature only proves "whoever holds
-this key wrote this"; the code travels out of band (share sheet, message, word of mouth), so it
-carries a fingerprint of the key: `10 random + 6 fingerprint` Crockford base32 characters
-(`lib/spaceCode.ts`). The subscriber checks the returned key against the pasted code's
-fingerprint *before* pinning it, which makes this stronger than plain trust-on-first-use. A
-mismatch is a hard failure, never a warning to click through, and a pinned key that later
-changes stops the whole space rather than being silently adopted. 50 bits of capability is the
-brute-force mitigation standing in for the rate limiting `api.php` does not have.
+### The share code is an address, not a key
+
+This is the distinction to keep straight, because the code *looks* like a secret and is not
+one. It exists so an author can say "here, read this" over WhatsApp or out loud — it locates
+the space. **Access control is the accept/deny and nothing else**: `space.feed` answers only a
+member the owner accepted, so holding a code buys the ability to *ask*. Named codes
+(`christoph/gedanken`) are a sensible thing to add later for exactly that reason.
+
+Two things temper it, pulling in opposite directions:
+
+- guessing a code is not consequence-free — the reply to `space.request` names the space and
+  its owner (the asker has to know what they just asked to join), and for a space set to
+  **auto**-approval the code *is* the gate, because that setting is the owner saying it is
+  enough. So a generated code carries ~50 bits, and the UI says plainly what auto-approval
+  means;
+- `SHARES_DIR` is HTTP-denied like `storage/users/`. That is about not letting anyone
+  enumerate every space on the server, not about the codes being secret.
+
+**The key fingerprint is a separate, optional concern.** A generated code is
+`10 random + 6 fingerprint` characters, the last six committing to the author's public signing
+key. That is an *integrity* check, not an access check: a signature only proves "whoever holds
+this key wrote this", so a code that commits to the key lets the subscriber confirm the key it
+is about to pin belongs to whoever sent the code — over a channel the server does not control.
+Strictly better than trust-on-first-use, for six characters.
+
+It is deliberately **conditional**, so a named code stays possible: `codeMatchesKey` is
+*vacuously true* for a code carrying no fingerprint, and callers that care ask
+`codeCarriesFingerprint` instead of reading `true` as "confirmed" — `communityStore.subscribe`
+is the one that does. A code with no fingerprint pins on first contact, and the author's
+fingerprint is shown in Settings so two people can compare it by hand.
+
+`normalizeSpaceCode` is the single gate on what a code may look like. **Widen it together with
+api.php's `normalizeShareCode`**, which turns the result into a filename under `SHARES_DIR`.
+
+Replacing a code drops that space's memberships — not because the old code was a key, but
+because a membership is a decision about a particular invitation.
 
 ### Local-first ownership
 
@@ -733,7 +761,7 @@ the pull's `pending*Ids` all assume one writer per row and somebody else's writi
 
 `api.php` gained two rules and seventeen actions. **A share code is the only way to name a
 space** — no action takes a target userId, `storage/shares/{code}.json` resolves it, and that
-file tree is HTTP-denied like `storage/users/`. **Nothing user-authored is echoed verbatim to
+file tree is HTTP-denied like `storage/users/` so nobody can enumerate it. **Nothing user-authored is echoed verbatim to
 another user**: every record crossing accounts goes through a `sanitize*` whitelist, which for
 posts is additionally enforced *by the signature* — the client signs exactly the fields kept,
 so dropping or mangling one is detected rather than accepted.
