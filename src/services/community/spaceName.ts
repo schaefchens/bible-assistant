@@ -16,31 +16,30 @@ export function spaceDisplayName(space: Pick<Space, 'kind' | 'name'>): string {
   return space.kind === 'today' ? i18n.t('community.todayName') : space.name;
 }
 
-/**
- * How an author is credited: `@Christoph`.
- *
- * There is no separate handle on `Profile` yet — only `displayName` — so the
- * `@` is a prefix on that, not a unique identifier. If named share codes
- * arrive (`lib/spaceCode.ts`), a real handle is the natural thing to key them
- * on, and this is the one place that would change.
- */
-export function authorHandle(displayName: string): string {
-  const name = displayName.trim();
-  return name === '' ? '' : `@${name}`;
+/** How an author is credited. Just their display name — see {@link spaceLabel}. */
+export function authorName(displayName: string): string {
+  return displayName.trim();
 }
 
 /**
  * How a space is identified wherever whose space it is isn't already obvious:
- * `@Christoph / Heute`.
+ * `Christoph / Heute`.
  *
  * Reads as a path, which is what a space is — one person's, with a name. Used
  * in the reader header, the picker, and the list of spaces you follow; *not*
  * inside your own space, where the owner is you and the prefix would be noise.
+ *
+ * Deliberately **no `@` prefix**. `Profile` has only a `displayName`, which is
+ * neither unique nor claimed — two people can both be "Christoph". An `@` would
+ * promise an identity guarantee that nothing here provides, and the thing that
+ * actually identifies an author is their signing key (its fingerprint is shown
+ * in Settings). Give a handle a real field first, and this is the one place that
+ * would then change — as would `lib/spaceCode.ts`, if named codes key on it.
  */
 export function spaceLabel(author: string, space: Pick<Space, 'kind' | 'name'>): string {
-  const handle = authorHandle(author);
-  const name = spaceDisplayName(space);
-  return handle === '' ? name : `${handle} / ${name}`;
+  const name = authorName(author);
+  const space_ = spaceDisplayName(space);
+  return name === '' ? space_ : `${name} / ${space_}`;
 }
 
 /**

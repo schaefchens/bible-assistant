@@ -9,7 +9,7 @@ import { formatRangeList, formatReference } from '@/services/bible/bookCatalog';
 import { isPostSegment, isWholeChapter } from '@/services/reading/readingSequence';
 import type { LoadedSegment } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { authorHandle, formatPostDate } from '@/services/community/spaceName';
+import { authorName, formatPostDate } from '@/services/community/spaceName';
 
 type Props = { segment: LoadedSegment };
 
@@ -65,7 +65,7 @@ export const SegmentBlock = memo(function SegmentBlock({ segment }: Props) {
   const subheading = isPost
     ? unit && unit.author
       ? t('community.byLine', {
-          author: authorHandle(unit.author),
+          author: authorName(unit.author),
           when: formatPostDate(unit.publishedAt, lang),
         })
       : formatPostDate(unit?.publishedAt ?? 0, lang) || undefined
