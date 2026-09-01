@@ -149,6 +149,7 @@ export function postToUnits(post: Post, spaceId: string, author: string): VerseS
       language: post.language,
       title: post.title,
       author,
+      publishedAt: post.publishedAt,
     },
   }));
 }

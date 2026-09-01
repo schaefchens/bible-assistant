@@ -647,6 +647,7 @@
       "leaveConfirm": "Verlassen? Profil und geteilte Kopien werden vom Server entfernt. Deine Texte bleiben auf diesem Gerät.",
       "leaving": "Verlasse…"
     },
-    "republish": "Aktualisieren"
+    "republish": "Aktualisieren",
+    "byLine": "von {{author}} · {{when}}"
   }
 }

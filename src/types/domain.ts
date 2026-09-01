@@ -62,6 +62,8 @@ export type PostUnit = {
   title: string;
   /** Author display name, for the subheading and the lock screen. */
   author: string;
+  /** When the piece was published, for the byline. */
+  publishedAt: number;
 };
 
 export type VerseSummary = {

@@ -8,7 +8,7 @@ import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useReaderStore } from '@/store/readerStore';
 import { NarrationDownloadButton } from './NarrationDownloadButton';
-import { spaceDisplayName } from '@/services/community/spaceName';
+import { spaceLabel } from '@/services/community/spaceName';
 
 type Props = {
   /**
@@ -43,12 +43,17 @@ export function ReaderHeader({ onOpenTranslations, onOpenAppearance }: Props) {
     source.kind === 'list' ? s.readingLists.find((l) => l.id === source.listId)?.name : undefined,
   );
   // The kicker above the title names whatever the reader is walking through, so
-  // a space belongs there for the same reason a reading list does.
+  // a space belongs there for the same reason a reading list does — and it names
+  // the author too (`@Christoph / Heute`), because in the reader you may be in
+  // your own space or in somebody else's and the title alone doesn't say which.
   const spaceName = useCommunityStore((s) => {
     if (source.kind !== 'space') return undefined;
-    if (source.code) return s.subscriptions.find((x) => x.code === source.code)?.spaceName;
+    if (source.code) {
+      const sub = s.subscriptions.find((x) => x.code === source.code);
+      return sub ? spaceLabel(sub.ownerName, { kind: 'custom', name: sub.spaceName }) : undefined;
+    }
     const own = s.spaces.find((x) => x.id === source.spaceId);
-    return own ? spaceDisplayName(own) : undefined;
+    return own ? spaceLabel(s.profile?.displayName ?? '', own) : undefined;
   });
   const sourceName = listName ?? spaceName;
 

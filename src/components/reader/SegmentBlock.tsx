@@ -9,6 +9,7 @@ import { formatRangeList, formatReference } from '@/services/bible/bookCatalog';
 import { isPostSegment, isWholeChapter } from '@/services/reading/readingSequence';
 import type { LoadedSegment } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { authorHandle, formatPostDate } from '@/services/community/spaceName';
 
 type Props = { segment: LoadedSegment };
 
@@ -57,10 +58,17 @@ export const SegmentBlock = memo(function SegmentBlock({ segment }: Props) {
       ? formatReference(ref.bookId, ref.chapter, undefined, undefined, lang)
       : formatRangeList(ref.bookId, ref.chapter, ref.ranges ?? [], lang);
 
-  // Who wrote it, for a post; otherwise the list's own words for this reading:
-  // the entry note, else the day.
+  // A post is credited and dated: whose piece this is, and when it is from.
+  // The date matters most in the Today space, where yesterday's piece is gone
+  // but this morning's and last night's are both "today".
+  const unit = verses[0]?.unit;
   const subheading = isPost
-    ? (verses[0]?.unit?.author || undefined)
+    ? unit && unit.author
+      ? t('community.byLine', {
+          author: authorHandle(unit.author),
+          when: formatPostDate(unit.publishedAt, lang),
+        })
+      : formatPostDate(unit?.publishedAt ?? 0, lang) || undefined
     : (ref.label ??
       (ref.dayTitle ??
         (ref.dayIndex === undefined ? undefined : t('lists.day', { number: ref.dayIndex + 1 }))));
@@ -97,7 +105,13 @@ export const SegmentBlock = memo(function SegmentBlock({ segment }: Props) {
       </header>
 
       {subheading && (
-        <p className="-mt-4 mb-5 text-center text-[0.65em] uppercase tracking-wider text-brand-muted">
+        <p
+          className={clsx(
+            '-mt-4 mb-5 text-center text-[0.65em] tracking-wider text-brand-muted',
+            // A byline with a date in it is unreadable in small caps.
+            !isPost && 'uppercase',
+          )}
+        >
           {subheading}
         </p>
       )}

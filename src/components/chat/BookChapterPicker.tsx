@@ -27,7 +27,7 @@ import { TranslationList } from '@/components/bible/TranslationList';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { playSegmentInChat } from '@/lib/readingListPlayback';
 import { BottomSheet } from '@/components/common/BottomSheet';
-import { spaceDisplayName } from '@/services/community/spaceName';
+import { spaceLabel } from '@/services/community/spaceName';
 
 type View = 'books' | 'chapters' | 'translations' | 'lists' | 'spaces';
 
@@ -305,6 +305,7 @@ export function BookChapterPicker({
   const source = useReaderStore((s) => s.source);
   const readerPosition = useReaderStore((s) => s.position);
   const communityProfile = useCommunityStore((s) => s.profile);
+  const profileName = communityProfile?.displayName ?? '';
   const ownSpaces = useCommunityStore((s) => s.spaces);
   const ownPosts = useCommunityStore((s) => s.posts);
   const subscriptions = useCommunityStore((s) => s.subscriptions);
@@ -513,7 +514,7 @@ export function BookChapterPicker({
             : lockedList
               ? t('chat.bookPicker.titleList')
               : lockedSpace
-                ? lockedSpace.name
+                ? spaceLabel(lockedSpace.author, { kind: 'custom', name: lockedSpace.name })
                 : t('chat.bookPicker.title');
 
   const pickSegment = (ref: SegmentRef) => {
@@ -668,7 +669,7 @@ export function BookChapterPicker({
                 <QuillIcon className="text-brand shrink-0" />
                 <span className="flex-1 min-w-0 font-serif text-brand text-sm truncate">
                   {lockedSpace
-                    ? `${lockedSpace.emoji ? `${lockedSpace.emoji} ` : ''}${lockedSpace.name}`
+                    ? `${lockedSpace.emoji ? `${lockedSpace.emoji} ` : ''}${spaceLabel(lockedSpace.author, { kind: 'custom', name: lockedSpace.name })}`
                     : t('community.title')}
                 </span>
                 {!lockedSpace && <ChevronRight />}
@@ -708,9 +709,7 @@ export function BookChapterPicker({
             tick (see communityStore). */}
         {view === 'books' && lockedSpace && (
           <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-safe">
-            {lockedSpace.author && (
-              <p className="pt-2 text-[11px] text-ink-muted">{lockedSpace.author}</p>
-            )}
+
             {spaceSegments.length === 0 ? (
               <p className="py-8 text-center text-ink-muted text-sm leading-relaxed">
                 {t('community.empty')}
@@ -747,7 +746,7 @@ export function BookChapterPicker({
               {ownSpaces.map((space) => (
                 <li key={space.id}>
                   <SourceRow
-                    label={spaceDisplayName(space)}
+                    label={spaceLabel(profileName, space)}
                     emoji={space.emoji}
                     detail={t('community.pieces', {
                       count: ownPosts.filter((p) => p.spaceId === space.id && p.publishedAt > 0)
@@ -763,12 +762,14 @@ export function BookChapterPicker({
               {subscriptions.map((sub) => (
                 <li key={sub.code}>
                   <SourceRow
-                    label={sub.spaceName}
+                    label={spaceLabel(sub.ownerName, { kind: 'custom', name: sub.spaceName })}
                     emoji={sub.spaceEmoji}
                     detail={
                       sub.status === 'accepted'
-                        ? `${sub.ownerName} · ${t('community.pieces', { count: (feed[sub.code] ?? []).length })}`
-                        : `${sub.ownerName} · ${t(sub.status === 'pending' ? 'community.pending' : 'community.revoked')}`
+                        ? (t('community.pieces', { count: (feed[sub.code] ?? []).length }) as string)
+                        : (t(
+                            sub.status === 'pending' ? 'community.pending' : 'community.revoked',
+                          ) as string)
                     }
                     onSelect={() => {
                       void setSource({ kind: 'space', code: sub.code });

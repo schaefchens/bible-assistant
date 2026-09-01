@@ -647,6 +647,7 @@
       "leaveConfirm": "Leave? Your profile and the shared copies are removed from the server. Your writing stays on this device.",
       "leaving": "Leaving…"
     },
-    "republish": "Update"
+    "republish": "Update",
+    "byLine": "by {{author}} · {{when}}"
   }
 }

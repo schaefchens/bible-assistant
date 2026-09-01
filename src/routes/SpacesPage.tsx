@@ -11,7 +11,7 @@ import { spaceSourceKey } from '@/services/reading/readingSequence';
 import { useCommunityStore } from '@/store/communityStore';
 import { useReaderStore } from '@/store/readerStore';
 import type { Post, Space, Subscription } from '@/types/domain';
-import { spaceDisplayName } from '@/services/community/spaceName';
+import { spaceDisplayName, spaceLabel } from '@/services/community/spaceName';
 
 /**
  * `/spaces` and `/spaces/:id` — the index of the user's own spaces and the
@@ -186,8 +186,10 @@ function SpacesIndex({
                   <Row
                     key={sub.code}
                     emoji={sub.spaceEmoji}
-                    title={sub.spaceName}
-                    detail={`${sub.ownerName} · ${status}`}
+                    // Whose space it is belongs in the name, not in a detail
+                    // line — it is half of what identifies it.
+                    title={spaceLabel(sub.ownerName, { kind: 'custom', name: sub.spaceName })}
+                    detail={status as string}
                     badge={unread > 0 ? String(unread) : undefined}
                     warn={state?.keyChanged}
                     onOpen={() => void openSpace({ code: sub.code })}
