@@ -1,7 +1,7 @@
 import { expandList } from '@/services/reading/readingSequence';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import type { ListProvenance } from './readingHosts';
+import { isListProvenance, type ReadingProvenance } from './readingHosts';
 
 /**
  * Recording progress through a reading list.
@@ -14,8 +14,12 @@ import type { ListProvenance } from './readingHosts';
  */
 
 /** Remember where the user is in a list, so the next session resumes here. */
-export function noteEntryStarted(provenance: ListProvenance | undefined): void {
-  if (!provenance) return;
+export function noteEntryStarted(provenance: ReadingProvenance | undefined): void {
+  // Only a reading list tracks progress. A space has no per-post completion —
+  // unread is a local dot on the space, not a synced tick (see communityStore),
+  // because that would want readingProgress's union-merge machinery, which is
+  // keyed by listId.
+  if (!provenance || !isListProvenance(provenance)) return;
   void useLibraryStore
     .getState()
     .setCurrentEntry(provenance.listId, provenance.entryId);
@@ -30,10 +34,10 @@ export function noteEntryStarted(provenance: ListProvenance | undefined): void {
  * *last* segment is.
  */
 export function noteEntryFinished(
-  provenance: ListProvenance | undefined,
+  provenance: ReadingProvenance | undefined,
   chapter?: number,
 ): void {
-  if (!provenance) return;
+  if (!provenance || !isListProvenance(provenance)) return;
   const lib = useLibraryStore.getState();
   const list = lib.readingLists.find((l) => l.id === provenance.listId);
   if (!list) return;

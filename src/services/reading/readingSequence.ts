@@ -1,4 +1,4 @@
-import type { ReadingList, VerseRange } from '@/types/domain';
+import type { Post, ReadingList, VerseRange } from '@/types/domain';
 import type { Translation } from '@/services/bible/bibleApi';
 import { formatRangeList, formatReference, getBookById } from '@/services/bible/bookCatalog';
 import { nextChapterRef, prevChapterRef } from '@/services/bible/chapterNavigation';
@@ -6,7 +6,8 @@ import { isFlatList, listEntries } from './readingEntries';
 
 /**
  * What the reader (and playback) walks through: the whole Bible in canonical
- * order, or a reading list's entries in list order.
+ * order, a reading list's entries in list order, or one person's space of
+ * writing, newest first.
  *
  * This module is the **single answer to "what comes after this?"**. Before it,
  * that rule lived in autoPlay (next chunk), readerStore (prev/next chapter) and
@@ -14,10 +15,33 @@ import { isFlatList, listEntries } from './readingEntries';
  * Everything here is pure: no stores, no fetches.
  */
 
-/** Where a reader unit lives. A list-sourced reader is walking `listId`. */
-export type ReaderSource = { kind: 'bible' } | { kind: 'list'; listId: string };
+/**
+ * Where a reader unit lives. A list-sourced reader is walking `listId`; a
+ * space-sourced one is walking one space of user-written posts.
+ *
+ * A space carries both identifiers because the two cases genuinely differ:
+ * somebody else's space is only ever reachable by its share `code`, while the
+ * user's own is addressed by `spaceId` and may not have a code at all yet.
+ * Exactly one is set — see `spaceSourceKey`.
+ */
+export type ReaderSource =
+  | { kind: 'bible' }
+  | { kind: 'list'; listId: string }
+  | { kind: 'space'; spaceId?: string; code?: string };
 
 export const BIBLE_SOURCE: ReaderSource = { kind: 'bible' };
+
+/** A stable string for a space source, for comparison and for React keys. */
+export function spaceSourceKey(source: Extract<ReaderSource, { kind: 'space' }>): string {
+  return source.code ? `c:${source.code}` : `s:${source.spaceId ?? ''}`;
+}
+
+export function sameSource(a: ReaderSource, b: ReaderSource): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === 'list' && b.kind === 'list') return a.listId === b.listId;
+  if (a.kind === 'space' && b.kind === 'space') return spaceSourceKey(a) === spaceSourceKey(b);
+  return true;
+}
 
 /**
  * One reader/playback unit — usually a whole chapter, and for a list entry with
@@ -49,23 +73,52 @@ export type SegmentRef = {
   /** 0-based day index within the list, for grouping in the picker. */
   dayIndex?: number;
   dayTitle?: string;
+  /**
+   * Set together, and only for a user-written post — see "Community spaces" in
+   * CLAUDE.md. A post segment is not scripture, so `bookId` and `chapter` are 0
+   * and every display path has to ask `isPostSegment()` before reaching for the
+   * book catalog.
+   *
+   * Post refs are always created with `translationPinned: true`, which is not a
+   * trick so much as the truth: a post has no translation, so a change of the
+   * active one must leave it alone. That reuses the exemption the reader and
+   * `reloadForTranslation` already honour.
+   */
+  spaceId?: string;
+  postId?: string;
+  /** The post's title, so the heading needs no store lookup. */
+  postTitle?: string;
 };
+
+/** True for a segment that is one user-written post rather than scripture. */
+export function isPostSegment(ref: SegmentRef): boolean {
+  return ref.spaceId !== undefined && ref.postId !== undefined;
+}
 
 /**
  * The playback group id for a segment. **Deterministic**, which is what lets
  * scrolling away and back — or replaying — re-bind the highlighter to tracks
  * that are already queued.
  *
- * Two shapes, and the Bible one is byte-identical to what shipped before, so
+ * Three shapes, and the Bible one is byte-identical to what shipped before, so
  * nothing about ordinary chapter reading changes:
  *   `reader:LUT:43:3`                     a chapter of the Bible
  *   `reader:LUT:l:<listId>:<entryId>:3`   a chapter of a reading list
+ *   `reader:sp:<spaceId>:<postId>`        one user-written post
  *
- * The translation is in both because a translation switch has to invalidate the
- * group: word counts differ between texts, so letting queued TTS play on
- * against re-rendered verses desyncs the highlight with no way back.
+ * The translation is in the first two because a translation switch has to
+ * invalidate the group: word counts differ between texts, so letting queued TTS
+ * play on against re-rendered verses desyncs the highlight with no way back. A
+ * post has no translation, so it has none — and needs none, since nothing can
+ * re-render its words underneath the audio.
+ *
+ * All three stay under the `reader:` namespace, so `readingHosts` dispatch, the
+ * transport, autoPlay and the lock screen keep working untouched.
  */
 export function segmentId(ref: SegmentRef): string {
+  if (ref.spaceId && ref.postId) {
+    return `reader:sp:${ref.spaceId}:${ref.postId}`;
+  }
   if (ref.listId && ref.entryId) {
     return `reader:${ref.translation}:l:${ref.listId}:${ref.entryId}:${ref.chapter}`;
   }
@@ -169,6 +222,57 @@ export function listSequence(
 }
 
 /**
+ * The segment for one post.
+ *
+ * `translation` is filled in only because `SegmentRef` requires it; nothing
+ * reads it for a post, and `translationPinned` stops the reader acting on it.
+ */
+export function postSegmentRef(
+  post: Post,
+  spaceId: string,
+  translation: Translation,
+): SegmentRef {
+  return {
+    translation,
+    translationPinned: true,
+    bookId: 0,
+    chapter: 0,
+    spaceId,
+    postId: post.id,
+    postTitle: post.title,
+  };
+}
+
+/**
+ * One space's posts, newest first — which is the order a blog is read in, and
+ * the order the picker lists them.
+ *
+ * `all()` is non-null, so the picker's "list of passages" presentation works
+ * for a space with no changes. Ends hard at both edges, like a reading list:
+ * a space is a finite collection, not a canonical sequence to walk on from.
+ */
+export function spaceSequence(
+  spaceId: string,
+  posts: Post[],
+  translation: Translation,
+): ReadingSequence {
+  const segments = posts.map((p) => postSegmentRef(p, spaceId, translation));
+  const indexOf = (cur: SegmentRef) => segments.findIndex((s) => s.postId === cur.postId);
+  return {
+    all: () => segments,
+    first: () => segments[0] ?? null,
+    next: (cur) => {
+      const i = indexOf(cur);
+      return i === -1 ? null : segments[i + 1] ?? null;
+    },
+    prev: (cur) => {
+      const i = indexOf(cur);
+      return i <= 0 ? null : segments[i - 1] ?? null;
+    },
+  };
+}
+
+/**
  * The list's own segment for `(entryId, chapter)`.
  *
  * The way to get a `SegmentRef` for a passage you only know the provenance of —
@@ -203,6 +307,8 @@ export function isWholeChapter(ref: SegmentRef): boolean {
  * would misdescribe what is on the page.
  */
 export function formatSegment(ref: SegmentRef, lang: 'en' | 'de'): string {
+  // A post has no book and no chapter; its title is its reference.
+  if (isPostSegment(ref)) return ref.postTitle ?? '';
   return isWholeChapter(ref)
     ? formatReference(ref.bookId, ref.chapter, undefined, undefined, lang)
     : formatRangeList(ref.bookId, ref.chapter, ref.ranges ?? [], lang);

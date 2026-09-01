@@ -25,6 +25,9 @@ export type ToolName =
   | 'update_reading_list'
   | 'delete_reading_list'
   | 'play_reading_list'
+  | 'list_spaces'
+  | 'write_post'
+  | 'read_space'
   | 'set_language'
   | 'set_translation'
   | 'set_voice'
@@ -50,6 +53,7 @@ export const READ_TOOL_NAMES: ReadonlySet<ToolName> = new Set<ToolName>([
   // Starting a reading list reads scripture aloud, so the audio is the reply
   // here too — without this the model would also narrate what it just started.
   'play_reading_list',
+  'read_space',
 ]);
 
 export function isReadTool(name: ToolName): boolean {
@@ -89,6 +93,9 @@ export type ToolArgs = {
   };
   delete_reading_list: { list: string };
   play_reading_list: { list: string; restart?: boolean };
+  list_spaces: Record<string, never>;
+  write_post: { text: string; title?: string; space?: string; language?: 'en' | 'de' };
+  read_space: { space: string };
   create_card: {
     title: string;
     references: string[];
@@ -618,6 +625,57 @@ export const TOOL_DEFINITIONS: ChatToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'list_spaces',
+      description:
+        "List the user's own writing spaces and the spaces they subscribe to, with how many " +
+        'pieces each holds. Use this to resolve a space the user names loosely before calling ' +
+        'read_space or write_post.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'write_post',
+      description:
+        "Save a piece of the user's own writing as a DRAFT in one of their spaces. This is for " +
+        'dictation — the user speaking a reflection they want written down. Pass their words as ' +
+        '`text`, edited only for punctuation and paragraphs: separate paragraphs with a blank ' +
+        'line, because each paragraph becomes one narrated block. Never invent content, never ' +
+        'expand on what they said, and never write a piece on their behalf from a topic. ' +
+        'Omit `space` for the "Today" space, whose pieces expire after 24 hours. ' +
+        'The draft is NOT shared with anyone: publishing is a deliberate act the user performs ' +
+        'in the app, and you must not describe it as posted or shared.',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: { type: 'string' },
+          title: { type: 'string' },
+          space: { type: 'string' },
+          language: { type: 'string', enum: ['en', 'de'] },
+        },
+        required: ['text'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_space',
+      description:
+        'Read a writing space aloud in the reader, starting with its newest piece and continuing ' +
+        'through the space until it ends or the user stops. Works for the user\'s own spaces and ' +
+        'for spaces they subscribe to.',
+      parameters: {
+        type: 'object',
+        properties: { space: { type: 'string' } },
+        required: ['space'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'set_language',
       description: 'Switch UI language (en or de).',
       parameters: {
@@ -844,6 +902,7 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
       `Antworte kurz und freundlich auf Deutsch.`,
       `Nach einem read_verses- oder random_passage-Aufruf GIB KEINE Textantwort zurück (leerer content). Die Bibelstelle selbst ist die Antwort — sie wird angezeigt und vorgelesen, eine Bestätigung wäre überflüssig.`,
       `Cards = Lernkarten mit Titel, Versen und Notizen. Boards = thematische Sammlungen von Cards. Nutze die passenden Tools.`,
+      `Räume ("spaces") sind die eigenen Texte des Benutzers und die Texte von Menschen, die er liest — kein Bibeltext. "write_post" hält Diktiertes als ENTWURF fest: gib seine Worte weiter, nur um Satzzeichen und Absätze ergänzt (Leerzeile zwischen Absätzen), erfinde nichts dazu und schreibe niemals einen Beitrag für ihn. Sage nie, etwas sei geteilt oder veröffentlicht — das Teilen macht der Benutzer selbst in der App. "read_space" liest einen Raum vor; danach GIB KEINE Textantwort zurück, so wie bei read_verses.`,
       `"arrange_card" positioniert/skaliert/neigt eine Card auf der Pinnwand-Ansicht eines Boards (rein räumlich, ändert NICHT die Zugehörigkeit; Koordinaten sind Bruchteile 0..1, x/y = obere linke Ecke). Die Textgröße einer Card steuerst du über das Feld "textScale" (1 = normal) bei create_card/update_card.`,
       `Wenn der Benutzer einfach "weiterlesen", "weiter", "lies weiter" oder "die nächsten Verse" sagt OHNE ein Lesezeichen zu nennen: rufe "read_verses" mit dem nächsten Versabschnitt auf. Schau in den letzten "(Played aloud: …)"-Systemnotizen, was zuletzt gelesen wurde, und bestimme die folgenden Verse selbst (gleiches Kapitel falls noch Verse übrig, sonst Anfang des nächsten Kapitels). "(Played aloud: …)" ist ausschließlich eine Verlaufs-Markierung — gib diese Phrase NIEMALS selbst als Antworttext aus; nutze immer das read_verses-Tool, um zu lesen.`,
       `Lesezeichen (Ribbons): Es gibt fünf farbige Lesezeichen (gold, blue, red, green, purple). "save_ribbon" speichert die aktuelle Leseposition; "continue_from_ribbon" liest ab dem gespeicherten Lesezeichen weiter. Rufe diese Tools NUR auf, wenn der Benutzer ausdrücklich "Lesezeichen", "Ribbon" oder eine der Farben erwähnt. "Weiterlesen" ohne Erwähnung eines Lesezeichens ist KEIN Ribbon-Befehl. Wenn keine Farbe genannt wurde, lass das Argument color weg — bei save_ribbon ist gold die Vorgabe, bei continue_from_ribbon wird automatisch das einzige gesetzte Lesezeichen verwendet.`,
@@ -861,6 +920,7 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
     `Reply briefly and warmly.`,
     `After a read_verses or random_passage call, return NO text content (empty content). The Bible passage itself is the response — it is shown and played; a confirmation would be redundant.`,
     `Cards = memorization cards with title, verses, notes. Boards = thematic groups of cards. Use the appropriate tools.`,
+    `Spaces are the user's own writing, and the writing of people they read — not scripture. "write_post" saves dictation as a DRAFT: pass their words through, edited only for punctuation and paragraphs (blank line between paragraphs), invent nothing, and never compose a piece on their behalf. Never say something has been shared or published — sharing is an act the user performs in the app. "read_space" reads a space aloud; after it, return NO text answer, exactly as with read_verses.`,
     `"arrange_card" positions/resizes/tilts a card on a board's freeform corkboard view (spatial only, never changes membership; coordinates are 0..1 fractions, x/y = top-left corner). A card's TEXT size is the "textScale" field (1 = normal) on create_card/update_card.`,
     `When the user says simply "continue reading", "read on", "next verses", "weiterlesen" or similar WITHOUT mentioning a ribbon/bookmark: call "read_verses" with the next slice. Look at the most recent "(Played aloud: …)" system notes to see what was just read and figure out the next verses yourself (continue in the same chapter if verses remain, otherwise start the next chapter). "(Played aloud: …)" is only a history marker — NEVER emit that phrase as your own reply text; always call read_verses to actually read.`,
     `Ribbons (bookmarks): there are five colored ribbons (gold, blue, red, green, purple). "save_ribbon" stores the current reading position; "continue_from_ribbon" resumes from a saved ribbon. ONLY call these tools when the user explicitly mentions "ribbon", "bookmark", "Lesezeichen", or names a color. Plain "continue reading" / "weiterlesen" is NOT a ribbon command. If no color is given, omit the color argument — save_ribbon defaults to "gold" and continue_from_ribbon automatically uses the single saved ribbon when there's exactly one.`,

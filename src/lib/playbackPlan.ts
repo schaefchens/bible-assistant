@@ -126,6 +126,12 @@ function headingTextFor(
   });
 }
 
+/** "A morning by the river. By Alice." — a post's spoken heading. */
+function postHeadingText(title: string, author: string, locale: Locale): string {
+  if (!author) return title;
+  return i18n.t('announce.postBy', { title, author, lng: locale });
+}
+
 function numberTextFor(
   verseNumber: number,
   locale: Locale,
@@ -159,7 +165,11 @@ export function buildPlaybackPlan(
     // reading ESV should hear "Galatians, chapter 5", and an English user
     // reading Schlachter should hear "Galater, Kapitel 5".
     const runTranslation = run.items[0].verse.translation;
-    const runLang = localeForTranslation(runTranslation);
+    const runUnit = run.items[0].verse.unit;
+    // A post announces itself by title and author, in the post's own language.
+    // `runTranslation` is only a voice-language stand-in for a post unit (see
+    // services/community/postUnits.ts), so it must not reach the book catalog.
+    const runLang = runUnit ? runUnit.language : localeForTranslation(runTranslation);
 
     if (opts.readChapterHeadings) {
       const verses = run.items.map((it) => it.verse.verse);
@@ -186,7 +196,9 @@ export function buildPlaybackPlan(
       plan.push({
         kind: 'heading',
         verseIndex: run.items[0].verseIndex,
-        text: headingTextFor(run.bookId, run.chapter, runLang, scope),
+        text: runUnit
+          ? postHeadingText(runUnit.title, runUnit.author, runLang)
+          : headingTextFor(run.bookId, run.chapter, runLang, scope),
         translation: runTranslation,
         // Brief breath after the announcement before the first verse.
         pauseAfterMs: opts.pauseBetweenVersesMs,
@@ -198,7 +210,9 @@ export function buildPlaybackPlan(
       const isLastVerseInRun = i === run.items.length - 1;
       const isVeryLast = isLastRun && isLastVerseInRun;
 
-      if (opts.readVerseNumbers) {
+      // There are no verse numbers in a post, so the setting has nothing to
+      // announce — "verse one" before a paragraph would be nonsense.
+      if (opts.readVerseNumbers && !verse.unit) {
         plan.push({
           kind: 'number',
           verseIndex,

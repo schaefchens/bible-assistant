@@ -9,6 +9,7 @@ export const ROUTES = {
   chat: '/',
   read: '/read',
   lists: '/lists',
+  spaces: '/spaces',
   cards: '/cards',
   boards: '/boards',
   settings: '/settings',

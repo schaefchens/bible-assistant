@@ -1,5 +1,15 @@
 import Dexie, { type Table } from 'dexie';
-import type { Card, Board, ReadingList, ReadingProgress } from '@/types/domain';
+import type {
+  Board,
+  Card,
+  Membership,
+  Post,
+  Profile,
+  ReadingList,
+  ReadingProgress,
+  Space,
+  Subscription,
+} from '@/types/domain';
 
 export type LocalCard = Card & {
   dirty?: 0 | 1;
@@ -22,6 +32,74 @@ export type LocalReadingProgress = ReadingProgress & {
   dirty?: 0 | 1;
 };
 
+/**
+ * The community profile lives as one row in `preferences` under
+ * {@link PROFILE_PREF_KEY} rather than in a table of its own — there is only
+ * ever one, and a table for a single record would buy nothing.
+ */
+export const PROFILE_PREF_KEY = 'profile';
+
+export type LocalProfile = Profile & {
+  dirty?: 0 | 1;
+};
+
+export type LocalSpace = Space & {
+  dirty?: 0 | 1;
+  deleted?: 0 | 1;
+};
+
+/**
+ * One of the user's own posts.
+ *
+ * `shared` is the whole of "local-first ownership" and is deliberately not a
+ * second tombstone state:
+ *
+ * - **Deleting** a post is `deleted: 1` — an explicit delete, gone from the
+ *   device and the server, like every other entity here.
+ * - **Withdrawing** from the server (leaving the community, or deleting the
+ *   server account) sets `shared: 0` and queues `post.delete`. The row
+ *   survives untouched, so the writing stays readable on the device until the
+ *   user wipes it. Re-sharing later flips it back with the original
+ *   `publishedAt` and the original signature still valid.
+ *
+ * Local-only, so `stripLocal()` drops it along with `dirty` and `deleted`.
+ */
+export type LocalPost = Post & {
+  dirty?: 0 | 1;
+  deleted?: 0 | 1;
+  shared?: 0 | 1;
+};
+
+export type LocalSubscription = Subscription & {
+  dirty?: 0 | 1;
+  deleted?: 0 | 1;
+};
+
+/** A subscriber of one of my spaces. Server-side truth; decisions are pushed
+ * through the `membership.decide` sync op, hence the dirty flag. */
+export type LocalMembership = Membership & {
+  dirty?: 0 | 1;
+};
+
+/**
+ * One post from a space someone else owns.
+ *
+ * Outside the sync machinery on purpose: `dirty` / `deleted` / the pull's
+ * `pending*Ids` sets all assume exactly one writer per row, and somebody
+ * else's writing has none. This is a cache, refreshed by
+ * `refreshSubscriptions()`, and nothing here is ever pushed.
+ */
+export type FeedPost = Post & {
+  /** The subscription (share code) it arrived under. */
+  code: string;
+  /** Verified against the subscription's pinned key before being stored. */
+  verified: boolean;
+  fetchedAt: number;
+};
+
+/** Local-only "I have seen this post" marker, driving the unread dot. */
+export type SeenPost = { id: string; seenAt: number };
+
 export type SyncOp = {
   id?: number;
   op:
@@ -33,7 +111,17 @@ export type SyncOp = {
     | 'boardOrder.set'
     | 'readingList.upsert'
     | 'readingList.delete'
-    | 'readingProgress.set';
+    | 'readingProgress.set'
+    | 'profile.set'
+    | 'profile.delete'
+    | 'space.upsert'
+    | 'space.delete'
+    | 'spaceCode.set'
+    | 'post.upsert'
+    | 'post.delete'
+    | 'subscription.upsert'
+    | 'subscription.delete'
+    | 'membership.decide';
   payload: unknown;
   createdAt: number;
   attempts: number;
@@ -84,6 +172,12 @@ class BibleAssistantDb extends Dexie {
   narration!: Table<NarrationEntry, string>;
   readingLists!: Table<LocalReadingList, string>;
   readingProgress!: Table<LocalReadingProgress, string>;
+  spaces!: Table<LocalSpace, string>;
+  posts!: Table<LocalPost, string>;
+  subscriptions!: Table<LocalSubscription, string>;
+  memberships!: Table<LocalMembership, [string, string]>;
+  feedPosts!: Table<FeedPost, string>;
+  seenPosts!: Table<SeenPost, string>;
 
   constructor() {
     super('bible-assistant');
@@ -169,6 +263,30 @@ class BibleAssistantDb extends Dexie {
       narration: '&key',
       readingLists: 'id, name, updatedAt, dirty',
       readingProgress: '&listId, updatedAt, dirty',
+    });
+    // v10 adds community spaces: the user's own spaces and posts, the spaces
+    // they subscribe to, the subscribers of theirs, and a cache of other
+    // people's posts.
+    //
+    // `feedPosts` and `seenPosts` sit outside the sync machinery on purpose —
+    // see the FeedPost docblock. The profile itself is one row in
+    // `preferences` under the key 'profile'; a table for a single record would
+    // buy nothing.
+    this.version(10).stores({
+      cards: 'id, title, updatedAt, dirty',
+      boards: 'id, name, updatedAt, dirty',
+      syncQueue: '++id, op, createdAt',
+      preferences: '&key',
+      mediaCache: '&url, lastUsedAt, pinned',
+      narration: '&key',
+      readingLists: 'id, name, updatedAt, dirty',
+      readingProgress: '&listId, updatedAt, dirty',
+      spaces: 'id, updatedAt, dirty',
+      posts: 'id, spaceId, publishedAt, updatedAt, dirty, shared',
+      subscriptions: '&code, updatedAt, dirty',
+      memberships: '[userId+spaceId], spaceId, status, dirty',
+      feedPosts: 'id, code, publishedAt',
+      seenPosts: '&id',
     });
   }
 }

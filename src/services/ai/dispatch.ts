@@ -40,6 +40,9 @@ import {
   type ResolvedPosition,
 } from '@/services/bible/playbackPosition';
 import { playReadingListInChat } from '@/lib/readingListPlayback';
+import { playSpaceInReader } from '@/lib/spacePlayback';
+import { spaceDisplayName } from '@/services/community/spaceName';
+import { useCommunityStore } from '@/store/communityStore';
 import { buildPlanDays } from '@/services/reading/readingPlan';
 import {
   expandEntryToChapters,
@@ -133,6 +136,9 @@ const TOOL_REGISTRY: { [N in ToolName]: ToolHandler<N> } = {
   update_reading_list: (args) => handleUpdateReadingList(args),
   delete_reading_list: (args) => handleDeleteReadingList(args),
   play_reading_list: (args) => handlePlayReadingList(args),
+  list_spaces: () => handleListSpaces(),
+  write_post: (args) => handleWritePost(args),
+  read_space: (args) => handleReadSpace(args),
   set_language: (args) => handleSetLanguage(args),
   set_translation: (args) => handleSetTranslation(args),
   set_voice: (args) => handleSetVoice(args),
@@ -661,6 +667,132 @@ async function handleDeleteReadingList(
   if (!lookup.ok) return { ok: false, error: lookup.error };
   await useLibraryStore.getState().deleteReadingList(lookup.list.id);
   return { ok: true, data: { deleted: lookup.list.name } };
+}
+
+/* ---- community spaces ---- */
+
+/**
+ * Resolve a space the user named loosely, across their own and the ones they
+ * read. Same spirit as `resolveReadingList`: exact match first, then a unique
+ * case-insensitive substring, and an ambiguous name is an error rather than a
+ * guess — reading the wrong person's writing aloud is worse than asking.
+ */
+function resolveSpaceByName(
+  name: string,
+): { ok: true; key: { spaceId?: string; code?: string }; label: string } | { ok: false; error: string } {
+  const state = useCommunityStore.getState();
+  const candidates: { label: string; key: { spaceId?: string; code?: string } }[] = [
+    ...state.spaces.map((sp) => ({ label: spaceDisplayName(sp), key: { spaceId: sp.id } })),
+    ...state.subscriptions.map((sub) => ({
+      label: sub.spaceName,
+      key: { code: sub.code },
+    })),
+  ];
+  if (candidates.length === 0) return { ok: false, error: 'there are no spaces yet' };
+
+  const needle = name.trim().toLowerCase();
+  const exact = candidates.filter((c) => c.label.toLowerCase() === needle);
+  const hits = exact.length > 0 ? exact : candidates.filter((c) => c.label.toLowerCase().includes(needle));
+  if (hits.length === 0) return { ok: false, error: `no space matches "${name}"` };
+  if (hits.length > 1) {
+    return { ok: false, error: `"${name}" matches several spaces: ${hits.map((h) => h.label).join(', ')}` };
+  }
+  return { ok: true, key: hits[0].key, label: hits[0].label };
+}
+
+function handleListSpaces(): ToolDispatchResult {
+  const state = useCommunityStore.getState();
+  if (!state.profile) {
+    return { ok: false, error: 'the user has not created a community profile yet' };
+  }
+  return {
+    ok: true,
+    data: {
+      mine: state.spaces.map((sp) => ({
+        name: spaceDisplayName(sp),
+        expiresAfterHours: sp.ephemeralHours ?? null,
+        pieces: state.posts.filter((p) => p.spaceId === sp.id && p.publishedAt > 0).length,
+        drafts: state.posts.filter((p) => p.spaceId === sp.id && p.publishedAt === 0).length,
+        shared: sp.shareCode !== undefined,
+      })),
+      following: state.subscriptions.map((sub) => ({
+        name: sub.spaceName,
+        author: sub.ownerName,
+        status: sub.status,
+        pieces: (state.feed[sub.code] ?? []).length,
+      })),
+    },
+  };
+}
+
+/**
+ * Save dictated text as a draft.
+ *
+ * Deliberately a *draft*: publishing signs the piece with the user's key and
+ * makes it readable by their subscribers, and neither is something to do on a
+ * voice command's behalf. The tool description says so too, so the model does
+ * not report the piece as shared.
+ */
+async function handleWritePost(args: ToolArgs['write_post']): Promise<ToolDispatchResult> {
+  const state = useCommunityStore.getState();
+  if (!state.profile) {
+    return { ok: false, error: 'the user has not created a community profile yet' };
+  }
+  const text = args.text.trim();
+  if (text === '') return { ok: false, error: 'no text to write' };
+
+  let spaceId: string | undefined;
+  if (args.space) {
+    const lookup = resolveSpaceByName(args.space);
+    if (!lookup.ok) return { ok: false, error: lookup.error };
+    if (!lookup.key.spaceId) {
+      return { ok: false, error: `"${lookup.label}" is someone else's space — you can only write in your own` };
+    }
+    spaceId = lookup.key.spaceId;
+  } else {
+    spaceId = state.spaces.find((sp) => sp.kind === 'today')?.id;
+  }
+  if (!spaceId) return { ok: false, error: 'no space to write in' };
+
+  const now = Date.now();
+  const title = args.title?.trim() || firstLineAsTitle(text);
+  await useCommunityStore.getState().savePost({
+    id: crypto.randomUUID(),
+    spaceId,
+    title,
+    body: text,
+    language: args.language ?? useSettingsStore.getState().locale,
+    publishedAt: 0,
+    createdAt: now,
+    updatedAt: now,
+  });
+  const space = useCommunityStore.getState().spaces.find((sp) => sp.id === spaceId);
+  return {
+    ok: true,
+    data: {
+      saved: 'draft',
+      title,
+      space: space ? spaceDisplayName(space) : '',
+      shared: false,
+    },
+  };
+}
+
+/** A title from the opening words, so a dictated piece is findable. */
+function firstLineAsTitle(text: string): string {
+  const words = text.replace(/\s+/g, ' ').trim().split(' ').slice(0, 7).join(' ');
+  return words.length > 60 ? `${words.slice(0, 57)}…` : words;
+}
+
+async function handleReadSpace(args: ToolArgs['read_space']): Promise<ToolDispatchResult> {
+  const lookup = resolveSpaceByName(args.space);
+  if (!lookup.ok) return { ok: false, error: lookup.error };
+
+  const started = await playSpaceInReader(lookup.key);
+  if (!started) {
+    return { ok: false, error: `"${lookup.label}" has nothing to read yet` };
+  }
+  return { ok: true, data: { reading: lookup.label, alreadyRead: true } };
 }
 
 async function handlePlayReadingList(

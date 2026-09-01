@@ -8,7 +8,8 @@
     "chapterVerse": "{{book}}, chapter {{n}}, verse {{v}}",
     "chapterRange": "{{book}}, chapter {{n}}, verses {{from}} to {{to}}",
     "chapterList": "{{book}}, chapter {{n}}, verses {{verses}}",
-    "verse": "Verse {{n}}"
+    "verse": "Verse {{n}}",
+    "postBy": "{{title}}. By {{author}}."
   },
   "nav": {
     "chat": "Chat",
@@ -333,7 +334,8 @@
       "playback": "Playback",
       "appearanceRow": "Reading text",
       "musicOn": "Music on",
-      "musicOff": "Music off"
+      "musicOff": "Music off",
+      "community": "Community"
     }
   },
   "chatReader": {
@@ -419,7 +421,8 @@
     "close": "Close",
     "online": "Online",
     "offline": "Offline",
-    "pending": "{{count}} pending"
+    "pending": "{{count}} pending",
+    "save": "Save"
   },
   "keyFailure": {
     "title": "Your OpenAI key was rejected.",
@@ -502,7 +505,10 @@
       "preview": "Preview",
       "sampleReference": "Psalm 23:1",
       "sampleText": "The LORD is my shepherd; I shall not want."
-    }
+    },
+    "playPost": "Read this piece aloud",
+    "endOfSpace": "You have reached the end of this space.",
+    "startOfSpace": "Newest piece"
   },
   "lists": {
     "title": "Reading lists",
@@ -554,5 +560,92 @@
     "page": "Page {{page}} of {{total}}",
     "previousPage": "Previous page",
     "nextPage": "Next page"
+  },
+  "community": {
+    "title": "Spaces",
+    "subtitle": "Your own writing, and the people you read",
+    "mine": "Your spaces",
+    "following": "You are reading",
+    "newSpace": "New space",
+    "newPost": "New piece",
+    "untitledSpace": "Untitled space",
+    "untitledPost": "Untitled",
+    "todayName": "Today",
+    "todayHint": "Pieces here disappear after 24 hours.",
+    "empty": "Nothing written yet.",
+    "emptyFollowing": "You are not reading anyone's space yet.",
+    "draft": "Draft",
+    "published": "Shared",
+    "unread_one": "{{count}} new piece",
+    "unread_other": "{{count}} new pieces",
+    "pieces_one": "{{count}} piece",
+    "pieces_other": "{{count}} pieces",
+    "read": "Read",
+    "edit": "Edit",
+    "publish": "Share",
+    "unpublish": "Stop sharing",
+    "unpublishHint": "Removes the copy on the server. The piece stays on this device.",
+    "deletePost": "Delete",
+    "deletePostConfirm": "Delete “{{title}}”? This removes it from this device too.",
+    "deleteSpace": "Delete space",
+    "deleteSpaceConfirm": "Delete “{{name}}” and everything in it?",
+    "narrate": "Prepare audio",
+    "narrateHint": "Generates the narration once, so it plays instantly for you and for anyone reading this.",
+    "postTitle": "Title",
+    "postBody": "Your text",
+    "postBodyHint": "Plain text. Leave a blank line between paragraphs — each becomes one narrated block.",
+    "postLanguage": "Language",
+    "spaceName": "Name",
+    "spaceDescription": "Description",
+    "approval": "New readers",
+    "approvalAuto": "Let anyone with the code read",
+    "approvalManual": "Approve each reader myself",
+    "share": "Share code",
+    "shareCreate": "Create a share code",
+    "shareCopy": "Copy",
+    "shareSend": "Share…",
+    "shareRotate": "Replace code",
+    "shareRotateConfirm": "Replace the code? Everyone reading this space loses access.",
+    "shareHint": "Anyone you give this code to can ask to read this space. There is no public listing.",
+    "requests": "Waiting to read",
+    "requests_one": "{{count}} person waiting",
+    "requests_other": "{{count}} people waiting",
+    "accept": "Accept",
+    "block": "Decline",
+    "readers": "Readers",
+    "noReaders": "Nobody is reading this space yet.",
+    "addByCode": "Add a space by code",
+    "addByCodePlaceholder": "XXXXX-XXXXX-XXXXXX",
+    "addByCodeAction": "Add",
+    "pending": "Waiting for approval",
+    "revoked": "No longer shared with you",
+    "unsubscribe": "Stop reading",
+    "verified": "Signed by the author",
+    "refused_one": "{{count}} piece could not be verified and was not shown.",
+    "refused_other": "{{count}} pieces could not be verified and were not shown.",
+    "keyChanged": "This author's signing key has changed. Nothing new will be shown until you confirm it is really them.",
+    "keyChangedConfirm": "Trust the new key",
+    "report": "Report this space",
+    "errors": {
+      "invalid_code": "That does not look like a share code.",
+      "key_mismatch": "That code does not match the author it claims. Ask them to send it again.",
+      "profile_required": "Create your profile first.",
+      "failed": "That did not work. Try again."
+    },
+    "profile": {
+      "title": "Your profile",
+      "hint": "A name and a picture, so people you share with know who wrote it. Nothing is listed publicly.",
+      "create": "Create a profile",
+      "createHint": "This turns on server sync, which is how sharing works at all.",
+      "displayName": "Display name",
+      "bio": "About you",
+      "avatar": "Picture",
+      "avatarChange": "Change picture",
+      "fingerprint": "Your signing fingerprint",
+      "fingerprintHint": "The last six characters of every code you share. Compare it with a friend if you want to be certain a code reached them unchanged.",
+      "leave": "Leave the community",
+      "leaveConfirm": "Leave? Your profile and the shared copies are removed from the server. Your writing stays on this device.",
+      "leaving": "Leaving…"
+    }
   }
 }

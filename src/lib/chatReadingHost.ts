@@ -1,7 +1,12 @@
 import { useChatStore } from '@/store/chatStore';
 import { formatReference } from '@/services/bible/bookCatalog';
 import type { ChatMessage, Locale, VerseSummary } from '@/types/domain';
-import type { ReadingGroup, ReadingGroupId, ReadingHost } from './readingHosts';
+import {
+  isListProvenance,
+  type ReadingGroup,
+  type ReadingGroupId,
+  type ReadingHost,
+} from './readingHosts';
 
 /**
  * Readings that live in the conversation: each is an assistant message with
@@ -43,6 +48,8 @@ export const chatReadingHost: ReadingHost = {
   appendReading(verses, opts): Promise<ReadingGroupId | null> {
     if (verses.length === 0) return Promise.resolve(null);
     const id = crypto.randomUUID();
+    const list =
+      opts.provenance && isListProvenance(opts.provenance) ? opts.provenance : undefined;
     useChatStore.getState().appendMessage({
       id,
       role: 'assistant',
@@ -50,8 +57,10 @@ export const chatReadingHost: ReadingHost = {
       verses,
       historyNote: opts.historyNote,
       headingWholeChapter: opts.wholeChapter,
-      listId: opts.provenance?.listId,
-      entryId: opts.provenance?.entryId,
+      // A chat message can carry reading-list provenance but not a space's:
+      // a post is read in the reader, and ChatMessage has no field for one.
+      listId: list?.listId,
+      entryId: list?.entryId,
       createdAt: Date.now(),
     });
     return Promise.resolve(id);

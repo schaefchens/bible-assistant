@@ -25,6 +25,13 @@ type Props = {
    * depends on is untouched, and tapping the word still resolves to word 0.
    */
   initial?: boolean;
+  /**
+   * Show the leading verse number. Off for a user-written post, whose units are
+   * paragraphs — a numbered paragraph would claim a versification that doesn't
+   * exist. `verse.verse` is still the unit's 1-based index, because that is what
+   * `PlaybackTrack.verseIndex` addresses; it just isn't shown.
+   */
+  showNumber?: boolean;
 };
 
 export function WordHighlighter({
@@ -34,6 +41,7 @@ export function WordHighlighter({
   onWordTap,
   layout = 'block',
   initial = false,
+  showNumber = true,
 }: Props) {
   // Subscribe to primitives rather than the whole `current` object. The
   // playback rAF loop rebuilds `current` ~60×/sec (to advance `position`),
@@ -103,15 +111,16 @@ export function WordHighlighter({
         isCurrent && 'verse-current',
       )}
     >
-      {inline ? (
-        <sup className="text-brand-muted text-[0.65em] font-sans mr-0.5 select-none">
-          {verse.verse}
-        </sup>
-      ) : (
-        <span className="text-brand-muted text-xs font-sans mr-2 align-baseline">
-          {verse.verse}
-        </span>
-      )}
+      {showNumber &&
+        (inline ? (
+          <sup className="text-brand-muted text-[0.65em] font-sans mr-0.5 select-none">
+            {verse.verse}
+          </sup>
+        ) : (
+          <span className="text-brand-muted text-xs font-sans mr-2 align-baseline">
+            {verse.verse}
+          </span>
+        ))}
       {tokens}
     </Tag>
   );

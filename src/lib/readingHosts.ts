@@ -27,12 +27,34 @@ export type ReadingGroupId = string;
  */
 export type ListProvenance = { listId: string; entryId: string };
 
+/** A group that is one post of a space. */
+export type SpaceProvenance = { spaceId: string; postId: string };
+
+/**
+ * Where a reading came from, when that changes what follows it.
+ *
+ * A union rather than a second optional field so the "no provenance" case stays
+ * exactly one thing — canonical Bible order — and every consumer is forced by
+ * the compiler to say which kind it handles. `readingContinuation` is the
+ * reason it exists: without a discriminant, a post group falls through to
+ * `canonicalNext()` and auto-play continues a blog post into Genesis.
+ */
+export type ReadingProvenance = ListProvenance | SpaceProvenance;
+
+export function isListProvenance(p: ReadingProvenance): p is ListProvenance {
+  return (p as ListProvenance).listId !== undefined;
+}
+
+export function isSpaceProvenance(p: ReadingProvenance): p is SpaceProvenance {
+  return (p as SpaceProvenance).spaceId !== undefined;
+}
+
 export type ReadingGroup = {
   id: ReadingGroupId;
   verses: VerseSummary[];
   /** Heading phrasing: "John, chapter 3" vs "John 3:16-18". */
   wholeChapter: boolean;
-  provenance?: ListProvenance;
+  provenance?: ReadingProvenance;
 };
 
 export type AppendReadingOptions = {
@@ -41,7 +63,7 @@ export type AppendReadingOptions = {
    * Hosts with no conversation ignore it. */
   historyNote?: string;
   /** Carried onto the new group so a list keeps playing as a list. */
-  provenance?: ListProvenance;
+  provenance?: ReadingProvenance;
 };
 
 /**

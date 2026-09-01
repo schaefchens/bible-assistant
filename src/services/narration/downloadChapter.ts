@@ -1,21 +1,12 @@
 import { db } from '@/db/dexie';
 import { fetchCached, isCached } from '@/lib/mediaCache';
 import { buildPlaybackPlan, type PlanItem } from '@/lib/playbackPlan';
-import { localeForTranslation } from '@/lib/translationLocaleMap';
 import type { Translation } from '@/services/bible/bibleApi';
 import { loadChapterSummaries } from '@/services/bible/verseSummaries';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { OpenAiVoiceId } from '@/types/domain';
-import {
-  getNarration,
-  speakKey,
-  verseKey,
-} from './narrationIndex';
-import {
-  resolveSpeechNarration,
-  resolveVerseNarration,
-  type NarrationRef,
-} from './narrationSources';
+import { getNarration } from './narrationIndex';
+import { narrationKeyFor, resolveNarrationFor } from './narrationRequest';
 
 /**
  * Download one chapter's narration for offline listening.
@@ -73,44 +64,6 @@ async function planForChapter(
   });
 }
 
-function keyForItem(it: PlanItem, voice: OpenAiVoiceId, voiceStyle: string): string {
-  return it.kind === 'verse'
-    ? verseKey(
-        voice,
-        voiceStyle,
-        it.verse.translation,
-        it.verse.bookId,
-        it.verse.chapter,
-        it.verse.verse,
-      )
-    : speakKey(voice, voiceStyle, localeForTranslation(it.translation), it.text);
-}
-
-function resolveItem(
-  it: PlanItem,
-  voice: OpenAiVoiceId,
-  voiceStyle: string,
-  signal: AbortSignal,
-): Promise<NarrationRef> {
-  return it.kind === 'verse'
-    ? resolveVerseNarration(
-        {
-          voice,
-          voiceStyle,
-          text: it.verse.text,
-          translation: it.verse.translation,
-          bookId: it.verse.bookId,
-          chapter: it.verse.chapter,
-          verse: it.verse.verse,
-        },
-        signal,
-      )
-    : resolveSpeechNarration(
-        { voice, voiceStyle, language: localeForTranslation(it.translation), text: it.text },
-        signal,
-      );
-}
-
 /**
  * How much of this chapter is already playable offline.
  *
@@ -137,7 +90,7 @@ export async function chapterCoverage(
 
   let have = 0;
   for (const it of verses) {
-    const entry = await getNarration(keyForItem(it, voice, voiceStyle));
+    const entry = await getNarration(narrationKeyFor(it, voice, voiceStyle));
     if (entry && (await isCached(entry.audioUrl))) have++;
   }
   if (have === 0) return 'missing';
@@ -167,7 +120,7 @@ export async function downloadChapterNarration(
 
   for (const it of plan) {
     if (signal.aborted) throw new DOMException('aborted', 'AbortError');
-    const ref = await resolveItem(it, voice, voiceStyle, signal);
+    const ref = await resolveNarrationFor(it, voice, voiceStyle, signal);
     // Pinning is the actual download: resolveItem may well have found the item
     // already cached from ordinary playback, in which case this just promotes
     // those bytes out of reach of the LRU sweep, with no network at all.
@@ -194,7 +147,7 @@ export async function deleteChapterNarration(
   chapter: number,
 ): Promise<void> {
   const plan = await planForChapter(translation, bookId, chapter);
-  const keys = plan.filter((it) => it.kind === 'verse').map((it) => keyForItem(it, voice, voiceStyle));
+  const keys = plan.filter((it) => it.kind === 'verse').map((it) => narrationKeyFor(it, voice, voiceStyle));
 
   const urls: string[] = [];
   for (const key of keys) {

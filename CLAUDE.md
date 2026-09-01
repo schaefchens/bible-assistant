@@ -21,6 +21,9 @@ This file is the orientation map. When changing code, find the relevant subsyste
   "simplify" it back to one shared bitmap.
 - `npm run bible:build` / `bible:verify` — regenerate the offline Bible packs, and diff them
   against golden fixtures from the PHP parser. **Run verify after touching either parser.**
+- `npm run community:verify` / `community:verify:api` — assert the post-signing, share-code and
+  chunking properties, and drive the community endpoints against a throwaway `php -S`. **Run
+  both after touching signatures, share codes, `postUnits`, or `api.php`'s community actions.**
 - `npm run bible:counts` — regenerate `src/services/bible/verseCounts.ts` (verses per chapter)
   from the KJV pack. Only needed if the packs or the book catalog change; it asserts the two
   agree and that the totals are still 1,189 chapters / 31,102 verses.
@@ -50,6 +53,13 @@ This file is the orientation map. When changing code, find the relevant subsyste
 | Auto-continuation + prefetch (the machinery, not the policy) | `src/lib/autoPlay.ts` |
 | Bible reader screen | `src/routes/ReadPage.tsx` + `src/store/readerStore.ts` |
 | Reading lists (screen / editor) | `src/routes/ReadingListsPage.tsx` + `src/components/reading/*` |
+| Community spaces (screen / editors) | `src/routes/SpacesPage.tsx` + `src/components/community/*` |
+| Post signing (crypto / passphrase-bound) | `src/lib/postSignature.ts` + `src/lib/postSigning.ts` |
+| Share codes (mint / fingerprint / normalize) | `src/lib/spaceCode.ts` |
+| A post as reading units (the one chunker) | `src/services/community/postUnits.ts` |
+| Community ⇄ reading seam | `src/services/community/spaceReading.ts` |
+| Which narration path an item takes | `src/services/narration/narrationRequest.ts` |
+| Loading one segment, whatever kind | `src/services/reading/segmentLoader.ts` |
 | Reading-list order + expansion | `src/services/reading/readingSequence.ts` |
 | Playing a list, and its progress | `src/lib/readingListPlayback.ts` |
 | Playback ⇄ content seam | `src/lib/readingHosts.ts` |
@@ -180,7 +190,8 @@ All in `src/store/`. `(persist)` = survives reload via `zustand/middleware`.
 | `useLastReadingStore` *(persist)* | Resume point for "play last reading" — **audio-owned**, written only from the playback subscription. The reader's scroll position deliberately does not write here, or idle scrolling would move it |
 | `useReaderStore` *(persist v2 — `position` + `source`)* | The reader screen: what it is walking through (the Bible, or a reading list), the current segment, the loaded-segment cache + the mounted window |
 | `useBiblePacksStore` *(persist — `wanted` only)* | Offline Bible packs: per-translation status/progress, and which translations the user has asked for |
-| `useNarrationStore` | Per-chapter narration download state (status/progress/error). Transient — the truth is in Dexie and `check()` re-derives from it |
+| `useCommunityStore` | The community profile, the user's own spaces and posts (drafts included, plus which are `shared`), subscriptions, subscribers, and the verified cache of other people's posts |
+| `useNarrationStore` | Per-target narration download state (status/progress/error) for a chapter *or* a post — `NarrationTarget` is a union. Transient — the truth is in Dexie and `check()` re-derives from it |
 | `useUiLayoutStore` | Transient layout — `bottomBarHeight`, the height of whichever bar the current page puts above the nav (chat composer, reader pager), so floaters clear it |
 | `useUpdateStore` (in `lib/pwaUpdate.ts`) | PWA update-available flag *(named `use*` though it's a store, not a hook — a known, intentionally-left naming exception)* |
 
@@ -554,6 +565,214 @@ sample rather than the whole list, and the prompt says to answer in one sentence
 the plan back. Both exist because the assistant narrated every day of a plan it had just made,
 which for a year plan is minutes of speech.
 
+## Community spaces
+
+A **space** is one person's collection of their own writing; a **post** is one piece in it.
+Sharing is invite-only by a share code — there is no public listing, no discovery, no follower
+counts. `Profile`, `Space`, `Post`, `Subscription` (a space I follow) and `Membership`
+(somebody following mine) are in `types/domain.ts`; the store is `useCommunityStore`.
+
+**The whole point is reuse of the reader.** A post is displayed and narrated exactly like a
+Bible chapter — the user's paper and ink, forced-aligned word highlighting, offline pinning,
+lock-screen transport. Everything below exists to make user prose fit that machinery without
+a second pipeline.
+
+### `VerseSummary.unit` — the one discriminant
+
+`VerseSummary` is the currency of the entire playback path (the reader,
+`groupIntoParagraphs`, `buildPlaybackPlan`, the TTS cache keys, `WordHighlighter`,
+`readingContinuation`, `lastReadingStore`, `publishNowPlaying`). Widening it into a
+`ReadingUnit` supertype would touch ~20 files; a bare `bookId: 0` sentinel would leak into
+`getBookById(0)`, the lock-screen subtitle and the last-reading slot.
+
+So there is **one optional field**, `unit?: PostUnit`, carrying exactly what the display sites
+need (title, author, language, paragraph index), and `isScriptureUnit(v)` is how you test for
+it. Purely additive, so nothing that constructs a `VerseSummary` had to change — and
+`SegmentRef` grows `spaceId`/`postId`/`postTitle` the same way, which is why **`readerStore`
+needed no persist migration** (it stays v2).
+
+`translation` on a post unit is a **stand-in for the voice language only**
+(`postUnits.voiceTranslationFor`), so `localeForTranslation()` picks the right TTS language for
+free. The two places that would otherwise show it — `publishNowPlaying`'s lock-screen subtitle
+and `buildPlaybackPlan`'s spoken heading — branch on `unit` first.
+
+### Rendered text must equal narrated text
+
+`services/bible/verseSummaries.ts:10-17` records the rule: display and speech share one
+string, or `WordHighlighter`'s word index space drifts from the alignment and the highlight
+silently desyncs. **That is why posts are plain text.** Markdown would have to be stripped for
+TTS and the two would no longer match.
+
+`services/community/postUnits.ts` is therefore the single chunker, **and its output is a cache
+key**: one unit per authored paragraph (the author chose those breaks — unlike Bible verses,
+where `lib/readerParagraphs.ts` has to infer them), split at sentence boundaries only when a
+paragraph exceeds `tts.speak`'s 4000-**byte** cap. Change how it splits and every existing
+narration key changes with it, orphaning generated audio and pinned downloads.
+
+### Where the reader had to grow
+
+- `ReaderSource |= { kind: 'space', spaceId?, code? }` — by **code** for somebody else's space
+  (that is the only way to name one) and by **id** for your own, which may have no code yet.
+  `resolveSpace()` / `resolveSpaceFrom()` in `services/community/spaceReading.ts` answers both;
+  the pure form exists so `useReaderSequence` can pass a *subscribed* snapshot, otherwise
+  `exhaustive-deps` can't see the dependency and the memo serves a stale sequence.
+- `segmentId` gains a third shape, `reader:sp:<spaceId>:<postId>`, still under the `reader:`
+  namespace — so `readingHosts` dispatch, the transport, autoPlay and the lock screen work
+  untouched. No translation in it: a post has none, and nothing can re-render its words under
+  the audio.
+- **The fetch came out of `readerStore.loadSegment`** into
+  `services/reading/segmentLoader.ts`. That one hardcoded `loadChapterSummaries` call was the
+  reason the reader could only ever show Bible chapters; everything else about the store's
+  loading machinery turned out to be source-agnostic. `absorbsGaps()` is the other half:
+  versification gaps are normal for scripture and a *step* walks past them, but a missing post
+  is a real miss and skipping to the next one would show something the reader didn't ask for.
+- Both copies of `sequenceFor` need the space branch — `readerStore.ts` and
+  `useReaderSequence.ts`. They were already duplicated; they must not diverge.
+
+### Continuation — the one place a mistake produces wrong *audio*
+
+`ReadingGroup.provenance` is now a union (`readingHosts.ts`):
+
+```ts
+type ReadingProvenance = ListProvenance | SpaceProvenance;   // + isListProvenance / isSpaceProvenance
+```
+
+A union rather than a second optional field so "no provenance" stays exactly one thing —
+canonical Bible order — and the compiler forces every consumer to say which kind it handles.
+Without it, a post group falls through to `canonicalNext()`, which asks the Bible what follows
+chapter 0 of book 0: **auto-play reads a blog post and then starts Genesis.**
+`nextReadingAfter` now has a `nextInSpace` branch (next post, stop at the end, no canonical
+fallback — the alternative to the end of a space is silence), plus a defensive guard for a post
+group carrying no provenance at all.
+
+### Audio, and why the server needs no new storage
+
+`?action=tts.speak` already content-addresses generated speech and its forced alignment under
+`storage/audio/speak/{voice}/<sha256 of the text>`, in a directory **shared by every user** —
+the same arrangement as verse audio. So the first person to hear a paragraph pays for it and
+everyone after gets a cache hit, and an author who taps "prepare audio" at publish time is
+warming it for their subscribers. That is the whole of "cache post audio on the server": no
+upload step, no per-user audio.
+
+`services/narration/narrationRequest.ts` is the single answer to *which* narration path an
+item takes, because playback (`startPlayback.buildTrack`), the offline download
+(`downloadChapter` / `downloadPost`) and the offline-coverage check (`planFullyCached`) must
+all agree — a key computed one way in one place means a downloaded chapter is silently
+re-fetched, or a post's audio is filed under a scripture reference that does not exist. Three
+kinds, which do **not** map onto `PlanItem['kind']`: a Bible verse (reference-keyed), a post
+paragraph (`kind: 'verse'` but text-keyed), an announcement (text-keyed).
+
+`highlightVerse` stays `kind === 'verse'`, which now includes post paragraphs. That flag
+suppresses the per-word tick for *announcements*, whose alignment maps onto nothing rendered;
+a post paragraph is rendered verbatim, so its highlighting is as valid as a verse's.
+
+### Signatures — what they prove, and what they don't
+
+Every published post is Ed25519-signed on the device. The key comes from the same seed as the
+identity but via its own domain separator (`sha512(seed || 'ba.sign.v1')`), rather than
+claiming the seed's unused `[48..64]` — so nothing collides with a future use of the seed.
+Being derived from the mnemonic means **the same user signs identically on every device**, with
+nothing extra stored or synced.
+
+`lib/postSignature.ts` holds the crypto and imports nothing from the app, which is what lets
+`npm run community:verify` exercise the real code; `lib/postSigning.ts` is the passphrase-bound
+cache around it. The signed message is canonical and domain-separated, with every free-text
+field replaced by the hex sha256 of its bytes — so a title or body may contain anything,
+newlines included, with no way to forge one field by stuffing a delimiter into another. It
+commits to the **author's public key** rather than to `userId`, which keeps the owner's uuid (a
+valid `X-User-Id`) out of the feed projection and blocks signature-lifting just as well.
+
+Stated plainly, because signing invites over-claiming:
+
+- ✅ the server cannot forge a post, alter a published one, or attribute someone else's writing
+  to you — it never sees the private key;
+- ✅ tampering and rollback are *detected*: a post that fails verification is refused, not
+  rendered with a caveat, and `updatedAt` is signed so an older-but-valid replay is caught;
+- ❌ the server can still **withhold or delay** a post, or hide a deletion. Catching that needs
+  a signed per-space manifest with a serial number, which last-write-wins sync across the
+  author's own devices would fight. Known limitation.
+
+**The share code is what binds a key to a person.** A signature only proves "whoever holds
+this key wrote this"; the code travels out of band (share sheet, message, word of mouth), so it
+carries a fingerprint of the key: `10 random + 6 fingerprint` Crockford base32 characters
+(`lib/spaceCode.ts`). The subscriber checks the returned key against the pasted code's
+fingerprint *before* pinning it, which makes this stronger than plain trust-on-first-use. A
+mismatch is a hard failure, never a warning to click through, and a pinned key that later
+changes stops the whole space rather than being silently adopted. 50 bits of capability is the
+brute-force mitigation standing in for the rate limiting `api.php` does not have.
+
+### Local-first ownership
+
+The writing is the user's and lives in Dexie; the server holds a *copy* of what is currently
+shared. Two deliberately different actions:
+
+- **delete a post** — `deleted: 1`, gone from device and server, like every other entity;
+- **withdraw** (leave the community, or delete the server account) — local-only `shared: 0` plus
+  a `post.delete`. The row survives untouched and readable.
+
+`publishedAt` is immutable because it is signed, so withdrawing and re-sharing keeps both the
+date **and the original signature valid** — the round trip is lossless. `disableCommunity()`
+deliberately leaves `syncEnabled` alone: creating the profile turned it on, but cards and lists
+may now depend on it. `lib/factoryReset.ts` is the only thing that removes the writing.
+
+The pull has one asymmetry that matters: **posts absent from the server are never deleted
+locally.** The server holds only what is shared, so a draft or a withdrawn piece legitimately
+has no remote counterpart, and treating "missing" as "deleted" would destroy the user's own
+writing — the one outcome this feature must never produce.
+
+### Sync and the backend
+
+`communityStore` does not open its own network path: `flushQueue()` and `pullFromServer()` stay
+the only ones, so the `syncEnabled` opt-in keeps meaning what it says.
+`services/community/communitySync.ts` supplies the op routing table, `pullCommunity()` and
+`seedCommunityQueue()`, and `libraryStore` gained three small hooks. A completed pull is
+delivered through `onCommunityPulled()` rather than an import, so the dependency runs one way.
+`refreshSubscriptions()` is the exception and is not sync: it reads *other people's* spaces into
+the `feedPosts` cache, which sits outside the machinery entirely because `dirty`/`deleted` and
+the pull's `pending*Ids` all assume one writer per row and somebody else's writing has none.
+
+`api.php` gained two rules and seventeen actions. **A share code is the only way to name a
+space** — no action takes a target userId, `storage/shares/{code}.json` resolves it, and that
+file tree is HTTP-denied like `storage/users/`. **Nothing user-authored is echoed verbatim to
+another user**: every record crossing accounts goes through a `sanitize*` whitelist, which for
+posts is additionally enforced *by the signature* — the client signs exactly the fields kept,
+so dropping or mangling one is detected rather than accepted.
+
+`space.request` is the only cross-user **write** (it appends a membership row, carrying the
+caller's authenticated id and a name snapshot, into the owner's file; a requester can never set
+its own status, and re-asking cannot clear a block). `space.feed` is the only cross-user
+**read** and answers only an accepted member, with projections rather than stored records.
+Signature verification server-side is defence in depth only, guarded on the sodium extension —
+PHP has no private key, so it stores signatures and never mints them.
+
+Avatars are the one exception to "nothing a user owns is served statically": an `<img src>`
+needs a real URL, so they go to `storage/avatars/{sha256}.{ext}`, content-addressed and
+world-readable once the URL is known. `public/.htaccess`'s CORS `FilesMatch` was extended to
+image types so the native WebView can `fetch()` one into `mediaCache`.
+
+### Verification
+
+Two scripts, following `bible:verify`'s pattern rather than introducing a test runner:
+
+- `npm run community:verify` — signing and share-code properties, plus the chunker's byte cap
+  and determinism. Imports the real modules, which is why `postSignature.ts` and `spaceCode.ts`
+  import nothing from the app.
+- `npm run community:verify:api` — starts its own `php -S` in a temp docroot (so
+  `public/storage` is never touched) and exercises the cross-user surface: approval gating,
+  blocked subscribers, code rotation, expiry pruning, the feed projection leaking no uuid, and
+  the ownership round trip.
+
+### Known limitations
+
+- A voice command on `/read` still produces a *chat* reading, as it does for the Bible.
+- Per-post completion is not tracked; unread is a local dot (`seenPosts`), not a synced tick.
+  Doing it properly wants `readingProgress`'s union-merge machinery, which is keyed by `listId`.
+- No QR code yet. `shareText()` covers sending a code; scanning would need a camera plugin plus
+  iOS/Android permissions, and a QR that opens the app needs Universal Links / App Links.
+- User-generated content shared between users brings Apple guideline 1.2 / Play UGC policy into
+  scope. Invite-only plus approval-gated access covers most of it; a report affordance is not
+  built yet.
+
 ## Theming
 
 Colour tokens are named by **role, not hue** — `surface` / `surface-raised` /
@@ -686,8 +905,9 @@ preference; the media query is the constraint.
 
 ## Offline-first — what needs a network and what doesn't
 
-The only genuinely online features are the **assistant** (chat needs the model) and
-**generating** premium narration. Everything else — reading, the reader screen, cards,
+The only genuinely online features are the **assistant** (chat needs the model),
+**generating** premium narration, and **sharing** (publishing or reading somebody else's
+space — the user's own writing is local, and a cached feed stays readable offline). Everything else — reading, the reader screen, cards,
 boards, ribbons, playback of already-fetched audio — works with no connection.
 
 **Sync is opt-in.** `settings.syncEnabled` is off on a fresh install; the v13→v14
@@ -773,7 +993,11 @@ opt-in truthful: a user who only reads scripture and asks the assistant question
 nothing on the server. Don't move an action into `$ACCOUNT_ACTIONS` without meaning it,
 and don't reintroduce an eager `mkdir` in `authenticate()`.
 
-Actions: `chat`, `tts`, `tts.speak`, `bible.chapter`, `transcribe`, `auth.openaiKey.{status,set,clear}`, `cards.{list,upsert,delete,order.get,order.set}`, `boards.{list,upsert,delete,order.get,order.set}`, `readingLists.{list,upsert,delete}`, `readingProgress.{list,set}`, `recording.upload`, `account.delete`, `ambient.list`.
+Actions: `chat`, `tts`, `tts.speak`, `bible.chapter`, `transcribe`, `auth.openaiKey.{status,set,clear}`, `cards.{list,upsert,delete,order.get,order.set}`, `boards.{list,upsert,delete,order.get,order.set}`, `readingLists.{list,upsert,delete}`, `readingProgress.{list,set}`, `recording.upload`, `account.delete`, `ambient.list`, and the community actions:
+`profile.{get,set,delete}`, `profile.avatar.upload`, `spaces.{list,upsert,delete}`,
+`spaces.code.set`, `posts.{list,upsert,delete}`, `members.{list,decide}`,
+`subscriptions.{list,upsert,delete}`, plus the only two that cross accounts —
+`space.request` and `space.feed` (see "Community spaces").
 
 `readingProgress.set` is the one writer that **merges** rather than replaces — see "Reading
 lists". `readingLists.delete` also drops that list's progress row, which has no meaning without

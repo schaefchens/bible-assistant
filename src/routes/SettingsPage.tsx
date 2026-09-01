@@ -17,13 +17,14 @@ import { TranslationPickerSheet } from '@/components/bible/TranslationPickerShee
 import { OpenAiKeySection } from '@/components/settings/OpenAiKeySection';
 import { StorageSection } from '@/components/settings/StorageSection';
 import { UpdatesSection } from '@/components/settings/UpdatesSection';
+import { CommunitySection } from '@/components/settings/CommunitySection';
 import { SyncSection } from '@/components/settings/SyncSection';
 import { DangerZone } from '@/components/settings/DangerZone';
 import { ImprintFooter } from '@/components/settings/ImprintFooter';
 import { getTranslationInfo } from '@/services/bible/translationCatalog';
 import { copyText } from '@/lib/nativeBridge';
 
-type GroupId = 'general' | 'reading' | 'speech' | 'mic' | 'account' | 'app';
+type GroupId = 'general' | 'reading' | 'speech' | 'mic' | 'community' | 'account' | 'app';
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -195,6 +196,12 @@ export function SettingsPage() {
             />
             <span className="text-sm">{t('settings.thinkingSound')}</span>
           </label>
+        </SettingsField>
+      </SettingsGroup>
+
+      <SettingsGroup title={t('settings.groups.community')} {...groupProps('community')}>
+        <SettingsField label={t('community.profile.title')}>
+          <CommunitySection />
         </SettingsField>
       </SettingsGroup>
 

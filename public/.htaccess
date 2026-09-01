@@ -40,7 +40,11 @@
   # readable by URL, so "*" exposes nothing new. `always` so 304s carry it too.
   # NB: this belongs here, not in storage/.htaccess — that file is gitignored
   # and gets auto-recreated by api.php with only "Options -Indexes".
-  <FilesMatch "\.(?:mp3|json)$">
+  #
+  # Profile pictures (storage/avatars/) are on the list for the same reason:
+  # an <img src> needs no CORS, but caching one into mediaCache does, and on
+  # native every fetch() is cross-origin.
+  <FilesMatch "\.(?:mp3|json|jpe?g|png|webp)$">
     Header always set Access-Control-Allow-Origin "*"
   </FilesMatch>
 </IfModule>

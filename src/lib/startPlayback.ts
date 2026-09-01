@@ -1,10 +1,9 @@
 import { audioPlayback, type PlaybackTrack } from './audioPlaybackManager';
 import { browserTts, type BrowserTtsItem } from './browserTts';
 import {
-  cachedNarrationSource,
-  resolveSpeechNarration,
-  resolveVerseNarration,
-} from '@/services/narration/narrationSources';
+  cachedNarrationFor,
+  resolveNarrationFor,
+} from '@/services/narration/narrationRequest';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { readingHosts } from './readingHosts';
 import { usePlaybackStore } from '@/store/playbackStore';
@@ -19,7 +18,6 @@ import {
   sliceFromVerseIndex,
   type PlanItem,
 } from './playbackPlan';
-import { localeForTranslation } from './translationLocaleMap';
 import { getTranslationInfo } from '@/services/bible/translationCatalog';
 
 /**
@@ -45,7 +43,7 @@ export function startAmbientIfEnabled(): void {
 /**
  * Set what the lock screen / Control Center shows for this reading:
  * "Galatians 5:22" for a single verse, "Galatians 5:22–26" for a range, with
- * the translation as the subtitle.
+ * the translation as the subtitle — or a post's title and author.
  *
  * Called from both reading entry points — `startPlaybackForVerses` (taps, the
  * transport, resume-last-reading) and `streamReading` (the AI `read_verses`
@@ -54,6 +52,13 @@ export function startAmbientIfEnabled(): void {
 export function publishNowPlaying(verses: VerseSummary[], startIndex = 0): void {
   const first = verses[startIndex] ?? verses[0];
   if (!first) return;
+  // A post is titled, not referenced, and its subtitle is the person who wrote
+  // it — `first.translation` is a stand-in for the voice language there (see
+  // postUnits.ts) and would put "King James Version" under a blog post.
+  if (first.unit) {
+    audioPlayback.setNowPlaying(first.unit.title, first.unit.author || undefined);
+    return;
+  }
   const last = verses[verses.length - 1];
   const label =
     last && last !== first ? `${first.display}–${last.verse}` : first.display;
@@ -83,24 +88,7 @@ async function planFullyCached(
   voiceStyle: string,
 ): Promise<boolean> {
   for (const it of plan) {
-    const ref =
-      it.kind === 'verse'
-        ? await cachedNarrationSource.getVerse({
-            voice,
-            voiceStyle,
-            text: it.verse.text,
-            translation: it.verse.translation,
-            bookId: it.verse.bookId,
-            chapter: it.verse.chapter,
-            verse: it.verse.verse,
-          })
-        : await cachedNarrationSource.getSpeech({
-            voice,
-            voiceStyle,
-            language: localeForTranslation(it.translation),
-            text: it.text,
-          });
-    if (!ref) return false;
+    if (!(await cachedNarrationFor(it, voice, voiceStyle))) return false;
   }
   return true;
 }
@@ -312,29 +300,16 @@ async function buildTrack(
     // Through the narration resolver, not straight to api.php: an already-
     // downloaded verse resolves from the local index with no request at all,
     // which is what makes a downloaded chapter playable offline.
-    const ref =
-      it.kind === 'verse'
-        ? await resolveVerseNarration(
-            {
-              voice,
-              voiceStyle: voiceStyle ?? '',
-              text: it.verse.text,
-              translation: it.verse.translation,
-              bookId: it.verse.bookId,
-              chapter: it.verse.chapter,
-              verse: it.verse.verse,
-            },
-            signal,
-          )
-        : await resolveSpeechNarration(
-            {
-              voice,
-              voiceStyle: voiceStyle ?? '',
-              language: localeForTranslation(it.translation),
-              text: it.text,
-            },
-            signal,
-          );
+    // Which narration path an item takes — reference-keyed for scripture,
+    // text-keyed for a post paragraph or an announcement — lives in
+    // services/narration/narrationRequest.ts, because the offline download has
+    // to make exactly the same choice or the two disagree about cache keys.
+    //
+    // Note `highlightVerse` stays `kind === 'verse'`, which now includes post
+    // paragraphs. That flag suppresses the per-word tick for *announcements*,
+    // whose alignment maps onto nothing rendered; a post paragraph is rendered
+    // verbatim, so its highlighting is exactly as valid as a verse's.
+    const ref = await resolveNarrationFor(it, voice, voiceStyle ?? '', signal);
     return {
       ok: true,
       track: {

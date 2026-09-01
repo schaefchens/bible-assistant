@@ -35,6 +35,35 @@ export function isBrowserVoice(v: VoiceId): v is 'browser' {
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
 
+/**
+ * Marks a reading unit that is **not scripture** — one paragraph of a
+ * user-written post (see "Community spaces" in CLAUDE.md).
+ *
+ * This is an optional field on `VerseSummary` rather than a widened
+ * `ReadingUnit` supertype because `VerseSummary` is the currency of the whole
+ * playback path: the reader, `groupIntoParagraphs`, `buildPlaybackPlan`, the
+ * TTS cache keys, `WordHighlighter`, `readingContinuation`, `lastReadingStore`
+ * and `publishNowPlaying` are all typed on `VerseSummary[]`. Widening it would
+ * touch ~20 files; a bare `bookId: 0` sentinel would instead leak into
+ * `getBookById(0)`, the lock-screen subtitle and the last-reading slot.
+ *
+ * So `unit` is the one discriminant, it carries exactly what the display sites
+ * need, and `isScriptureUnit()` is how you test for it.
+ */
+export type PostUnit = {
+  kind: 'post';
+  spaceId: string;
+  postId: string;
+  /** Paragraph index within the post, 0-based. */
+  index: number;
+  /** The post's own language — drives the TTS voice and the spoken heading. */
+  language: Locale;
+  /** Post title, for the reader heading and the lock screen. */
+  title: string;
+  /** Author display name, for the subheading and the lock screen. */
+  author: string;
+};
+
 export type VerseSummary = {
   translation: Translation;
   bookId: number;
@@ -43,7 +72,14 @@ export type VerseSummary = {
   text: string;
   /** "Galatians 5:22" or "Galater 5,22" depending on locale */
   display: string;
+  /** Set only on a post paragraph. See {@link PostUnit}. */
+  unit?: PostUnit;
 };
+
+/** False for a post paragraph, true for anything that is really a Bible verse. */
+export function isScriptureUnit(v: VerseSummary): boolean {
+  return v.unit === undefined;
+}
 
 export type ToolCallSummary = {
   id: string;
@@ -280,4 +316,127 @@ export type ReadingProgress = {
   /** The entry to resume at. */
   currentEntryId?: string;
   updatedAt: number;
+};
+
+/* ------------------------------------------------------------------ *
+ * Community spaces
+ *
+ * A `Space` is one person's collection of their own writing; a `Post` is one
+ * piece in it. Sharing is invite-only: a `Subscription` is a space I follow,
+ * a `Membership` is somebody following one of mine. There is no public
+ * listing, and no way to name a space other than its share code.
+ * ------------------------------------------------------------------ */
+
+/**
+ * The public half of a community identity.
+ *
+ * Deliberately separate from `Identity` (`lib/identity.ts`): that is the
+ * credential every request carries, this is the name and face a subscriber
+ * sees. A profile does not exist until the user makes one.
+ */
+export type Profile = {
+  displayName: string;
+  bio?: string;
+  avatarUrl?: string;
+  /**
+   * Ed25519 public key, hex. Derived from the mnemonic (see
+   * `lib/postSigning.ts`), so it is the same on every device the user
+   * recovers onto and needs no storage of its own. Published so subscribers
+   * can verify signatures.
+   */
+  authorKey: string;
+  updatedAt: number;
+};
+
+/** Whether new subscribers are let in automatically or wait for the owner. */
+export type SpaceApproval = 'auto' | 'manual';
+
+export type Space = {
+  id: string;
+  name: string;
+  emoji?: string;
+  description?: string;
+  /**
+   * `'today'` is the one space every profile gets, created with the profile
+   * and neither deletable nor renameable. Everything else is `'custom'`.
+   */
+  kind: 'today' | 'custom';
+  /**
+   * Set → items older than this are pruned server-side on every read and
+   * write, and hidden client-side even from a stale cache. 24 for `'today'`.
+   */
+  ephemeralHours?: number;
+  approval: SpaceApproval;
+  /**
+   * The capability that grants read access, minted client-side because it
+   * embeds a fingerprint of the author's key — see `lib/spaceCode.ts`.
+   * Absent until the space is first shared; rotating it revokes everyone.
+   */
+  shareCode?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+/**
+ * One piece of writing.
+ *
+ * `body` is **plain text**: blank lines separate paragraphs, and each
+ * paragraph becomes one narration unit. That is not a stylistic preference —
+ * `services/bible/verseSummaries.ts` records the rule that rendered text and
+ * narrated text must be the same string, or the word highlight silently
+ * desyncs from the audio. Markup would have to be stripped for TTS and the
+ * two would drift.
+ */
+export type Post = {
+  id: string;
+  spaceId: string;
+  title: string;
+  body: string;
+  language: Locale;
+  /**
+   * 0 → a draft that has never left the device. Immutable once set, because
+   * it is covered by the signature: withdrawing from the server and later
+   * re-sharing must keep both the date and the signature valid.
+   */
+  publishedAt: number;
+  createdAt: number;
+  updatedAt: number;
+  /** Ed25519 signature over `canonicalPostMessage()`, hex. Set when published. */
+  signature?: string;
+  /** The signer's public key, hex — pinned per space by the subscriber. */
+  authorKey?: string;
+  /** Canonicalization version, e.g. `'ba.post.v1'`. */
+  sigVersion?: string;
+};
+
+/** A space I follow. Keyed by its share code, which is what identifies it. */
+export type Subscription = {
+  code: string;
+  spaceName: string;
+  spaceEmoji?: string;
+  ownerName: string;
+  ownerAvatarUrl?: string;
+  status: 'pending' | 'accepted' | 'revoked';
+  /**
+   * Pinned once, at subscribe time, after the key matched the fingerprint
+   * carried in the pasted code. Every post from this space must verify
+   * against it; a key that changes later is an explicit re-pin prompt, never
+   * a silent adoption.
+   */
+  pinnedKey: string;
+  keyPinnedAt: number;
+  addedAt: number;
+  updatedAt: number;
+};
+
+/** Somebody following one of my spaces. */
+export type Membership = {
+  userId: string;
+  spaceId: string;
+  status: 'pending' | 'accepted' | 'blocked';
+  /** Snapshot taken when they asked, so the owner knows who they are deciding on. */
+  displayName: string;
+  avatarUrl?: string;
+  requestedAt: number;
+  decidedAt?: number;
 };

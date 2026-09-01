@@ -1,6 +1,7 @@
 import Dexie from 'dexie';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { clearPassphrase } from '@/lib/passphrase';
+import { clearSigningKey } from '@/lib/postSigning';
 
 // Wipes every piece of persisted state so the next load is a clean install:
 // localStorage keys under `ba.*`, sessionStorage, the Dexie database, all
@@ -33,6 +34,11 @@ export async function factoryReset(): Promise<void> {
     // ignore
   }
 
+  // The derived post-signing key is cached in memory keyed by the mnemonic, so
+  // clearing the passphrase already makes it unreachable — but a reset should
+  // not leave a private key sitting in the heap until reload.
+  clearSigningKey();
+
   try {
     sessionStorage.clear();
   } catch {
@@ -40,7 +46,12 @@ export async function factoryReset(): Promise<void> {
   }
 
   try {
-    // Cards, boards, sync queue, preferences, and the media cache.
+    // Cards, boards, reading lists, community spaces and posts, the sync
+    // queue, preferences, and the media cache.
+    //
+    // This is the ONLY thing that removes the user's own writing: leaving
+    // the community deletes the server copies and deliberately keeps the
+    // local rows (see LocalPost.shared in db/dexie.ts).
     await Dexie.delete('bible-assistant');
   } catch {
     // ignore

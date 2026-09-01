@@ -56,6 +56,28 @@ if (!defined('OPENAI_API_KEY')) {
 const STORAGE_DIR = __DIR__ . '/storage';
 const USERS_DIR = STORAGE_DIR . '/users';
 const AUDIO_DIR = STORAGE_DIR . '/audio';
+/** code -> {userId, spaceId}. The only way to name somebody else's space. */
+const SHARES_DIR = STORAGE_DIR . '/shares';
+/** Content-addressed profile pictures. Served statically, unlike everything
+ * else a user owns — see the note where the directory is created. */
+const AVATARS_DIR = STORAGE_DIR . '/avatars';
+
+/*
+ * Caps on community data.
+ *
+ * These are the first user-authored content this server holds that another
+ * user can read, and there is no rate limiting anywhere, so every collection
+ * gets a ceiling. They are generous for real use and small enough that a
+ * whole-file rewrite stays cheap: MAX_POST_BYTES x MAX_POSTS_PER_SPACE is the
+ * worst-case size of one posts/{spaceId}.json.
+ */
+const MAX_POST_BYTES = 8000;
+const MAX_POSTS_PER_SPACE = 200;
+const MAX_SPACES_PER_USER = 20;
+const MAX_MEMBERS_PER_SPACE = 500;
+const MAX_SUBSCRIPTIONS_PER_USER = 200;
+const MAX_FEED_POSTS = 50;
+const MAX_AVATAR_BYTES = 512 * 1024;
 
 /**
  * URL prefix under which the SPA + this api.php are served.
@@ -112,6 +134,8 @@ const ALIGNMENT_MODEL = 'whisper-1';
 @mkdir(USERS_DIR, 0775, true);
 @mkdir(AUDIO_DIR, 0775, true);
 @mkdir(STORAGE_DIR . '/ambient', 0775, true);
+@mkdir(SHARES_DIR, 0775, true);
+@mkdir(AVATARS_DIR, 0775, true);
 
 // Deny directory listings within storage if writable
 $htaccessPath = STORAGE_DIR . '/.htaccess';
@@ -134,6 +158,28 @@ if (!file_exists($usersHtaccessPath)) {
         "</IfModule>\n",
     );
 }
+
+// Same treatment for shares/ — a share code IS the read capability for a
+// space, and these files map codes to the userId that owns them. Listing or
+// fetching them over HTTP would hand out every space on the server. PHP keeps
+// reading via the filesystem.
+$sharesHtaccessPath = SHARES_DIR . '/.htaccess';
+if (!file_exists($sharesHtaccessPath)) {
+    @file_put_contents(
+        $sharesHtaccessPath,
+        "Require all denied\n" .
+        "<IfModule !mod_authz_core.c>\n" .
+        "  Order deny,allow\n" .
+        "  Deny from all\n" .
+        "</IfModule>\n",
+    );
+}
+
+// avatars/ deliberately gets NO such guard: an <img src> needs a real URL, so
+// these are static files like storage/ambient. They are content-addressed by
+// sha256, so a URL is unguessable, but it is also permanent and public once
+// known — which is the trade a profile picture makes. Nothing else a user owns
+// is served this way.
 
 // ---------- helpers ---------------------------------------------------------
 
@@ -170,6 +216,34 @@ function safeString(mixed $v, int $maxLen = 8000): string {
     if (!is_string($v)) fail(400, 'expected string');
     if (strlen($v) > $maxLen) fail(400, 'string too long');
     return $v;
+}
+
+/** Optional counterpart to safeString: absent or empty becomes null. */
+function optString(mixed $v, int $maxLen = 8000): ?string {
+    if ($v === null || $v === '') return null;
+    return safeString($v, $maxLen);
+}
+
+/**
+ * A client-generated id, used verbatim as a path segment.
+ *
+ * Every id the client mints is crypto.randomUUID(), so requiring that shape is
+ * free and makes traversal impossible without a safeSlug() rewrite that would
+ * then disagree with the id stored inside the file.
+ */
+function safeUuid(mixed $v, string $what = 'id'): string {
+    $s = safeString($v, 64);
+    if (!preg_match('/^[0-9a-fA-F-]{36}$/', $s)) fail(400, "invalid {$what}");
+    return $s;
+}
+
+/** Read a JSON array file, answering [] for missing, empty or corrupt. */
+function readJsonArrayFile(string $path): array {
+    if (!file_exists($path)) return [];
+    $raw = @file_get_contents($path);
+    if (!$raw) return [];
+    $items = json_decode($raw, true);
+    return is_array($items) ? $items : [];
 }
 
 /**
@@ -401,6 +475,13 @@ $ACCOUNT_ACTIONS = [
     'boards.upsert', 'boards.delete', 'boards.order.set',
     'readingLists.upsert', 'readingLists.delete', 'readingProgress.set',
     'auth.openaiKey.set', 'recording.upload',
+    // Community writers. `space.request` is NOT here: it writes into the
+    // *owner's* directory, and the caller's own dir already exists because
+    // profile.set is a precondition for asking at all.
+    'profile.set', 'profile.avatar.upload',
+    'spaces.upsert', 'spaces.delete', 'spaces.code.set',
+    'posts.upsert', 'posts.delete',
+    'members.decide', 'subscriptions.upsert', 'subscriptions.delete',
 ];
 if (in_array($action, $ACCOUNT_ACTIONS, true)) {
     requireUserDir($ctx);
@@ -497,6 +578,64 @@ switch ($action) {
         break;
     case 'ambient.list':
         handleAmbientList();
+        break;
+
+    // Community spaces. The readers answer empty for an account that has never
+    // published, like every other reader here, so nothing below requires a
+    // directory to exist.
+    case 'profile.get':
+        handleProfileGet($ctx);
+        break;
+    case 'profile.set':
+        handleProfileSet($ctx);
+        break;
+    case 'profile.delete':
+        handleProfileDelete($ctx);
+        break;
+    case 'profile.avatar.upload':
+        handleAvatarUpload($ctx);
+        break;
+    case 'spaces.list':
+        handleListJson(spacesPath($ctx['userDir']), 'spaces');
+        break;
+    case 'spaces.upsert':
+        handleSpaceUpsert($ctx);
+        break;
+    case 'spaces.delete':
+        handleSpaceDelete($ctx);
+        break;
+    case 'spaces.code.set':
+        handleSpaceCodeSet($ctx);
+        break;
+    case 'posts.list':
+        handlePostsList($ctx);
+        break;
+    case 'posts.upsert':
+        handlePostUpsert($ctx);
+        break;
+    case 'posts.delete':
+        handlePostDelete($ctx);
+        break;
+    case 'members.list':
+        handleMembersList($ctx);
+        break;
+    case 'members.decide':
+        handleMemberDecide($ctx);
+        break;
+    case 'subscriptions.list':
+        handleListJson(subscriptionsPath($ctx['userDir']), 'subscriptions');
+        break;
+    case 'subscriptions.upsert':
+        handleSubscriptionUpsert($ctx);
+        break;
+    case 'subscriptions.delete':
+        handleSubscriptionDelete($ctx);
+        break;
+    case 'space.request':
+        handleSpaceRequest($ctx);
+        break;
+    case 'space.feed':
+        handleSpaceFeed($ctx);
         break;
     default:
         fail(404, 'unknown action');
@@ -1286,9 +1425,24 @@ function deleteTree(string $dir): void {
  * What this deliberately does NOT touch is storage/audio/{voice}/… — the verse
  * narration cache is keyed by (voice, translation, reference) and shared by
  * every user. It holds nothing personal, and clearing it would throw away
- * generation other people already paid for.
+ * generation other people already paid for. Avatars are left for the same
+ * reason: content-addressed and possibly shared with another user.
+ *
+ * Nor does it touch the client's own copy of the user's writing. Deleting the
+ * server account removes what was shared, not what was written — see
+ * LocalPost.shared in src/db/dexie.ts.
  */
 function handleAccountDelete(array $ctx): void {
+    // Share codes live outside the user directory, so the tree delete below
+    // would leave them resolving to a userId with no data behind it. Retire
+    // them first — that is also what revokes every subscriber.
+    foreach (readJsonArrayFile(spacesPath($ctx['userDir'])) as $space) {
+        $code = is_array($space) ? ($space['shareCode'] ?? null) : null;
+        if (is_string($code) && preg_match('/^[0-9A-HJKMNP-TV-Z]{16}$/', $code)) {
+            @unlink(sharePath($code));
+        }
+    }
+
     deleteTree($ctx['userDir']);
     deleteTree(AUDIO_DIR . '/recordings/' . $ctx['userId']);
 
@@ -1388,4 +1542,668 @@ function handleOpenAiKeyClear(array $ctx): void {
     $f = $ctx['userDir'] . '/openai_key.txt';
     if (file_exists($f)) @unlink($f);
     respond(200, ['hasKey' => false]);
+}
+
+// ---------- community spaces ------------------------------------------------
+//
+// The first cross-user surface in this file. Two rules hold it together:
+//
+//  1. **A share code is the only way to name a space.** No action takes a
+//     target userId — the caller supplies a code, and SHARES_DIR resolves it.
+//     That keeps uuids (which are valid X-User-Id values) out of the API.
+//  2. **Nothing user-authored is echoed verbatim to another user.** Every
+//     record that crosses between accounts goes through a sanitize* function
+//     that whitelists fields, so one person cannot inject arbitrary JSON into
+//     somebody else's client. For posts that whitelist is also enforced by the
+//     signature: the client signs exactly the fields kept here, so dropping or
+//     mangling one is detected rather than silently accepted.
+//
+// What this cannot do is prove the *content* is genuine — that is the client's
+// signature check (src/lib/postSignature.ts). PHP holds no private key, so it
+// stores signatures and never mints them.
+
+function profilePath(string $userDir): string { return $userDir . '/profile.json'; }
+function spacesPath(string $userDir): string { return $userDir . '/spaces.json'; }
+function membersPath(string $userDir): string { return $userDir . '/members.json'; }
+function subscriptionsPath(string $userDir): string { return $userDir . '/subscriptions.json'; }
+function spacePostsPath(string $userDir, string $spaceId): string {
+    return $userDir . '/posts/' . $spaceId . '.json';
+}
+
+/** Read a single JSON object file (the profile), or null. */
+function readJsonObjectFile(string $path): ?array {
+    if (!file_exists($path)) return null;
+    $raw = @file_get_contents($path);
+    if (!$raw) return null;
+    $obj = json_decode($raw, true);
+    return is_array($obj) ? $obj : null;
+}
+
+function sanitizeProfile(array $p): array {
+    $key = safeString($p['authorKey'] ?? '', 128);
+    if (!preg_match('/^[0-9a-f]{64}$/i', $key)) fail(400, 'invalid authorKey');
+    return [
+        'displayName' => safeString($p['displayName'] ?? '', 120),
+        'bio' => optString($p['bio'] ?? null, 500),
+        'avatarUrl' => optString($p['avatarUrl'] ?? null, 500),
+        'authorKey' => strtolower($key),
+        'updatedAt' => safeInt($p['updatedAt'] ?? 0),
+    ];
+}
+
+function sanitizeSpace(array $sp): array {
+    $kind = ($sp['kind'] ?? '') === 'today' ? 'today' : 'custom';
+    $approval = ($sp['approval'] ?? '') === 'auto' ? 'auto' : 'manual';
+    $hours = isset($sp['ephemeralHours']) && is_numeric($sp['ephemeralHours'])
+        ? max(0, (int)$sp['ephemeralHours'])
+        : null;
+    return [
+        'id' => safeUuid($sp['id'] ?? '', 'space id'),
+        'name' => safeString($sp['name'] ?? '', 120),
+        'emoji' => optString($sp['emoji'] ?? null, 16),
+        'description' => optString($sp['description'] ?? null, 500),
+        'kind' => $kind,
+        'ephemeralHours' => $hours,
+        'approval' => $approval,
+        'shareCode' => optString($sp['shareCode'] ?? null, 32),
+        'createdAt' => safeInt($sp['createdAt'] ?? 0),
+        'updatedAt' => safeInt($sp['updatedAt'] ?? 0),
+    ];
+}
+
+/**
+ * Whitelist a post.
+ *
+ * Every field here except `createdAt` is covered by the client's signature, so
+ * this function is not merely defensive — getting it wrong would make honest
+ * posts fail verification on the reader's device.
+ */
+function sanitizePost(array $po): array {
+    $lang = ($po['language'] ?? '') === 'de' ? 'de' : 'en';
+    $sig = optString($po['signature'] ?? null, 256);
+    $key = optString($po['authorKey'] ?? null, 128);
+    if ($sig !== null && !preg_match('/^[0-9a-f]{128}$/i', $sig)) fail(400, 'invalid signature');
+    if ($key !== null && !preg_match('/^[0-9a-f]{64}$/i', $key)) fail(400, 'invalid authorKey');
+    return [
+        'id' => safeUuid($po['id'] ?? '', 'post id'),
+        'spaceId' => safeUuid($po['spaceId'] ?? '', 'space id'),
+        'title' => safeString($po['title'] ?? '', 200),
+        'body' => safeString($po['body'] ?? '', MAX_POST_BYTES),
+        'language' => $lang,
+        'publishedAt' => safeInt($po['publishedAt'] ?? 0),
+        'createdAt' => safeInt($po['createdAt'] ?? 0),
+        'updatedAt' => safeInt($po['updatedAt'] ?? 0),
+        'signature' => $sig === null ? null : strtolower($sig),
+        'authorKey' => $key === null ? null : strtolower($key),
+        'sigVersion' => optString($po['sigVersion'] ?? null, 32),
+    ];
+}
+
+function sanitizeSubscription(array $su): array {
+    $status = in_array($su['status'] ?? '', ['pending', 'accepted', 'revoked'], true)
+        ? $su['status'] : 'pending';
+    return [
+        'code' => normalizeShareCode($su['code'] ?? ''),
+        'spaceName' => safeString($su['spaceName'] ?? '', 120),
+        'spaceEmoji' => optString($su['spaceEmoji'] ?? null, 16),
+        'ownerName' => safeString($su['ownerName'] ?? '', 120),
+        'ownerAvatarUrl' => optString($su['ownerAvatarUrl'] ?? null, 500),
+        'status' => $status,
+        'pinnedKey' => safeString($su['pinnedKey'] ?? '', 128),
+        'keyPinnedAt' => safeInt($su['keyPinnedAt'] ?? 0),
+        'addedAt' => safeInt($su['addedAt'] ?? 0),
+        'updatedAt' => safeInt($su['updatedAt'] ?? 0),
+    ];
+}
+
+/**
+ * Crockford base32, 16 characters — see src/lib/spaceCode.ts, which mints them.
+ * The alphabet excludes I, L, O and U, so this also rejects anything that
+ * could be a path segment surprise.
+ */
+function normalizeShareCode(mixed $v): string {
+    $code = strtoupper(safeString($v, 32));
+    if (!preg_match('/^[0-9A-HJKMNP-TV-Z]{16}$/', $code)) fail(400, 'invalid share code');
+    return $code;
+}
+
+function sharePath(string $code): string { return SHARES_DIR . '/' . $code . '.json'; }
+
+/** Resolve a share code to its owner and space, or fail 404. */
+function resolveShareCode(string $code): array {
+    $rec = readJsonObjectFile(sharePath($code));
+    $userId = is_array($rec) ? (string)($rec['userId'] ?? '') : '';
+    $spaceId = is_array($rec) ? (string)($rec['spaceId'] ?? '') : '';
+    // Re-validate on the way out: these were written by an earlier request and
+    // are about to become a filesystem path.
+    if (!preg_match('/^[0-9a-f-]{36}$/i', $userId) || !preg_match('/^[0-9a-fA-F-]{36}$/', $spaceId)) {
+        fail(404, 'unknown share code');
+    }
+    $userDir = USERS_DIR . '/' . $userId;
+    if (!is_dir($userDir)) fail(404, 'unknown share code');
+    return ['userId' => $userId, 'spaceId' => $spaceId, 'userDir' => $userDir];
+}
+
+function findById(array $items, string $id): ?array {
+    foreach ($items as $it) {
+        if (is_array($it) && ($it['id'] ?? null) === $id) return $it;
+    }
+    return null;
+}
+
+/**
+ * Drop items older than the space's window.
+ *
+ * Called on every read *and* every write of an ephemeral space, so "Today"
+ * cannot accumulate and a subscriber cannot be served yesterday's items even
+ * if the author has not opened the app since. The client filters by timestamp
+ * as well, which is what stops a stale local cache showing an expired item.
+ */
+function pruneExpired(array $posts, ?int $hours): array {
+    if (!$hours || $hours <= 0) return $posts;
+    $cutoff = (time() - $hours * 3600) * 1000;
+    return array_values(array_filter(
+        $posts,
+        fn($p) => is_array($p) && (int)($p['publishedAt'] ?? 0) >= $cutoff,
+    ));
+}
+
+/**
+ * Cheap sanity check that a post is signed by the key it claims.
+ *
+ * Defence in depth only: it rejects malformed or truncated writes, and proves
+ * nothing whatever about identity — the server cannot know which key belongs to
+ * whom, which is exactly why the client pins one per space. Guarded on the
+ * sodium extension so a host without it still works; the client verifies
+ * regardless and is the authority.
+ */
+function verifyPostSignature(array $post): bool {
+    // The *shape* is required either way: a published post with no signature is
+    // one no reader could ever accept, so storing it would only waste a round
+    // trip and confuse the author about what their subscribers can see.
+    if (!$post['signature'] || !$post['authorKey'] || $post['sigVersion'] !== 'ba.post.v1') return false;
+    if (!function_exists('sodium_crypto_sign_verify_detached')) return true;
+    $message = implode("\n", [
+        'ba.post.v1',
+        strtolower((string)$post['authorKey']),
+        (string)$post['spaceId'],
+        (string)$post['id'],
+        (string)(int)$post['publishedAt'],
+        (string)(int)$post['updatedAt'],
+        (string)$post['language'],
+        hash('sha256', (string)$post['title']),
+        hash('sha256', (string)$post['body']),
+    ]);
+    try {
+        return sodium_crypto_sign_verify_detached(
+            hex2bin((string)$post['signature']),
+            $message,
+            hex2bin((string)$post['authorKey']),
+        );
+    } catch (\Throwable) {
+        return false;
+    }
+}
+
+/** The subset of a profile another user may see. */
+function publicProfileOf(string $userDir): array {
+    $p = readJsonObjectFile(profilePath($userDir)) ?? [];
+    return [
+        'displayName' => (string)($p['displayName'] ?? ''),
+        'bio' => isset($p['bio']) ? (string)$p['bio'] : null,
+        'avatarUrl' => isset($p['avatarUrl']) ? (string)$p['avatarUrl'] : null,
+        'authorKey' => strtolower((string)($p['authorKey'] ?? '')),
+    ];
+}
+
+/** The subset of a space another user may see. */
+function publicSpaceOf(array $space): array {
+    return [
+        'id' => (string)$space['id'],
+        'name' => (string)($space['name'] ?? ''),
+        'emoji' => $space['emoji'] ?? null,
+        'description' => $space['description'] ?? null,
+        'ephemeralHours' => $space['ephemeralHours'] ?? null,
+    ];
+}
+
+// ---------- community: the owner's own data ---------------------------------
+
+function handleProfileGet(array $ctx): void {
+    respond(200, ['profile' => readJsonObjectFile(profilePath($ctx['userDir']))]);
+}
+
+function handleProfileSet(array $ctx): void {
+    $body = readJsonBody();
+    if (!is_array($body['profile'] ?? null)) fail(400, 'profile required');
+    $profile = sanitizeProfile($body['profile']);
+    writeJsonFile(profilePath($ctx['userDir']), $profile);
+    respond(200, ['profile' => $profile]);
+}
+
+/**
+ * Leaving the community: drop the profile, the spaces, every post and every
+ * share code, but leave the account itself (cards, lists, the identity) alone.
+ *
+ * The client keeps its local copies — see LocalPost.shared in db/dexie.ts —
+ * so this removes the shared copy, not the writing.
+ */
+function handleProfileDelete(array $ctx): void {
+    foreach (readJsonArrayFile(spacesPath($ctx['userDir'])) as $space) {
+        $code = is_array($space) ? ($space['shareCode'] ?? null) : null;
+        if (is_string($code) && preg_match('/^[0-9A-HJKMNP-TV-Z]{16}$/', $code)) {
+            @unlink(sharePath($code));
+        }
+    }
+    deleteTree($ctx['userDir'] . '/posts');
+    foreach ([profilePath($ctx['userDir']), spacesPath($ctx['userDir']), membersPath($ctx['userDir'])] as $f) {
+        if (file_exists($f)) @unlink($f);
+    }
+    respond(200, ['deleted' => true]);
+}
+
+function handleSpaceUpsert(array $ctx): void {
+    $body = readJsonBody();
+    if (!is_array($body['space'] ?? null)) fail(400, 'space required');
+    $space = sanitizeSpace($body['space']);
+    $path = spacesPath($ctx['userDir']);
+    $spaces = readJsonArrayFile($path);
+
+    $found = false;
+    foreach ($spaces as $i => $existing) {
+        if (is_array($existing) && ($existing['id'] ?? null) === $space['id']) {
+            // shareCode is owned by spaces.code.set, never by a plain upsert —
+            // otherwise a stale client could resurrect a revoked code.
+            $space['shareCode'] = $existing['shareCode'] ?? null;
+            $spaces[$i] = $space;
+            $found = true;
+            break;
+        }
+    }
+    if (!$found) {
+        if (count($spaces) >= MAX_SPACES_PER_USER) fail(409, 'too many spaces');
+        $space['shareCode'] = null;
+        $spaces[] = $space;
+    }
+
+    writeJsonFile($path, $spaces);
+    respond(200, ['spaces' => $spaces]);
+}
+
+function handleSpaceDelete(array $ctx): void {
+    $body = readJsonBody();
+    $id = safeUuid($body['id'] ?? '', 'space id');
+    $path = spacesPath($ctx['userDir']);
+    $spaces = readJsonArrayFile($path);
+
+    $gone = findById($spaces, $id);
+    $code = is_array($gone) ? ($gone['shareCode'] ?? null) : null;
+    if (is_string($code) && preg_match('/^[0-9A-HJKMNP-TV-Z]{16}$/', $code)) {
+        @unlink(sharePath($code));
+    }
+
+    $spaces = array_values(array_filter(
+        $spaces,
+        fn($sp) => is_array($sp) && ($sp['id'] ?? null) !== $id,
+    ));
+    writeJsonFile($path, $spaces);
+
+    // The posts and the subscriber list have no meaning without the space.
+    $postsFile = spacePostsPath($ctx['userDir'], $id);
+    if (file_exists($postsFile)) @unlink($postsFile);
+    $members = array_values(array_filter(
+        readJsonArrayFile(membersPath($ctx['userDir'])),
+        fn($m) => is_array($m) && ($m['spaceId'] ?? null) !== $id,
+    ));
+    writeJsonFile(membersPath($ctx['userDir']), $members);
+
+    respond(200, ['spaces' => $spaces]);
+}
+
+/**
+ * Point a share code at one of the caller's spaces, replacing any previous one.
+ *
+ * The code is minted client-side because it embeds a fingerprint of the
+ * author's public key (src/lib/spaceCode.ts) — the server has no key material
+ * and could not produce one. All this does is publish the mapping and retire
+ * the old code, which is what revokes every existing subscriber.
+ */
+function handleSpaceCodeSet(array $ctx): void {
+    $body = readJsonBody();
+    $spaceId = safeUuid($body['spaceId'] ?? '', 'space id');
+    $code = normalizeShareCode($body['code'] ?? '');
+
+    $path = spacesPath($ctx['userDir']);
+    $spaces = readJsonArrayFile($path);
+    $target = findById($spaces, $spaceId);
+    if ($target === null) fail(404, 'unknown space');
+
+    // A collision would silently hand somebody else's subscribers to this
+    // space. 50 bits makes it vanishingly unlikely; the client retries.
+    $existing = readJsonObjectFile(sharePath($code));
+    if (is_array($existing) && (string)($existing['userId'] ?? '') !== $ctx['userId']) {
+        fail(409, 'code already in use');
+    }
+
+    $previous = $target['shareCode'] ?? null;
+    if (is_string($previous) && $previous !== $code
+        && preg_match('/^[0-9A-HJKMNP-TV-Z]{16}$/', $previous)) {
+        @unlink(sharePath($previous));
+    }
+
+    writeJsonFile(sharePath($code), [
+        'userId' => $ctx['userId'],
+        'spaceId' => $spaceId,
+        'createdAt' => (int)(microtime(true) * 1000),
+    ]);
+
+    foreach ($spaces as $i => $sp) {
+        if (is_array($sp) && ($sp['id'] ?? null) === $spaceId) {
+            $spaces[$i]['shareCode'] = $code;
+            break;
+        }
+    }
+    writeJsonFile($path, $spaces);
+
+    // Rotating a code revokes access, so the old subscriber list is stale.
+    if (is_string($previous) && $previous !== $code) {
+        $members = array_values(array_filter(
+            readJsonArrayFile(membersPath($ctx['userDir'])),
+            fn($m) => is_array($m) && ($m['spaceId'] ?? null) !== $spaceId,
+        ));
+        writeJsonFile(membersPath($ctx['userDir']), $members);
+    }
+
+    respond(200, ['spaces' => $spaces]);
+}
+
+function handlePostsList(array $ctx): void {
+    $body = readJsonBody();
+    $spaceId = safeUuid($body['spaceId'] ?? '', 'space id');
+    $space = findById(readJsonArrayFile(spacesPath($ctx['userDir'])), $spaceId);
+    $path = spacePostsPath($ctx['userDir'], $spaceId);
+    $posts = readJsonArrayFile($path);
+
+    $pruned = pruneExpired($posts, is_array($space) ? ($space['ephemeralHours'] ?? null) : null);
+    if (count($pruned) !== count($posts)) writeJsonFile($path, $pruned);
+
+    respond(200, ['posts' => $pruned]);
+}
+
+function handlePostUpsert(array $ctx): void {
+    $body = readJsonBody();
+    if (!is_array($body['post'] ?? null)) fail(400, 'post required');
+    $post = sanitizePost($body['post']);
+    if ($post['publishedAt'] <= 0) fail(400, 'cannot publish a draft');
+    if (!verifyPostSignature($post)) fail(400, 'post signature does not verify');
+
+    $space = findById(readJsonArrayFile(spacesPath($ctx['userDir'])), $post['spaceId']);
+    if ($space === null) fail(404, 'unknown space');
+
+    $path = spacePostsPath($ctx['userDir'], $post['spaceId']);
+    $posts = pruneExpired(readJsonArrayFile($path), $space['ephemeralHours'] ?? null);
+
+    $found = false;
+    foreach ($posts as $i => $existing) {
+        if (is_array($existing) && ($existing['id'] ?? null) === $post['id']) {
+            $posts[$i] = $post;
+            $found = true;
+            break;
+        }
+    }
+    if (!$found) {
+        if (count($posts) >= MAX_POSTS_PER_SPACE) fail(409, 'too many posts in this space');
+        $posts[] = $post;
+    }
+
+    writeJsonFile($path, $posts);
+    respond(200, ['posts' => $posts]);
+}
+
+function handlePostDelete(array $ctx): void {
+    $body = readJsonBody();
+    $id = safeUuid($body['id'] ?? '', 'post id');
+    $spaceId = safeUuid($body['spaceId'] ?? '', 'space id');
+    $path = spacePostsPath($ctx['userDir'], $spaceId);
+    $posts = array_values(array_filter(
+        readJsonArrayFile($path),
+        fn($p) => is_array($p) && ($p['id'] ?? null) !== $id,
+    ));
+    writeJsonFile($path, $posts);
+    respond(200, ['posts' => $posts]);
+}
+
+function handleMembersList(array $ctx): void {
+    respond(200, ['members' => readJsonArrayFile(membersPath($ctx['userDir']))]);
+}
+
+/**
+ * Accept or block one subscriber. The only writer of a membership `status`, and
+ * only ever the space's owner — a requester can create a row but never decide
+ * about it.
+ */
+function handleMemberDecide(array $ctx): void {
+    $body = readJsonBody();
+    $userId = safeString($body['userId'] ?? '', 64);
+    if (!preg_match('/^[0-9a-f-]{36}$/i', $userId)) fail(400, 'invalid userId');
+    $spaceId = safeUuid($body['spaceId'] ?? '', 'space id');
+    $status = $body['status'] ?? '';
+    if (!in_array($status, ['accepted', 'blocked'], true)) fail(400, 'invalid status');
+
+    $path = membersPath($ctx['userDir']);
+    $members = readJsonArrayFile($path);
+    $found = false;
+    foreach ($members as $i => $m) {
+        if (is_array($m) && ($m['userId'] ?? null) === $userId && ($m['spaceId'] ?? null) === $spaceId) {
+            $members[$i]['status'] = $status;
+            $members[$i]['decidedAt'] = (int)(microtime(true) * 1000);
+            $found = true;
+            break;
+        }
+    }
+    if (!$found) fail(404, 'unknown member');
+
+    writeJsonFile($path, $members);
+    respond(200, ['members' => $members]);
+}
+
+function handleSubscriptionUpsert(array $ctx): void {
+    $body = readJsonBody();
+    if (!is_array($body['subscription'] ?? null)) fail(400, 'subscription required');
+    $sub = sanitizeSubscription($body['subscription']);
+    $path = subscriptionsPath($ctx['userDir']);
+    $subs = readJsonArrayFile($path);
+
+    $found = false;
+    foreach ($subs as $i => $existing) {
+        if (is_array($existing) && ($existing['code'] ?? null) === $sub['code']) {
+            $subs[$i] = $sub;
+            $found = true;
+            break;
+        }
+    }
+    if (!$found) {
+        if (count($subs) >= MAX_SUBSCRIPTIONS_PER_USER) fail(409, 'too many subscriptions');
+        $subs[] = $sub;
+    }
+
+    writeJsonFile($path, $subs);
+    respond(200, ['subscriptions' => $subs]);
+}
+
+function handleSubscriptionDelete(array $ctx): void {
+    $body = readJsonBody();
+    $code = normalizeShareCode($body['code'] ?? '');
+    $path = subscriptionsPath($ctx['userDir']);
+    $subs = array_values(array_filter(
+        readJsonArrayFile($path),
+        fn($s) => is_array($s) && ($s['code'] ?? null) !== $code,
+    ));
+    writeJsonFile($path, $subs);
+    respond(200, ['subscriptions' => $subs]);
+}
+
+// ---------- community: across accounts --------------------------------------
+
+/**
+ * Ask to read a space. The one cross-user *write* in this file.
+ *
+ * Constrained on every side: the caller is authenticated, the row it appends
+ * carries the caller's own authenticated userId and nothing it chose, the code
+ * must already resolve, the owner's directory is never created, and a
+ * requester can never set its own status — `auto` approval is the space's
+ * setting, read from the owner's own file.
+ *
+ * Requiring the caller's profile to exist is the server-side half of "a
+ * profile is the one community opt-in": without it there would be no name to
+ * show the owner when they decide.
+ */
+function handleSpaceRequest(array $ctx): void {
+    $body = readJsonBody();
+    $code = normalizeShareCode($body['code'] ?? '');
+
+    $me = readJsonObjectFile(profilePath($ctx['userDir']));
+    if ($me === null) fail(403, 'profile_required');
+
+    $target = resolveShareCode($code);
+    $space = findById(readJsonArrayFile(spacesPath($target['userDir'])), $target['spaceId']);
+    if ($space === null) fail(404, 'unknown share code');
+
+    $path = membersPath($target['userDir']);
+    $members = readJsonArrayFile($path);
+
+    $now = (int)(microtime(true) * 1000);
+    $auto = ($space['approval'] ?? 'manual') === 'auto';
+    $status = $auto ? 'accepted' : 'pending';
+
+    $found = false;
+    foreach ($members as $i => $m) {
+        if (!is_array($m)) continue;
+        if (($m['userId'] ?? null) !== $ctx['userId'] || ($m['spaceId'] ?? null) !== $target['spaceId']) continue;
+        // Re-asking refreshes the name snapshot but never the decision: a
+        // blocked subscriber cannot clear their own block by asking again.
+        $members[$i]['displayName'] = (string)($me['displayName'] ?? '');
+        $members[$i]['avatarUrl'] = isset($me['avatarUrl']) ? (string)$me['avatarUrl'] : null;
+        $status = (string)($m['status'] ?? $status);
+        $found = true;
+        break;
+    }
+    if (!$found) {
+        if (count($members) >= MAX_MEMBERS_PER_SPACE) fail(409, 'this space has too many subscribers');
+        $members[] = [
+            'userId' => $ctx['userId'],
+            'spaceId' => $target['spaceId'],
+            'status' => $status,
+            'displayName' => (string)($me['displayName'] ?? ''),
+            'avatarUrl' => isset($me['avatarUrl']) ? (string)$me['avatarUrl'] : null,
+            'requestedAt' => $now,
+            'decidedAt' => $auto ? $now : null,
+        ];
+    }
+    writeJsonFile($path, $members);
+
+    respond(200, [
+        'status' => $status,
+        'space' => publicSpaceOf($space),
+        'owner' => publicProfileOf($target['userDir']),
+    ]);
+}
+
+/**
+ * Read a space's posts. The one cross-user *read*.
+ *
+ * Answers only for an accepted member, and answers with projections rather
+ * than the stored records. Each post keeps its signature intact so the
+ * subscriber's client can verify it against the key it pinned — this endpoint
+ * is not trusted, and is not asking to be.
+ */
+function handleSpaceFeed(array $ctx): void {
+    $body = readJsonBody();
+    $code = normalizeShareCode($body['code'] ?? '');
+    $target = resolveShareCode($code);
+
+    $space = findById(readJsonArrayFile(spacesPath($target['userDir'])), $target['spaceId']);
+    if ($space === null) fail(404, 'unknown share code');
+
+    $status = 'pending';
+    foreach (readJsonArrayFile(membersPath($target['userDir'])) as $m) {
+        if (!is_array($m)) continue;
+        if (($m['userId'] ?? null) === $ctx['userId'] && ($m['spaceId'] ?? null) === $target['spaceId']) {
+            $status = (string)($m['status'] ?? 'pending');
+            break;
+        }
+    }
+    if ($status !== 'accepted') {
+        // Deliberately not a 403: "waiting for approval" is a normal state the
+        // client shows, and a blocked reader learns no more than a pending one.
+        respond(200, [
+            'status' => $status,
+            'space' => publicSpaceOf($space),
+            'owner' => publicProfileOf($target['userDir']),
+            'posts' => [],
+        ]);
+    }
+
+    $path = spacePostsPath($target['userDir'], $target['spaceId']);
+    $posts = readJsonArrayFile($path);
+    $pruned = pruneExpired($posts, $space['ephemeralHours'] ?? null);
+    if (count($pruned) !== count($posts)) writeJsonFile($path, $pruned);
+
+    usort($pruned, fn($a, $b) => (int)($b['publishedAt'] ?? 0) <=> (int)($a['publishedAt'] ?? 0));
+
+    respond(200, [
+        'status' => 'accepted',
+        'space' => publicSpaceOf($space),
+        'owner' => publicProfileOf($target['userDir']),
+        'posts' => array_slice($pruned, 0, MAX_FEED_POSTS),
+    ]);
+}
+
+/**
+ * Store a profile picture, content-addressed.
+ *
+ * Modelled on handleRecordingUpload, with two differences that matter:
+ *
+ *  - the size cap is enforced *here*, not left to php.ini. Nothing in this
+ *    repo sets upload_max_filesize, so on an unknown host there may be no
+ *    limit at all;
+ *  - the type is decided by getimagesize() reading the actual bytes, never by
+ *    the client's filename or Content-Type, and the stored name is a sha256 of
+ *    the content. So a caller cannot choose where the file lands or what
+ *    extension it gets.
+ *
+ * Content addressing also means re-uploading the same picture is free and two
+ * users with the same avatar share one file.
+ */
+function handleAvatarUpload(array $ctx): void {
+    $file = $_FILES['avatar'] ?? null;
+    if (!is_array($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        fail(400, 'no avatar uploaded');
+    }
+    if ((int)($file['size'] ?? 0) > MAX_AVATAR_BYTES) fail(413, 'avatar too large');
+
+    $tmp = (string)($file['tmp_name'] ?? '');
+    if (!is_uploaded_file($tmp)) fail(400, 'no avatar uploaded');
+    if (filesize($tmp) > MAX_AVATAR_BYTES) fail(413, 'avatar too large');
+
+    $info = @getimagesize($tmp);
+    $ext = match ($info === false ? 0 : ($info[2] ?? 0)) {
+        IMAGETYPE_JPEG => 'jpg',
+        IMAGETYPE_PNG => 'png',
+        IMAGETYPE_WEBP => 'webp',
+        default => null,
+    };
+    if ($ext === null) fail(400, 'unsupported image type');
+
+    $hash = hash_file('sha256', $tmp);
+    if ($hash === false) fail(500, 'could not read upload');
+    $name = "{$hash}.{$ext}";
+    $dest = AVATARS_DIR . '/' . $name;
+
+    if (!file_exists($dest) && !move_uploaded_file($tmp, $dest)) {
+        fail(500, 'failed to save avatar');
+    }
+    @chmod($dest, 0644);
+
+    respond(200, ['avatarUrl' => BASE_PATH . '/storage/avatars/' . $name]);
 }

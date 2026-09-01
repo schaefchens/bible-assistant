@@ -31,7 +31,8 @@ export function ReaderFooter({ onStep }: Props) {
 
   const prev = sequence.prev(position);
   const next = sequence.next(position);
-  const inList = source.kind === 'list';
+  // Three sources, three ways to say "there is nothing before/after this".
+  const edge = source.kind === 'list' ? 'List' : source.kind === 'space' ? 'Space' : 'Bible';
 
   return (
     <nav
@@ -43,14 +44,14 @@ export function ReaderFooter({ onStep }: Props) {
         onClick={() => onStep(-1)}
         aria-label={t('read.prevChapter') as string}
       >
-        {prev ? <>← {formatSegment(prev, lang)}</> : t(inList ? 'read.startOfList' : 'read.startOfBible')}
+        {prev ? <>← {formatSegment(prev, lang)}</> : t(`read.startOf${edge}`)}
       </StepButton>
       <StepButton
         disabled={!next || loading}
         onClick={() => onStep(1)}
         aria-label={t('read.nextChapter') as string}
       >
-        {next ? <>{formatSegment(next, lang)} →</> : t(inList ? 'read.endOfList' : 'read.endOfBible')}
+        {next ? <>{formatSegment(next, lang)} →</> : t(`read.endOf${edge}`)}
       </StepButton>
     </nav>
   );

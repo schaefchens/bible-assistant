@@ -10,6 +10,7 @@ import { ReadingSurface } from '@/components/reader/ReadingSurface';
 import { useAutoScrollActiveVerse } from '@/hooks/useAutoScrollActiveVerse';
 import { useEndlessChapters } from '@/hooks/useEndlessChapters';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
+import { useCommunityStore } from '@/store/communityStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useReaderStore } from '@/store/readerStore';
@@ -60,11 +61,16 @@ export function ReadPage() {
   // against the list, and the lists arrive from Dexie a tick later. Opening
   // early read a stale persisted ref and briefly navigated canonically.
   const libraryReady = useLibraryStore((s) => s.initialized);
-  const waitingForLists = source.kind === 'list' && !libraryReady;
+  const communityReady = useCommunityStore((s) => s.initialized);
+  // A space-sourced reader has the same boot race as a list-sourced one: its
+  // posts arrive from Dexie asynchronously, and opening before they land looks
+  // exactly like an unsubscribed space.
+  const waitingForSource =
+    (source.kind === 'list' && !libraryReady) || (source.kind === 'space' && !communityReady);
   useEffect(() => {
-    if (waitingForLists) return;
+    if (waitingForSource) return;
     void ensureOpen();
-  }, [ensureOpen, waitingForLists]);
+  }, [ensureOpen, waitingForSource]);
 
   /**
    * A translation switch invalidates every reader group, because the group id
@@ -175,7 +181,13 @@ export function ReadPage() {
         {endless && !canLoadNext && visible.length > 0 && (
           <p className="py-6 text-center text-ink-muted text-sm">
             {/* A list ends; the Bible runs out. Different facts, different words. */}
-            {source.kind === 'list' ? t('read.endOfList') : t('read.endOfBible')}
+            {t(
+              source.kind === 'list'
+                ? 'read.endOfList'
+                : source.kind === 'space'
+                  ? 'read.endOfSpace'
+                  : 'read.endOfBible',
+            )}
           </p>
         )}
       </ReadingSurface>

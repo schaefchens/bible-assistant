@@ -11,6 +11,14 @@ type Props = {
   current: boolean;
   /** Tick it off. Omit to render the box as a plain indicator. */
   onToggle?: () => void;
+  /**
+   * Drop the completion indicator altogether.
+   *
+   * For a community space: there is no per-passage completion to show there
+   * (unread is a dot, not a tick), and an empty checkbox invites a tap that
+   * would do nothing.
+   */
+  showDone?: boolean;
   /** The row's main action — open or read this passage. */
   onOpen: () => void;
   /** Row-end controls (play, reorder, remove). */
@@ -32,6 +40,7 @@ export function PassageRow({
   onToggle,
   onOpen,
   trailing,
+  showDone = true,
 }: Props) {
   const { t } = useTranslation();
   return (
@@ -41,7 +50,7 @@ export function PassageRow({
         current ? 'bg-brand/10 ring-1 ring-brand/30' : 'hover:bg-surface-raised/40',
       )}
     >
-      {onToggle ? (
+      {!showDone ? null : onToggle ? (
         <button
           type="button"
           onClick={onToggle}

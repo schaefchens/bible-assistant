@@ -1,5 +1,11 @@
 import { create } from 'zustand';
 import { db } from '@/db/dexie';
+import {
+  flushCommunityOp,
+  isCommunityOp,
+  pullCommunity,
+  seedCommunityQueue,
+} from '@/services/community/communitySync';
 import type {
   Card,
   Board,
@@ -51,6 +57,10 @@ type LibraryState = {
   activeBoardId: string | null;
   online: boolean;
   pendingOps: number;
+  /** Re-read the queue length. For writers outside this store (communityStore),
+   * which enqueue through syncQueueManager and so can't adjust the count
+   * inline the way the writers here do. */
+  refreshPendingOps: () => Promise<void>;
   initialized: boolean;
   init: () => Promise<void>;
   upsertCard: (card: Card) => Promise<void>;
@@ -96,6 +106,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   activeBoardId: null,
   online: typeof navigator !== 'undefined' ? navigator.onLine : true,
   pendingOps: 0,
+  refreshPendingOps: async () => {
+    set({ pendingOps: await db.syncQueue.count() });
+  },
   initialized: false,
 
   init: async () => {
@@ -377,6 +390,17 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const ops = await db.syncQueue.orderBy('createdAt').toArray();
     for (const op of ops) {
       try {
+        // Community ops (profile, spaces, posts, subscriptions, memberships)
+        // route through one table in services/community/communitySync.ts
+        // rather than growing this switch by ten cases. They still travel on
+        // this queue and through this flush, so `syncEnabled` keeps gating
+        // them and the retry/drop handling below is unchanged.
+        if (isCommunityOp(op.op)) {
+          await flushCommunityOp(op.op, op.payload);
+          await db.syncQueue.delete(op.id!);
+          set((s) => ({ pendingOps: Math.max(0, s.pendingOps - 1) }));
+          continue;
+        }
         switch (op.op) {
           case 'card.upsert': {
             await apiPostJson('cards.upsert', { card: op.payload });
@@ -645,6 +669,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       activeBoardId: nextActive,
     });
     void expandStoredSpans();
+
+    // Community spaces ride along on this one read path so `syncEnabled` keeps
+    // gating them. Swallowed on failure for the same reason the reading-list
+    // requests above are: an api.php that predates this feature answers
+    // "unknown action", and that must not cost the user their cards.
+    // communityStore adopts the result through onCommunityPulled().
+    await pullCommunity().catch(() => {});
   },
 }));
 
@@ -736,6 +767,7 @@ async function seedSyncQueue(): Promise<void> {
     if (row.dirty !== 1) continue;
     await enqueueProgressSync(stripLocal(row));
   }
+  await seedCommunityQueue(enqueueOp);
 }
 
 function stripLocal<T extends { dirty?: number; deleted?: number }>(local: T): Omit<T, 'dirty' | 'deleted'> {

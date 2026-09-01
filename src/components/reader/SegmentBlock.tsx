@@ -6,15 +6,19 @@ import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { groupIntoParagraphs } from '@/lib/readerParagraphs';
 import { playFromVerseWord, startPlaybackForVerses } from '@/lib/startPlayback';
 import { formatRangeList, formatReference } from '@/services/bible/bookCatalog';
-import { isWholeChapter } from '@/services/reading/readingSequence';
+import { isPostSegment, isWholeChapter } from '@/services/reading/readingSequence';
 import type { LoadedSegment } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
 
 type Props = { segment: LoadedSegment };
 
 /**
- * One segment of flowing prose — a whole chapter, or the slice of one a
- * reading-list entry asked for.
+ * One segment of flowing prose — a whole chapter, the slice of one a
+ * reading-list entry asked for, or one user-written post.
+ *
+ * A post differs in exactly three ways, all of them because it is not
+ * scripture: its heading is its title, its paragraphs are the author's rather
+ * than inferred, and its units carry no verse numbers.
  *
  * Memoized on the `LoadedSegment` object identity (stable in the store), so
  * appending or prepending under endless scroll doesn't re-render what's already
@@ -25,7 +29,16 @@ export const SegmentBlock = memo(function SegmentBlock({ segment }: Props) {
   const lang: 'en' | 'de' = (i18n.language || 'en').startsWith('de') ? 'de' : 'en';
   const { ref, verses, id } = segment;
 
-  const paragraphs = useMemo(() => groupIntoParagraphs(verses), [verses]);
+  const isPost = isPostSegment(ref);
+
+  // A post's paragraphs are the author's own: `postToUnits` already produced one
+  // unit per authored paragraph, so grouping them again by the sentence
+  // heuristic would re-flow breaks somebody chose deliberately. That heuristic
+  // exists because *no* source bible carries paragraph markup — a post does.
+  const paragraphs = useMemo(
+    () => (isPost ? verses.map((_, i) => [i]) : groupIntoParagraphs(verses)),
+    [isPost, verses],
+  );
   const dualColumn = useSettingsStore((s) => s.readingAppearance.dualColumn);
 
   const handleWordTap = useCallback(
@@ -36,16 +49,21 @@ export const SegmentBlock = memo(function SegmentBlock({ segment }: Props) {
   );
 
   // A partial segment names its verses, because "Psalms 23" over six verses of
-  // a longer psalm would misdescribe what is on the page.
-  const heading = isWholeChapter(ref)
-    ? formatReference(ref.bookId, ref.chapter, undefined, undefined, lang)
-    : formatRangeList(ref.bookId, ref.chapter, ref.ranges ?? [], lang);
+  // a longer psalm would misdescribe what is on the page. A post's reference is
+  // its title — there is no book to name.
+  const heading = isPost
+    ? (ref.postTitle ?? verses[0]?.unit?.title ?? '')
+    : isWholeChapter(ref)
+      ? formatReference(ref.bookId, ref.chapter, undefined, undefined, lang)
+      : formatRangeList(ref.bookId, ref.chapter, ref.ranges ?? [], lang);
 
-  // The list's own words for this reading: the entry note, else the day.
-  const subheading =
-    ref.label ??
-    (ref.dayTitle ??
-      (ref.dayIndex === undefined ? undefined : t('lists.day', { number: ref.dayIndex + 1 })));
+  // Who wrote it, for a post; otherwise the list's own words for this reading:
+  // the entry note, else the day.
+  const subheading = isPost
+    ? (verses[0]?.unit?.author || undefined)
+    : (ref.label ??
+      (ref.dayTitle ??
+        (ref.dayIndex === undefined ? undefined : t('lists.day', { number: ref.dayIndex + 1 }))));
 
   return (
     // The generous bottom padding is the segment separator: together with the
@@ -63,8 +81,8 @@ export const SegmentBlock = memo(function SegmentBlock({ segment }: Props) {
         <span className="absolute right-0 bg-surface pl-3">
           <button
             type="button"
-            aria-label={t('read.playChapter') as string}
-            title={t('read.playChapter') as string}
+            aria-label={t(isPost ? 'read.playPost' : 'read.playChapter') as string}
+            title={t(isPost ? 'read.playPost' : 'read.playChapter') as string}
             onClick={() => {
               // The tap is the user gesture that unlocks audio on iOS;
               // startPlaybackForVerses calls ensureContext() synchronously.
@@ -97,6 +115,7 @@ export const SegmentBlock = memo(function SegmentBlock({ segment }: Props) {
                   onWordTap={handleWordTap}
                   layout="inline"
                   initial={verseIndex === 0}
+                  showNumber={!isPost}
                 />
               </span>
             ))}

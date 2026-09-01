@@ -2,11 +2,13 @@ import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { BookChapterPicker } from '@/components/chat/BookChapterPicker';
 import { playSegmentInReader } from '@/lib/readingListPlayback';
-import { BIBLE_SOURCE, formatSegment } from '@/services/reading/readingSequence';
+import { BIBLE_SOURCE, formatSegment, isPostSegment } from '@/services/reading/readingSequence';
+import { useCommunityStore } from '@/store/communityStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useReaderStore } from '@/store/readerStore';
 import { NarrationDownloadButton } from './NarrationDownloadButton';
+import { spaceDisplayName } from '@/services/community/spaceName';
 
 type Props = {
   /**
@@ -40,6 +42,15 @@ export function ReaderHeader({ onOpenTranslations, onOpenAppearance }: Props) {
   const listName = useLibraryStore((s) =>
     source.kind === 'list' ? s.readingLists.find((l) => l.id === source.listId)?.name : undefined,
   );
+  // The kicker above the title names whatever the reader is walking through, so
+  // a space belongs there for the same reason a reading list does.
+  const spaceName = useCommunityStore((s) => {
+    if (source.kind !== 'space') return undefined;
+    if (source.code) return s.subscriptions.find((x) => x.code === source.code)?.spaceName;
+    const own = s.spaces.find((x) => x.id === source.spaceId);
+    return own ? spaceDisplayName(own) : undefined;
+  });
+  const sourceName = listName ?? spaceName;
 
   const label = position ? formatSegment(position, lang) : t('read.title');
 
@@ -79,9 +90,9 @@ export function ReaderHeader({ onOpenTranslations, onOpenAppearance }: Props) {
             className="flex items-center gap-1.5 min-w-0 text-brand hover:text-brand-bright transition-colors"
           >
             <span className="min-w-0 text-left leading-tight">
-              {listName && (
+              {sourceName && (
                 <span className="block text-[10px] uppercase tracking-wider text-brand-muted truncate">
-                  {listName}
+                  {sourceName}
                 </span>
               )}
               <span className="block font-serif text-lg truncate">{label}</span>
@@ -94,19 +105,30 @@ export function ReaderHeader({ onOpenTranslations, onOpenAppearance }: Props) {
       <div className="flex items-center gap-1 shrink-0">
         {position && (
           <NarrationDownloadButton
-            translation={translation}
-            bookId={position.bookId}
-            chapter={position.chapter}
+            subject={
+              isPostSegment(position)
+                ? { kind: 'post', spaceId: position.spaceId!, postId: position.postId! }
+                : {
+                    kind: 'chapter',
+                    translation,
+                    bookId: position.bookId,
+                    chapter: position.chapter,
+                  }
+            }
           />
         )}
-        <button
-          type="button"
-          onClick={onOpenTranslations}
-          aria-label={t('read.switchTranslation') as string}
-          className="px-2 py-1 text-[10px] uppercase tracking-wider text-brand-muted hover:text-brand transition-colors"
-        >
-          {translation}
-        </button>
+        {/* A post has no translation to switch, and offering one would imply the
+            text could be re-rendered in another — it can't. */}
+        {!(position && isPostSegment(position)) && (
+          <button
+            type="button"
+            onClick={onOpenTranslations}
+            aria-label={t('read.switchTranslation') as string}
+            className="px-2 py-1 text-[10px] uppercase tracking-wider text-brand-muted hover:text-brand transition-colors"
+          >
+            {translation}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setEndless(!endless)}

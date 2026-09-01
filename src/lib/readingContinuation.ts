@@ -5,18 +5,32 @@ import { expandList } from '@/services/reading/readingSequence';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { Locale, VerseRange, VerseSummary } from '@/types/domain';
-import { readingHosts, type ListProvenance } from './readingHosts';
+import {
+  isListProvenance,
+  readingHosts,
+  type ListProvenance,
+  type ReadingProvenance,
+  type SpaceProvenance,
+} from './readingHosts';
 
 /**
  * **The one answer to "what plays after this reading?"**
  *
- * Two rules, one entry point:
+ * Three rules, one entry point:
  *
  *   - a group with reading-list provenance continues with the next entry of
  *     that list, and stops at its end — a list is a playlist;
+ *   - a group with space provenance continues with the next post of that space,
+ *     and stops at its end — a space is a playlist too;
  *   - anything else continues in canonical order, which is the behaviour every
  *     reading had before lists existed: a fully-read chapter rolls into the next
  *     one, a verse range walks on in ~5-verse chunks.
+ *
+ * The space rule is not a nicety. Post units carry `bookId: 0`, so a post group
+ * reaching `canonicalNext()` would ask the Bible what follows chapter 0 of book
+ * 0 — and auto-play would read a blog post and then start Genesis. This is the
+ * one place in the feature where getting it wrong produces wrong *audio*
+ * rather than a wrong label.
  *
  * Both hosts go through here, so chat and the reader cannot drift apart: the
  * chat's chain of assistant messages and the reader's chain of chapters are the
@@ -41,12 +55,19 @@ export type NextReading = {
   /** `undefined` → the whole chapter. */
   ranges?: VerseRange[];
   /** Carried onto the next group, so a list keeps playing as a list. */
-  provenance?: ListProvenance;
+  provenance?: ReadingProvenance;
+  /**
+   * Set instead of the Bible fields when the continuation is a post: there is
+   * no chapter to fetch, so `loadReadingVerses` builds its units from the
+   * store rather than from `getChapter`.
+   */
+  post?: { spaceId: string; postId: string };
 };
 
 /** Stable identity for a continuation, so a prefetch can be matched to the
  * chunk it was built for. */
 export function continuationKey(next: NextReading): string {
+  if (next.post) return `post:${next.post.spaceId}:${next.post.postId}`;
   const span = next.ranges
     ? next.ranges.map((r) => `${r.start}-${r.end}`).join(',')
     : 'all';
@@ -62,13 +83,43 @@ export function isWholeChapterReading(next: NextReading): boolean {
 export async function nextReadingAfter(groupId: string): Promise<NextReading | null> {
   const group = readingHosts.getGroup(groupId);
   if (!group || group.verses.length === 0) return null;
-  if (group.provenance) {
-    const inList = await nextInList(group.provenance, group.verses);
+  const provenance = group.provenance;
+  if (provenance && isListProvenance(provenance)) {
+    const inList = await nextInList(provenance, group.verses);
     // A list that has been deleted since the reading started falls back to
     // canonical order rather than falling silent mid-sentence.
     if (inList !== undefined) return inList;
+  } else if (provenance) {
+    // A space always answers for itself — including "nothing follows". There is
+    // deliberately no canonical fallback here: the alternative to the end of a
+    // space is silence, not Genesis.
+    return nextInSpace(provenance);
   }
+  // Defensive: a group of post units with no provenance at all would otherwise
+  // reach canonicalNext() and ask for chapter 0 of book 0.
+  if (group.verses.some((v) => v.unit)) return null;
   return canonicalNext(group.verses);
+}
+
+/**
+ * The next post of a space, or null at its end.
+ *
+ * Order comes from the same place the reader's sequence does, so "what plays
+ * next" and "what the pager shows next" cannot disagree.
+ */
+async function nextInSpace(provenance: SpaceProvenance): Promise<NextReading | null> {
+  const { spacePosts } = await import('@/services/community/spaceReading');
+  const posts = spacePosts(provenance.spaceId);
+  const i = posts.findIndex((p) => p.id === provenance.postId);
+  const next = i === -1 ? undefined : posts[i + 1];
+  if (!next) return null;
+  return {
+    translation: 'KJV',
+    bookId: 0,
+    chapter: 0,
+    post: { spaceId: provenance.spaceId, postId: next.id },
+    provenance: { spaceId: provenance.spaceId, postId: next.id },
+  };
 }
 
 /** Fetch a continuation's verses. `getChapter` is memoized and
@@ -77,6 +128,10 @@ export async function loadReadingVerses(
   next: NextReading,
   locale: Locale,
 ): Promise<VerseSummary[]> {
+  if (next.post) {
+    const { spacePostUnits } = await import('@/services/community/spaceReading');
+    return spacePostUnits(next.post.spaceId, next.post.postId);
+  }
   const verses = await getChapter(next.translation, next.bookId, next.chapter);
   if (verses.length === 0) return [];
   const slice = isWholeChapterReading(next)

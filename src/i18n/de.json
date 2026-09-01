@@ -8,7 +8,8 @@
     "chapterVerse": "{{book}}, Kapitel {{n}}, Vers {{v}}",
     "chapterRange": "{{book}}, Kapitel {{n}}, Verse {{from}} bis {{to}}",
     "chapterList": "{{book}}, Kapitel {{n}}, Verse {{verses}}",
-    "verse": "Vers {{n}}"
+    "verse": "Vers {{n}}",
+    "postBy": "{{title}}. Von {{author}}."
   },
   "nav": {
     "chat": "Chat",
@@ -333,7 +334,8 @@
       "playback": "Wiedergabe",
       "appearanceRow": "Schriftbild",
       "musicOn": "Musik an",
-      "musicOff": "Musik aus"
+      "musicOff": "Musik aus",
+      "community": "Community"
     }
   },
   "chatReader": {
@@ -419,7 +421,8 @@
     "close": "Schließen",
     "online": "Online",
     "offline": "Offline",
-    "pending": "{{count}} ausstehend"
+    "pending": "{{count}} ausstehend",
+    "save": "Speichern"
   },
   "keyFailure": {
     "title": "Dein OpenAI-Schlüssel wurde abgelehnt.",
@@ -502,7 +505,10 @@
       "preview": "Vorschau",
       "sampleReference": "Psalm 23,1",
       "sampleText": "Der HERR ist mein Hirte, mir wird nichts mangeln."
-    }
+    },
+    "playPost": "Diesen Beitrag vorlesen",
+    "endOfSpace": "Du hast das Ende dieses Raums erreicht.",
+    "startOfSpace": "Neuester Beitrag"
   },
   "lists": {
     "title": "Leselisten",
@@ -554,5 +560,92 @@
     "page": "Seite {{page}} von {{total}}",
     "previousPage": "Vorherige Seite",
     "nextPage": "Nächste Seite"
+  },
+  "community": {
+    "title": "Räume",
+    "subtitle": "Deine eigenen Texte und die Menschen, die du liest",
+    "mine": "Deine Räume",
+    "following": "Du liest",
+    "newSpace": "Neuer Raum",
+    "newPost": "Neuer Beitrag",
+    "untitledSpace": "Unbenannter Raum",
+    "untitledPost": "Ohne Titel",
+    "todayName": "Heute",
+    "todayHint": "Beiträge hier verschwinden nach 24 Stunden.",
+    "empty": "Noch nichts geschrieben.",
+    "emptyFollowing": "Du liest noch keinen Raum.",
+    "draft": "Entwurf",
+    "published": "Geteilt",
+    "unread_one": "{{count}} neuer Beitrag",
+    "unread_other": "{{count}} neue Beiträge",
+    "pieces_one": "{{count}} Beitrag",
+    "pieces_other": "{{count}} Beiträge",
+    "read": "Lesen",
+    "edit": "Bearbeiten",
+    "publish": "Teilen",
+    "unpublish": "Nicht mehr teilen",
+    "unpublishHint": "Entfernt die Kopie auf dem Server. Der Beitrag bleibt auf diesem Gerät.",
+    "deletePost": "Löschen",
+    "deletePostConfirm": "„{{title}}“ löschen? Damit ist er auch auf diesem Gerät weg.",
+    "deleteSpace": "Raum löschen",
+    "deleteSpaceConfirm": "„{{name}}“ mit allen Beiträgen löschen?",
+    "narrate": "Audio vorbereiten",
+    "narrateHint": "Erzeugt die Sprachausgabe einmal — danach startet sie für dich und alle Leser sofort.",
+    "postTitle": "Titel",
+    "postBody": "Dein Text",
+    "postBodyHint": "Reiner Text. Leerzeile zwischen Absätzen — jeder wird ein vorgelesener Block.",
+    "postLanguage": "Sprache",
+    "spaceName": "Name",
+    "spaceDescription": "Beschreibung",
+    "approval": "Neue Leser",
+    "approvalAuto": "Jeder mit dem Code darf lesen",
+    "approvalManual": "Ich bestätige jeden Leser selbst",
+    "share": "Freigabecode",
+    "shareCreate": "Freigabecode erstellen",
+    "shareCopy": "Kopieren",
+    "shareSend": "Teilen…",
+    "shareRotate": "Code ersetzen",
+    "shareRotateConfirm": "Code ersetzen? Alle bisherigen Leser verlieren den Zugang.",
+    "shareHint": "Wer diesen Code bekommt, kann um Lesezugang bitten. Es gibt kein öffentliches Verzeichnis.",
+    "requests": "Warten auf Zugang",
+    "requests_one": "{{count}} Person wartet",
+    "requests_other": "{{count}} Personen warten",
+    "accept": "Zulassen",
+    "block": "Ablehnen",
+    "readers": "Leser",
+    "noReaders": "Diesen Raum liest noch niemand.",
+    "addByCode": "Raum per Code hinzufügen",
+    "addByCodePlaceholder": "XXXXX-XXXXX-XXXXXX",
+    "addByCodeAction": "Hinzufügen",
+    "pending": "Warte auf Freigabe",
+    "revoked": "Nicht mehr für dich freigegeben",
+    "unsubscribe": "Nicht mehr lesen",
+    "verified": "Von der Autorin oder dem Autor signiert",
+    "refused_one": "{{count}} Beitrag konnte nicht geprüft werden und wurde nicht angezeigt.",
+    "refused_other": "{{count}} Beiträge konnten nicht geprüft werden und wurden nicht angezeigt.",
+    "keyChanged": "Der Signaturschlüssel hat sich geändert. Bis du bestätigst, dass es wirklich dieselbe Person ist, wird nichts Neues angezeigt.",
+    "keyChangedConfirm": "Neuem Schlüssel vertrauen",
+    "report": "Diesen Raum melden",
+    "errors": {
+      "invalid_code": "Das sieht nicht nach einem Freigabecode aus.",
+      "key_mismatch": "Der Code passt nicht zur angegebenen Person. Bitte noch einmal senden lassen.",
+      "profile_required": "Erstelle zuerst dein Profil.",
+      "failed": "Das hat nicht funktioniert. Bitte noch einmal versuchen."
+    },
+    "profile": {
+      "title": "Dein Profil",
+      "hint": "Ein Name und ein Bild, damit die Menschen, mit denen du teilst, wissen, wer schreibt. Nichts davon wird öffentlich gelistet.",
+      "create": "Profil erstellen",
+      "createHint": "Damit wird die Server-Synchronisierung aktiviert — nur so funktioniert das Teilen überhaupt.",
+      "displayName": "Anzeigename",
+      "bio": "Über dich",
+      "avatar": "Bild",
+      "avatarChange": "Bild ändern",
+      "fingerprint": "Dein Signatur-Fingerprint",
+      "fingerprintHint": "Die letzten sechs Zeichen jedes Codes, den du teilst. Vergleiche sie, wenn du sicher sein willst, dass ein Code unverändert angekommen ist.",
+      "leave": "Community verlassen",
+      "leaveConfirm": "Verlassen? Profil und geteilte Kopien werden vom Server entfernt. Deine Texte bleiben auf diesem Gerät.",
+      "leaving": "Verlasse…"
+    }
   }
 }

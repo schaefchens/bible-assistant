@@ -3,20 +3,25 @@ import { persist } from 'zustand/middleware';
 import type { Translation } from '@/services/bible/bibleApi';
 import { isChapterMissing } from '@/services/bible/chapterSources';
 import { nextBookRef } from '@/services/bible/chapterNavigation';
-import { loadChapterSummaries } from '@/services/bible/verseSummaries';
+import { resolveSpace } from '@/services/community/spaceReading';
+import { absorbsGaps, loadSegmentUnits } from '@/services/reading/segmentLoader';
 import {
   BIBLE_SOURCE,
   bibleSequence,
   findListSegment,
+  isPostSegment,
   isWholeChapter,
   listSequence,
+  sameSource,
   segmentId,
+  spaceSequence,
   type ReaderSource,
   type ReadingSequence,
   type SegmentRef,
 } from '@/services/reading/readingSequence';
 import { noteEntryFinished, noteEntryStarted } from '@/lib/readingProgressTracker';
 import type { VerseSummary } from '@/types/domain';
+import { useCommunityStore } from './communityStore';
 import { useLibraryStore } from './libraryStore';
 import { useSettingsStore } from './settingsStore';
 import { useLastReadingStore } from './lastReadingStore';
@@ -103,13 +108,19 @@ function locale() {
  * so editing a list (adding tomorrow's chapter) is reflected the next time the
  * reader steps, with no cache to invalidate.
  *
- * Falls back to the Bible when a list-sourced reader outlives its list — a list
- * deleted on another device must not leave the tab unable to navigate.
+ * Falls back to the Bible when a source outlives what it points at — a list
+ * deleted, or a space unsubscribed, on another device must not leave the tab
+ * unable to navigate. `useReaderSequence()` is the reactive twin of this and
+ * has to grow the same branches.
  */
 function sequenceFor(source: ReaderSource, translation: Translation): ReadingSequence {
   if (source.kind === 'list') {
     const list = useLibraryStore.getState().readingLists.find((l) => l.id === source.listId);
     if (list) return listSequence(list, translation);
+  }
+  if (source.kind === 'space') {
+    const space = resolveSpace(source);
+    if (space) return spaceSequence(space.spaceId, space.posts, translation);
   }
   return bibleSequence(translation);
 }
@@ -134,9 +145,11 @@ function pruneCache(
 
 function classifyError(e: unknown, ref: SegmentRef): ReaderError {
   // `null` means every source returned empty without throwing — same user-facing
-  // situation as a missing chapter: this text doesn't have it.
+  // situation as a missing chapter: this text doesn't have it. For a post there
+  // is no network in the path at all, so an empty result is always
+  // 'unavailable': the post has been deleted, or the space is no longer shared.
   return {
-    kind: e === null || isChapterMissing(e) ? 'unavailable' : 'network',
+    kind: isPostSegment(ref) || e === null || isChapterMissing(e) ? 'unavailable' : 'network',
     translation: ref.translation,
     bookId: ref.bookId,
     chapter: ref.chapter,
@@ -273,6 +286,8 @@ function trackListProgress(
 }
 
 /** Restrict a chapter's verses to what the segment actually covers. */
+/** A post is never sliced — `isWholeChapter` is true for it (no ranges), so
+ * this returns its units untouched. */
 function sliceToRanges(verses: VerseSummary[], ref: SegmentRef): VerseSummary[] {
   if (isWholeChapter(ref)) return verses;
   return verses.filter((v) => ref.ranges!.some((r) => v.verse >= r.start && v.verse <= r.end));
@@ -304,12 +319,7 @@ async function loadSegment(
 ): Promise<{ segment: LoadedSegment; error: null } | { segment: null; error: ReaderError }> {
   let missed: unknown = null;
   try {
-    const verses = await loadChapterSummaries(
-      ref.translation,
-      ref.bookId,
-      ref.chapter,
-      locale(),
-    );
+    const verses = await loadSegmentUnits(ref, locale());
     const sliced = sliceToRanges(verses, ref);
     if (sliced.length > 0) {
       return { segment: { id: segmentId(ref), ref, verses: sliced }, error: null };
@@ -321,8 +331,12 @@ async function loadSegment(
     missed = e;
   }
 
-  const nextTry =
-    dir === 'forward'
+  // Only Bible versification has gaps to absorb. A post that isn't there is a
+  // real miss, and stepping past it would show the reader a different post than
+  // the one they asked for.
+  const nextTry = !absorbsGaps(ref)
+    ? null
+    : dir === 'forward'
       ? // Skip the rest of a book the catalog over-counted rather than each of
         // its phantom chapters one request at a time.
         (ref.listId ? sequence.next(ref) : bibleForwardSkip(ref))
@@ -426,6 +440,10 @@ export const useReaderStore = create<ReaderState>()(
           const unread = all?.find((s) => !s.entryId || !done.has(s.entryId));
           return unread ?? sequence.first();
         }
+        // A space opens on its newest post. There is no per-post progress to
+        // resume from (unread is a local dot, not a synced tick), and the newest
+        // piece is what someone opening a blog wants.
+        if (source.kind === 'space') return sequence.first();
         const slot = useLastReadingStore.getState().slot;
         return slot
           ? { translation, bookId: slot.bookId, chapter: slot.chapter }
@@ -453,12 +471,18 @@ export const useReaderStore = create<ReaderState>()(
           // like a deleted list — which silently unlocked the plan the user was
           // in the middle of, on every reload.
           const library = useLibraryStore.getState();
+          const community = useCommunityStore.getState();
           const source = get().source;
-          if (
+          const staleList =
             library.initialized &&
             source.kind === 'list' &&
-            !library.readingLists.some((l) => l.id === source.listId)
-          ) {
+            !library.readingLists.some((l) => l.id === source.listId);
+          // Same reasoning for a space, and the same boot race: communityStore
+          // fills from Dexie asynchronously, and an empty store during boot is
+          // indistinguishable from an unsubscribed space.
+          const staleSpace =
+            community.initialized && source.kind === 'space' && resolveSpace(source) === null;
+          if (staleList || staleSpace) {
             set({ source: BIBLE_SOURCE, position: null });
           }
           const stored = get().position;
@@ -480,9 +504,12 @@ export const useReaderStore = create<ReaderState>()(
           // The active translation always wins over whatever the caller passed,
           // unless the segment's own list entry overrode it — so there is
           // exactly one source of truth for which text is on screen.
-          const translation = ref.entryId
-            ? ref.translation
-            : useSettingsStore.getState().translation;
+          // ...and a post has no translation to override: `translationPinned`
+          // says so, and rewriting it would change the segment id.
+          const translation =
+            ref.entryId || ref.translationPinned
+              ? ref.translation
+              : useSettingsStore.getState().translation;
           const target: SegmentRef = { ...ref, translation };
           const id = segmentId(target);
           // StrictMode double-mounts and repeat taps shouldn't refetch.
@@ -492,12 +519,7 @@ export const useReaderStore = create<ReaderState>()(
 
         setSource: async (source) => {
           const cur = get().source;
-          if (
-            cur.kind === source.kind &&
-            (cur.kind !== 'list' || (source.kind === 'list' && cur.listId === source.listId))
-          ) {
-            return;
-          }
+          if (sameSource(cur, source)) return;
           const translation = useSettingsStore.getState().translation;
           const previous = get().position;
           // Every group id belongs to the old source, so the window has to go.
@@ -506,9 +528,14 @@ export const useReaderStore = create<ReaderState>()(
           // canonically: the user cleared a *filter*, they didn't ask to be sent
           // somewhere else. (The active translation wins — the passage they were
           // on may have been pinned to another text by its entry.)
+          //
+          // A post cannot be carried across: it has no book or chapter, so
+          // reusing it would ask the Bible for chapter 0 of book 0. Leaving a
+          // space therefore resumes wherever the Bible reader last was.
+          const carryOver = previous && !isPostSegment(previous) ? previous : null;
           const ref =
-            source.kind === 'bible' && previous
-              ? { translation, bookId: previous.bookId, chapter: previous.chapter }
+            source.kind === 'bible' && carryOver
+              ? { translation, bookId: carryOver.bookId, chapter: carryOver.chapter }
               : resumeOf(source, translation);
           if (ref) await load(ref, 'replace');
         },

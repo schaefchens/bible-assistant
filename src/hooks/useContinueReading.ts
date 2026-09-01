@@ -5,6 +5,7 @@ import {
   nextReadingAfter,
   type NextReading,
 } from '@/lib/readingContinuation';
+import { isListProvenance } from '@/lib/readingHosts';
 import { playSegmentInChat } from '@/lib/readingListPlayback';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { ChatMessage, Locale } from '@/types/domain';
@@ -60,7 +61,10 @@ export function useContinueReading(
   const next = resolved?.id === message.id && verseCount > 0 ? resolved.next : null;
 
   return useMemo(() => {
-    if (!next) return { canContinue: false, nextLabel: '', sendNext: () => {} };
+    // A post continuation has no chat representation: posts are read in the
+    // reader, and formatNextReading would be asked for the name of book 0. The
+    // reader's own pager is where a space is walked through.
+    if (!next || next.post) return { canContinue: false, nextLabel: '', sendNext: () => {} };
     return {
       canContinue: true,
       nextLabel: formatNextReading(next, locale),
@@ -69,14 +73,16 @@ export function useContinueReading(
         // directly so its provenance — and therefore the rest of the plan —
         // survives. Anything else goes through the model as before, which is
         // what keeps the conversation coherent about what was read.
-        if (next.provenance) {
+        const list =
+          next.provenance && isListProvenance(next.provenance) ? next.provenance : null;
+        if (list) {
           void playSegmentInChat({
             translation: next.translation,
             bookId: next.bookId,
             chapter: next.chapter,
             ranges: next.ranges,
-            listId: next.provenance.listId,
-            entryId: next.provenance.entryId,
+            listId: list.listId,
+            entryId: list.entryId,
           });
         } else {
           void send(`Read ${englishReference(next)}`);

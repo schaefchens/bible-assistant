@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { useChatStore } from '@/store/chatStore';
+import { useCommunityStore } from '@/store/communityStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -13,8 +14,11 @@ import {
   BIBLE_SOURCE,
   expandList,
   formatSegment,
+  spaceSequence,
   type SegmentRef,
 } from '@/services/reading/readingSequence';
+import { resolveSpaceFrom } from '@/services/community/spaceReading';
+import { ROUTES } from '@/lib/appRoutes';
 import { listChapterCount, passageDetail } from '@/services/reading/readingEntries';
 import { progressStats } from '@/services/reading/readingProgress';
 import { PassageRow } from '@/components/reading/PassageRow';
@@ -23,8 +27,9 @@ import { TranslationList } from '@/components/bible/TranslationList';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { playSegmentInChat } from '@/lib/readingListPlayback';
 import { BottomSheet } from '@/components/common/BottomSheet';
+import { spaceDisplayName } from '@/services/community/spaceName';
 
-type View = 'books' | 'chapters' | 'translations' | 'lists';
+type View = 'books' | 'chapters' | 'translations' | 'lists' | 'spaces';
 
 /** One day of a reading list, as the picker shows it. */
 type DayGroup = {
@@ -87,6 +92,54 @@ function ListIcon({ className }: { className?: string }) {
       <circle cx="4.5" cy="12" r="1.3" fill="currentColor" />
       <circle cx="4.5" cy="18" r="1.3" fill="currentColor" />
     </svg>
+  );
+}
+
+/** A quill, for the spaces selector — a list icon already means a reading list. */
+function QuillIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M4 20s2-8 8-12 8-4 8-4-1 5-4 9-7 5-9 5" />
+      <path d="M4 20l4-4" />
+    </svg>
+  );
+}
+
+/** One selectable source in the spaces list. */
+function SourceRow({
+  label,
+  emoji,
+  detail,
+  onSelect,
+}: {
+  label: string;
+  emoji?: string;
+  detail: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="w-full text-left px-3 py-2 rounded-xl bg-surface/60 hover:bg-brand/10 transition-colors"
+    >
+      <span className="flex items-center gap-2">
+        {emoji && <span aria-hidden>{emoji}</span>}
+        <span className="font-serif text-brand text-sm truncate">{label}</span>
+      </span>
+      <span className="block text-[11px] text-ink-muted truncate">{detail}</span>
+    </button>
   );
 }
 
@@ -250,6 +303,13 @@ export function BookChapterPicker({
    * "locked in" is exactly "this is the source".
    */
   const source = useReaderStore((s) => s.source);
+  const readerPosition = useReaderStore((s) => s.position);
+  const communityProfile = useCommunityStore((s) => s.profile);
+  const ownSpaces = useCommunityStore((s) => s.spaces);
+  const ownPosts = useCommunityStore((s) => s.posts);
+  const subscriptions = useCommunityStore((s) => s.subscriptions);
+  const feed = useCommunityStore((s) => s.feed);
+  const seen = useCommunityStore((s) => s.seen);
   const setSource = useReaderStore((s) => s.setSource);
   const setEntryDone = useLibraryStore((s) => s.setEntryDone);
 
@@ -299,6 +359,34 @@ export function BookChapterPicker({
       ? readingLists.find((l) => l.id === source.listId) ?? null
       : null;
   const lockedProgress = lockedList ? readingProgress[lockedList.id] : undefined;
+
+  /**
+   * The space this sheet is locked into, if any.
+   *
+   * A second selector beside the reading-list one rather than one merged
+   * "source" list: a reading plan and a person's writing are different kinds of
+   * thing, and mixing them into one list makes neither scannable. Both write
+   * `readerStore.source`, so they are mutually exclusive for free — locking one
+   * unlocks the other.
+   *
+   * Resolved from subscribed slices rather than getState() so the sheet
+   * re-renders when a feed refreshes.
+   */
+  const lockedSpace =
+    source.kind === 'space'
+      ? resolveSpaceFrom(source, {
+          profile: communityProfile,
+          spaces: ownSpaces,
+          posts: ownPosts,
+          subscriptions,
+          feed,
+        })
+      : null;
+  const spaceSegments = lockedSpace
+    ? spaceSequence(lockedSpace.spaceId, lockedSpace.posts, translation).all() ?? []
+    : [];
+  // The row is worth showing once there is anything at all to choose from.
+  const hasSpaces = ownSpaces.length > 0 || subscriptions.length > 0;
 
   /**
    * The locked list's passages, grouped the way the list is written, with
@@ -420,9 +508,13 @@ export function BookChapterPicker({
         ? bookLabel(selectedBook)
         : view === 'lists'
           ? t('lists.title')
-          : lockedList
-            ? t('chat.bookPicker.titleList')
-            : t('chat.bookPicker.title');
+          : view === 'spaces'
+            ? t('community.title')
+            : lockedList
+              ? t('chat.bookPicker.titleList')
+              : lockedSpace
+                ? lockedSpace.name
+                : t('chat.bookPicker.title');
 
   const pickSegment = (ref: SegmentRef) => {
     // Keep this on both paths: the sheet tap is the user gesture that unlocks
@@ -559,7 +651,147 @@ export function BookChapterPicker({
           </div>
         )}
 
-        {view === 'books' && !lockedList && (
+        {view === 'books' && showReadingLists && hasSpaces && (
+          <div className="px-5 pb-3 border-b border-surface-raised/40">
+            <div
+              className={clsx(
+                'flex items-center gap-1 rounded-xl pl-3 pr-1.5 py-1',
+                'bg-surface/60 border transition-colors',
+                lockedSpace ? 'border-brand/60' : 'border-brand/30 hover:border-brand/60',
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => setView('spaces')}
+                className="flex-1 min-w-0 flex items-center gap-3 py-1.5 text-left"
+              >
+                <QuillIcon className="text-brand shrink-0" />
+                <span className="flex-1 min-w-0 font-serif text-brand text-sm truncate">
+                  {lockedSpace
+                    ? `${lockedSpace.emoji ? `${lockedSpace.emoji} ` : ''}${lockedSpace.name}`
+                    : t('community.title')}
+                </span>
+                {!lockedSpace && <ChevronRight />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  navigate(ROUTES.spaces);
+                }}
+                aria-label={t('community.title') as string}
+                title={t('community.title') as string}
+                className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-ink-muted hover:text-brand hover:bg-brand/10 transition-colors"
+              >
+                <PencilIcon />
+              </button>
+
+              {lockedSpace && (
+                <button
+                  type="button"
+                  onClick={() => void setSource(BIBLE_SOURCE)}
+                  aria-label={t('chat.bookPicker.clearList') as string}
+                  title={t('chat.bookPicker.clearList') as string}
+                  className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-ink-muted hover:text-brand hover:bg-brand/10 transition-colors text-xl leading-none"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* A locked space shows its pieces instead of the book columns, exactly
+            as a locked reading list shows its passages. No progress bar and no
+            day pager: a space has neither, and unread is a dot rather than a
+            tick (see communityStore). */}
+        {view === 'books' && lockedSpace && (
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-safe">
+            {lockedSpace.author && (
+              <p className="pt-2 text-[11px] text-ink-muted">{lockedSpace.author}</p>
+            )}
+            {spaceSegments.length === 0 ? (
+              <p className="py-8 text-center text-ink-muted text-sm leading-relaxed">
+                {t('community.empty')}
+              </p>
+            ) : (
+              <ul className="py-2 space-y-1">
+                {spaceSegments.map((seg) => (
+                  <li key={seg.postId}>
+                    <PassageRow
+                      text={seg.postTitle || (t('community.untitledPost') as string)}
+                      done={false}
+                      showDone={false}
+                      current={readerPosition?.postId === seg.postId}
+                      onOpen={() => pickSegment(seg)}
+                      trailing={
+                        seg.postId && !seen[seg.postId] ? (
+                          <span
+                            aria-hidden
+                            className="h-1.5 w-1.5 rounded-full bg-brand inline-block"
+                          />
+                        ) : undefined
+                      }
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {view === 'spaces' && (
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-safe">
+            <ul className="py-2 space-y-1">
+              {ownSpaces.map((space) => (
+                <li key={space.id}>
+                  <SourceRow
+                    label={spaceDisplayName(space)}
+                    emoji={space.emoji}
+                    detail={t('community.pieces', {
+                      count: ownPosts.filter((p) => p.spaceId === space.id && p.publishedAt > 0)
+                        .length,
+                    })}
+                    onSelect={() => {
+                      void setSource({ kind: 'space', spaceId: space.id });
+                      setView('books');
+                    }}
+                  />
+                </li>
+              ))}
+              {subscriptions.map((sub) => (
+                <li key={sub.code}>
+                  <SourceRow
+                    label={sub.spaceName}
+                    emoji={sub.spaceEmoji}
+                    detail={
+                      sub.status === 'accepted'
+                        ? `${sub.ownerName} · ${t('community.pieces', { count: (feed[sub.code] ?? []).length })}`
+                        : `${sub.ownerName} · ${t(sub.status === 'pending' ? 'community.pending' : 'community.revoked')}`
+                    }
+                    onSelect={() => {
+                      void setSource({ kind: 'space', code: sub.code });
+                      setView('books');
+                    }}
+                  />
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                navigate(ROUTES.spaces);
+              }}
+              className="w-full py-3 text-center text-xs text-brand-muted hover:text-brand"
+            >
+              {t('community.addByCode')}
+            </button>
+          </div>
+        )}
+
+        {view === 'books' && !lockedList && !lockedSpace && (
           <div className="flex flex-1 min-h-0 pb-safe">
             <div className="w-1/2 flex flex-col border-r border-surface-raised/40">
               <h3 className="shrink-0 px-3 pt-2 pb-2 text-xs uppercase tracking-wider text-ink-muted/70 font-serif border-b border-surface-raised/40">

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useCommunityStore } from '@/store/communityStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import {
   effectiveAssistantVoice,
@@ -9,6 +10,7 @@ import { usePlaybackStore } from '@/store/playbackStore';
 import { useLastReadingStore } from '@/store/lastReadingStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { readingHosts } from '@/lib/readingHosts';
+import { isScriptureUnit } from '@/types/domain';
 import { getOpenAiKeyStatus } from '@/services/api/auth';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { useBiblePacksStore } from '@/store/biblePacksStore';
@@ -57,6 +59,11 @@ export function useAppInitialization(hasPassphrase: boolean): void {
       // screen captures a resume point exactly like a chat reading does.
       const v = readingHosts.getGroup(cur.groupId)?.verses[cur.verseIndex];
       if (!v) return;
+      // The slot is a Bible reference — "play my last reading" resolves it
+      // through `resolveLastReadVerse`. A post paragraph has no reference
+      // (bookId 0, chapter 0), so recording one would leave the resume point
+      // pointing at nothing and lose the real one.
+      if (!isScriptureUnit(v)) return;
       useLastReadingStore.getState().setSlot({
         translation: v.translation,
         bookId: v.bookId,
@@ -72,6 +79,10 @@ export function useAppInitialization(hasPassphrase: boolean): void {
   useEffect(() => {
     if (!hasPassphrase) return;
     void init();
+    // Community spaces read from the same Dexie database and are needed before
+    // the reader can resolve a space-sourced position it restored from
+    // localStorage. No network unless a profile exists.
+    void useCommunityStore.getState().init();
     const onUp = () => setOnline(true);
     const onDown = () => setOnline(false);
     window.addEventListener('online', onUp);

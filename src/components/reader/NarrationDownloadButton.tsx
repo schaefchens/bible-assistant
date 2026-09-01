@@ -7,23 +7,31 @@ import {
   effectiveVoiceStyle,
   useSettingsStore,
 } from '@/store/settingsStore';
-import { useNarrationStore } from '@/store/narrationStore';
-import { chapterNarrationKey } from '@/services/narration/downloadChapter';
+import { narrationTargetKey, useNarrationStore } from '@/store/narrationStore';
 import { isBrowserVoice, type OpenAiVoiceId } from '@/types/domain';
 
-type Props = {
-  translation: Translation;
-  bookId: number;
-  chapter: number;
-};
+/**
+ * What to download, minus the voice — which this component supplies, since it
+ * is the thing that knows narration is per-voice.
+ */
+export type NarrationSubject =
+  | { kind: 'chapter'; translation: Translation; bookId: number; chapter: number }
+  | { kind: 'post'; spaceId: string; postId: string };
+
+type Props = { subject: NarrationSubject };
 
 /**
- * Download this chapter's narration for offline listening.
+ * Download this chapter's — or this post's — narration for offline listening.
+ *
+ * One component for both, because the whole interaction is identical: a
+ * progress ring that doubles as cancel, a tick that two-taps into a trash, and
+ * a coverage check whenever the voice changes. Only the subject differs, and
+ * `narrationStore` already takes a union.
  *
  * Hidden on the device voice: that engine speaks from the text, which is already
  * offline, so there is nothing to fetch and offering it would imply otherwise.
  */
-export function NarrationDownloadButton({ translation, bookId, chapter }: Props) {
+export function NarrationDownloadButton({ subject }: Props) {
   const { t } = useTranslation();
   // Subscribed, not just read once: switching voice changes which narration this
   // button is even talking about.
@@ -47,19 +55,18 @@ export function NarrationDownloadButton({ translation, bookId, chapter }: Props)
 
   const usesDeviceVoice = isBrowserVoice(readingVoice);
   const voice = readingVoice as OpenAiVoiceId;
-  const key = chapterNarrationKey(voice, translation, bookId, chapter);
+  const target = { ...subject, voice, voiceStyle };
+  const key = narrationTargetKey(target);
   const status = useNarrationStore((s) => s.status[key]) ?? 'unknown';
   const progress = useNarrationStore((s) => s.progress[key]);
-
-  const target = { voice, voiceStyle, translation, bookId, chapter };
 
   useEffect(() => {
     if (usesDeviceVoice) return;
     void check(target).catch(() => {});
-    // `target` is rebuilt every render; the primitives it's made of are the
-    // real dependencies.
+    // `target` is rebuilt every render, so the key it produces is the real
+    // dependency — it changes exactly when the subject or the voice does.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [check, usesDeviceVoice, voice, voiceStyle, translation, bookId, chapter, voiceSetting]);
+  }, [check, usesDeviceVoice, key, voiceSetting]);
 
   if (usesDeviceVoice) return null;
 

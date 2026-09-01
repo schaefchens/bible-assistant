@@ -11,7 +11,13 @@ import {
 } from '@/services/reading/readingSequence';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import type { ReadingGroup, ReadingGroupId, ReadingHost } from './readingHosts';
+import {
+  isListProvenance,
+  isSpaceProvenance,
+  type ReadingGroup,
+  type ReadingGroupId,
+  type ReadingHost,
+} from './readingHosts';
 
 function toGroup(segment: LoadedSegment): ReadingGroup {
   const { ref } = segment;
@@ -88,19 +94,33 @@ export const readerReadingHost: ReadingHost = {
   appendReading(verses, opts): Promise<ReadingGroupId | null> {
     const first = verses[0];
     let ref: SegmentRef | undefined;
-    if (first && opts.provenance) {
+    const provenance = opts.provenance;
+    if (first && provenance && isListProvenance(provenance)) {
       const list = useLibraryStore
         .getState()
-        .readingLists.find((l) => l.id === opts.provenance!.listId);
+        .readingLists.find((l) => l.id === provenance.listId);
       ref =
         (list &&
           findListSegment(
             list,
             useSettingsStore.getState().translation,
-            opts.provenance.entryId,
+            provenance.entryId,
             first.chapter,
           )) ||
         undefined;
+    } else if (first && provenance && isSpaceProvenance(provenance)) {
+      // A post's segment is built from the unit itself: `verses` came out of
+      // `postToUnits`, so the title is right there and no store lookup can
+      // disagree with it.
+      ref = {
+        translation: first.translation,
+        translationPinned: true,
+        bookId: 0,
+        chapter: 0,
+        spaceId: provenance.spaceId,
+        postId: provenance.postId,
+        postTitle: first.unit?.title,
+      };
     }
     return Promise.resolve(useReaderStore.getState().adopt(verses, ref));
   },
