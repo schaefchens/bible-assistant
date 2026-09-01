@@ -197,6 +197,7 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
           kind: 'today',
           ephemeralHours: TODAY_WINDOW_HOURS,
           approval: 'manual',
+          shareCode: mintSpaceCode(key),
           createdAt: now,
           updatedAt: now,
         };
@@ -206,6 +207,8 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
 
       // enableSync seeds the queue from every dirty row, which picks up the
       // profile and the space written above — so they need no explicit enqueue.
+      // `seedCommunityQueue` also publishes the space's freshly minted code,
+      // after its upsert, for the ordering reason described in `createSpace`.
       await useLibraryStore.getState().enableSync();
     } finally {
       set({ busy: false });
@@ -279,19 +282,30 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   },
 
   createSpace: async (name) => {
-    if (!get().profile) return null;
+    const key = authorKey();
+    if (!get().profile || !key) return null;
     const now = Date.now();
     const space: Space = {
       id: nowId(),
       name: name.trim().slice(0, 120) || 'Untitled',
       kind: 'custom',
       approval: 'manual',
+      // Minted here rather than behind a button. A code is an address, not a
+      // key (lib/spaceCode.ts), so a space having one costs nothing and
+      // "create a code" was a step between the user and sharing.
+      shareCode: mintSpaceCode(key),
       createdAt: now,
       updatedAt: now,
     };
     await db.spaces.put({ ...space, dirty: 1 });
     set((s) => ({ spaces: [space, ...s.spaces] }));
+    // Order matters: `spaces.upsert` deliberately ignores shareCode, so the
+    // code needs its own op — and `spaces.code.set` 404s if the space is not
+    // there yet, which `shouldDropSyncOp` would treat as permanent and drop.
+    // The queue is ordered by createdAt and flushed sequentially, so enqueuing
+    // the upsert first is what keeps this correct.
     await queued('space.upsert', space);
+    await queued('spaceCode.set', { spaceId: space.id, code: space.shareCode });
     flush();
     return space;
   },

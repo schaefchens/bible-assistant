@@ -272,8 +272,20 @@ export async function seedCommunityQueue(
 
   for (const row of await db.spaces.toArray()) {
     if (row.dirty !== 1) continue;
-    if (row.deleted === 1) await enqueue('space.delete', { id: row.id });
-    else await enqueue('space.upsert', stripLocal(row));
+    if (row.deleted === 1) {
+      await enqueue('space.delete', { id: row.id });
+      continue;
+    }
+    await enqueue('space.upsert', stripLocal(row));
+    // `spaces.upsert` ignores shareCode on purpose (a stale client must not be
+    // able to resurrect a retired code), so a code only reaches the server
+    // through its own op — and only *after* the upsert above, since
+    // `spaces.code.set` 404s on a space that isn't there and a 404 is dropped
+    // as permanent. This is also the catch-up path for a space created while
+    // sync was off, whose code was never pushed.
+    if (row.shareCode) {
+      await enqueue('spaceCode.set', { spaceId: row.id, code: row.shareCode });
+    }
   }
 
   for (const row of await db.posts.toArray()) {

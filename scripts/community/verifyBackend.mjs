@@ -211,6 +211,18 @@ try {
     await call(alice, 'spaces.code.set', { spaceId: today.id, code: todayCode });
   });
 
+  await check('a code cannot be pointed at a space that does not exist yet', async () => {
+    // Why the client must enqueue `space.upsert` before `spaceCode.set`: this
+    // 404 is a 4xx, so `shouldDropSyncOp` treats it as permanent and drops the
+    // op — the code would never reach the server and the space would be
+    // unshareable with no error anywhere.
+    const r = await call(alice, 'spaces.code.set', {
+      spaceId: randomUUID(),
+      code: mintSpaceCode(alice.authorKey),
+    });
+    assert.equal(r.status, 404);
+  });
+
   await check('a code already owned by someone else is refused', async () => {
     const bobSpace = { id: randomUUID(), name: 'Bobs', kind: 'custom', approval: 'auto', createdAt: Date.now(), updatedAt: Date.now() };
     await call(bob, 'spaces.upsert', { space: bobSpace });
