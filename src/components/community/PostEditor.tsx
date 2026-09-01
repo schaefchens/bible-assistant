@@ -113,7 +113,10 @@ export function PostEditor({ post, space, onClose }: Props) {
           disabled={busy || empty}
           className="btn-primary text-sm disabled:opacity-50"
         >
-          {t('community.publish')}
+          {/* "Publish" is the act; once it is out there the same button
+              pushes the edit, and saying "Publish" again reads as if it were
+              not already published. */}
+          {t(isShared ? 'community.republish' : 'community.publish')}
         </button>
       </header>
 

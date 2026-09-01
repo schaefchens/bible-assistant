@@ -114,47 +114,6 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 pb-28 space-y-6">
         {isToday && <p className="text-xs text-brand-muted">{t('community.todayHint')}</p>}
 
-        {!isToday && (
-          <section className="space-y-2">
-            <Field label={t('community.spaceName')}>
-              <Draft
-                value={space.name}
-                onCommit={(v) => void saveSpace({ ...space, name: v || t('community.untitledSpace') })}
-                maxLength={120}
-              />
-            </Field>
-            <Field label={t('community.spaceDescription')}>
-              <Draft
-                value={space.description ?? ''}
-                onCommit={(v) => void saveSpace({ ...space, description: v || undefined })}
-                maxLength={500}
-                multiline
-              />
-            </Field>
-          </section>
-        )}
-
-        <section className="space-y-2">
-          <SectionTitle>{t('community.approval')}</SectionTitle>
-          {/* Two radio-ish rows rather than a checkbox: "auto" and "manual" are
-              not the presence and absence of a thing, they are two policies. */}
-          {(['manual', 'auto'] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => void saveSpace({ ...space, approval: mode })}
-              className={clsx(
-                'w-full text-left px-3 py-2 rounded-xl text-sm transition-colors',
-                space.approval === mode
-                  ? 'bg-brand/15 text-ink ring-1 ring-brand/40'
-                  : 'bg-surface-raised text-ink-muted',
-              )}
-            >
-              {t(mode === 'auto' ? 'community.approvalAuto' : 'community.approvalManual')}
-            </button>
-          ))}
-        </section>
-
         <section className="space-y-2">
           <SectionTitle>{t('community.share')}</SectionTitle>
           {space.shareCode ? (
@@ -201,12 +160,48 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
             </SmallButton>
           )}
           <p className="text-xs text-ink-muted">{t('community.shareHint')}</p>
-          {/* With auto-approval the code really is the whole gate, which is the
-              one case where the hint above would understate things. */}
-          {space.approval === 'auto' && (
-            <p className="text-xs text-brand-muted">{t('community.shareHintAuto')}</p>
-          )}
         </section>
+
+        <section className="space-y-2">
+          <SectionTitle>{t('community.approval')}</SectionTitle>
+          {/* Two radio-ish rows rather than a checkbox: "auto" and "manual" are
+              not the presence and absence of a thing, they are two policies. */}
+          {(['manual', 'auto'] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => void saveSpace({ ...space, approval: mode })}
+              className={clsx(
+                'w-full text-left px-3 py-2 rounded-xl text-sm transition-colors',
+                space.approval === mode
+                  ? 'bg-brand/15 text-ink ring-1 ring-brand/40'
+                  : 'bg-surface-raised text-ink-muted',
+              )}
+            >
+              {t(mode === 'auto' ? 'community.approvalAuto' : 'community.approvalManual')}
+            </button>
+          ))}
+        </section>
+
+        {!isToday && (
+          <section className="space-y-2">
+            <Field label={t('community.spaceName')}>
+              <Draft
+                value={space.name}
+                onCommit={(v) => void saveSpace({ ...space, name: v || t('community.untitledSpace') })}
+                maxLength={120}
+              />
+            </Field>
+            <Field label={t('community.spaceDescription')}>
+              <Draft
+                value={space.description ?? ''}
+                onCommit={(v) => void saveSpace({ ...space, description: v || undefined })}
+                maxLength={500}
+                multiline
+              />
+            </Field>
+          </section>
+        )}
 
         {pending.length > 0 && (
           <section className="space-y-2">
