@@ -50,12 +50,14 @@ export function ReaderHeader({ onOpenTranslations, onOpenAppearance }: Props) {
     if (source.kind !== 'space') return undefined;
     if (source.code) {
       const sub = s.subscriptions.find((x) => x.code === source.code);
-      return sub ? spaceLabel(sub.ownerName, { kind: 'custom', name: sub.spaceName }) : undefined;
+      return sub ? spaceLabel(sub.ownerName, { kind: sub.spaceKind ?? 'custom', name: sub.spaceName }) : undefined;
     }
     const own = s.spaces.find((x) => x.id === source.spaceId);
     return own ? spaceLabel(s.profile?.displayName ?? '', own) : undefined;
   });
-  const sourceName = listName ?? spaceName;
+  // A selection has no space to look up, so it carries its own label.
+  const selectionName = source.kind === 'selection' ? source.label : undefined;
+  const sourceName = listName ?? spaceName ?? selectionName;
 
   const label = position ? formatSegment(position, lang) : t('read.title');
 

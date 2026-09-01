@@ -439,7 +439,10 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     if (!get().profile) throw new Error('profile_required');
 
     const res = await api.requestSpace(code);
-    if (!res.owner.authorKey) throw new Error('failed');
+    // api.php refuses a space whose owner has no published key (409
+    // space_not_ready), so this is a backstop against an older backend that
+    // does not — there is nothing to pin, so nothing could ever be verified.
+    if (!res.owner.authorKey) throw new Error('space_not_ready');
     if (!codeMatchesKey(code, res.owner.authorKey)) throw new Error('key_mismatch');
 
     const now = Date.now();
@@ -448,6 +451,8 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
       code,
       spaceName: res.space.name,
       spaceEmoji: res.space.emoji ?? undefined,
+      spaceKind: res.space.kind,
+      spaceEphemeralHours: res.space.ephemeralHours ?? undefined,
       ownerName: res.owner.displayName,
       ownerAvatarUrl: res.owner.avatarUrl ?? undefined,
       status: res.status === 'blocked' ? 'revoked' : res.status,
@@ -556,6 +561,20 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
         for (const p of stale) await db.feedPosts.delete(p.id);
 
         accepted.sort(byPublishedDesc);
+        // Every refresh restates what the space is, so a renamed space, a
+        // renamed author, or a space that became ephemeral stays current
+        // without a re-subscribe. Deliberately not marked dirty: this is the
+        // owner's data arriving, not a local edit to push back.
+        const restated: Partial<Subscription> = {
+          spaceName: res.space.name,
+          spaceEmoji: res.space.emoji ?? undefined,
+          spaceKind: res.space.kind,
+          spaceEphemeralHours: res.space.ephemeralHours ?? undefined,
+          ownerName: res.owner.displayName,
+          ownerAvatarUrl: res.owner.avatarUrl ?? undefined,
+          ...(res.status !== 'blocked' ? { status: res.status } : {}),
+        };
+        await db.subscriptions.update(sub.code, restated);
         set((s) => ({
           feed: { ...s.feed, [sub.code]: accepted },
           feedState: {
@@ -563,9 +582,7 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
             [sub.code]: { status: res.status, refused, keyChanged: false, fetchedAt },
           },
           subscriptions: s.subscriptions.map((x) =>
-            x.code === sub.code && x.status !== res.status && res.status !== 'blocked'
-              ? { ...x, status: res.status }
-              : x,
+            x.code === sub.code ? { ...x, ...restated } : x,
           ),
         }));
       } catch {

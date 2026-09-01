@@ -508,7 +508,9 @@
     },
     "playPost": "Diesen Beitrag vorlesen",
     "endOfSpace": "Du hast das Ende dieses Raums erreicht.",
-    "startOfSpace": "Neuester Beitrag"
+    "startOfSpace": "Neuester Beitrag",
+    "endOfSelection": "Das war alles.",
+    "startOfSelection": "Erster Beitrag"
   },
   "lists": {
     "title": "Leselisten",
@@ -630,7 +632,8 @@
       "invalid_code": "Das sieht nicht nach einem Freigabecode aus.",
       "key_mismatch": "Der Code passt nicht zur angegebenen Person. Bitte noch einmal senden lassen.",
       "profile_required": "Erstelle zuerst dein Profil.",
-      "failed": "Das hat nicht funktioniert. Bitte noch einmal versuchen."
+      "failed": "Das hat nicht funktioniert. Bitte noch einmal versuchen.",
+      "space_not_ready": "Dieser Raum kann noch nicht geteilt werden — die Autorin oder der Autor muss das Profil noch fertig einrichten."
     },
     "profile": {
       "title": "Dein Profil",
@@ -648,6 +651,11 @@
       "leaving": "Verlasse…"
     },
     "republish": "Aktualisieren",
-    "byLine": "von {{author}} · {{when}}"
+    "byLine": "von {{author}} · {{when}}",
+    "allNew": "Alles Neue",
+    "allNewCount": "Alles Neue ({{count}})",
+    "todayAll": "Heute, von allen",
+    "todayAllCount": "Heute, von allen ({{count}})",
+    "nothingNew": "Nichts Neues zu lesen."
   }
 }

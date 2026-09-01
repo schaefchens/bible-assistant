@@ -790,11 +790,47 @@ Two scripts, following `bible:verify`'s pattern rather than introducing a test r
   blocked subscribers, code rotation, expiry pruning, the feed projection leaking no uuid, and
   the ownership round trip.
 
+### Reading across spaces
+
+"Everything new" and "today, from everyone I follow" are not spaces but
+**selections** — `ReaderSource` gains `{kind:'selection', label, postIds}`, and it
+carries the post ids rather than a filter. That is the whole point: a filter
+would be re-evaluated as pieces are marked seen, so the list would shrink
+underneath the pager while it was being read and `next()` would start returning
+the wrong piece. A snapshot is fixed from the moment the user asked for it, which
+is also why `sameSource` compares the ids and why `unseenPosts` reads `seen`
+from the store rather than through `SpaceSnapshot` (that snapshot is what
+`useReaderSequence` memoizes on).
+
+They cover subscribed spaces only — the user's own writing is not new to them —
+and `todayPosts` is deliberately *not* filtered by seen: asking for today's
+pieces is a request for today's, not for what is left of them.
+
+**Continuation follows the reader's source, not the piece's own space**
+(`nextInSpace`). A piece read as part of "everything new" is usually followed by
+one from a *different* space, so continuing within its own space would quietly
+leave the reading the user asked for. Consulting the reader there is not the host
+leak it appears to be: a post can only be read in the reader, so its sequence is
+the only answer there is.
+
+**`markSeen` is what empties all this**, and it has three callers, mirroring
+`readingProgressTracker`'s design: narration starting a piece
+(`noteEntryStarted`), narration finishing one, and the reader moving off one
+after the dwell threshold. The dwell rule is shared with reading-list progress
+rather than duplicated — the flick-past problem is identical. One known gap:
+reading a piece and closing the app without moving on never marks it, because
+dwell is only evaluated on a position change.
+
+`Subscription` caches `spaceKind` and `spaceEphemeralHours`, restated from every
+feed response, which is what makes the Today filter possible and lets a
+subscribed Today space show its localized name instead of the stored literal.
+
 ### Known limitations
 
 - A voice command on `/read` still produces a *chat* reading, as it does for the Bible.
-- Per-post completion is not tracked; unread is a local dot (`seenPosts`), not a synced tick.
-  Doing it properly wants `readingProgress`'s union-merge machinery, which is keyed by `listId`.
+- Per-post completion is not tracked; unread is a local dot (`seenPosts`), not a synced tick, so
+  what you have seen does not travel between your devices. Doing it properly wants
+  `readingProgress`'s union-merge machinery, which is keyed by `listId`.
 - No QR code yet. `shareText()` covers sending a code; scanning would need a camera plugin plus
   iOS/Android permissions, and a QR that opens the app needs Universal Links / App Links.
 - User-generated content shared between users brings Apple guideline 1.2 / Play UGC policy into

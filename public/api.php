@@ -1758,6 +1758,24 @@ function verifyPostSignature(array $post): bool {
     }
 }
 
+/**
+ * A space is only shareable once its owner has a published profile with a
+ * signing key.
+ *
+ * Without one there is nothing for a subscriber to pin, so every post from the
+ * space would fail verification and be refused — the subscription would look
+ * fine and show nothing, forever. Better to refuse here, where the reason can
+ * be reported. Reachable in practice: a client that pushed its spaces but not
+ * its profile, e.g. after being pointed at a different server.
+ */
+function requireOwnerPublished(string $userDir): void {
+    $profile = readJsonObjectFile(profilePath($userDir));
+    $key = is_array($profile) ? (string)($profile['authorKey'] ?? '') : '';
+    if (!preg_match('/^[0-9a-f]{64}$/i', $key)) {
+        fail(409, 'space_not_ready');
+    }
+}
+
 /** The subset of a profile another user may see. */
 function publicProfileOf(string $userDir): array {
     $p = readJsonObjectFile(profilePath($userDir)) ?? [];
@@ -1776,6 +1794,12 @@ function publicSpaceOf(array $space): array {
         'name' => (string)($space['name'] ?? ''),
         'emoji' => $space['emoji'] ?? null,
         'description' => $space['description'] ?? null,
+        // `kind` and `ephemeralHours` are the subscriber's business: they say
+        // this is the author's ephemeral "Today" space, which is what lets a
+        // reader ask for today's pieces across everyone they follow — and lets
+        // the client localize the built-in name instead of showing the stored
+        // literal 'Today' to a German reader.
+        'kind' => ($space['kind'] ?? '') === 'today' ? 'today' : 'custom',
         'ephemeralHours' => $space['ephemeralHours'] ?? null,
     ];
 }
@@ -2085,6 +2109,7 @@ function handleSpaceRequest(array $ctx): void {
     $target = resolveShareCode($code);
     $space = findById(readJsonArrayFile(spacesPath($target['userDir'])), $target['spaceId']);
     if ($space === null) fail(404, 'unknown share code');
+    requireOwnerPublished($target['userDir']);
 
     $path = membersPath($target['userDir']);
     $members = readJsonArrayFile($path);
@@ -2141,6 +2166,7 @@ function handleSpaceFeed(array $ctx): void {
 
     $space = findById(readJsonArrayFile(spacesPath($target['userDir'])), $target['spaceId']);
     if ($space === null) fail(404, 'unknown share code');
+    requireOwnerPublished($target['userDir']);
 
     $status = 'pending';
     foreach (readJsonArrayFile(membersPath($target['userDir'])) as $m) {

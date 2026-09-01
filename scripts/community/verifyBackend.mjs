@@ -243,6 +243,32 @@ try {
 
   console.log('access control');
 
+  await check('a space whose owner has no published key cannot be shared', async () => {
+    // Reachable for real: a client that pushed its spaces but not its profile.
+    // Without an author key there is nothing for a subscriber to pin, so every
+    // post would fail verification — the subscription would look fine and show
+    // nothing forever. Refusing here is what lets the reason be reported.
+    const orphan = { id: randomUUID(), name: 'Orphan', kind: 'custom', approval: 'auto', createdAt: Date.now(), updatedAt: Date.now() };
+    const code = mintSpaceCode(carol.authorKey);
+    await call(carol, 'spaces.upsert', { space: orphan });
+    await call(carol, 'spaces.code.set', { spaceId: orphan.id, code });
+    // Carol has a profile; drop it to reproduce the state.
+    await call(carol, 'profile.delete', {});
+    await call(carol, 'spaces.upsert', { space: orphan });
+    await call(carol, 'spaces.code.set', { spaceId: orphan.id, code });
+
+    const req = await call(bob, 'space.request', { code });
+    assert.equal(req.status, 409);
+    assert.equal(req.body.error, 'space_not_ready');
+    const feed = await call(bob, 'space.feed', { code });
+    assert.equal(feed.status, 409);
+
+    // Restore Carol for the checks that follow.
+    await call(carol, 'profile.set', {
+      profile: { displayName: 'Carol', authorKey: carol.authorKey, updatedAt: Date.now() },
+    });
+  });
+
   await check('an auto-approval space admits a subscriber immediately', async () => {
     const r = await call(bob, 'space.request', { code: blogCode });
     assert.equal(r.status, 200);

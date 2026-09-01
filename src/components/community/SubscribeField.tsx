@@ -33,8 +33,16 @@ export function SubscribeField() {
       setCode('');
       setStatus(result === 'accepted' ? null : t('community.pending'));
     } catch (e) {
+      // ApiError's message is api.php's `error` string, so a reason the server
+      // gave (space_not_ready, profile_required) lands here alongside the ones
+      // the client raises itself.
       const key = e instanceof Error ? e.message : 'failed';
-      const known = ['invalid_code', 'key_mismatch', 'profile_required'].includes(key);
+      const known = [
+        'invalid_code',
+        'key_mismatch',
+        'profile_required',
+        'space_not_ready',
+      ].includes(key);
       setError(t(`community.errors.${known ? key : 'failed'}`));
     } finally {
       setBusy(false);

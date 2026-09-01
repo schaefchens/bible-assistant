@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
-import { resolveSpaceFrom } from '@/services/community/spaceReading';
+import { resolveSpaceFrom, selectionSegments } from '@/services/community/spaceReading';
 import {
   bibleSequence,
   listSequence,
+  selectionSequence,
   spaceSequence,
   type ReadingSequence,
 } from '@/services/reading/readingSequence';
@@ -43,6 +44,12 @@ export function useReaderSequence(): ReadingSequence {
     if (source.kind === 'space') {
       const space = resolveSpaceFrom(source, { profile, spaces, posts, subscriptions, feed });
       if (space) return spaceSequence(space.spaceId, space.posts, translation);
+    }
+    if (source.kind === 'selection') {
+      // Deliberately not memoized on `seen`: the selection is a snapshot taken
+      // when the user asked for it, so marking pieces seen while reading must
+      // not reshuffle it. See ReaderSource's 'selection' variant.
+      return selectionSequence(selectionSegments(source.postIds, translation));
     }
     return bibleSequence(translation);
   }, [source, lists, translation, profile, spaces, posts, subscriptions, feed]);

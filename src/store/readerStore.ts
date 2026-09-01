@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { Translation } from '@/services/bible/bibleApi';
 import { isChapterMissing } from '@/services/bible/chapterSources';
 import { nextBookRef } from '@/services/bible/chapterNavigation';
-import { resolveSpace } from '@/services/community/spaceReading';
+import { resolveSpace, selectionSegments } from '@/services/community/spaceReading';
 import { absorbsGaps, loadSegmentUnits } from '@/services/reading/segmentLoader';
 import {
   BIBLE_SOURCE,
@@ -14,12 +14,17 @@ import {
   listSequence,
   sameSource,
   segmentId,
+  selectionSequence,
   spaceSequence,
   type ReaderSource,
   type ReadingSequence,
   type SegmentRef,
 } from '@/services/reading/readingSequence';
-import { noteEntryFinished, noteEntryStarted } from '@/lib/readingProgressTracker';
+import {
+  noteEntryFinished,
+  noteEntryStarted,
+  noteSpaceSeen,
+} from '@/lib/readingProgressTracker';
 import type { VerseSummary } from '@/types/domain';
 import { useCommunityStore } from './communityStore';
 import { useLibraryStore } from './libraryStore';
@@ -121,6 +126,9 @@ function sequenceFor(source: ReaderSource, translation: Translation): ReadingSeq
   if (source.kind === 'space') {
     const space = resolveSpace(source);
     if (space) return spaceSequence(space.spaceId, space.posts, translation);
+  }
+  if (source.kind === 'selection') {
+    return selectionSequence(selectionSegments(source.postIds, translation));
   }
   return bibleSequence(translation);
 }
@@ -249,6 +257,11 @@ function isForwardInList(previous: SegmentRef, next: SegmentRef): boolean {
  * Record progress from the reader's own movement, so **reading counts, not just
  * listening**: a plan that only advanced when you pressed play was wrong about
  * anyone who reads silently.
+ *
+ * Handles both things a position change can mean: a reading-list entry being
+ * finished, and a community piece being *seen*. They share the dwell rule
+ * deliberately — the alternative was a second, subtly different notion of "you
+ * were there long enough", and the flick-past problem is identical.
  */
 function trackListProgress(
   previous: SegmentRef | null,
@@ -267,6 +280,14 @@ function trackListProgress(
     dwell?.id === previousId &&
     now - dwell.since >= dwellNeededFor(verseCount);
   dwell = { id: segmentId(next), since: now };
+
+  // Leaving a piece you sat on counts as having seen it, which is what empties
+  // an "everything new" reading as you work through it. Weaker than a reading
+  // plan's tick, so no intent gate: dwell alone is the signal, and it applies
+  // whichever way you moved.
+  if (previous && isPostSegment(previous) && previous.postId && dwelt) {
+    noteSpaceSeen(previous.postId);
+  }
 
   if (!next.listId || !next.entryId) return;
   if (
@@ -443,7 +464,9 @@ export const useReaderStore = create<ReaderState>()(
         // A space opens on its newest post. There is no per-post progress to
         // resume from (unread is a local dot, not a synced tick), and the newest
         // piece is what someone opening a blog wants.
-        if (source.kind === 'space') return sequence.first();
+        // A space opens on its newest piece; a selection opens at the top of
+        // what was selected, which is the order the user asked for.
+        if (source.kind === 'space' || source.kind === 'selection') return sequence.first();
         const slot = useLastReadingStore.getState().slot;
         return slot
           ? { translation, bookId: slot.bookId, chapter: slot.chapter }
@@ -482,7 +505,14 @@ export const useReaderStore = create<ReaderState>()(
           // indistinguishable from an unsubscribed space.
           const staleSpace =
             community.initialized && source.kind === 'space' && resolveSpace(source) === null;
-          if (staleList || staleSpace) {
+          // A persisted selection whose pieces have all gone (expired, or the
+          // subscription dropped) has nothing to show, and unlike a space it
+          // cannot come back — the snapshot is spent.
+          const staleSelection =
+            community.initialized &&
+            source.kind === 'selection' &&
+            selectionSegments(source.postIds, translation).length === 0;
+          if (staleList || staleSpace || staleSelection) {
             set({ source: BIBLE_SOURCE, position: null });
           }
           const stored = get().position;

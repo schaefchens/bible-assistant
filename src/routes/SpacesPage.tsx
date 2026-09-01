@@ -12,6 +12,7 @@ import { useCommunityStore } from '@/store/communityStore';
 import { useReaderStore } from '@/store/readerStore';
 import type { Post, Space, Subscription } from '@/types/domain';
 import { spaceDisplayName, spaceLabel } from '@/services/community/spaceName';
+import { NewPiecesBar } from '@/components/community/NewPiecesBar';
 
 /**
  * `/spaces` and `/spaces/:id` — the index of the user's own spaces and the
@@ -171,6 +172,9 @@ function SpacesIndex({
 
             <section className="space-y-2">
               <SectionTitle>{t('community.following')}</SectionTitle>
+              {/* Above the list, because reading across everyone is the more
+                  common intent than picking one person. */}
+              <NewPiecesBar />
               {subscriptions.length === 0 && <Empty>{t('community.emptyFollowing')}</Empty>}
               {subscriptions.map((sub) => {
                 const posts = feed[sub.code] ?? [];
@@ -188,7 +192,7 @@ function SpacesIndex({
                     emoji={sub.spaceEmoji}
                     // Whose space it is belongs in the name, not in a detail
                     // line — it is half of what identifies it.
-                    title={spaceLabel(sub.ownerName, { kind: 'custom', name: sub.spaceName })}
+                    title={spaceLabel(sub.ownerName, { kind: sub.spaceKind ?? 'custom', name: sub.spaceName })}
                     detail={status as string}
                     badge={unread > 0 ? String(unread) : undefined}
                     warn={state?.keyChanged}

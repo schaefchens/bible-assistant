@@ -418,6 +418,15 @@ export type Subscription = {
   code: string;
   spaceName: string;
   spaceEmoji?: string;
+  /**
+   * The kind and expiry of the space as its *owner* set them, refreshed from
+   * every feed response. Together they answer "is this their Today space?",
+   * which is what "read today's pieces from everyone I follow" filters on — and
+   * `kind` lets the built-in name be localized rather than showing the stored
+   * literal 'Today' to a reader in another language.
+   */
+  spaceKind?: 'today' | 'custom';
+  spaceEphemeralHours?: number;
   ownerName: string;
   ownerAvatarUrl?: string;
   status: 'pending' | 'accepted' | 'revoked';

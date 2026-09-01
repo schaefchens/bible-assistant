@@ -1,7 +1,8 @@
 import { expandList } from '@/services/reading/readingSequence';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { isListProvenance, type ReadingProvenance } from './readingHosts';
+import { isListProvenance, isSpaceProvenance, type ReadingProvenance } from './readingHosts';
+import { useCommunityStore } from '@/store/communityStore';
 
 /**
  * Recording progress through a reading list.
@@ -13,13 +14,31 @@ import { isListProvenance, type ReadingProvenance } from './readingHosts';
  * anyone who reads.
  */
 
+/**
+ * Mark one community piece as seen.
+ *
+ * Kept here with the reading-list progress rather than in the store because the
+ * same three things call it — narration reaching a piece, the reader moving off
+ * one, and (via `noteEntryStarted`) playback starting one — and this module
+ * exists precisely so both the audio path and the reader can share them.
+ *
+ * "Seen", not "read": it drives the unread dot and empties an "everything new"
+ * reading. There is no synced per-piece completion, which would want
+ * `readingProgress`'s union-merge machinery, and that is keyed by `listId`.
+ */
+export function noteSpaceSeen(postId: string): void {
+  void useCommunityStore.getState().markSeen(postId);
+}
+
 /** Remember where the user is in a list, so the next session resumes here. */
 export function noteEntryStarted(provenance: ReadingProvenance | undefined): void {
-  // Only a reading list tracks progress. A space has no per-post completion —
-  // unread is a local dot on the space, not a synced tick (see communityStore),
-  // because that would want readingProgress's union-merge machinery, which is
-  // keyed by listId.
-  if (!provenance || !isListProvenance(provenance)) return;
+  if (!provenance) return;
+  // Starting to narrate a piece is the strongest "seen" signal there is.
+  if (isSpaceProvenance(provenance)) {
+    noteSpaceSeen(provenance.postId);
+    return;
+  }
+  if (!isListProvenance(provenance)) return;
   void useLibraryStore
     .getState()
     .setCurrentEntry(provenance.listId, provenance.entryId);
@@ -37,7 +56,12 @@ export function noteEntryFinished(
   provenance: ReadingProvenance | undefined,
   chapter?: number,
 ): void {
-  if (!provenance || !isListProvenance(provenance)) return;
+  if (!provenance) return;
+  if (isSpaceProvenance(provenance)) {
+    noteSpaceSeen(provenance.postId);
+    return;
+  }
+  if (!isListProvenance(provenance)) return;
   const lib = useLibraryStore.getState();
   const list = lib.readingLists.find((l) => l.id === provenance.listId);
   if (!list) return;

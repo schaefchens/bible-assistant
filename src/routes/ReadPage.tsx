@@ -186,7 +186,9 @@ export function ReadPage() {
                 ? 'read.endOfList'
                 : source.kind === 'space'
                   ? 'read.endOfSpace'
-                  : 'read.endOfBible',
+                  : source.kind === 'selection'
+                    ? 'read.endOfSelection'
+                    : 'read.endOfBible',
             )}
           </p>
         )}

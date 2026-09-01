@@ -508,7 +508,9 @@
     },
     "playPost": "Read this piece aloud",
     "endOfSpace": "You have reached the end of this space.",
-    "startOfSpace": "Newest piece"
+    "startOfSpace": "Newest piece",
+    "endOfSelection": "That's everything.",
+    "startOfSelection": "First piece"
   },
   "lists": {
     "title": "Reading lists",
@@ -630,7 +632,8 @@
       "invalid_code": "That does not look like a share code.",
       "key_mismatch": "That code does not match the author it claims. Ask them to send it again.",
       "profile_required": "Create your profile first.",
-      "failed": "That did not work. Try again."
+      "failed": "That did not work. Try again.",
+      "space_not_ready": "That space isn't ready to be shared yet — its author needs to finish setting up their profile."
     },
     "profile": {
       "title": "Your profile",
@@ -648,6 +651,11 @@
       "leaving": "Leaving…"
     },
     "republish": "Update",
-    "byLine": "by {{author}} · {{when}}"
+    "byLine": "by {{author}} · {{when}}",
+    "allNew": "Everything new",
+    "allNewCount": "Everything new ({{count}})",
+    "todayAll": "Today, from everyone",
+    "todayAllCount": "Today, from everyone ({{count}})",
+    "nothingNew": "Nothing new to read."
   }
 }

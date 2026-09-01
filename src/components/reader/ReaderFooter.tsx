@@ -32,7 +32,14 @@ export function ReaderFooter({ onStep }: Props) {
   const prev = sequence.prev(position);
   const next = sequence.next(position);
   // Three sources, three ways to say "there is nothing before/after this".
-  const edge = source.kind === 'list' ? 'List' : source.kind === 'space' ? 'Space' : 'Bible';
+  const edge =
+    source.kind === 'list'
+      ? 'List'
+      : source.kind === 'space'
+        ? 'Space'
+        : source.kind === 'selection'
+          ? 'Selection'
+          : 'Bible';
 
   return (
     <nav

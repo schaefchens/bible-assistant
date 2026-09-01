@@ -28,6 +28,7 @@ import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { playSegmentInChat } from '@/lib/readingListPlayback';
 import { BottomSheet } from '@/components/common/BottomSheet';
 import { spaceLabel } from '@/services/community/spaceName';
+import { NewPiecesBar } from '@/components/community/NewPiecesBar';
 
 type View = 'books' | 'chapters' | 'translations' | 'lists' | 'spaces';
 
@@ -742,6 +743,12 @@ export function BookChapterPicker({
 
         {view === 'spaces' && (
           <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-safe">
+            {/* Reading across everyone is usually why you opened this, so it
+                comes before the list of individual spaces. Closes the sheet
+                itself, since it navigates the reader somewhere new. */}
+            <div className="pt-2">
+              <NewPiecesBar compact onOpened={() => setOpen(false)} />
+            </div>
             <ul className="py-2 space-y-1">
               {ownSpaces.map((space) => (
                 <li key={space.id}>
@@ -762,7 +769,7 @@ export function BookChapterPicker({
               {subscriptions.map((sub) => (
                 <li key={sub.code}>
                   <SourceRow
-                    label={spaceLabel(sub.ownerName, { kind: 'custom', name: sub.spaceName })}
+                    label={spaceLabel(sub.ownerName, { kind: sub.spaceKind ?? 'custom', name: sub.spaceName })}
                     emoji={sub.spaceEmoji}
                     detail={
                       sub.status === 'accepted'

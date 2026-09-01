@@ -1,6 +1,11 @@
 import { useCommunityStore } from '@/store/communityStore';
 import type { Post, Profile, Space, Subscription, VerseSummary } from '@/types/domain';
-import type { ReaderSource } from '@/services/reading/readingSequence';
+import {
+  postSegmentRef,
+  type ReaderSource,
+  type SegmentRef,
+} from '@/services/reading/readingSequence';
+import type { Translation } from '@/services/bible/bibleApi';
 import { postToUnits } from './postUnits';
 import { spaceDisplayName } from './spaceName';
 
@@ -158,4 +163,88 @@ function authorOf(spaceId: string): string {
 export function spacePostUnits(spaceId: string, postId: string): VerseSummary[] {
   const post = findSpacePost(spaceId, postId);
   return post ? postToUnits(post, spaceId, authorOf(spaceId)) : [];
+}
+
+/* ------------------------------------------------------------------ *
+ * Reading across spaces
+ *
+ * "Everything new" and "today, from everyone I follow" are not spaces — they
+ * are *selections* of pieces drawn from several. They cover only spaces the
+ * user subscribes to: their own writing is not new to them.
+ * ------------------------------------------------------------------ */
+
+/** One piece and the space it belongs to, looked up by post id alone. */
+export type LocatedPost = { post: Post; spaceId: string; code: string };
+
+/**
+ * Every accepted subscription's pieces, newest first across all of them.
+ *
+ * Flat rather than grouped by space: this is a "what's new" reading order, and
+ * each piece states its own author in the byline, so the source is never in
+ * doubt while reading.
+ */
+export function subscribedPosts(state: SpaceSnapshot = snapshot()): LocatedPost[] {
+  const out: LocatedPost[] = [];
+  for (const sub of state.subscriptions) {
+    if (sub.status !== 'accepted') continue;
+    for (const post of state.feed[sub.code] ?? []) {
+      out.push({ post, spaceId: post.spaceId, code: sub.code });
+    }
+  }
+  return out.sort((a, b) => b.post.publishedAt - a.post.publishedAt);
+}
+
+/**
+ * Pieces the user has not seen yet.
+ *
+ * `seen` is read here rather than being part of {@link SpaceSnapshot} on
+ * purpose: the snapshot is what `useReaderSequence` memoizes on, and pulling
+ * `seen` in would rebuild the reader's sequence every time a piece is marked —
+ * which for an unread reading would reshuffle the very list being read. These
+ * selectors are only ever called imperatively, to *build* a selection.
+ */
+export function unseenPosts(state: SpaceSnapshot = snapshot()): LocatedPost[] {
+  const { seen } = useCommunityStore.getState();
+  return subscribedPosts(state).filter(({ post }) => !seen[post.id]);
+}
+
+/**
+ * Pieces from the ephemeral "Today" spaces of everyone the user follows —
+ * whether seen or not, because "read today's" is a request for today's, not
+ * for what is left of it.
+ */
+export function todayPosts(state: SpaceSnapshot = snapshot()): LocatedPost[] {
+  const ephemeral = new Set(
+    state.subscriptions
+      .filter((s) => s.spaceKind === 'today' || (s.spaceEphemeralHours ?? 0) > 0)
+      .map((s) => s.code),
+  );
+  return subscribedPosts(state).filter(({ code }) => ephemeral.has(code));
+}
+
+/** Resolve a post by id alone, across the user's own writing and every feed. */
+export function findPostById(postId: string): LocatedPost | null {
+  const state = snapshot();
+  const own = state.posts.find((p) => p.id === postId);
+  if (own) return { post: own, spaceId: own.spaceId, code: '' };
+  for (const [code, posts] of Object.entries(state.feed)) {
+    const hit = posts.find((p) => p.id === postId);
+    if (hit) return { post: hit, spaceId: hit.spaceId, code };
+  }
+  return null;
+}
+
+/**
+ * The segments a `{kind:'selection'}` source reads, in the order it fixed.
+ *
+ * Ids whose piece has gone are skipped — a Today piece can expire between the
+ * moment the user asked for "everything new" and the moment they reach it.
+ */
+export function selectionSegments(postIds: string[], translation: Translation): SegmentRef[] {
+  const out: SegmentRef[] = [];
+  for (const id of postIds) {
+    const located = findPostById(id);
+    if (located) out.push(postSegmentRef(located.post, located.spaceId, translation));
+  }
+  return out;
 }

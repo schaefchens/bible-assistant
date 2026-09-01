@@ -27,7 +27,21 @@ import { isFlatList, listEntries } from './readingEntries';
 export type ReaderSource =
   | { kind: 'bible' }
   | { kind: 'list'; listId: string }
-  | { kind: 'space'; spaceId?: string; code?: string };
+  | { kind: 'space'; spaceId?: string; code?: string }
+  /**
+   * A reading drawn from *several* spaces — "everything new", or "today from
+   * everyone I follow".
+   *
+   * It carries the post ids themselves rather than a filter, and that is the
+   * whole point: a filter would be re-evaluated as pieces are marked seen, so
+   * the list would shrink underneath the pager while it was being read and
+   * `next()` would start returning the wrong piece. A snapshot is fixed from
+   * the moment the user asked for it.
+   *
+   * `label` is stored with it because the reader header has nothing else to
+   * name it by — there is no space to look up.
+   */
+  | { kind: 'selection'; label: string; postIds: string[] };
 
 export const BIBLE_SOURCE: ReaderSource = { kind: 'bible' };
 
@@ -40,6 +54,12 @@ export function sameSource(a: ReaderSource, b: ReaderSource): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === 'list' && b.kind === 'list') return a.listId === b.listId;
   if (a.kind === 'space' && b.kind === 'space') return spaceSourceKey(a) === spaceSourceKey(b);
+  if (a.kind === 'selection' && b.kind === 'selection') {
+    // Asking for "everything new" again after reading some of it is a *new*
+    // request, even under the same label — so two selections are the same only
+    // if they hold the same pieces.
+    return a.postIds.length === b.postIds.length && a.postIds.every((id, i) => id === b.postIds[i]);
+  }
   return true;
 }
 
@@ -268,6 +288,32 @@ export function spaceSequence(
     prev: (cur) => {
       const i = indexOf(cur);
       return i <= 0 ? null : segments[i - 1] ?? null;
+    },
+  };
+}
+
+/**
+ * A reading built from pieces drawn across spaces, in the order the selection
+ * fixed. Pieces that have since gone (deleted, or expired out of a Today space)
+ * are dropped rather than left as holes.
+ *
+ * Ends hard at both edges, like a list and like a single space: a selection is
+ * a finite thing the user asked for.
+ */
+export function selectionSequence(
+  refs: SegmentRef[],
+): ReadingSequence {
+  const indexOf = (cur: SegmentRef) => refs.findIndex((r) => r.postId === cur.postId);
+  return {
+    all: () => refs,
+    first: () => refs[0] ?? null,
+    next: (cur) => {
+      const i = indexOf(cur);
+      return i === -1 ? null : refs[i + 1] ?? null;
+    },
+    prev: (cur) => {
+      const i = indexOf(cur);
+      return i <= 0 ? null : refs[i - 1] ?? null;
     },
   };
 }

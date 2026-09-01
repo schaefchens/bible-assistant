@@ -102,23 +102,53 @@ export async function nextReadingAfter(groupId: string): Promise<NextReading | n
 }
 
 /**
- * The next post of a space, or null at its end.
+ * What plays after one piece, or null at the end.
  *
- * Order comes from the same place the reader's sequence does, so "what plays
- * next" and "what the pager shows next" cannot disagree.
+ * **Follows the reader's source, not the piece's own space.** A piece read as
+ * part of "everything new" is usually followed by a piece from a *different*
+ * space, so continuing within its own space would quietly leave the reading the
+ * user actually asked for. The pager reads the same sequence, so the two cannot
+ * disagree about what comes next.
+ *
+ * Consulting the reader here is not the host leak it looks like: a post can only
+ * be read in the reader (chat has no representation for one — see
+ * `useContinueReading`), so the reader's sequence is the only answer there is.
+ * Dynamically imported to keep this module's load order independent of the
+ * store's.
  */
 async function nextInSpace(provenance: SpaceProvenance): Promise<NextReading | null> {
-  const { spacePosts } = await import('@/services/community/spaceReading');
-  const posts = spacePosts(provenance.spaceId);
-  const i = posts.findIndex((p) => p.id === provenance.postId);
-  const next = i === -1 ? undefined : posts[i + 1];
-  if (!next) return null;
+  const [{ spacePosts, selectionSegments }, { useReaderStore }, { useSettingsStore }] =
+    await Promise.all([
+      import('@/services/community/spaceReading'),
+      import('@/store/readerStore'),
+      import('@/store/settingsStore'),
+    ]);
+
+  const source = useReaderStore.getState().source;
+  const translation = useSettingsStore.getState().translation;
+
+  let nextId: string | undefined;
+  let nextSpaceId = provenance.spaceId;
+
+  if (source.kind === 'selection') {
+    const refs = selectionSegments(source.postIds, translation);
+    const i = refs.findIndex((r) => r.postId === provenance.postId);
+    const next = i === -1 ? undefined : refs[i + 1];
+    nextId = next?.postId;
+    if (next?.spaceId) nextSpaceId = next.spaceId;
+  } else {
+    const posts = spacePosts(provenance.spaceId);
+    const i = posts.findIndex((p) => p.id === provenance.postId);
+    nextId = i === -1 ? undefined : posts[i + 1]?.id;
+  }
+
+  if (!nextId) return null;
   return {
     translation: 'KJV',
     bookId: 0,
     chapter: 0,
-    post: { spaceId: provenance.spaceId, postId: next.id },
-    provenance: { spaceId: provenance.spaceId, postId: next.id },
+    post: { spaceId: nextSpaceId, postId: nextId },
+    provenance: { spaceId: nextSpaceId, postId: nextId },
   };
 }
 

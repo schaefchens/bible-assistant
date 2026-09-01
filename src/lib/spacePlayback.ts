@@ -39,3 +39,34 @@ export async function playSpaceInReader(key: {
   void startPlaybackForVerses(segment.id, segment.verses, 0);
   return true;
 }
+
+/**
+ * Open a cross-space reading — "everything new", or "today from everyone".
+ *
+ * Takes the pieces already chosen rather than a filter, because the source is a
+ * snapshot: see `ReaderSource`'s `'selection'` variant for why re-deriving it
+ * would reshuffle the reading as pieces are marked seen.
+ *
+ * Returns false when the selection is empty, which the caller shows as "nothing
+ * new" rather than opening an empty reader.
+ */
+export async function openSelectionInReader(
+  label: string,
+  postIds: string[],
+  play: boolean,
+): Promise<boolean> {
+  if (postIds.length === 0) return false;
+  const source = { kind: 'selection' as const, label, postIds };
+  await useReaderStore.getState().setSource(source);
+
+  if (!play) return true;
+
+  const position = useReaderStore.getState().position;
+  if (!position) return false;
+  const segment = useReaderStore.getState().segments[segmentId(position)];
+  if (!segment) return false;
+  audioPlayback.ensureContext();
+  startAmbientIfEnabled();
+  void startPlaybackForVerses(segment.id, segment.verses, 0);
+  return true;
+}

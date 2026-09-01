@@ -40,7 +40,9 @@ import {
   type ResolvedPosition,
 } from '@/services/bible/playbackPosition';
 import { playReadingListInChat } from '@/lib/readingListPlayback';
-import { playSpaceInReader } from '@/lib/spacePlayback';
+import i18n from '@/i18n';
+import { openSelectionInReader, playSpaceInReader } from '@/lib/spacePlayback';
+import { todayPosts, unseenPosts } from '@/services/community/spaceReading';
 import { spaceDisplayName } from '@/services/community/spaceName';
 import { useCommunityStore } from '@/store/communityStore';
 import { buildPlanDays } from '@/services/reading/readingPlan';
@@ -139,6 +141,7 @@ const TOOL_REGISTRY: { [N in ToolName]: ToolHandler<N> } = {
   list_spaces: () => handleListSpaces(),
   write_post: (args) => handleWritePost(args),
   read_space: (args) => handleReadSpace(args),
+  read_new: (args) => handleReadNew(args),
   set_language: (args) => handleSetLanguage(args),
   set_translation: (args) => handleSetTranslation(args),
   set_voice: (args) => handleSetVoice(args),
@@ -793,6 +796,38 @@ async function handleReadSpace(args: ToolArgs['read_space']): Promise<ToolDispat
     return { ok: false, error: `"${lookup.label}" has nothing to read yet` };
   }
   return { ok: true, data: { reading: lookup.label, alreadyRead: true } };
+}
+
+/**
+ * Read across every space the user follows.
+ *
+ * The selection is snapshotted here, the same way the buttons do it — see
+ * `ReaderSource`'s `'selection'` variant for why a filter would reshuffle the
+ * reading as pieces get marked seen.
+ */
+async function handleReadNew(args: ToolArgs['read_new']): Promise<ToolDispatchResult> {
+  const state = useCommunityStore.getState();
+  if (!state.profile) {
+    return { ok: false, error: 'the user has not created a community profile yet' };
+  }
+  const today = args.scope === 'today';
+  const chosen = today ? todayPosts() : unseenPosts();
+  if (chosen.length === 0) {
+    return {
+      ok: false,
+      error: today
+        ? 'nobody the user follows has posted in their Today space'
+        : 'there is nothing new to read',
+    };
+  }
+  const label = i18n.t(today ? 'community.todayAll' : 'community.allNew');
+  const started = await openSelectionInReader(
+    label,
+    chosen.map((p) => p.post.id),
+    true,
+  );
+  if (!started) return { ok: false, error: 'could not start reading' };
+  return { ok: true, data: { reading: label, pieces: chosen.length, alreadyRead: true } };
 }
 
 async function handlePlayReadingList(

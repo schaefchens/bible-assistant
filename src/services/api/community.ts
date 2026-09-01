@@ -25,6 +25,8 @@ export type PublicSpace = {
   name: string;
   emoji: string | null;
   description: string | null;
+  /** `'today'` marks the author's built-in ephemeral space. */
+  kind: 'today' | 'custom';
   ephemeralHours: number | null;
 };
 
