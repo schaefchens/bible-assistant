@@ -428,7 +428,8 @@
         "working": "Setting up…",
         "on": "Profile created",
         "onHint": "Your “Today” space is ready. Write something whenever you like — pieces there disappear after 24 hours.",
-        "failed": "That did not work. Try again."
+        "failed": "That did not work. Try again.",
+        "invitePending": "You opened an invitation to read someone’s space. A profile is what lets you ask."
       }
     }
   },
@@ -718,6 +719,8 @@
       "continueHere": "Continue in the browser",
       "copyCode": "Copy the code",
       "confirmBody": "Asking to read lets the author know you would like access. They decide.",
+      "needProfile": "Reading someone's space needs a name to ask with — that's your profile.",
+      "createAndAsk": "Create profile and ask to read",
       "fingerprint": "Author's fingerprint: {{fingerprint}}",
       "ask": "Ask to read",
       "asking": "Asking…",

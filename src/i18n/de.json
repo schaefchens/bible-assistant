@@ -428,7 +428,8 @@
         "working": "Wird eingerichtet…",
         "on": "Profil erstellt",
         "onHint": "Dein Raum „Heute“ ist bereit. Schreib etwas, wann du magst — Beiträge dort verschwinden nach 24 Stunden.",
-        "failed": "Das hat nicht funktioniert. Bitte noch einmal versuchen."
+        "failed": "Das hat nicht funktioniert. Bitte noch einmal versuchen.",
+        "invitePending": "Du hast eine Einladung zu einem Raum geöffnet. Mit einem Profil kannst du anfragen."
       }
     }
   },
@@ -718,6 +719,8 @@
       "continueHere": "Im Browser weiterlesen",
       "copyCode": "Code kopieren",
       "confirmBody": "Mit der Anfrage weiß die Autorin oder der Autor, dass du lesen möchtest. Die Entscheidung liegt bei ihnen.",
+      "needProfile": "Um in einem Raum zu lesen, brauchst du einen Namen, mit dem du anfragst — dein Profil.",
+      "createAndAsk": "Profil erstellen und Zugang anfragen",
       "fingerprint": "Fingerprint: {{fingerprint}}",
       "ask": "Um Zugang bitten",
       "asking": "Frage an…",

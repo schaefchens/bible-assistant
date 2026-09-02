@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 import { extractErrorDetail } from '@/lib/extractErrorDetail';
 import { COMMUNITY_TERMS_VERSION } from '@/lib/communityTerms';
+import { ROUTES } from '@/lib/appRoutes';
 import { CommunityTermsConsent } from '@/components/community/CommunityTerms';
 import { useCommunityStore } from '@/store/communityStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -33,7 +35,14 @@ export function CommunityStep() {
   const syncEnabled = useSettingsStore((s) => s.syncEnabled);
   const acceptTerms = useSettingsStore((s) => s.acceptCommunityTerms);
 
-  const [revealed, setRevealed] = useState(false);
+  // An invitation is waiting behind the wizard (the route is the pending state
+  // — see SubscribePage). For that user the profile is not optional; it is the
+  // reason the link was opened. So the step opens ready to type rather than
+  // behind a "set up" button, and says why. Still skippable: the invitation can
+  // create the profile itself if they'd rather not do it here.
+  const location = useLocation();
+  const invitePending = location.pathname.startsWith(ROUTES.subscribe);
+  const [revealed, setRevealed] = useState(invitePending);
   const [name, setName] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +85,11 @@ export function CommunityStep() {
         </div>
       ) : (
         <div className="flex flex-col">
+          {invitePending && (
+            <p className="text-sm text-brand-muted mb-3">
+              {t('onboarding.wizard.community.invitePending')}
+            </p>
+          )}
           <label className="text-sm mb-2" htmlFor="community-name">
             {t('onboarding.wizard.community.nameLabel')}
           </label>

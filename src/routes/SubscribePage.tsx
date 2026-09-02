@@ -13,9 +13,22 @@ import {
 import { extractErrorDetail } from '@/lib/extractErrorDetail';
 import { peekSpace, type SpacePeekResponse } from '@/services/api/community';
 import { useCommunityStore } from '@/store/communityStore';
-import { useCommunityTermsAccepted } from '@/lib/communityTerms';
+import { COMMUNITY_TERMS_VERSION, useCommunityTermsAccepted } from '@/lib/communityTerms';
+import { CommunityTermsConsent } from '@/components/community/CommunityTerms';
+import { useSettingsStore } from '@/store/settingsStore';
 import { CommunityTermsGate } from '@/components/community/CommunityTermsGate';
 
+
+/** The refusals both submit paths below can raise, each with its own message
+ * under `community.errors.*`. Anything else falls back to the generic one. */
+const KNOWN_ERRORS = [
+  'invalid_code',
+  'key_mismatch',
+  'profile_required',
+  'space_not_ready',
+  'terms_required',
+  'author_blocked',
+];
 
 /**
  * `/subscribe/:code` — where an invitation lands.
@@ -53,6 +66,8 @@ export function SubscribePage() {
   const code = parseSpaceCodeInput(raw ?? '');
   const profile = useCommunityStore((s) => s.profile);
   const subscribe = useCommunityStore((s) => s.subscribe);
+  const enableCommunity = useCommunityStore((s) => s.enableCommunity);
+  const acceptTerms = useSettingsStore((s) => s.acceptCommunityTerms);
   const initialized = useCommunityStore((s) => s.initialized);
   const blocked = useCommunityStore((s) => s.blocked);
   const termsAccepted = useCommunityTermsAccepted();
@@ -77,6 +92,10 @@ export function SubscribePage() {
   const [busy, setBusy] = useState(false);
   const [asked, setAsked] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Making the profile here rather than in Settings — see the branch below.
+  const [joinName, setJoinName] = useState('');
+  const [joinAgreed, setJoinAgreed] = useState(false);
+  const [joining, setJoining] = useState(false);
 
   useEffect(() => {
     if (!code || handOff) return;
@@ -96,6 +115,40 @@ export function SubscribePage() {
     };
   }, [code, handOff, t]);
 
+  /**
+   * Create the profile and ask to read, in one action.
+   *
+   * An invitation is the one place where the community profile is not optional:
+   * it is the entire reason the link was opened. This used to be a sheet whose
+   * only button pushed the user into Settings to build a profile and find
+   * their own way back, which is a second setup wall in front of someone who
+   * has just finished the first one.
+   *
+   * Terms before profile, because `enableCommunity` refuses without them — and
+   * the checkbox on this screen is where they were accepted.
+   */
+  const createProfileAndAsk = async () => {
+    const displayName = joinName.trim();
+    if (!code || joining || !displayName || !joinAgreed) return;
+    setJoining(true);
+    setError(null);
+    try {
+      acceptTerms(COMMUNITY_TERMS_VERSION);
+      await enableCommunity(displayName);
+      await subscribe(code);
+      setAsked(true);
+    } catch (e) {
+      const key = e instanceof Error ? e.message : 'failed';
+      setError(
+        KNOWN_ERRORS.includes(key)
+          ? t(`community.errors.${key}`)
+          : (extractErrorDetail(e) ?? t('community.errors.failed')),
+      );
+    } finally {
+      setJoining(false);
+    }
+  };
+
   const onSubscribe = async () => {
     if (!code || busy) return;
     setBusy(true);
@@ -105,15 +158,7 @@ export function SubscribePage() {
       setAsked(true);
     } catch (e) {
       const key = e instanceof Error ? e.message : 'failed';
-      const known = [
-        'invalid_code',
-        'key_mismatch',
-        'profile_required',
-        'space_not_ready',
-        'terms_required',
-        'author_blocked',
-      ].includes(key);
-      setError(t(`community.errors.${known ? key : 'failed'}`));
+      setError(t(`community.errors.${KNOWN_ERRORS.includes(key) ? key : 'failed'}`));
     } finally {
       setBusy(false);
     }
@@ -162,14 +207,43 @@ export function SubscribePage() {
     );
   }
 
-  if (!profile) {
+  // `joining` keeps this screen up for the whole compound action, so the
+  // moment the profile exists the user doesn't see the confirm sheet flash past
+  // on its way to "asked".
+  if (!profile || joining) {
     return (
-      <Sheet title={t('community.invite.title')} subtitle={formatSpaceCode(code)}>
-        {/* The code stays in the URL, so coming back here after making a
-            profile picks the invitation up again. */}
-        <p className="text-sm text-ink-muted">{t('community.errors.profile_required')}</p>
-        <Action onClick={() => navigate(ROUTES.settings)}>
-          {t('community.profile.create')}
+      <Sheet
+        title={t('community.invite.title')}
+        subtitle={
+          peek ? `${peek.owner.displayName} / ${peek.space.name}` : formatSpaceCode(code)
+        }
+      >
+        <p className="text-sm text-ink-muted">{t('community.invite.needProfile')}</p>
+        <input
+          value={joinName}
+          onChange={(e) => setJoinName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void createProfileAndAsk();
+          }}
+          placeholder={t('community.profile.displayName') as string}
+          maxLength={120}
+          autoFocus
+          disabled={joining}
+          className="w-full bg-surface-raised rounded-xl px-3 py-2 text-ink outline-none focus:ring-2 focus:ring-brand/60 disabled:opacity-60"
+        />
+        <CommunityTermsConsent checked={joinAgreed} onChange={setJoinAgreed} />
+        {error && <p className="text-sm text-rose-400">{error}</p>}
+        <Action
+          onClick={() => void createProfileAndAsk()}
+          disabled={joining || joinName.trim() === '' || !joinAgreed}
+        >
+          {joining ? t('community.invite.asking') : t('community.invite.createAndAsk')}
+        </Action>
+        {/* Same disclosure as the other two opt-ins: this is the moment an
+            account starts holding shareable data. */}
+        <p className="text-xs text-ink-muted/70">{t('community.profile.createHint')}</p>
+        <Action ghost onClick={() => navigate(ROUTES.chat)}>
+          {t('common.cancel')}
         </Action>
       </Sheet>
     );
@@ -254,8 +328,14 @@ function Sheet({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto flex items-center justify-center px-6 py-10">
-      <div className="w-full max-w-sm space-y-3">
+    // `m-auto` rather than `items-center justify-center`: centred while it
+    // fits, and *scrollable* when it doesn't. Flex centring pushes overflow out
+    // of both ends of the scroll box, so the top of a tall sheet — this one now
+    // carries the content standards — becomes unreachable. Auto margins
+    // collapse to 0 once free space runs out, which is exactly the behaviour
+    // wanted here.
+    <div className="flex-1 min-h-0 overflow-y-auto flex px-6 py-10">
+      <div className="w-full max-w-sm space-y-3 m-auto">
         <h1 className="font-serif text-brand text-2xl">{title}</h1>
         {subtitle && <p className="font-mono text-sm text-ink">{subtitle}</p>}
         {children}

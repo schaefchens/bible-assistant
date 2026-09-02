@@ -983,6 +983,27 @@ Desktop web and native both skip all of this: there is no app to hand off to,
 and in the app you are already where the link was going. Both get the wizard
 first and the invitation after.
 
+**The invitation makes the profile itself.** A profile is genuinely required —
+`space.request` refuses without one — but sending someone to Settings to build
+one and find their own way back is a second setup wall in front of a person who
+has just finished the first. So the no-profile branch of `SubscribePage` is a
+name field plus the standards consent, and one button accepts, creates and asks
+in that order (terms first, because `enableCommunity` refuses without them).
+`joining` keeps that screen up for the whole compound action, so the confirm
+sheet doesn't flash past on its way to "asked".
+
+The wizard's community step therefore **opens ready to type when an invitation
+is pending** (`location.pathname` is the subscribe route) rather than behind its
+"set up" button, so most people never reach the branch above. It stays
+skippable: that branch is the safety net, and it also catches the long-onboarded
+user who never made a profile.
+
+One layout note, since it bit immediately: `Sheet` centres with `m-auto`, not
+`items-center`. Flex centring pushes overflow out of *both* ends of a scroll
+box, so with the standards inside it the top of the sheet — title included —
+became unreachable. Auto margins collapse to 0 when free space runs out, which
+centres while it fits and scrolls when it doesn't.
+
 **`space.peek` exists because `space.request` writes.** A "subscribe to X?"
 confirmation built on `request` would be showing X only after having already
 asked on the user's behalf, so peek is a read-only lookup — the one community
