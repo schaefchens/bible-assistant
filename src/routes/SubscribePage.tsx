@@ -9,6 +9,8 @@ import { appInviteUrl } from '@/lib/spaceInvite';
 import { extractErrorDetail } from '@/lib/extractErrorDetail';
 import { peekSpace, type SpacePeekResponse } from '@/services/api/community';
 import { useCommunityStore } from '@/store/communityStore';
+import { useCommunityTermsAccepted } from '@/lib/communityTerms';
+import { CommunityTermsGate } from '@/components/community/CommunityTermsGate';
 
 const IS_NATIVE = Capacitor.isNativePlatform();
 
@@ -49,6 +51,8 @@ export function SubscribePage() {
   const profile = useCommunityStore((s) => s.profile);
   const subscribe = useCommunityStore((s) => s.subscribe);
   const initialized = useCommunityStore((s) => s.initialized);
+  const blocked = useCommunityStore((s) => s.blocked);
+  const termsAccepted = useCommunityTermsAccepted();
   const existing = useCommunityStore((s) =>
     code ? s.subscriptions.find((x) => x.code === code) : undefined,
   );
@@ -92,7 +96,14 @@ export function SubscribePage() {
       setAsked(true);
     } catch (e) {
       const key = e instanceof Error ? e.message : 'failed';
-      const known = ['invalid_code', 'key_mismatch', 'profile_required', 'space_not_ready'].includes(key);
+      const known = [
+        'invalid_code',
+        'key_mismatch',
+        'profile_required',
+        'space_not_ready',
+        'terms_required',
+        'author_blocked',
+      ].includes(key);
       setError(t(`community.errors.${known ? key : 'failed'}`));
     } finally {
       setBusy(false);
@@ -150,6 +161,27 @@ export function SubscribePage() {
         <p className="text-sm text-ink-muted">{t('community.errors.profile_required')}</p>
         <Action onClick={() => navigate(ROUTES.settings)}>
           {t('community.profile.create')}
+        </Action>
+      </Sheet>
+    );
+  }
+
+  // Same reasoning as the profile state above: the code stays in the URL, so
+  // accepting the standards here lands straight back on the invitation.
+  if (!termsAccepted) return <CommunityTermsGate />;
+
+  // Pre-empted rather than left to fail on the button: `peek` carries the
+  // author's key, so an invitation from someone this device has blocked can say
+  // so instead of offering an action that raises `author_blocked`.
+  if (peek?.owner.authorKey && blocked[peek.owner.authorKey]) {
+    return (
+      <Sheet title={t('community.invite.title')} subtitle={formatSpaceCode(code)}>
+        <p className="text-sm text-ink-muted">{t('community.errors.author_blocked')}</p>
+        <Action onClick={() => navigate(ROUTES.settings)}>
+          {t('community.blockAuthor.title')}
+        </Action>
+        <Action ghost onClick={() => navigate(ROUTES.chat)}>
+          {t('common.cancel')}
         </Action>
       </Sheet>
     );

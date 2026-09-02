@@ -41,6 +41,9 @@ export function PostEditor({ post, space, onClose }: Props) {
   const [language, setLanguage] = useState(post.language);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  /** Why the content check refused this piece — kept in view while the
+   * author edits, since it is the only thing that can clear it. */
+  const [refusal, setRefusal] = useState<string | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -69,12 +72,24 @@ export function PostEditor({ post, space, onClose }: Props) {
   const publish = async () => {
     if (busy || empty) return;
     setBusy(true);
+    setRefusal(null);
     try {
       // Save first: publishPost signs whatever is in the store, and the
       // signature covers the title and body.
       await savePost(draft);
       await publishPost(post.id);
       onClose();
+    } catch (e) {
+      // The one error worth keeping the editor open for: the piece was judged
+      // against the content standards and refused, and the author is the only
+      // person who can do anything about it. The draft is already saved, so
+      // nothing is lost while they edit.
+      if (e instanceof Error && e.message === 'content_refused') {
+        const reason = (e as Error & { reason?: string }).reason;
+        setRefusal(reason?.trim() || t('community.moderation.refusedGeneric'));
+      } else {
+        throw e;
+      }
     } finally {
       setBusy(false);
     }
@@ -121,6 +136,15 @@ export function PostEditor({ post, space, onClose }: Props) {
       </header>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 pb-28 space-y-4">
+        {refusal && (
+          <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 space-y-1">
+            <p className="text-xs uppercase tracking-wider text-red-400">
+              {t('community.moderation.refusedTitle')}
+            </p>
+            <p className="text-sm text-ink">{refusal}</p>
+            <p className="text-xs text-ink-muted">{t('community.moderation.refusedHint')}</p>
+          </div>
+        )}
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}

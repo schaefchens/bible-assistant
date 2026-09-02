@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { WordHighlighter } from '@/components/playback/WordHighlighter';
@@ -10,6 +10,9 @@ import { isPostSegment, isWholeChapter } from '@/services/reading/readingSequenc
 import type { LoadedSegment } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { authorName, formatPostDate } from '@/services/community/spaceName';
+import { subscribedCodeForSpace } from '@/services/community/spaceReading';
+import { useCommunityStore } from '@/store/communityStore';
+import { ReportDialog } from '@/components/community/ReportDialog';
 
 type Props = { segment: LoadedSegment };
 
@@ -41,6 +44,18 @@ export const SegmentBlock = memo(function SegmentBlock({ segment }: Props) {
     [isPost, verses],
   );
   const dualColumn = useSettingsStore((s) => s.readingAppearance.dualColumn);
+
+  // Reporting lives on the piece, not in the reader's header: this is where the
+  // offending text actually is, and under endless scroll several pieces are on
+  // screen at once, so a single header control could only ever mean "the one
+  // I guess you mean".
+  //
+  // Only for somebody else's writing — the selector returns a string, so the
+  // feed cache changing identity on every refresh doesn't re-render the tree.
+  const reportCode = useCommunityStore((s) =>
+    isPost ? subscribedCodeForSpace(s.feed, ref.spaceId) : undefined,
+  );
+  const [reporting, setReporting] = useState(false);
 
   const handleWordTap = useCallback(
     (verseIndex: number, wordIndex: number) => {
@@ -86,7 +101,18 @@ export const SegmentBlock = memo(function SegmentBlock({ segment }: Props) {
         <h2 className="chapter-heading relative bg-surface px-5 text-[1.1em]">{heading}</h2>
         {/* Absolutely positioned so it can't pull the heading off centre. Its own
             bg-surface opens a matching gap in the rule. */}
-        <span className="absolute right-0 bg-surface pl-3">
+        <span className="absolute right-0 bg-surface pl-3 flex items-center gap-1.5">
+          {reportCode && (
+            <button
+              type="button"
+              aria-label={t('community.report.reportPost') as string}
+              title={t('community.report.reportPost') as string}
+              onClick={() => setReporting(true)}
+              className="h-8 w-8 rounded-full flex items-center justify-center text-ink-muted hover:text-brand active:scale-95 transition-all"
+            >
+              <FlagIcon />
+            </button>
+          )}
           <button
             type="button"
             aria-label={t(isPost ? 'read.playPost' : 'read.playChapter') as string}
@@ -103,6 +129,15 @@ export const SegmentBlock = memo(function SegmentBlock({ segment }: Props) {
           </button>
         </span>
       </header>
+
+      {reporting && reportCode && (
+        <ReportDialog
+          code={reportCode}
+          postId={ref.postId}
+          title={heading}
+          onClose={() => setReporting(false)}
+        />
+      )}
 
       {subheading && (
         <p
@@ -139,6 +174,25 @@ export const SegmentBlock = memo(function SegmentBlock({ segment }: Props) {
     </section>
   );
 });
+
+/** A small flag, distinct enough from the play triangle beside it. */
+function FlagIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M5 21V4.5c3.5-1.6 6.5.9 10-.5v9c-3.5 1.4-6.5-1.1-10 .5" />
+    </svg>
+  );
+}
 
 function PlayIcon() {
   return (

@@ -39,6 +39,14 @@ export type LocalReadingProgress = ReadingProgress & {
  */
 export const PROFILE_PREF_KEY = 'profile';
 
+/**
+ * Authors this device refuses to read, and the pieces this device has already
+ * reported — both `preferences` rows rather than tables, and both deliberately
+ * local: see "Moderation" in CLAUDE.md.
+ */
+export const BLOCKED_PREF_KEY = 'blockedAuthors';
+export const REPORTED_PREF_KEY = 'reportedContent';
+
 export type LocalProfile = Profile & {
   dirty?: 0 | 1;
 };

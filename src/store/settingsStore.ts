@@ -114,6 +114,13 @@ type SettingsState = {
    * reading of "offline-first".
    */
   syncEnabled: boolean;
+  /**
+   * Which version of the community content standards the user has accepted; 0
+   * = never. Deliberately **not** backfilled by a migration: an install that
+   * enabled the community before the standards existed has not seen them, and
+   * the community screens gate on this rather than assume consent.
+   */
+  communityTermsVersion: number;
   setLocale: (locale: Locale) => void;
   setTheme: (theme: ThemeChoice) => void;
   setTranslation: (translation: Translation, fromUser?: boolean) => void;
@@ -143,6 +150,7 @@ type SettingsState = {
   setSessionPreferSharedKey: (v: boolean) => void;
   setOnboardingComplete: (v: boolean) => void;
   setSyncEnabled: (v: boolean) => void;
+  acceptCommunityTerms: (version: number) => void;
 };
 
 /** Whether the user is currently using their own OpenAI key (server has it
@@ -258,6 +266,7 @@ export const useSettingsStore = create<SettingsState>()(
         sessionPreferSharedKey: false,
         onboardingComplete: false,
         syncEnabled: false,
+        communityTermsVersion: 0,
         setTheme: (theme) => set({ theme }),
         setLocale: (locale) =>
           set((s) => ({
@@ -310,6 +319,8 @@ export const useSettingsStore = create<SettingsState>()(
         // Callers should go through libraryStore.enableSync/disableSync, which
         // also seed or clear the queue — this only moves the flag.
         setSyncEnabled: (syncEnabled) => set({ syncEnabled }),
+
+        acceptCommunityTerms: (communityTermsVersion) => set({ communityTermsVersion }),
       };
     },
     {

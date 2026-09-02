@@ -67,6 +67,22 @@ const SHARES_DIR = STORAGE_DIR . '/shares';
 /** Content-addressed profile pictures. Served statically, unlike everything
  * else a user owns — see the note where the directory is created. */
 const AVATARS_DIR = STORAGE_DIR . '/avatars';
+// Moderation reports. Addressed to nobody: neither the reporter nor the
+// reported author can read this directory back, which is what stops an author
+// deleting the evidence against them.
+const REPORTS_DIR = STORAGE_DIR . '/reports';
+/**
+ * Reports the triage judged unfounded. Kept, not dropped: an automated
+ * dismissal that deletes the complaint is unauditable, and the judge is
+ * wrong sometimes.
+ */
+const REPORTS_UNFOUNDED_DIR = REPORTS_DIR . '/unfounded';
+/** Cached moderation verdicts, content-addressed like generated speech. */
+const MODERATION_DIR = STORAGE_DIR . '/moderation';
+/** A report carries a snapshot of the offending text, capped so a report can't
+ * be used to store arbitrary data on the server. */
+const MAX_REPORT_NOTE = 1000;
+const MAX_REPORT_EXCERPT = 2000;
 
 /*
  * Caps on community data.
@@ -130,6 +146,62 @@ const BIBLE_XML_MAP = [
 const BIBLE_CACHE_FORMAT = 'xml-v2';
 
 const CHAT_MODEL_DEFAULT = 'gpt-4o-mini';
+/**
+ * Moderation runs on a stronger model than the chat does, deliberately.
+ *
+ * The chat's job is to resolve a reference and it is corrected instantly by
+ * the user; the moderator's job is to judge somebody's writing against a
+ * policy and refuse it, where a wrong call is either published abuse or a
+ * silenced author. gpt-4o-mini is measurably worse at the second kind of
+ * judgment, and a publish happens once per piece — this is the cheapest place
+ * in the app to buy accuracy.
+ */
+const MODERATION_MODEL = 'gpt-4o';
+
+/**
+ * The standards the judge applies. **Mirror of `community.terms.*` in
+ * `src/i18n/*.json`** — if the rules change here they change there, and
+ * `COMMUNITY_TERMS_VERSION` in `src/lib/communityTerms.ts` has to be bumped so
+ * every user is asked to accept them again.
+ *
+ * The carve-out in the middle is not padding. Scripture contains war, sex and
+ * politics; a moderator told only "no violence, no sexual content, nothing
+ * political" refuses Judges, the Song of Songs and half the prophets. Quoting
+ * and discussing the Bible has to be explicitly, loudly allowed or this
+ * feature rejects exactly the writing it exists for.
+ */
+const MODERATION_POLICY = <<<'TXT'
+This app hosts Christian, Bible-centred writing. A piece is ALLOWED when it is:
+- Scripture, or a quotation of it, in any translation.
+- Reflection, devotion, prayer, teaching, testimony, lament, or a question
+  about faith or the Bible.
+- Practical notes about reading, memorising or studying Scripture.
+
+ALWAYS ALLOWED, even when the subject matter is hard: quoting or discussing any
+biblical passage, including war, judgment, death, grief, sexuality within
+marriage, suffering, doubt and sin. The Bible is not off-limits to itself.
+Lament, sadness and confession of sin are allowed. Naming a sin in order to
+teach or repent of it is allowed.
+
+A piece is REFUSED when it is:
+- Worldly, political or commercial: party politics, campaigning, advertising,
+  fundraising, promotion of a business or a product, cryptocurrency, links to
+  unrelated services.
+- Sexual content or nudity outside of what Scripture itself says, or written to
+  arouse.
+- Dating, matchmaking or romantic solicitation, including "looking for a wife
+  or husband" posts and personal contact details offered for that purpose.
+- Hate, harassment or abuse of any person or group, including slurs and
+  threats, whether or not a verse is attached.
+- Spam: nonsense, repeated text, keyword stuffing, or content with no
+  discernible meaning.
+- Off-theme: anything with no connection to the Bible or Christian faith
+  (sport, gossip, technology, general life-hacking, unrelated fiction).
+
+Judge the writing, not its quality. Bad prose, poor theology, a minority
+doctrinal position, or disagreement with mainstream interpretation are NOT
+grounds for refusal. Refuse only a clear breach of the list above.
+TXT;
 const TTS_MODEL = 'gpt-4o-mini-tts';
 /** Plain STT for voice input — fastest/best for the chat composer. */
 const STT_MODEL = 'gpt-4o-transcribe';
@@ -142,6 +214,9 @@ const ALIGNMENT_MODEL = 'whisper-1';
 @mkdir(STORAGE_DIR . '/ambient', 0775, true);
 @mkdir(SHARES_DIR, 0775, true);
 @mkdir(AVATARS_DIR, 0775, true);
+@mkdir(REPORTS_DIR, 0775, true);
+@mkdir(REPORTS_UNFOUNDED_DIR, 0775, true);
+@mkdir(MODERATION_DIR, 0775, true);
 
 // Deny directory listings within storage if writable
 $htaccessPath = STORAGE_DIR . '/.htaccess';
@@ -172,6 +247,33 @@ $sharesHtaccessPath = SHARES_DIR . '/.htaccess';
 if (!file_exists($sharesHtaccessPath)) {
     @file_put_contents(
         $sharesHtaccessPath,
+        "Require all denied\n" .
+        "<IfModule !mod_authz_core.c>\n" .
+        "  Order deny,allow\n" .
+        "  Deny from all\n" .
+        "</IfModule>\n",
+    );
+}
+
+// reports/ too, and for a stronger reason than enumeration: these files name
+// who reported whom. Only the maintainer, over SFTP, is meant to read them.
+$reportsHtaccessPath = REPORTS_DIR . '/.htaccess';
+if (!file_exists($reportsHtaccessPath)) {
+    @file_put_contents(
+        $reportsHtaccessPath,
+        "Require all denied\n" .
+        "<IfModule !mod_authz_core.c>\n" .
+        "  Order deny,allow\n" .
+        "  Deny from all\n" .
+        "</IfModule>\n",
+    );
+}
+
+// moderation/ holds cached verdicts, and a verdict quotes the text it judged.
+$moderationHtaccessPath = MODERATION_DIR . '/.htaccess';
+if (!file_exists($moderationHtaccessPath)) {
+    @file_put_contents(
+        $moderationHtaccessPath,
         "Require all denied\n" .
         "<IfModule !mod_authz_core.c>\n" .
         "  Order deny,allow\n" .
@@ -644,6 +746,12 @@ switch ($action) {
         break;
     case 'space.feed':
         handleSpaceFeed($ctx);
+        break;
+    case 'report.create':
+        handleReportCreate($ctx);
+        break;
+    case 'moderation.check':
+        handleModerationCheck($ctx);
         break;
     default:
         fail(404, 'unknown action');
@@ -1984,6 +2092,13 @@ function handlePostUpsert(array $ctx): void {
     $space = findById(readJsonArrayFile(spacesPath($ctx['userDir'])), $post['spaceId']);
     if ($space === null) fail(404, 'unknown space');
 
+    // The un-bypassable half of the moderation check. The client asks
+    // `moderation.check` first so it can tell the author why at the moment
+    // they pressed publish; this is what makes skipping that ask pointless.
+    // Cached by content, so the two questions cost one judgment.
+    $verdict = moderatePiece($post['title'], $post['body'], $post['language']);
+    if (!$verdict['ok']) fail(422, 'content_refused', ['reason' => $verdict['reason']]);
+
     $path = spacePostsPath($ctx['userDir'], $post['spaceId']);
     $posts = pruneExpired(readJsonArrayFile($path), $space['ephemeralHours'] ?? null);
 
@@ -2240,6 +2355,266 @@ function handleSpaceFeed(array $ctx): void {
         'owner' => publicProfileOf($target['userDir']),
         'posts' => array_slice($pruned, 0, MAX_FEED_POSTS),
     ]);
+}
+
+// ---------- automated moderation --------------------------------------------
+//
+// Two jobs, one judge: refuse a piece that breaks the content standards before
+// it is ever published, and decide whether a report is worth a human's time.
+//
+// It runs **here and not in the client** for the obvious reason — a check the
+// client performs is a check a modified client skips — and the client asks the
+// same question first (`moderation.check`) only so it can show the author why,
+// at the moment they pressed publish, instead of after a sync round trip.
+//
+// It always uses the **shared** key, never the caller's own: billing an author
+// for the judging of their own post is odd, and a user who removed their key
+// would otherwise switch moderation off.
+//
+// **It fails open.** With no key, no network, or an unparseable answer the
+// piece is published and the verdict is recorded as unchecked rather than
+// cached as approved. The alternative — refusing every publish while OpenAI is
+// unreachable — turns an outage into a total outage, and the reporting path
+// plus a human moderator are what actually stand behind this.
+
+
+/**
+ * Ask the judge one question and get a decision back.
+ *
+ * Returns `['ok' => bool, 'reason' => string, 'checked' => bool]`. `checked`
+ * is false when no judgment could be obtained at all — the caller decides what
+ * that means, and for both callers here it means "carry on".
+ *
+ * `MODERATION_STUB` in secrets.php short-circuits the call with a fixed
+ * verdict. That is the seam `scripts/community/verifyBackend.mjs` drives: the
+ * refusal path is the half that matters and it cannot be tested against a live
+ * model, so it is tested against this.
+ */
+function moderationJudge(string $system, string $user): array {
+    if (defined('MODERATION_STUB')) {
+        $stub = json_decode((string)constant('MODERATION_STUB'), true);
+        if (is_array($stub)) {
+            return [
+                'ok' => ($stub['verdict'] ?? 'allow') !== 'refuse',
+                'reason' => (string)($stub['reason'] ?? ''),
+                'checked' => true,
+            ];
+        }
+    }
+    if (OPENAI_API_KEY === '') return ['ok' => true, 'reason' => '', 'checked' => false];
+
+    $resp = curlJson('https://api.openai.com/v1/chat/completions', [
+        'model' => MODERATION_MODEL,
+        // Zero, not the chat's 0.2: the same text must get the same verdict
+        // twice, or an author who edits a typo and republishes can be refused
+        // for a piece that was allowed a minute ago.
+        'temperature' => 0,
+        'response_format' => ['type' => 'json_object'],
+        'messages' => [
+            ['role' => 'system', 'content' => $system],
+            ['role' => 'user', 'content' => $user],
+        ],
+    ], [], OPENAI_API_KEY);
+
+    $content = $resp['choices'][0]['message']['content'] ?? null;
+    if (!is_string($content)) return ['ok' => true, 'reason' => '', 'checked' => false];
+    $out = json_decode($content, true);
+    if (!is_array($out) || !isset($out['verdict'])) {
+        return ['ok' => true, 'reason' => '', 'checked' => false];
+    }
+    return [
+        'ok' => $out['verdict'] !== 'refuse',
+        'reason' => safeString($out['reason'] ?? '', 400),
+        'checked' => true,
+    ];
+}
+
+/**
+ * Judge one piece, with the verdict cached by content.
+ *
+ * Content-addressed like generated speech, and for the same reason: the same
+ * text is judged more than once — the client asks before publishing, the
+ * publish itself asks again, and an author who withdraws and re-shares asks a
+ * third time. Only *obtained* verdicts are cached; an unchecked one is retried.
+ */
+function moderatePiece(string $title, string $body, string $language): array {
+    // A stubbed verdict bypasses the cache in both directions, so flipping the
+    // stub actually changes the answer — it is a test seam and a kill switch,
+    // and a cached stub would make it behave like neither.
+    if (defined('MODERATION_STUB')) return moderationJudge('', '');
+    $hash = hash('sha256', MODERATION_MODEL . "\n" . $language . "\n" . $title . "\n" . $body);
+    $cachePath = MODERATION_DIR . '/' . $hash . '.json';
+    $cached = readJsonObjectFile($cachePath);
+    if (is_array($cached) && isset($cached['ok'])) {
+        return ['ok' => (bool)$cached['ok'], 'reason' => (string)($cached['reason'] ?? ''), 'checked' => true];
+    }
+
+    $verdict = moderationJudge(
+        MODERATION_POLICY . "\n\n" .
+        "You are moderating one piece of writing submitted to this app. Reply " .
+        "with JSON: {\"verdict\":\"allow\"|\"refuse\",\"reason\":\"...\"}. " .
+        "The reason is shown to the author, so write one short sentence, " .
+        "addressed to them, in the language of their piece, naming which rule " .
+        "it breaks. Leave the reason empty when you allow it.",
+        "Title: {$title}\n\nBody:\n{$body}",
+    );
+    if ($verdict['checked']) {
+        writeJsonFile($cachePath, [
+            'ok' => $verdict['ok'],
+            'reason' => $verdict['reason'],
+            'model' => MODERATION_MODEL,
+            'judgedAt' => (int)(microtime(true) * 1000),
+            // The judged text, so a disputed refusal can be looked at.
+            'title' => mb_substr($title, 0, 300),
+            'excerpt' => mb_substr($body, 0, MAX_REPORT_EXCERPT),
+        ]);
+    }
+    return $verdict;
+}
+
+/**
+ * Is this report worth a human's time?
+ *
+ * Deliberately biased toward yes: a report wrongly filed as unfounded is a
+ * complaint nobody ever reads, which is the failure this whole path exists to
+ * prevent. It only sorts — see REPORTS_UNFOUNDED_DIR, nothing is discarded.
+ */
+function triageReport(string $reason, ?string $note, ?array $post, string $spaceName): array {
+    $subject = $post === null
+        ? "A whole space is being reported. Space name: {$spaceName}"
+        : "Reported piece — title: " . (string)($post['title'] ?? '') . "\n\nBody:\n"
+          . mb_substr((string)($post['body'] ?? ''), 0, MAX_REPORT_EXCERPT);
+
+    return moderationJudge(
+        MODERATION_POLICY . "\n\n" .
+        "You are triaging a report from one user about another user's writing. " .
+        "Decide whether a human moderator should look at it. Reply with JSON: " .
+        "{\"verdict\":\"allow\"|\"refuse\",\"reason\":\"...\"}, where " .
+        "\"allow\" means the report is plausible and should reach a human, and " .
+        "\"refuse\" means it plainly is not — the reported writing breaks no " .
+        "rule and the report looks mistaken or vexatious. Lean towards " .
+        "\"allow\": a wrongly dismissed report is never read by anyone. The " .
+        "reason is for the moderator, not the reporter.",
+        "Reported for: {$reason}\nReporter's note: " . ($note ?? '(none)') . "\n\n{$subject}",
+    );
+}
+
+/**
+ * Judge a piece the author is about to publish.
+ *
+ * Exists purely so the refusal can be shown *at* the publish tap: publishing
+ * travels on the sync queue, and a 422 arriving from a background flush would
+ * surface as a post that silently never shared. The write path checks again
+ * regardless, and the verdict cache means asking twice costs one judgment.
+ *
+ * Requires a profile — this spends the shared OpenAI key, so it is not a free
+ * text-classification endpoint for anyone holding an identity.
+ */
+function handleModerationCheck(array $ctx): void {
+    $body = readJsonBody();
+    if (readJsonObjectFile(profilePath($ctx['userDir'])) === null) fail(403, 'profile_required');
+    $title = safeString($body['title'] ?? '', 300);
+    $text = safeString($body['body'] ?? '', MAX_POST_BYTES);
+    $language = safeString($body['language'] ?? 'en', 8);
+    if (trim($text) === '') fail(400, 'body required');
+
+    $verdict = moderatePiece($title, $text, $language);
+    respond(200, [
+        'ok' => $verdict['ok'],
+        'reason' => $verdict['reason'],
+        // False means no judgment could be obtained (no key, no network). The
+        // client publishes anyway — see the fail-open note above.
+        'checked' => $verdict['checked'],
+    ]);
+}
+
+/**
+ * Report a piece, or a whole space, to the app's moderators.
+ *
+ * The third action that crosses accounts, and the only one addressed to
+ * neither party: it writes into REPORTS_DIR, which is HTTP-denied, so the
+ * author can neither see that they were reported nor delete what was said.
+ *
+ * Three things about it are deliberate:
+ *
+ *  - **The reported text is snapshotted here.** Deleting the piece is the
+ *    obvious first move after being reported, and a report that says only
+ *    "post 4f2c… was sexual content" is unactionable once the post is gone.
+ *  - **One file per (reporter, target).** The name is a hash of the pair, so
+ *    re-reporting the same piece overwrites rather than piling up — reports
+ *    are bounded by how much a user can actually see, not by how fast a client
+ *    can loop.
+ *  - **A profile is required**, like `space.request`: you cannot see somebody
+ *    else's writing without one, so a report from an account with no profile is
+ *    not a report about anything. It is not in $ACCOUNT_ACTIONS for the same
+ *    reason that action isn't — the caller's directory already exists.
+ */
+function handleReportCreate(array $ctx): void {
+    $body = readJsonBody();
+    $code = normalizeShareCode($body['code'] ?? '');
+    $postId = optString($body['postId'] ?? null, 64);
+    $reason = safeString($body['reason'] ?? '', 32);
+    $note = optString($body['note'] ?? null, MAX_REPORT_NOTE);
+
+    // Same list as the client's ReportReason union and the accepted content
+    // standards. Anything else is a client bug, not a report.
+    $reasons = ['offtopic', 'political', 'sexual', 'dating', 'hate', 'spam', 'other'];
+    if (!in_array($reason, $reasons, true)) fail(400, 'invalid reason');
+
+    $me = readJsonObjectFile(profilePath($ctx['userDir']));
+    if ($me === null) fail(403, 'profile_required');
+
+    $target = resolveShareCode($code);
+    $space = findById(readJsonArrayFile(spacesPath($target['userDir'])), $target['spaceId']);
+    if ($space === null) fail(404, 'unknown share code');
+
+    $post = null;
+    if ($postId !== null && $postId !== '') {
+        $posts = readJsonArrayFile(spacePostsPath($target['userDir'], $target['spaceId']));
+        $post = findById($posts, $postId);
+        if ($post === null) fail(404, 'unknown post');
+    }
+
+    $ownerProfile = readJsonObjectFile(profilePath($target['userDir']));
+    $now = (int)(microtime(true) * 1000);
+    $report = [
+        'reportedAt' => $now,
+        'reason' => $reason,
+        'note' => $note,
+        'reporterUserId' => $ctx['userId'],
+        'reporterName' => safeString($me['displayName'] ?? '', 120),
+        'ownerUserId' => $target['userId'],
+        'ownerName' => safeString($ownerProfile['displayName'] ?? '', 120),
+        'shareCode' => $code,
+        'spaceId' => $target['spaceId'],
+        'spaceName' => safeString($space['name'] ?? '', 200),
+        'postId' => $post === null ? null : safeString($post['id'] ?? '', 64),
+        'postTitle' => $post === null ? null : safeString($post['title'] ?? '', 300),
+        'postPublishedAt' => $post === null ? null : (int)($post['publishedAt'] ?? 0),
+        'postAuthorKey' => $post === null ? null : safeString($post['authorKey'] ?? '', 128),
+        'postExcerpt' => $post === null
+            ? null
+            : mb_substr((string)($post['body'] ?? ''), 0, MAX_REPORT_EXCERPT),
+    ];
+
+    // Triaged, not filtered: a plausible report goes to the human queue, one
+    // that plainly is not goes to the sub-directory, and the reporter is told
+    // the same thing either way. Telling someone their report was dismissed by
+    // a model teaches them to stop reporting and teaches an abuser what passes.
+    $triage = triageReport($reason, $note, $post, (string)($space['name'] ?? ''));
+    $report['triage'] = $triage['checked'] ? ($triage['ok'] ? 'valid' : 'unfounded') : 'unchecked';
+    $report['triageReason'] = $triage['reason'];
+    $report['triageModel'] = $triage['checked'] ? MODERATION_MODEL : null;
+
+    $name = hash('sha256', $ctx['userId'] . '|' . ($postId ?: 'space:' . $target['spaceId']));
+    $dir = $report['triage'] === 'unfounded' ? REPORTS_UNFOUNDED_DIR : REPORTS_DIR;
+    writeJsonFile($dir . '/' . $name . '.json', $report);
+    // One report per reporter and target, wherever it was previously filed: a
+    // re-report after an edit must not leave a stale copy in the other queue.
+    $other = $report['triage'] === 'unfounded' ? REPORTS_DIR : REPORTS_UNFOUNDED_DIR;
+    if (file_exists($other . '/' . $name . '.json')) @unlink($other . '/' . $name . '.json');
+
+    respond(200, ['reported' => true]);
 }
 
 /**

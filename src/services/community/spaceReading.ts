@@ -177,6 +177,28 @@ export function spacePostUnits(spaceId: string, postId: string): VerseSummary[] 
 export type LocatedPost = { post: Post; spaceId: string; code: string };
 
 /**
+ * The share code a *subscribed* space is known by, from its space id.
+ *
+ * Needed because a reader's segments carry `spaceId` while every action that
+ * names a space to the server takes a code — reporting a piece, above all.
+ * Answered from the feed cache rather than from `Subscription`, which stores no
+ * space id: the code is the only handle the subscriber was ever given.
+ *
+ * Undefined for the user's own space (it is not subscribed to) and for a space
+ * whose feed has not been fetched.
+ */
+export function subscribedCodeForSpace(
+  feed: Record<string, Post[]>,
+  spaceId: string | undefined,
+): string | undefined {
+  if (!spaceId) return undefined;
+  for (const [code, posts] of Object.entries(feed)) {
+    if (posts.some((p) => p.spaceId === spaceId)) return code;
+  }
+  return undefined;
+}
+
+/**
  * Every accepted subscription's pieces, newest first across all of them.
  *
  * Flat rather than grouped by space: this is a "what's new" reading order, and

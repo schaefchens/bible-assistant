@@ -13,7 +13,14 @@
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -29,7 +36,15 @@ copyFileSync('public/api.php', join(root, 'api.php'));
 
 let checks = 0;
 const check = async (name, fn) => {
-  await fn();
+  try {
+    await fn();
+  } catch (e) {
+    // api.php runs with display_errors off, so a 500 says nothing by itself;
+    // the built-in server's stderr is where the fatal actually is.
+    const tail = phpErr.trim().split('\n').slice(-12).join('\n');
+    if (tail) console.error(`\n--- php stderr ---\n${tail}\n`);
+    throw e;
+  }
   checks++;
   console.log(`  ok  ${name}`);
 };
@@ -80,8 +95,23 @@ function makePost(space, user, over = {}) {
   return { ...base, ...signPostWith(base, user.pair) };
 }
 
-const php = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', root], { stdio: ['ignore', 'ignore', 'pipe'] });
+/** Writes the docroot's secrets.php. `MODERATION_STUB` is the seam that lets
+ * the refusal half of moderation be tested without a live model: PHP's builtin
+ * server re-requires this file on every request, so rewriting it takes effect
+ * immediately. */
+const setSecrets = (lines) =>
+  writeFileSync(join(root, 'secrets.php'), `<?php\n${lines.join('\n')}\n`);
+
+// No stub yet, and an explicitly empty key: without this the developer's own
+// OPENAI_API_KEY would leak in through the environment and every publish in
+// this script would make a real, billable, non-deterministic moderation call.
+setSecrets(["define('OPENAI_API_KEY', '');"]);
+
 let phpErr = '';
+const php = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', root], {
+  stdio: ['ignore', 'ignore', 'pipe'],
+  env: { ...process.env, OPENAI_API_KEY: '' },
+});
 php.stderr.on('data', (d) => { phpErr += d.toString(); });
 
 async function waitForServer() {
@@ -380,6 +410,187 @@ try {
     assert.equal(r.body.posts.some((p) => p.id === old.id), true);
   });
 
+  console.log('automated moderation');
+
+  const stub = (verdict, reason = '') =>
+    setSecrets([
+      "define('OPENAI_API_KEY', '');",
+      `define('MODERATION_STUB', ${JSON.stringify(JSON.stringify({ verdict, reason }))});`,
+    ]);
+  const noStub = () => setSecrets(["define('OPENAI_API_KEY', '');"]);
+
+  await check('with no key at all the check reports itself unchecked and nothing blocks', async () => {
+    const r = await call(alice, 'moderation.check', { title: 'T', body: 'Ein Gedanke.', language: 'de' });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.checked, false, 'no key, so no judgment');
+    assert.equal(r.body.ok, true, 'fails open');
+    const p = makePost(blog, alice, { title: 'Ungeprüft' });
+    assert.equal((await call(alice, 'posts.upsert', { post: p })).status, 200);
+  });
+
+  await check('a refused piece cannot be published, and says why', async () => {
+    stub('refuse', 'Das ist Werbung und kein biblischer Text.');
+    const pre = await call(alice, 'moderation.check', { title: 'Kauf jetzt', body: 'Werbung.', language: 'de' });
+    assert.equal(pre.body.ok, false);
+    assert.equal(pre.body.checked, true);
+    assert.match(pre.body.reason, /Werbung/);
+
+    const p = makePost(blog, alice, { title: 'Kauf jetzt', body: 'Werbung.' });
+    const up = await call(alice, 'posts.upsert', { post: p });
+    assert.equal(up.status, 422, 'the write path judges it again');
+    assert.equal(up.body.error, 'content_refused');
+    assert.match(up.body.reason, /Werbung/);
+    // And it really did not land.
+    const listed = await call(alice, 'posts.list', { spaceId: blog.id });
+    assert.equal(listed.body.posts.some((x) => x.id === p.id), false);
+  });
+
+  await check('an allowed piece publishes normally', async () => {
+    stub('allow');
+    const p = makePost(blog, alice, { title: 'Über die Geduld' });
+    assert.equal((await call(alice, 'posts.upsert', { post: p })).status, 200);
+    const listed = await call(alice, 'posts.list', { spaceId: blog.id });
+    assert.equal(listed.body.posts.some((x) => x.id === p.id), true);
+  });
+
+  await check('the moderation check needs a profile of its own', async () => {
+    const nobody = makeUser();
+    const r = await call(nobody, 'moderation.check', { title: 'x', body: 'y', language: 'en' });
+    assert.equal(r.status, 403);
+    assert.equal(r.body.error, 'profile_required');
+  });
+
+  // Back to the keyless state, so the report checks below start from
+  // "no triage was possible" rather than from the last stub set above.
+  noStub();
+
+  console.log('moderation');
+
+  // The rotation check above retired `blogCode`, so moderation mints its own
+  // live code and re-admits both readers.
+  const modCode = mintSpaceCode(alice.authorKey);
+  await call(alice, 'spaces.code.set', { spaceId: blog.id, code: modCode });
+  await call(bob, 'space.request', { code: modCode });
+  await call(carol, 'space.request', { code: modCode });
+
+  await check('a report is stored where neither party can read it', async () => {
+    const post = (await call(bob, 'space.feed', { code: modCode })).body.posts[0];
+    const r = await call(bob, 'report.create', {
+      code: modCode,
+      postId: post.id,
+      reason: 'offtopic',
+      note: 'nichts mit der Bibel zu tun',
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.reported, true);
+    const files = readdirSync(join(root, 'storage', 'reports')).filter((f) => f.endsWith('.json'));
+    assert.equal(files.length, 1);
+    const stored = JSON.parse(readFileSync(join(root, 'storage', 'reports', files[0]), 'utf8'));
+    assert.equal(stored.triage, 'unchecked', 'no key, so no triage — still filed for a human');
+    assert.equal(stored.reason, 'offtopic');
+    assert.equal(stored.reporterName, 'Bob');
+    assert.equal(stored.ownerName, 'Alice');
+    assert.equal(stored.postId, post.id);
+    // No action reads reports back: the moderator has the filesystem, and
+    // neither the author nor the reporter has any way to ask.
+    assert.equal((await call(alice, 'report.list', {})).status, 404);
+  });
+
+  await check('the reported text is snapshotted, so deleting it hides nothing', async () => {
+    const post = (await call(bob, 'space.feed', { code: modCode })).body.posts[0];
+    const files = readdirSync(join(root, 'storage', 'reports')).filter((f) => f.endsWith('.json'));
+    const stored = JSON.parse(readFileSync(join(root, 'storage', 'reports', files[0]), 'utf8'));
+    assert.ok(stored.postExcerpt.length > 0);
+    assert.equal(stored.postTitle, post.title);
+    // The obvious first move after being reported.
+    await call(alice, 'posts.delete', { id: post.id, spaceId: blog.id });
+    const after = JSON.parse(readFileSync(join(root, 'storage', 'reports', files[0]), 'utf8'));
+    assert.equal(after.postExcerpt, stored.postExcerpt);
+    // Put it back for the checks that follow.
+    await call(alice, 'posts.upsert', { post });
+  });
+
+  await check('re-reporting the same piece overwrites rather than piling up', async () => {
+    const post = (await call(bob, 'space.feed', { code: modCode })).body.posts[0];
+    for (const reason of ['spam', 'hate', 'other']) {
+      await call(bob, 'report.create', { code: modCode, postId: post.id, reason });
+    }
+    const files = readdirSync(join(root, 'storage', 'reports')).filter((f) => f.endsWith('.json'));
+    assert.equal(files.length, 1, 'one file per reporter and target');
+    const stored = JSON.parse(readFileSync(join(root, 'storage', 'reports', files[0]), 'utf8'));
+    assert.equal(stored.reason, 'other', 'the latest report wins');
+  });
+
+  await check('a second reporter is a second report', async () => {
+    const post = (await call(bob, 'space.feed', { code: modCode })).body.posts[0];
+    await call(carol, 'space.request', { code: modCode });
+    const r = await call(carol, 'report.create', { code: modCode, postId: post.id, reason: 'sexual' });
+    assert.equal(r.status, 200);
+    const files = readdirSync(join(root, 'storage', 'reports')).filter((f) => f.endsWith('.json'));
+    assert.equal(files.length, 2);
+  });
+
+  await check('a whole space can be reported, with no post', async () => {
+    const r = await call(bob, 'report.create', { code: todayCode, reason: 'political' });
+    assert.equal(r.status, 200);
+    const files = readdirSync(join(root, 'storage', 'reports')).filter((f) => f.endsWith('.json'));
+    assert.equal(files.length, 3);
+  });
+
+  await check('a reason outside the content standards is refused', async () => {
+    const r = await call(bob, 'report.create', { code: modCode, reason: 'i just do not like it' });
+    assert.equal(r.status, 400);
+  });
+
+  await check('reporting needs a profile, and a real target', async () => {
+    const nobody = makeUser();
+    const noProfile = await call(nobody, 'report.create', { code: modCode, reason: 'spam' });
+    assert.equal(noProfile.status, 403);
+    assert.equal(noProfile.body.error, 'profile_required');
+    const badPost = await call(bob, 'report.create', {
+      code: modCode,
+      postId: randomUUID(),
+      reason: 'spam',
+    });
+    assert.equal(badPost.status, 404);
+    const badCode = await call(bob, 'report.create', { code: mintSpaceCode(bob.authorKey), reason: 'spam' });
+    assert.equal(badCode.status, 404);
+  });
+
+  await check('a report the triage believes reaches the human queue', async () => {
+    stub('allow', 'plausible');
+    const post = (await call(bob, 'space.feed', { code: modCode })).body.posts[0];
+    await call(bob, 'report.create', { code: modCode, postId: post.id, reason: 'sexual' });
+    const filed = readdirSync(join(root, 'storage', 'reports'))
+      .filter((f) => f.endsWith('.json'))
+      .map((f) => JSON.parse(readFileSync(join(root, 'storage', 'reports', f), 'utf8')))
+      .find((r) => r.postId === post.id && r.reporterName === 'Bob');
+    assert.equal(filed.triage, 'valid');
+    assert.equal(filed.triageModel, 'gpt-4o');
+  });
+
+  await check('an unfounded report is set aside, not thrown away', async () => {
+    stub('refuse', 'the piece breaks no rule');
+    const post = (await call(bob, 'space.feed', { code: modCode })).body.posts[0];
+    const r = await call(bob, 'report.create', { code: modCode, postId: post.id, reason: 'hate' });
+    // The reporter is told the same thing either way.
+    assert.equal(r.status, 200);
+    assert.equal(r.body.reported, true);
+    const aside = readdirSync(join(root, 'storage', 'reports', 'unfounded'))
+      .filter((f) => f.endsWith('.json'))
+      .map((f) => JSON.parse(readFileSync(join(root, 'storage', 'reports', 'unfounded', f), 'utf8')));
+    assert.equal(aside.length, 1);
+    assert.equal(aside[0].triage, 'unfounded');
+    assert.match(aside[0].triageReason, /breaks no rule/);
+    // Re-filed, not duplicated: the same reporter and target moved queues.
+    const inHuman = readdirSync(join(root, 'storage', 'reports'))
+      .filter((f) => f.endsWith('.json'))
+      .map((f) => JSON.parse(readFileSync(join(root, 'storage', 'reports', f), 'utf8')))
+      .filter((x) => x.postId === post.id && x.reporterName === 'Bob');
+    assert.equal(inHuman.length, 0);
+    noStub();
+  });
+
   console.log('leaving');
 
   await check('deleting the profile removes the shared copies and the codes', async () => {
@@ -398,8 +609,8 @@ try {
     assert.equal(r.status, 200);
   });
 
-  await check('storage/users and storage/shares are HTTP-denied by generated .htaccess', () => {
-    for (const p of ['users', 'shares']) {
+  await check('every directory holding user text is HTTP-denied by generated .htaccess', () => {
+    for (const p of ['users', 'shares', 'reports', 'moderation']) {
       const ht = readFileSync(join(root, 'storage', p, '.htaccess'), 'utf8');
       assert.match(ht, /Require all denied/);
     }

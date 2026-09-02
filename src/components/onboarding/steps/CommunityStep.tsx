@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { extractErrorDetail } from '@/lib/extractErrorDetail';
+import { COMMUNITY_TERMS_VERSION } from '@/lib/communityTerms';
+import { CommunityTermsConsent } from '@/components/community/CommunityTerms';
 import { useCommunityStore } from '@/store/communityStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { StepHeading } from './StepHeading';
@@ -17,6 +19,11 @@ import { StepHeading } from './StepHeading';
  * since publishing and subscribing are inherently server-side. That is stated
  * on the screen rather than discovered afterwards, and it is why this step
  * cannot come first.
+ *
+ * The content standards are accepted here, in the same act as creating the
+ * profile: the checkbox gates the button, and `enableCommunity` refuses without
+ * the acceptance anyway. Recording it *before* the call keeps that guard happy
+ * and costs nothing if the call then fails — the standards were still read.
  */
 export function CommunityStep() {
   const { t } = useTranslation();
@@ -24,16 +31,19 @@ export function CommunityStep() {
   const busy = useCommunityStore((s) => s.busy);
   const enableCommunity = useCommunityStore((s) => s.enableCommunity);
   const syncEnabled = useSettingsStore((s) => s.syncEnabled);
+  const acceptTerms = useSettingsStore((s) => s.acceptCommunityTerms);
 
   const [revealed, setRevealed] = useState(false);
   const [name, setName] = useState('');
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const onCreate = async () => {
     const displayName = name.trim();
-    if (!displayName || busy) return;
+    if (!displayName || !agreed || busy) return;
     setError(null);
     try {
+      acceptTerms(COMMUNITY_TERMS_VERSION);
       await enableCommunity(displayName);
     } catch (e) {
       setError(extractErrorDetail(e) ?? t('onboarding.wizard.community.failed'));
@@ -85,6 +95,10 @@ export function CommunityStep() {
             {t('onboarding.wizard.community.nameHint')}
           </p>
 
+          <div className="mt-5">
+            <CommunityTermsConsent checked={agreed} onChange={setAgreed} />
+          </div>
+
           {/* Only worth saying while sync is still off — otherwise it describes
               something the previous step already did. */}
           {!syncEnabled && (
@@ -98,7 +112,7 @@ export function CommunityStep() {
           <button
             type="button"
             className="btn-primary w-full py-3 mt-5 disabled:opacity-40 disabled:cursor-not-allowed"
-            disabled={name.trim() === '' || busy}
+            disabled={name.trim() === '' || !agreed || busy}
             onClick={() => void onCreate()}
           >
             {busy

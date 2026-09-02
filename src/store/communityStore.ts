@@ -1,14 +1,29 @@
 import { create } from 'zustand';
-import { db, PROFILE_PREF_KEY, type LocalProfile } from '@/db/dexie';
+import {
+  BLOCKED_PREF_KEY,
+  db,
+  PROFILE_PREF_KEY,
+  REPORTED_PREF_KEY,
+  type LocalProfile,
+} from '@/db/dexie';
 import { authorKey } from '@/lib/postSigning';
 import { verifyPost } from '@/lib/postSignature';
 import { codeMatchesKey, mintSpaceCode, parseSpaceCodeInput } from '@/lib/spaceCode';
+import { communityTermsAccepted } from '@/lib/communityTerms';
 import * as api from '@/services/api/community';
 import { onCommunityPulled } from '@/services/community/communitySync';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { enqueueOp } from '@/store/syncQueueManager';
-import type { Membership, Post, Profile, Space, Subscription } from '@/types/domain';
+import type {
+  BlockedAuthor,
+  Membership,
+  Post,
+  Profile,
+  ReportReason,
+  Space,
+  Subscription,
+} from '@/types/domain';
 
 /**
  * Community spaces: the user's own writing, who may read it, and the spaces
@@ -52,6 +67,14 @@ type CommunityState = {
   feed: Record<string, Post[]>;
   feedState: Record<string, FeedState>;
   seen: Record<string, number>;
+  /**
+   * Authors this device refuses to read, by signing key. Local by design — see
+   * `blockAuthor`.
+   */
+  blocked: Record<string, BlockedAuthor>;
+  /** What this device has already reported, by post id (or share code for a
+   * whole space), so the UI can say so instead of inviting a second report. */
+  reported: Record<string, number>;
   initialized: boolean;
   busy: boolean;
 
@@ -73,6 +96,18 @@ type CommunityState = {
 
   subscribe: (rawCode: string) => Promise<api.MembershipStatus>;
   unsubscribe: (code: string) => Promise<void>;
+  /** Refuse an author entirely: every space of theirs goes, and no code of
+   * theirs can be added again while the block stands. */
+  blockAuthor: (authorKey: string, displayName: string) => Promise<void>;
+  unblockAuthor: (authorKey: string) => Promise<void>;
+  /** Which of the user's subscriptions belong to this author. */
+  codesOfAuthor: (authorKey: string) => string[];
+  reportContent: (input: {
+    code: string;
+    postId?: string;
+    reason: ReportReason;
+    note?: string;
+  }) => Promise<void>;
   decideMember: (userId: string, spaceId: string, status: 'accepted' | 'blocked') => Promise<void>;
   refreshMembers: () => Promise<void>;
   refreshSubscriptions: () => Promise<void>;
@@ -123,20 +158,34 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   feed: {},
   feedState: {},
   seen: {},
+  blocked: {},
+  reported: {},
   initialized: false,
   busy: false,
 
   init: async () => {
-    const [profileRow, spaceRows, postRows, subRows, memberRows, feedRows, seenRows] =
-      await Promise.all([
-        db.preferences.get(PROFILE_PREF_KEY),
-        db.spaces.toArray(),
-        db.posts.toArray(),
-        db.subscriptions.toArray(),
-        db.memberships.toArray(),
-        db.feedPosts.toArray(),
-        db.seenPosts.toArray(),
-      ]);
+    const [
+      profileRow,
+      spaceRows,
+      postRows,
+      subRows,
+      memberRows,
+      feedRows,
+      seenRows,
+      blockedRow,
+      reportedRow,
+    ] = await Promise.all([
+      db.preferences.get(PROFILE_PREF_KEY),
+      db.spaces.toArray(),
+      db.posts.toArray(),
+      db.subscriptions.toArray(),
+      db.memberships.toArray(),
+      db.feedPosts.toArray(),
+      db.seenPosts.toArray(),
+      db.preferences.get(BLOCKED_PREF_KEY),
+      db.preferences.get(REPORTED_PREF_KEY),
+    ]);
+    const blocked = (blockedRow?.value as Record<string, BlockedAuthor> | undefined) ?? {};
 
     const livePosts = postRows.filter((p) => p.deleted !== 1);
     const feed: Record<string, Post[]> = {};
@@ -148,15 +197,26 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     }
     for (const posts of Object.values(feed)) posts.sort((a, b) => b.publishedAt - a.publishedAt);
 
+    // A blocked author's spaces are dropped on the way in, not filtered at every
+    // read site: a pull can legitimately hand back a subscription row the block
+    // has already deleted (the delete op may still be queued), and one place
+    // that enforces the block beats a dozen that remember to.
+    const liveSubs = subRows.filter((r) => r.deleted !== 1 && !blocked[r.pinnedKey]);
+    for (const row of subRows) {
+      if (row.deleted !== 1 && blocked[row.pinnedKey]) void get().unsubscribe(row.code);
+    }
+
     set({
       profile: (profileRow?.value as LocalProfile | undefined) ?? null,
       spaces: spaceRows.filter((s) => s.deleted !== 1).sort(byUpdatedDesc),
       posts: livePosts.map(stripLocalPost).sort(byPublishedDesc),
       shared: Object.fromEntries(livePosts.map((p) => [p.id, p.shared === 1])),
-      subscriptions: subRows.filter((s) => s.deleted !== 1),
+      subscriptions: liveSubs,
       memberships: memberRows,
       feed,
       seen: Object.fromEntries(seenRows.map((r) => [r.id, r.seenAt])),
+      blocked,
+      reported: (reportedRow?.value as Record<string, number> | undefined) ?? {},
       initialized: true,
     });
 
@@ -179,6 +239,10 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   enableCommunity: async (displayName: string) => {
     const key = authorKey();
     if (!key) throw new Error('no signing key: passphrase onboarding has not completed');
+    // Guarded here as well as in the UI, for the reason the syncEnabled
+    // chokepoints exist: a future caller cannot switch the feature on by
+    // forgetting to ask. The two opt-in screens accept the standards first.
+    if (!communityTermsAccepted()) throw new Error('terms_required');
 
     set({ busy: true });
     try {
@@ -383,6 +447,30 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   publishPost: async (id) => {
     const post = get().posts.find((p) => p.id === id);
     if (!post || !get().profile) return;
+
+    // Judged before it is signed and queued. `posts.upsert` judges it again on
+    // the server — this call is what turns that refusal into something the
+    // author can read at the moment they pressed publish, because the publish
+    // itself rides the sync queue and a refusal there would only drop the op.
+    //
+    // A transport failure is not a refusal: offline publishing has to keep
+    // working, and the server has the final say either way.
+    try {
+      const verdict = await api.checkModeration({
+        title: post.title,
+        body: post.body,
+        language: post.language,
+      });
+      if (!verdict.ok) {
+        const err = new Error('content_refused');
+        (err as Error & { reason?: string }).reason = verdict.reason;
+        throw err;
+      }
+    } catch (e) {
+      if (e instanceof Error && e.message === 'content_refused') throw e;
+      // Anything else (offline, 5xx, no key) falls through to publishing.
+    }
+
     const now = Date.now();
     // publishedAt is immutable once set — it is signed, and re-publishing after
     // a withdrawal must keep the original date.
@@ -440,8 +528,18 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     const code = parseSpaceCodeInput(rawCode);
     if (!code) throw new Error('invalid_code');
     if (!get().profile) throw new Error('profile_required');
+    if (!communityTermsAccepted()) throw new Error('terms_required');
+    // A code that carries a fingerprint can be matched against the block list
+    // *before* asking, so a blocked author never even gets a membership row
+    // appended in their file. A code without one is caught after the response.
+    for (const b of Object.values(get().blocked)) {
+      if (codeMatchesKey(code, b.authorKey)) throw new Error('author_blocked');
+    }
 
     const res = await api.requestSpace(code);
+    if (res.owner.authorKey && get().blocked[res.owner.authorKey]) {
+      throw new Error('author_blocked');
+    }
     // api.php refuses a space whose owner has no published key (409
     // space_not_ready), so this is a backstop against an older backend that
     // does not — there is nothing to pin, so nothing could ever be verified.
@@ -489,6 +587,63 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     });
     await queued('subscription.delete', { code });
     flush();
+  },
+
+  codesOfAuthor: (authorKey) =>
+    get()
+      .subscriptions.filter((s) => s.pinnedKey === authorKey)
+      .map((s) => s.code),
+
+  /**
+   * Refuse an author entirely.
+   *
+   * Blocking is keyed by the author's **signing key**, which is derived from
+   * their mnemonic and therefore the same in every space they own — so one tap
+   * takes out every space of theirs at once, which is what a block has to mean.
+   * The share code couldn't do this: one author hands out one code per space.
+   *
+   * It needs no server support, and that is not a shortcut. Nobody can push
+   * anything at a reader here — a subscriber *pulls* `space.feed` — so removing
+   * the subscriptions and refusing to add them back is a complete block from
+   * the reading side. What it deliberately does not do is tell the author, who
+   * simply stops being read.
+   *
+   * The block list is local: the subscription deletes sync (so the spaces
+   * disappear on the user's other devices too), but "don't let them back in"
+   * is remembered per device. Syncing it would need a server action and a
+   * merge rule for a list whose whole purpose is to be enforced offline.
+   */
+  blockAuthor: async (authorKey, displayName) => {
+    const entry: BlockedAuthor = { authorKey, displayName, blockedAt: Date.now() };
+    const blocked = { ...get().blocked, [authorKey]: entry };
+    await db.preferences.put({ key: BLOCKED_PREF_KEY, value: blocked });
+    set({ blocked });
+    for (const code of get().codesOfAuthor(authorKey)) {
+      await get().unsubscribe(code);
+    }
+  },
+
+  unblockAuthor: async (authorKey) => {
+    const blocked = { ...get().blocked };
+    delete blocked[authorKey];
+    await db.preferences.put({ key: BLOCKED_PREF_KEY, value: blocked });
+    set({ blocked });
+  },
+
+  /**
+   * Report a piece, or a whole space, to the app's moderators.
+   *
+   * Recorded locally as well, keyed by post id (or by share code for a space),
+   * so the UI can say "reported" rather than invite a second one — the report
+   * itself is idempotent per reporter and target on the server for the same
+   * reason.
+   */
+  reportContent: async ({ code, postId, reason, note }) => {
+    await api.reportContent({ code, postId, reason, note });
+    const key = postId ?? code;
+    const reported = { ...get().reported, [key]: Date.now() };
+    await db.preferences.put({ key: REPORTED_PREF_KEY, value: reported });
+    set({ reported });
   },
 
   decideMember: async (userId, spaceId, status) => {

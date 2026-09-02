@@ -6,13 +6,15 @@ import { PostEditor } from '@/components/community/PostEditor';
 import { SpaceDetail } from '@/components/community/SpaceDetail';
 import { SubscribeField } from '@/components/community/SubscribeField';
 import { ROUTES } from '@/lib/appRoutes';
-import { useGoBack } from '@/hooks/useGoBack';
 import { spaceSourceKey } from '@/services/reading/readingSequence';
 import { useCommunityStore } from '@/store/communityStore';
 import { useReaderStore } from '@/store/readerStore';
 import type { Post, Space, Subscription } from '@/types/domain';
 import { spaceDisplayName, spaceLabel } from '@/services/community/spaceName';
 import { NewPiecesBar } from '@/components/community/NewPiecesBar';
+import { CommunityTermsGate } from '@/components/community/CommunityTermsGate';
+import { ReportDialog } from '@/components/community/ReportDialog';
+import { useCommunityTermsAccepted } from '@/lib/communityTerms';
 import { useCommunityRefresh } from '@/hooks/useCommunityRefresh';
 
 /**
@@ -41,7 +43,15 @@ export function SpacesPage() {
   // request to arrive, the subscriber for it to be accepted.
   useCommunityRefresh();
 
+  const termsAccepted = useCommunityTermsAccepted();
+
   const space = routeId ? spaces.find((s) => s.id === routeId) : undefined;
+
+  // A profile that predates the content standards has not agreed to them, and
+  // this is the one screen every community path goes through — including the
+  // space editor and the post editor beneath it. New profiles accept at the
+  // opt-in and never see this.
+  if (profile && !termsAccepted) return <CommunityTermsGate />;
 
   if (draftPost && space) {
     return (
@@ -83,7 +93,6 @@ function SpacesIndex({
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const goBack = useGoBack(ROUTES.chat);
   const createSpace = useCommunityStore((s) => s.createSpace);
   const posts = useCommunityStore((s) => s.posts);
   const feed = useCommunityStore((s) => s.feed);
@@ -112,23 +121,28 @@ function SpacesIndex({
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <header className="px-4 py-2 border-b border-surface-raised/50 bg-surface/90 backdrop-blur flex items-center gap-2">
-        <button
-          type="button"
-          onClick={goBack}
-          aria-label={t('common.back') as string}
-          className="text-brand-muted hover:text-brand px-1"
-        >
-          ‹
-        </button>
+      {/* No back button: this is a nav tab now, and the tab bar is how you
+          leave it. `/spaces/:id` keeps its own — its fallback is this index. */}
+      {/* `relative` so the code field's hint can hang under it without
+          changing the header's height as you type. */}
+      <header className="relative px-4 py-2 border-b border-surface-raised/50 bg-surface/90 backdrop-blur flex items-center gap-2">
         <div className="min-w-0 flex-1">
           <h1 className="font-serif text-brand text-lg truncate">{t('community.title')}</h1>
           <p className="text-[11px] text-ink-muted truncate">{t('community.subtitle')}</p>
         </div>
         {hasProfile && (
-          <button type="button" onClick={() => void create()} className="btn-primary text-sm">
-            + {t('community.newSpace')}
-          </button>
+          <>
+            {/* Left of "new space": being sent a code is the commonest reason
+                to be on this screen, and this used to be the last thing on it. */}
+            <SubscribeField />
+            <button
+              type="button"
+              onClick={() => void create()}
+              className="btn-primary text-sm shrink-0 whitespace-nowrap"
+            >
+              + {t('community.newSpace')}
+            </button>
+          </>
         )}
       </header>
 
@@ -200,11 +214,20 @@ function SpacesIndex({
                     onRead={
                       posts.length > 0 ? () => void openSpace({ code: sub.code }) : undefined
                     }
-                    trailing={<SubscriptionMenu code={sub.code} />}
+                    trailing={
+                      <SubscriptionMenu
+                        code={sub.code}
+                        authorKey={sub.pinnedKey}
+                        ownerName={sub.ownerName}
+                        spaceLabel={spaceLabel(sub.ownerName, {
+                          kind: sub.spaceKind ?? 'custom',
+                          name: sub.spaceName,
+                        })}
+                      />
+                    }
                   />
                 );
               })}
-              <SubscribeField />
             </section>
           </>
         )}
@@ -213,26 +236,150 @@ function SpacesIndex({
   );
 }
 
-function SubscriptionMenu({ code }: { code: string }) {
+/**
+ * What a reader can do about somebody else's space: stop reading it, report it,
+ * or refuse its author outright.
+ *
+ * A menu rather than three inline links because two of the three are decisions
+ * you should not be able to make by mis-tapping — block asks for a second tap,
+ * and report opens a form.
+ *
+ * Blocking is the strong one: it removes *every* space of that author's, not
+ * just this one, which is why the confirmation says so. It is keyed by the
+ * pinned signing key, the only stable identity a reader has for an author.
+ */
+function SubscriptionMenu({
+  code,
+  authorKey,
+  ownerName,
+  spaceLabel: label,
+}: {
+  code: string;
+  authorKey: string;
+  ownerName: string;
+  spaceLabel: string;
+}) {
   const { t } = useTranslation();
   const unsubscribe = useCommunityStore((s) => s.unsubscribe);
+  const blockAuthor = useCommunityStore((s) => s.blockAuthor);
+  const codesOfAuthor = useCommunityStore((s) => s.codesOfAuthor);
   const setSource = useReaderStore((s) => s.setSource);
   const source = useReaderStore((s) => s.source);
+  const [open, setOpen] = useState(false);
+  const [confirmBlock, setConfirmBlock] = useState(false);
+  const [reporting, setReporting] = useState(false);
+
+  /** Don't leave the reader walking a space that is about to disappear. */
+  const releaseReader = (codes: string[]) => {
+    if (source.kind !== 'space') return;
+    if (codes.some((c) => spaceSourceKey(source) === `c:${c}`)) {
+      void setSource({ kind: 'bible' });
+    }
+  };
+
+  return (
+    <>
+      <div className="relative shrink-0">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen((v) => !v);
+            setConfirmBlock(false);
+          }}
+          aria-label={t('boards.menu') as string}
+          aria-expanded={open}
+          className="text-ink-muted hover:text-ink px-2 leading-none"
+        >
+          ⋮
+        </button>
+        {open && (
+          <>
+            {/* Click-away as a sibling overlay: the row itself is a button, so
+                a document listener would fight its onClick. */}
+            <div
+              className="fixed inset-0 z-30"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(false);
+              }}
+            />
+            <div
+              className="absolute right-0 top-full mt-1 z-40 w-52 py-1 rounded-xl bg-surface-raised border border-surface-raised/70 shadow-lg"
+              role="menu"
+            >
+              <MenuItem
+                onClick={() => {
+                  setOpen(false);
+                  setReporting(true);
+                }}
+              >
+                {t('community.report.reportSpace')}
+              </MenuItem>
+              <MenuItem
+                danger
+                onClick={() => {
+                  if (!confirmBlock) {
+                    setConfirmBlock(true);
+                    return;
+                  }
+                  setOpen(false);
+                  releaseReader(codesOfAuthor(authorKey));
+                  void blockAuthor(authorKey, ownerName);
+                }}
+              >
+                {confirmBlock
+                  ? t('community.blockAuthor.confirm', { name: ownerName })
+                  : t('community.blockAuthor.action')}
+              </MenuItem>
+              {confirmBlock && (
+                <p className="px-3 py-1.5 text-[11px] text-ink-muted">
+                  {t('community.blockAuthor.confirmBody')}
+                </p>
+              )}
+              <MenuItem
+                onClick={() => {
+                  setOpen(false);
+                  releaseReader([code]);
+                  void unsubscribe(code);
+                }}
+              >
+                {t('community.unsubscribe')}
+              </MenuItem>
+            </div>
+          </>
+        )}
+      </div>
+      {reporting && (
+        <ReportDialog code={code} title={label} onClose={() => setReporting(false)} />
+      )}
+    </>
+  );
+}
+
+function MenuItem({
+  onClick,
+  danger,
+  children,
+}: {
+  onClick: () => void;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <button
       type="button"
+      role="menuitem"
       onClick={(e) => {
         e.stopPropagation();
-        // If the reader is currently walking this space, send it back to the
-        // Bible before the space disappears from under it.
-        if (source.kind === 'space' && spaceSourceKey(source) === `c:${code}`) {
-          void setSource({ kind: 'bible' });
-        }
-        void unsubscribe(code);
+        onClick();
       }}
-      className="text-[11px] text-ink-muted hover:text-red-400 px-2"
+      className={clsx(
+        'w-full text-left px-3 py-2 text-sm hover:bg-surface',
+        danger ? 'text-red-400' : 'text-ink',
+      )}
     >
-      {t('community.unsubscribe')}
+      {children}
     </button>
   );
 }

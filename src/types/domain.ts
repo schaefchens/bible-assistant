@@ -446,6 +446,50 @@ export type Subscription = {
 };
 
 /** Somebody following one of my spaces. */
+/**
+ * Why a piece (or a whole space) is being reported.
+ *
+ * The list mirrors the content standards a user accepts before the community
+ * is switched on (`lib/communityTerms.ts`), because a reason that doesn't map
+ * to a stated rule is a reason a moderator can't act on. api.php whitelists
+ * the same set — a report is a cross-account write, so the value is never
+ * echoed anywhere without passing that list first.
+ */
+export type ReportReason =
+  | 'offtopic'
+  | 'political'
+  | 'sexual'
+  | 'dating'
+  | 'hate'
+  | 'spam'
+  | 'other';
+
+export const REPORT_REASONS: readonly ReportReason[] = [
+  'offtopic',
+  'political',
+  'sexual',
+  'dating',
+  'hate',
+  'spam',
+  'other',
+] as const;
+
+/**
+ * An author this device refuses to read.
+ *
+ * Keyed by the author's Ed25519 signing key, not by space or share code: one
+ * author may have invited the user into several spaces, and a block has to take
+ * all of them out at once — which is only possible because the key is derived
+ * from the author's mnemonic and is therefore the same across every space they
+ * own.
+ */
+export type BlockedAuthor = {
+  authorKey: string;
+  /** Name snapshot, so the unblock list in Settings can name who it is. */
+  displayName: string;
+  blockedAt: number;
+};
+
 export type Membership = {
   userId: string;
   spaceId: string;

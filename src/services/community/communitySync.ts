@@ -1,5 +1,6 @@
 import { db, PROFILE_PREF_KEY, type LocalProfile, type SyncOp } from '@/db/dexie';
 import * as api from '@/services/api/community';
+import { ApiError } from '@/services/api/client';
 import type { Membership, Post, Space, Subscription } from '@/types/domain';
 
 /**
@@ -86,7 +87,19 @@ export async function flushCommunityOp(op: CommunityOp, payload: unknown): Promi
     }
     case 'post.upsert': {
       const post = payload as Post;
-      await api.upsertPost(post);
+      try {
+        await api.upsertPost(post);
+      } catch (e) {
+        // The server judges every publish against the content standards, and
+        // the client asked first — so this only fires for a publish that was
+        // queued offline, or a client that skipped the ask. The op is about to
+        // be dropped as a permanent 4xx either way; drop the *claim* with it,
+        // or the piece shows as published while no copy exists anywhere.
+        if (e instanceof ApiError && e.message === 'content_refused') {
+          await db.posts.update(post.id, { shared: 0, dirty: 0 });
+        }
+        throw e;
+      }
       await settleIfUnchanged('posts', post.id, post.updatedAt);
       break;
     }

@@ -7,6 +7,9 @@ import { resizeAvatar } from '@/lib/imageResize';
 import { keyFingerprint } from '@/lib/spaceCode';
 import { ROUTES } from '@/lib/appRoutes';
 import { useCommunityStore } from '@/store/communityStore';
+import { useSettingsStore } from '@/store/settingsStore';
+import { COMMUNITY_TERMS_VERSION } from '@/lib/communityTerms';
+import { CommunityTerms, CommunityTermsConsent } from '@/components/community/CommunityTerms';
 
 /**
  * Settings tile for the community profile.
@@ -31,10 +34,15 @@ export function CommunitySection() {
   const disableCommunity = useCommunityStore((s) => s.disableCommunity);
   const saveProfile = useCommunityStore((s) => s.saveProfile);
   const setAvatar = useCommunityStore((s) => s.setAvatar);
+  const blocked = useCommunityStore((s) => s.blocked);
+  const unblockAuthor = useCommunityStore((s) => s.unblockAuthor);
+  const acceptTerms = useSettingsStore((s) => s.acceptCommunityTerms);
 
   const [name, setName] = useState('');
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingLeave, setConfirmingLeave] = useState(false);
+  const [termsOpen, setTermsOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Same two-tap-with-timeout idiom as SyncSection and DangerZone.
@@ -49,9 +57,10 @@ export function CommunitySection() {
 
   const onCreate = async () => {
     const displayName = name.trim();
-    if (!displayName || busy) return;
+    if (!displayName || !agreed || busy) return;
     setError(null);
     try {
+      acceptTerms(COMMUNITY_TERMS_VERSION);
       await enableCommunity(displayName);
     } catch (e) {
       setError(extractErrorDetail(e) ?? t('community.errors.failed'));
@@ -95,10 +104,11 @@ export function CommunitySection() {
           maxLength={120}
           className="w-full bg-surface-raised rounded-xl px-3 py-2 text-ink outline-none focus:ring-2 focus:ring-brand/60"
         />
+        <CommunityTermsConsent checked={agreed} onChange={setAgreed} />
         <button
           type="button"
           onClick={() => void onCreate()}
-          disabled={busy || name.trim() === ''}
+          disabled={busy || !agreed || name.trim() === ''}
           className="btn-primary w-full disabled:opacity-50"
         >
           {t('community.profile.create')}
@@ -179,6 +189,49 @@ export function CommunitySection() {
           <p className="text-xs text-ink-muted mt-1">
             {t('community.profile.fingerprintHint')}
           </p>
+        </div>
+      )}
+
+      {/* Readable after acceptance too: a policy you agreed to once and can
+          never see again is not a policy. */}
+      <button
+        type="button"
+        onClick={() => setTermsOpen((v) => !v)}
+        aria-expanded={termsOpen}
+        className="w-full text-left px-3 py-2 rounded-xl bg-surface-raised flex items-center justify-between"
+      >
+        <span className="text-sm text-ink">{t('community.terms.view')}</span>
+        <span className="text-xs text-brand">{termsOpen ? '⌃' : '›'}</span>
+      </button>
+      {termsOpen && (
+        <div className="px-3">
+          <CommunityTerms compact />
+        </div>
+      )}
+
+      {Object.keys(blocked).length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[11px] uppercase tracking-wider text-ink-muted">
+            {t('community.blockAuthor.title')}
+          </p>
+          {Object.values(blocked).map((b) => (
+            <div
+              key={b.authorKey}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-raised"
+            >
+              <span className="min-w-0 flex-1 text-sm text-ink truncate">
+                {b.displayName || b.authorKey.slice(0, 12)}
+              </span>
+              <button
+                type="button"
+                onClick={() => void unblockAuthor(b.authorKey)}
+                className="text-[11px] text-brand hover:underline shrink-0"
+              >
+                {t('community.blockAuthor.unblock')}
+              </button>
+            </div>
+          ))}
+          <p className="text-xs text-ink-muted">{t('community.blockAuthor.sectionHint')}</p>
         </div>
       )}
 
