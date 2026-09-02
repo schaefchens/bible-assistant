@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
@@ -13,6 +13,7 @@ import { useReaderStore } from '@/store/readerStore';
 import type { Post, Space, Subscription } from '@/types/domain';
 import { spaceDisplayName, spaceLabel } from '@/services/community/spaceName';
 import { NewPiecesBar } from '@/components/community/NewPiecesBar';
+import { useCommunityRefresh } from '@/hooks/useCommunityRefresh';
 
 /**
  * `/spaces` and `/spaces/:id` — the index of the user's own spaces and the
@@ -31,15 +32,14 @@ export function SpacesPage() {
   const profile = useCommunityStore((s) => s.profile);
   const spaces = useCommunityStore((s) => s.spaces);
   const subscriptions = useCommunityStore((s) => s.subscriptions);
-  const refresh = useCommunityStore((s) => s.refreshSubscriptions);
 
   // A post being written, held here rather than in the store so an abandoned
   // draft leaves nothing behind — the same reasoning as CardsPage's draftCard.
   const [draftPost, setDraftPost] = useState<Post | null>(null);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  // Both sides of a share are waiting on each other here: the author for a
+  // request to arrive, the subscriber for it to be accepted.
+  useCommunityRefresh();
 
   const space = routeId ? spaces.find((s) => s.id === routeId) : undefined;
 

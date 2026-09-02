@@ -825,9 +825,39 @@ dwell is only evaluated on a position change.
 feed response, which is what makes the Today filter possible and lets a
 subscribed Today space show its localized name instead of the stored literal.
 
+### Staying current — there is no push channel
+
+Sharing is the one place two people wait on each other, and nothing pushed:
+`members.list` was pulled only at boot and the feeds only on mount, so an author
+sat looking at a request list from whenever they last loaded and a subscriber who
+had just been accepted still read "waiting for approval". Both needed a reload to
+see something that had already happened.
+
+`useCommunityRefresh` polls instead, and where it *doesn't* poll is the design:
+
+- only while a community screen is mounted (the hook is not global);
+- only while the tab is visible — a backgrounded app polling a shared server for
+  nothing is what makes polling rude, and `visibilitychange` does a full refresh
+  on the way back, which on a phone is the common case;
+- `members.list` every 15 s (one small file, and it is what the author waits on);
+- feeds **only while a subscription is `pending`**, because one `space.feed` per
+  subscription prunes and returns posts. Otherwise they refresh on mount and on
+  returning to the foreground.
+
+Both halves of the original complaint land on the 15 s path: the author's inbox,
+and a subscriber whose subscription is pending.
+
+`refreshMembers` **warns** on failure rather than swallowing, unlike its
+neighbours — it runs once per poll and a silent failure means a quietly stale
+request inbox, which is invisible otherwise and cost real debugging time.
+`refreshSubscriptions` stays silent because it runs per subscription and offline
+is a normal state there.
+
 ### Known limitations
 
 - A voice command on `/read` still produces a *chat* reading, as it does for the Bible.
+- Updates between two people are polled, not pushed, so an accept or a new request can take up
+  to 15 s to appear (immediately on returning to the app). A hidden tab does not poll at all.
 - Per-post completion is not tracked; unread is a local dot (`seenPosts`), not a synced tick, so
   what you have seen does not travel between your devices. Doing it properly wants
   `readingProgress`'s union-merge machinery, which is keyed by `listId`.

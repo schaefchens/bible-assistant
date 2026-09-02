@@ -74,6 +74,7 @@ type CommunityState = {
   subscribe: (rawCode: string) => Promise<api.MembershipStatus>;
   unsubscribe: (code: string) => Promise<void>;
   decideMember: (userId: string, spaceId: string, status: 'accepted' | 'blocked') => Promise<void>;
+  refreshMembers: () => Promise<void>;
   refreshSubscriptions: () => Promise<void>;
   markSeen: (postId: string) => Promise<void>;
 };
@@ -501,6 +502,39 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     }));
     await queued('membership.decide', { userId, spaceId, status });
     flush();
+  },
+
+  /**
+   * Re-read who is asking to read the user's spaces.
+   *
+   * Cheap — one small JSON file — which is why it can be polled while the
+   * community screens are open. Without it an author sits looking at a request
+   * list from whenever the app last booted, and a subscriber who just pasted
+   * their code appears not to have.
+   *
+   * Held back while a decision of ours is still queued, for the same reason
+   * `pullCommunity` holds back: it would be visibly undone and then redone.
+   */
+  refreshMembers: async () => {
+    if (!get().profile || !useSettingsStore.getState().syncEnabled) return;
+    const queued = await db.syncQueue.toArray();
+    if (queued.some((q) => q.op === 'membership.decide')) return;
+    try {
+      const { members } = await api.listMembers();
+      const rows = (members ?? []).map((m) => ({ ...m, dirty: 0 as const }));
+      await db.transaction('rw', [db.memberships], async () => {
+        await db.memberships.clear();
+        await db.memberships.bulkPut(rows);
+      });
+      set({ memberships: members ?? [] });
+    } catch (e) {
+      // Warned rather than swallowed: this runs once per poll and its failure
+      // means the author's request inbox is quietly stale, which is invisible
+      // otherwise. (`refreshSubscriptions` below stays silent on purpose — it
+      // runs per subscription and being offline is a normal state there, so a
+      // warning would be per-space console spam.)
+      console.warn('[community] refreshMembers failed', e);
+    }
   },
 
   /**
