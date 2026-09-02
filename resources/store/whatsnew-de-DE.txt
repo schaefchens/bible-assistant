@@ -1,6 +1,6 @@
-Mikrofon und Wiedergabe sind jetzt ein Element.
+Deine eigenen Texte, vorgelesen wie die Schrift.
 
-• Neu: eine Leiste über der Navigation — volle Breite, verdeckt keinen Text, und ab jetzt die Voreinstellung.
-• Abspielen sitzt mittig, Zurück und Weiter daneben, dazu zwei Tasten für ein paar Wörter vor und zurück.
-• Der Freihändig-Modus ist von jeder Seite erreichbar, nicht mehr nur vom Chat.
-• Lieber schwebend? Lange drücken und in eine Ecke ziehen — dort fahren die Regler aus dem Mikrofon aus.
+• Lege Räume für Gedanken und kurze Beiträge an. Sie öffnen sich im Leser, Wort für Wort mitgelesen.
+• Teile einen Raum per Code oder Link — du entscheidest, wer lesen darf. Kein öffentliches Verzeichnis.
+• Alles, was du veröffentlichst, wird auf deinem Gerät signiert und ist damit unveränderbar.
+• Alles Neue von allen, denen du folgst, in einem Zug lesen.

@@ -1,6 +1,6 @@
-The microphone and the player are one control now.
+Your own writing, read aloud like scripture.
 
-• New: a bar above the navigation — full width, covers none of the text, and the default from now on.
-• Play sits in the middle with Previous and Next beside it, plus two buttons that jump a few words either way.
-• Hands-free mode is reachable from every screen, not just Chat.
-• Prefer it floating? Long-press and drag it to a corner, where the controls extend out of the microphone.
+• Keep spaces of reflections and short pieces. They open in the reader, narrated with word-by-word highlighting.
+• Share a space by code or link — you decide who may read. No public listing, no discovery.
+• Everything you publish is signed on your device, so nobody can alter it.
+• Read everything new from everyone you follow in one sitting.
