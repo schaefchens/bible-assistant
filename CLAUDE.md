@@ -825,6 +825,21 @@ dwell is only evaluated on a position change.
 feed response, which is what makes the Today filter possible and lets a
 subscribed Today space show its localized name instead of the stored literal.
 
+### Where the opt-in is offered
+
+Two places, and both are progressive disclosure: `components/settings/CommunitySection.tsx`
+and a wizard step, `components/onboarding/steps/CommunityStep.tsx`.
+
+The step comes **after** `sync` and is last, because it *implies* sync —
+`enableCommunity` turns it on, so asking first would enable something the next
+screen had not offered yet. Skipping is a first-class outcome: the footer says
+"Done" and nothing is created. The "this also turns on server sync" line shows
+only while sync is still off, so it does not describe something the previous
+step already did.
+
+Adding a step means `OnboardingWizard`'s `steps` array and the progress dots grow
+by one; the `Step` union is the only other place to touch.
+
 ### Staying current — there is no push channel
 
 Sharing is the one place two people wait on each other, and nothing pushed:

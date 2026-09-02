@@ -412,6 +412,22 @@
         "on": "Synchronisation ist aktiv",
         "onHint": "Deine Bibliothek wird auf dem Server gespiegelt. Du kannst das jederzeit in den Einstellungen abschalten.",
         "later": "Du kannst das auch später in den Einstellungen einschalten."
+      },
+      "community": {
+        "title": "Teile, was du schreibst",
+        "subtitle": "Optional. Es wird nichts eingerichtet, solange du nicht willst.",
+        "body": "Du kannst eigene Räume für deine Texte anlegen — Gedanken, Notizen, kurze Beiträge — und sie hier lesen, vorgelesen wie ein Kapitel. Einen Raum teilst du über einen Code mit Menschen, die du auswählst; du entscheidest, wer hereinkommt. Es gibt kein öffentliches Verzeichnis und nichts ist auffindbar.",
+        "setUp": "Profil einrichten",
+        "later": "Das geht jederzeit in den Einstellungen.",
+        "nameLabel": "Was sollen andere sehen?",
+        "namePlaceholder": "Dein Name",
+        "nameHint": "Wird den Menschen gezeigt, mit denen du teilst — neben dem, was du schreibst.",
+        "syncNote": "Damit wird auch die Server-Synchronisierung aktiviert — Teilen braucht sie.",
+        "create": "Profil erstellen",
+        "working": "Wird eingerichtet…",
+        "on": "Profil erstellt",
+        "onHint": "Dein Raum „Heute“ ist bereit. Schreib etwas, wann du magst — Beiträge dort verschwinden nach 24 Stunden.",
+        "failed": "Das hat nicht funktioniert. Bitte noch einmal versuchen."
       }
     }
   },

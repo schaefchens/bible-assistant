@@ -412,6 +412,22 @@
         "on": "Sync is on",
         "onHint": "Your library will be mirrored to the server. You can switch this off in Settings at any time.",
         "later": "You can also turn this on later in Settings."
+      },
+      "community": {
+        "title": "Share what you write",
+        "subtitle": "Optional. Nothing is set up unless you ask.",
+        "body": "You can keep spaces of your own writing — reflections, notes, short pieces — and read them here, narrated like a chapter. Share a space with people you choose by giving them a code, and you decide who gets in. There is no public listing and nothing is discoverable.",
+        "setUp": "Set up a profile",
+        "later": "You can do this any time in Settings.",
+        "nameLabel": "What should people see?",
+        "namePlaceholder": "Your name",
+        "nameHint": "Shown to the people you share with, next to what you write.",
+        "syncNote": "This also turns on server sync — sharing needs it.",
+        "create": "Create profile",
+        "working": "Setting up…",
+        "on": "Profile created",
+        "onHint": "Your “Today” space is ready. Write something whenever you like — pieces there disappear after 24 hours.",
+        "failed": "That did not work. Try again."
       }
     }
   },

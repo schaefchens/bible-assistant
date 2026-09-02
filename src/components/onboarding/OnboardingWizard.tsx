@@ -10,6 +10,7 @@ import { PausesStep } from './steps/PausesStep';
 import { ApiKeyStep } from './steps/ApiKeyStep';
 import { VoicesStep } from './steps/VoicesStep';
 import { SyncStep } from './steps/SyncStep';
+import { CommunityStep } from './steps/CommunityStep';
 import { RecoverPassphrase } from './RecoverPassphrase';
 
 type Step =
@@ -20,13 +21,19 @@ type Step =
   | 'pauses'
   | 'apiKey'
   | 'voices'
-  | 'sync';
+  | 'sync'
+  | 'community';
 
 /**
- * Order matters: everything that works with no network comes first, and the two
- * steps that need one — the assistant key and server sync — come last, framed as
- * optional. The old wizard opened on an account-creation screen, which made a
- * fully-offline app feel like it needed a server before it would read anything.
+ * Order matters: everything that works with no network comes first, and the
+ * steps that need one — the assistant key, server sync, and the community
+ * profile — come last, framed as optional. The old wizard opened on an
+ * account-creation screen, which made a fully-offline app feel like it needed a
+ * server before it would read anything.
+ *
+ * Community comes *after* sync because it implies it: creating a profile turns
+ * sync on, so asking about it first would enable something the next screen has
+ * not offered yet.
  *
  * The ambient-music step is gone: it fetches ambient.list, so it was the one
  * step that could simply fail on a first run in airplane mode, and ambient is
@@ -53,7 +60,10 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
   // Voices step only exists once the user has saved a valid personal key,
   // so existing wizard navigation just grows by one screen if/when they do.
   const steps = useMemo<Step[]>(
-    () => (hasUserOpenAiKey ? [...BASE_STEPS, 'voices', 'sync'] : [...BASE_STEPS, 'sync']),
+    () =>
+      hasUserOpenAiKey
+        ? [...BASE_STEPS, 'voices', 'sync', 'community']
+        : [...BASE_STEPS, 'sync', 'community'],
     [hasUserOpenAiKey],
   );
   const idx = Math.max(0, steps.indexOf(step));
@@ -114,6 +124,7 @@ export function OnboardingWizard({ onDone }: { onDone: () => void }) {
             {step === 'apiKey' && <ApiKeyStep />}
             {step === 'voices' && <VoicesStep />}
             {step === 'sync' && <SyncStep />}
+            {step === 'community' && <CommunityStep />}
           </div>
 
           <footer className="flex items-center justify-between gap-3 mt-10">
