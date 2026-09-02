@@ -129,6 +129,24 @@ export function deleteSubscription(code: string): Promise<{ subscriptions: Subsc
 
 /* ---- across accounts ---- */
 
+export type SpacePeekResponse = {
+  /** The caller's existing membership, or null if they have never asked. */
+  status: MembershipStatus | null;
+  space: PublicSpace;
+  owner: PublicProfile;
+};
+
+/**
+ * Look at a space without asking for anything.
+ *
+ * The read an invite link's confirmation needs: `requestSpace` below *creates*
+ * the membership, so a "subscribe to X?" prompt built on it would be showing X
+ * only after having already asked. Writes nothing, and needs no profile.
+ */
+export function peekSpace(code: string): Promise<SpacePeekResponse> {
+  return apiPostJson<SpacePeekResponse>('space.peek', { code });
+}
+
 /**
  * Ask to read a space.
  *

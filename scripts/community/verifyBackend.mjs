@@ -269,6 +269,20 @@ try {
     });
   });
 
+  await check('peeking at a space reveals it without asking for anything', async () => {
+    // The whole reason space.peek exists: `space.request` *creates* the
+    // membership, so a "subscribe to X?" confirmation built on it would show X
+    // only after having already asked on the user's behalf.
+    const before = (await call(alice, 'members.list', {})).body.members.length;
+    const peek = await call(carol, 'space.peek', { code: blogCode });
+    assert.equal(peek.status, 200);
+    assert.equal(peek.body.space.name, 'Gedanken');
+    assert.equal(peek.body.owner.authorKey, alice.authorKey);
+    assert.equal(peek.body.status, null, 'never asked, so no membership');
+    const after = (await call(alice, 'members.list', {})).body.members.length;
+    assert.equal(after, before, 'peek must not create a membership');
+  });
+
   await check('an auto-approval space admits a subscriber immediately', async () => {
     const r = await call(bob, 'space.request', { code: blogCode });
     assert.equal(r.status, 200);

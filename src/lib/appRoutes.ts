@@ -10,6 +10,7 @@ export const ROUTES = {
   read: '/read',
   lists: '/lists',
   spaces: '/spaces',
+  subscribe: '/subscribe',
   cards: '/cards',
   boards: '/boards',
   settings: '/settings',

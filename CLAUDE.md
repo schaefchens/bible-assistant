@@ -825,6 +825,57 @@ dwell is only evaluated on a position change.
 feed response, which is what makes the Today filter possible and lets a
 subscribed Today space show its localized name instead of the stored literal.
 
+### Invite links
+
+An invitation is still just a share code; a link is a way of delivering one.
+Both shapes land on `/subscribe/<code>` (`routes/SubscribePage.tsx`), and
+`lib/spaceInvite.ts` builds them.
+
+**The route is the pending state.** A link can arrive before the app can act on
+it — onboarding unfinished, no profile (one is required to subscribe), offline —
+and none of that needs a stash, because the code sits in the URL: `AppShell`
+renders the wizard *over* this route and the route is still matched when
+onboarding finishes, and someone sent to Settings to make a profile returns to
+the same link.
+
+**`space.peek` exists because `space.request` writes.** A "subscribe to X?"
+confirmation built on `request` would be showing X only after having already
+asked on the user's behalf, so peek is a read-only lookup — the one community
+action that writes nothing, not in `$ACCOUNT_ACTIONS`, and it deliberately does
+*not* require the caller to have a profile, since its whole job is to show the
+invitation before anything is committed. `verifyBackend` asserts it creates no
+membership.
+
+**Mobile web gets an interstitial**, because a plain https link cannot hand over
+to an installed app until App Links / Universal Links are configured. Three
+things about it are deliberate:
+
+- it is a **button, not a redirect** — whether the app is installed cannot be
+  detected, and firing the scheme when it is not does nothing on iOS and can
+  error on Android. A tap that quietly does nothing is survivable; an automatic
+  error page for everyone without the app is not;
+- **"Copy code" is not a nicety.** In-app browsers (WhatsApp, Instagram) often
+  block scheme navigation, and that is exactly the channel these links travel;
+- **it never subscribes.** Web and native are separate installs with separate
+  identities, so a membership created there would belong to the *browser* — the
+  app would still have no access and the author would see a request from someone
+  who can never read. Whichever client the user lands in does the asking.
+
+**The scheme is reverse-DNS** (`de.schaefchens.apps.bibleassistant`), matching
+`appId`, because custom schemes are reserved nowhere: any app may claim
+`bibleassistant://`, and two installed apps declaring the same one leaves iOS to
+pick *undefinedly* while Android shows a chooser. It is a stopgap — App Links
+and Universal Links are keyed to a domain whose ownership is proven, and once
+either is configured the https link opens the app directly and the interstitial
+stops being reached on that platform. Android needs
+`.well-known/assetlinks.json` with the **Play App Signing** SHA-256 (the upload
+key's is the wrong one) plus `autoVerify`, and both would need adding to
+`scripts/deploy.sh`'s allow-list.
+
+Input is tolerant at one boundary only: `parseSpaceCodeInput` takes a bare code,
+either link, or the whole message the share sheet produced. `normalizeSpaceCode`
+and api.php's `normalizeShareCode` stay strict.
+
 ### Where the opt-in is offered
 
 Two places, and both are progressive disclosure: `components/settings/CommunitySection.tsx`

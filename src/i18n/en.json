@@ -673,6 +673,22 @@
     "todayAll": "Today, from everyone",
     "todayAllCount": "Today, from everyone ({{count}})",
     "nothingNew": "Nothing new to read.",
-    "addByCodeHint": "Paste the code, a link, or the whole message you were sent."
+    "addByCodeHint": "Paste the code, a link, or the whole message you were sent.",
+    "invite": {
+      "title": "An invitation to read",
+      "badLink": "That link doesn't carry a code.",
+      "handOffBody": "You can read this in the app, or here in the browser.",
+      "handOffHint": "If nothing happens, you probably don't have the app — continue here, or copy the code and paste it in the app.",
+      "openApp": "Open in the app",
+      "continueHere": "Continue in the browser",
+      "copyCode": "Copy the code",
+      "confirmBody": "Asking to read lets the author know you would like access. They decide.",
+      "fingerprint": "Author's fingerprint: {{fingerprint}}",
+      "ask": "Ask to read",
+      "asking": "Asking…",
+      "askedHint": "The author has been asked. You will see the pieces once they let you in.",
+      "alreadyIn": "You already read this space",
+      "alreadyInHint": "It is in your list of spaces."
+    }
   }
 }

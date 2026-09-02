@@ -19,6 +19,22 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Opens the app from an invite link's interstitial. Reverse-DNS,
+                 matching applicationId, because custom schemes are not
+                 reserved: two apps declaring the same one makes Android show a
+                 disambiguation chooser. See src/lib/spaceInvite.ts.
+
+                 This is a stopgap. App Links (autoVerify + a .well-known/
+                 assetlinks.json carrying the *Play App Signing* SHA-256, not
+                 the upload key's) would let the https link open the app
+                 directly and make collisions impossible. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="de.schaefchens.apps.bibleassistant" />
+            </intent-filter>
         </activity>
 
         <provider

@@ -88,5 +88,20 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<!-- Opens the app from an invite link's interstitial. Reverse-DNS, matching
+	     appId, because custom schemes are not reserved anywhere: two installed
+	     apps declaring the same one leaves iOS to pick undefinedly. See
+	     src/lib/spaceInvite.ts. -->
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>de.schaefchens.apps.bibleassistant</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>de.schaefchens.apps.bibleassistant</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

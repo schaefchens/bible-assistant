@@ -6,6 +6,7 @@ import { ChatPage } from '@/routes/ChatPage';
 import { ReadPage } from '@/routes/ReadPage';
 import { ReadingListsPage } from '@/routes/ReadingListsPage';
 import { SpacesPage } from '@/routes/SpacesPage';
+import { SubscribePage } from '@/routes/SubscribePage';
 import { CardsPage } from '@/routes/CardsPage';
 import { BoardsPage } from '@/routes/BoardsPage';
 import { SettingsPage } from '@/routes/SettingsPage';
@@ -37,6 +38,7 @@ export default function App() {
             <Route path="lists/:id" element={<ReadingListsPage />} />
             <Route path="spaces" element={<SpacesPage />} />
             <Route path="spaces/:id" element={<SpacesPage />} />
+            <Route path="subscribe/:code" element={<SubscribePage />} />
             <Route path="cards" element={<CardsPage />} />
             <Route path="cards/:id" element={<CardsPage />} />
             <Route path="boards" element={<BoardsPage />} />

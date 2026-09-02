@@ -4,6 +4,26 @@ import { App } from '@capacitor/app';
 import { Keyboard } from '@capacitor/keyboard';
 import { useGlobalVoiceStore } from '@/store/globalVoiceStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
+import { parseSpaceCodeInput } from '@/lib/spaceCode';
+import { APP_SCHEME, SUBSCRIBE_PATH } from '@/lib/spaceInvite';
+
+/**
+ * The code in an incoming invite URL, or null.
+ *
+ * Accepts both shapes, because either can reach the app once App Links or
+ * Universal Links are configured: the custom scheme fired by the web
+ * interstitial, and the https link itself.
+ */
+function codeFromInviteUrl(url: string): string | null {
+  const isOurs =
+    url.startsWith(`${APP_SCHEME}://`) || /^https?:\/\//i.test(url);
+  if (!isOurs) return null;
+  const path = url.split('#')[0].split('?')[0];
+  const marker = `${SUBSCRIBE_PATH}/`;
+  const at = path.indexOf(marker);
+  if (at === -1) return null;
+  return parseSpaceCodeInput(path.slice(at + marker.length));
+}
 
 /**
  * Native-shell behaviours that have no browser equivalent. All no-ops on web,
@@ -16,6 +36,7 @@ import { audioPlayback } from '@/lib/audioPlaybackManager';
  *      have suspended the AudioContext while backgrounded.
  *   3. Keyboard chrome — the iOS accessory ("Done") bar and the WebView's own
  *      scroll-on-focus both fight the app's self-scrolling panes.
+ *   4. Invite links — the app is opened by a URL rather than by its icon.
  */
 export function useNativeShell(): void {
   useEffect(() => {
@@ -43,6 +64,19 @@ export function useNativeShell(): void {
       if (!isActive) return;
       const ctx = audioPlayback.getContext();
       if (ctx?.state === 'suspended') void ctx.resume().catch(() => {});
+    }).then((h) => cleanups.push(() => void h.remove()));
+
+    // 4. An invite link opened the app: de.schaefchens.apps.bibleassistant://
+    // subscribe/<code>. Translated into a router navigation rather than left to
+    // the router, which never sees this URL — native runs HashRouter, and the
+    // incoming address is a scheme URL, not a hash route.
+    //
+    // The route is where the pending state lives (see SubscribePage), so this
+    // handler's whole job is to get the code into the URL; it deliberately does
+    // not care whether onboarding is done or a profile exists.
+    void App.addListener('appUrlOpen', ({ url }) => {
+      const code = codeFromInviteUrl(url);
+      if (code) window.location.hash = `#${SUBSCRIBE_PATH}/${code}`;
     }).then((h) => cleanups.push(() => void h.remove()));
 
     // 3. Keyboard chrome. Both of these are iOS-only — on Android they reject

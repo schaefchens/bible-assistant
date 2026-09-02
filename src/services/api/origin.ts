@@ -32,3 +32,19 @@ export function serverUrl(url: string): string {
   if (!url || !url.startsWith('/') || url.startsWith('//')) return url;
   return SERVER_ORIGIN + url;
 }
+
+/**
+ * An absolute, publicly shareable URL for a route in this app.
+ *
+ * Not the same question as {@link serverUrl}, which absolutizes a path the
+ * *backend* handed back. This one produces a link to give to another person, so
+ * it must be the public address in **both** builds: on the web that is the
+ * origin the app is being served from, and on native `window.location.origin`
+ * is `capacitor://localhost`, which is meaningless to anyone else — there,
+ * `SERVER_ORIGIN` (baked in from .env.capacitor) is the public site.
+ */
+export function publicAppUrl(path: string): string {
+  const origin =
+    SERVER_ORIGIN || (typeof window === 'undefined' ? '' : window.location.origin);
+  return `${origin}${SERVER_BASE_PATH}${path}`;
+}

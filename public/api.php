@@ -636,6 +636,9 @@ switch ($action) {
     case 'subscriptions.delete':
         handleSubscriptionDelete($ctx);
         break;
+    case 'space.peek':
+        handleSpacePeek($ctx);
+        break;
     case 'space.request':
         handleSpaceRequest($ctx);
         break;
@@ -2085,6 +2088,43 @@ function handleSubscriptionDelete(array $ctx): void {
 }
 
 // ---------- community: across accounts --------------------------------------
+
+/**
+ * Look at a space without asking for anything — name, owner, and whether the
+ * caller already has a membership.
+ *
+ * Exists because `space.request` *creates* the membership: without a read-only
+ * peek, a "do you want to subscribe to X?" confirmation would be showing X only
+ * after having already asked on the user's behalf. So this is what an invite
+ * link's modal reads, and it is the one community action that writes nothing at
+ * all — deliberately not in $ACCOUNT_ACTIONS, and it does not require the
+ * caller to have a profile, since the whole point is to be shown the invitation
+ * before committing to anything.
+ */
+function handleSpacePeek(array $ctx): void {
+    $body = readJsonBody();
+    $code = normalizeShareCode($body['code'] ?? '');
+    $target = resolveShareCode($code);
+
+    $space = findById(readJsonArrayFile(spacesPath($target['userDir'])), $target['spaceId']);
+    if ($space === null) fail(404, 'unknown share code');
+    requireOwnerPublished($target['userDir']);
+
+    $status = null;
+    foreach (readJsonArrayFile(membersPath($target['userDir'])) as $m) {
+        if (!is_array($m)) continue;
+        if (($m['userId'] ?? null) === $ctx['userId'] && ($m['spaceId'] ?? null) === $target['spaceId']) {
+            $status = (string)($m['status'] ?? 'pending');
+            break;
+        }
+    }
+
+    respond(200, [
+        'status' => $status,
+        'space' => publicSpaceOf($space),
+        'owner' => publicProfileOf($target['userDir']),
+    ]);
+}
 
 /**
  * Ask to read a space. The one cross-user *write* in this file.

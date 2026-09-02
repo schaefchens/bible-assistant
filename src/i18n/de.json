@@ -673,6 +673,22 @@
     "todayAll": "Heute, von allen",
     "todayAllCount": "Heute, von allen ({{count}})",
     "nothingNew": "Nichts Neues zu lesen.",
-    "addByCodeHint": "Füge den Code, einen Link oder die ganze Nachricht ein, die du bekommen hast."
+    "addByCodeHint": "Füge den Code, einen Link oder die ganze Nachricht ein, die du bekommen hast.",
+    "invite": {
+      "title": "Eine Einladung zum Lesen",
+      "badLink": "Dieser Link enthält keinen Code.",
+      "handOffBody": "Du kannst das in der App lesen — oder hier im Browser.",
+      "handOffHint": "Wenn nichts passiert, hast du die App wahrscheinlich nicht: lies hier weiter oder kopiere den Code und füge ihn in der App ein.",
+      "openApp": "In der App öffnen",
+      "continueHere": "Im Browser weiterlesen",
+      "copyCode": "Code kopieren",
+      "confirmBody": "Mit der Anfrage weiß die Autorin oder der Autor, dass du lesen möchtest. Die Entscheidung liegt bei ihnen.",
+      "fingerprint": "Fingerprint: {{fingerprint}}",
+      "ask": "Um Zugang bitten",
+      "asking": "Frage an…",
+      "askedHint": "Die Anfrage ist raus. Sobald du zugelassen wirst, siehst du die Beiträge.",
+      "alreadyIn": "Diesen Raum liest du schon",
+      "alreadyInHint": "Er steht in deiner Liste."
+    }
   }
 }
