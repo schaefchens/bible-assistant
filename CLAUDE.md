@@ -962,6 +962,27 @@ ate every invitation that arrived before onboarding was finished, `replace`
 taking it out of history too so there was nothing to go back to. The link is
 usually the reason that person installed the app at all.
 
+**On mobile web the hand-off comes before the wizard**, not after. Web and
+native are separate installs with separate identities, so onboarding someone
+*before* they have said which one they want is setting up the wrong copy of the
+app — and the common case is that the app is already installed and the link only
+opened the browser on the way. So `AppShell` renders the invite route bare
+(no nav, no dock — there is nothing to navigate to yet, and the app behind it is
+not set up) whenever `needsAppHandOff()` and the user has not yet chosen to
+stay. Choosing "continue in the browser" puts `?web=1` on the route, and from
+there it is an ordinary first run that ends on the invitation.
+
+That choice lives **in the URL**, for the same reason the code does: the route
+is the pending state, so it survives the wizard, a reload, and the wizard's own
+navigation without anyone having to remember it. `needsAppHandOff()` and
+`stayingOnWeb()` are in `lib/spaceInvite.ts` rather than in the page because
+`AppShell` has to reach the same answer — the two deciding differently is a
+wizard that covers the hand-off, or a hand-off that never yields to it.
+
+Desktop web and native both skip all of this: there is no app to hand off to,
+and in the app you are already where the link was going. Both get the wizard
+first and the invitation after.
+
 **`space.peek` exists because `space.request` writes.** A "subscribe to X?"
 confirmation built on `request` would be showing X only after having already
 asked on the user's behalf, so peek is a read-only lookup — the one community

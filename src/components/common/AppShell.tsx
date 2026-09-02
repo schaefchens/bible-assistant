@@ -11,6 +11,7 @@ import { useNativeShell } from '@/hooks/useNativeShell';
 import { useReadingHostFocus } from '@/hooks/useReadingHostFocus';
 import { getPassphrase } from '@/lib/passphrase';
 import { ROUTES } from '@/lib/appRoutes';
+import { needsAppHandOff, stayingOnWeb } from '@/lib/spaceInvite';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { VoiceController } from '@/components/voice/VoiceController';
 import { MicDock } from '@/components/voice/MicDock';
@@ -56,7 +57,21 @@ export function AppShell() {
   const onboardingComplete = useSettingsStore((s) => s.onboardingComplete);
   const setOnboardingComplete = useSettingsStore((s) => s.setOnboardingComplete);
 
+  const onInviteRoute = location.pathname.startsWith(ROUTES.subscribe);
+
   if (!onboardingComplete) {
+    // An invitation opened in a mobile browser gets its hand-off *first*, ahead
+    // of the wizard: the app may well already be installed, and web and native
+    // are separate installs with separate identities — so onboarding here,
+    // before the user has said which one they want, is setting up the wrong
+    // copy of the app. Once they choose the browser the route says so
+    // (`?web=1`) and the wizard runs as usual.
+    //
+    // Rendered bare, without the nav or the dock: there is nothing to navigate
+    // to yet, and the app behind this has not been set up.
+    if (onInviteRoute && needsAppHandOff() && !stayingOnWeb(location.search)) {
+      return <Outlet />;
+    }
     return (
       <OnboardingWizard
         onDone={() => {
@@ -69,9 +84,7 @@ export function AppShell() {
           // deliberately doesn't care whether onboarding is done). Replacing
           // the URL here discarded it, and `replace` took it out of history
           // too, so there was nothing to go back to.
-          if (!location.pathname.startsWith(ROUTES.subscribe)) {
-            navigate('/', { replace: true });
-          }
+          if (!onInviteRoute) navigate('/', { replace: true });
         }}
       />
     );

@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Capacitor } from '@capacitor/core';
 import { ROUTES } from '@/lib/appRoutes';
 import { copyText } from '@/lib/nativeBridge';
 import { formatSpaceCode, keyFingerprint, parseSpaceCodeInput } from '@/lib/spaceCode';
-import { appInviteUrl } from '@/lib/spaceInvite';
+import {
+  appInviteUrl,
+  needsAppHandOff,
+  STAY_ON_WEB_PARAM,
+  stayingOnWeb,
+} from '@/lib/spaceInvite';
 import { extractErrorDetail } from '@/lib/extractErrorDetail';
 import { peekSpace, type SpacePeekResponse } from '@/services/api/community';
 import { useCommunityStore } from '@/store/communityStore';
 import { useCommunityTermsAccepted } from '@/lib/communityTerms';
 import { CommunityTermsGate } from '@/components/community/CommunityTermsGate';
 
-const IS_NATIVE = Capacitor.isNativePlatform();
 
 /**
  * `/subscribe/:code` — where an invitation lands.
@@ -57,11 +60,17 @@ export function SubscribePage() {
     code ? s.subscriptions.find((x) => x.code === code) : undefined,
   );
 
-  // Only mobile *web* needs the hand-off. In the app we are already where the
-  // link was trying to get to; on desktop there is no app to open.
-  const isMobileWeb =
-    !IS_NATIVE && /android|iphone|ipad|ipod/i.test(navigator.userAgent);
-  const [handOff, setHandOff] = useState(isMobileWeb);
+  // Derived from the route, not held in state: `AppShell` reads the same
+  // answer to decide whether this sheet or the onboarding wizard comes first,
+  // and the choice has to survive the wizard, a reload and the wizard's own
+  // navigation. `needsAppHandOff()` is "mobile web" — in the app we are already
+  // where the link was trying to get to, and on a desktop there is no app.
+  const location = useLocation();
+  const handOff = needsAppHandOff() && !stayingOnWeb(location.search);
+  const stayHere = () =>
+    navigate(`${ROUTES.subscribe}/${raw ?? ''}?${STAY_ON_WEB_PARAM}=1`, {
+      replace: true,
+    });
 
   const [peek, setPeek] = useState<SpacePeekResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -132,7 +141,7 @@ export function SubscribePage() {
         >
           {t('community.invite.openApp')}
         </Action>
-        <Action ghost onClick={() => setHandOff(false)}>
+        <Action ghost onClick={stayHere}>
           {t('community.invite.continueHere')}
         </Action>
         <Action
