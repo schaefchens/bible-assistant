@@ -15,7 +15,7 @@
     "chat": "Chat",
     "read": "Lesen",
     "cards": "Karten",
-    "boards": "Tafeln",
+    "spaces": "Räume",
     "settings": "Einstellungen"
   },
   "chat": {
@@ -109,6 +109,8 @@
   "cards": {
     "title": "Karten",
     "new": "Neue Karte",
+    "newShort": "Karte",
+    "allCards": "Alle Karten",
     "empty": "Noch keine Karten. Speichere einen Vers, um zu beginnen.",
     "cardTitle": "Titel",
     "emoji": "Emoji",
@@ -166,9 +168,8 @@
     "rename": "Tafel bearbeiten",
     "deleteConfirm": "Tafel löschen?",
     "removeFromBoard": "Von Tafel entfernen",
-    "noBoards": "Noch keine Tafeln. Erstelle deine erste.",
-    "createFirst": "Erste Tafel erstellen",
     "emptyBoard": "Diese Tafel hat noch keine Karten.",
+    "dragHint": "Oder zieh eine Karte aus „Alle Karten“ auf den Tab dieser Tafel.",
     "menu": "Menü",
     "noCardsLeft": "Keine Karten mehr zum Hinzufügen.",
     "done": "Fertig",
@@ -630,10 +631,21 @@
     "requests_other": "{{count}} Personen möchten lesen",
     "accept": "Zulassen",
     "block": "Ablehnen",
+    "blockAuthor": {
+      "action": "Autor blockieren",
+      "confirm": "{{name}} blockieren?",
+      "confirmBody": "Alle Räume dieser Person werden aus deiner App entfernt, und keine ihrer Einladungen lässt sich mehr hinzufügen. Sie erfährt nichts davon.",
+      "confirmAction": "Blockieren",
+      "blocked": "Blockiert",
+      "none": "Keine blockierten Autoren.",
+      "title": "Blockierte Autoren",
+      "unblock": "Freigeben",
+      "sectionHint": "Ihre Räume sind von diesem Gerät verschwunden. Eine Freigabe holt sie nicht zurück — dafür bräuchtest du eine neue Einladung."
+    },
     "readers": "Leser",
     "noReaders": "Diesen Raum liest noch niemand.",
     "addByCode": "Raum per Code hinzufügen",
-    "addByCodePlaceholder": "XXXXX-XXXXX-XXXXXX",
+    "addByCodePlaceholder": "Code einfügen",
     "addByCodeAction": "Hinzufügen",
     "pending": "Warte auf Freigabe",
     "revoked": "Nicht mehr für dich freigegeben",
@@ -643,13 +655,36 @@
     "refused_other": "{{count}} Beiträge konnten nicht geprüft werden und wurden nicht angezeigt.",
     "keyChanged": "Der Signaturschlüssel hat sich geändert. Bis du bestätigst, dass es wirklich dieselbe Person ist, wird nichts Neues angezeigt.",
     "keyChangedConfirm": "Neuem Schlüssel vertrauen",
-    "report": "Diesen Raum melden",
+    "report": {
+      "action": "Melden",
+      "reportPost": "Diesen Beitrag melden",
+      "reportSpace": "Diesen Raum melden",
+      "title": "An die Moderation melden",
+      "reasonLabel": "Was ist das Problem?",
+      "noteLabel": "Noch etwas dazu? (optional)",
+      "notePlaceholder": "Was sollte die Moderation wissen?",
+      "submit": "Meldung senden",
+      "sent": "Gemeldet. Die Moderation schaut sich das an.",
+      "already": "Das hast du schon gemeldet.",
+      "failed": "Die Meldung konnte nicht gesendet werden. Versuch es erneut, wenn du online bist.",
+      "reasons": {
+        "offtopic": "Themenfremd — nicht biblisch",
+        "political": "Politische oder weltliche Inhalte",
+        "sexual": "Sexuelle Inhalte oder Nacktheit",
+        "dating": "Partnersuche oder Anmache",
+        "hate": "Hass, Belästigung, Beschimpfung",
+        "spam": "Spam oder Werbung",
+        "other": "Etwas anderes"
+      }
+    },
     "errors": {
       "invalid_code": "Das sieht nicht nach einem Freigabecode aus.",
       "key_mismatch": "Der Code passt nicht zur angegebenen Person. Bitte noch einmal senden lassen.",
       "profile_required": "Erstelle zuerst dein Profil.",
       "failed": "Das hat nicht funktioniert. Bitte noch einmal versuchen.",
-      "space_not_ready": "Dieser Raum kann noch nicht geteilt werden — die Autorin oder der Autor muss das Profil noch fertig einrichten."
+      "space_not_ready": "Dieser Raum kann noch nicht geteilt werden — die Autorin oder der Autor muss das Profil noch fertig einrichten.",
+      "terms_required": "Bitte akzeptiere zuerst die inhaltlichen Regeln.",
+      "author_blocked": "Du hast diesen Autor blockiert. Gib ihn zuerst in den Einstellungen frei."
     },
     "profile": {
       "title": "Dein Profil",
@@ -689,6 +724,29 @@
       "askedHint": "Die Anfrage ist raus. Sobald du zugelassen wirst, siehst du die Beiträge.",
       "alreadyIn": "Diesen Raum liest du schon",
       "alreadyInHint": "Er steht in deiner Liste."
+    },
+    "terms": {
+      "title": "Inhaltliche Regeln",
+      "intro": "Räume sind für christliche, biblisch ausgerichtete Texte. Wenn du fortfährst, hältst du dich daran:",
+      "rule1": "Bibeltexte, Betrachtungen, Gebete und Lehre auf biblischer Grundlage.",
+      "rule2": "Keine weltlichen, politischen oder kommerziellen Inhalte.",
+      "rule3": "Keine sexuellen Inhalte oder Nacktheit, keine Partnersuche oder Anmache.",
+      "rule4": "Kein Hass, keine Belästigung, keine Beschimpfungen.",
+      "rule5": "Nichts Themenfremdes — was nicht zur biblischen Ausrichtung passt, gehört woanders hin.",
+      "moderation": "Moderatoren dürfen Inhalte, Räume oder Konten jederzeit und nach eigenem Ermessen löschen, ohne Vorankündigung.",
+      "tools": "Du kannst alles melden, was gegen diese Regeln verstößt, und Autoren blockieren — dann verschwinden alle ihre Räume aus deiner App.",
+      "accept": "Ich habe die inhaltlichen Regeln gelesen und akzeptiere sie",
+      "acceptAction": "Akzeptieren und weiter",
+      "view": "Inhaltliche Regeln",
+      "gateTitle": "Bitte lies die inhaltlichen Regeln",
+      "gateBody": "Für die Gemeinschaft gibt es jetzt schriftliche Regeln. Akzeptiere sie, um weiter zu schreiben und zu lesen, oder verlasse die Gemeinschaft — deine eigenen Texte bleiben in jedem Fall auf diesem Gerät.",
+      "required": "Bitte akzeptiere zuerst die inhaltlichen Regeln."
+    },
+    "addByCodeAdded": "Hinzugefügt",
+    "moderation": {
+      "refusedTitle": "Nicht veröffentlicht",
+      "refusedHint": "Bearbeite den Beitrag und veröffentliche erneut. Der Entwurf ist gespeichert.",
+      "refusedGeneric": "Dieser Beitrag passt nicht zu den inhaltlichen Regeln für Räume."
     }
   }
 }

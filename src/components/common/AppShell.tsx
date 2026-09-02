@@ -89,11 +89,14 @@ export function AppShell() {
           this slot costs nothing. */}
       <MicDock />
 
+      {/* Cards and boards share one tab (one screen, one tab strip), which
+          freed the slot Spaces now has — until now the only ways in were
+          Settings and one onboarding step. */}
       <nav className="pb-safe border-t border-surface-raised bg-surface grid grid-cols-5">
-        <NavTab to="/" label={t('nav.chat')} icon={<ChatIcon />} />
+        <NavTab to="/" label={t('nav.chat')} icon={<ChatIcon />} end />
         <NavTab to="/read" label={t('nav.read')} icon={<ReadIcon />} />
         <NavTab to="/cards" label={t('nav.cards')} icon={<CardsIcon />} />
-        <NavTab to="/boards" label={t('nav.boards')} icon={<BoardsIcon />} />
+        <NavTab to="/spaces" label={t('nav.spaces')} icon={<SpacesIcon />} />
         <NavTab to="/settings" label={t('nav.settings')} icon={<SettingsIcon />} />
       </nav>
 
@@ -108,15 +111,21 @@ function NavTab({
   to,
   label,
   icon,
+  end = false,
 }: {
   to: string;
   label: string;
   icon: React.ReactNode;
+  /** Match this path exactly. Only chat needs it — `/` matches everything
+   * otherwise. The tabs with sub-routes must NOT set it, or editing a card
+   * (`/cards/:cardId`) or opening a space (`/spaces/:id`) unlights the tab
+   * you are standing on. */
+  end?: boolean;
 }) {
   return (
     <NavLink
       to={to}
-      end
+      end={end}
       className={({ isActive }) =>
         clsx(
           'relative flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] tracking-wide transition-colors',
@@ -175,13 +184,15 @@ function CardsIcon() {
   );
 }
 
-function BoardsIcon() {
+/** People, not pages: the tab covers the user's own spaces *and* the ones
+ * they read, and the writing itself is already what Cards and Read look like. */
+function SpacesIcon() {
   return (
     <svg {...ICON_PROPS}>
-      <rect x="3.5" y="3.5" width="7" height="7" rx="1.2" />
-      <rect x="13.5" y="3.5" width="7" height="7" rx="1.2" />
-      <rect x="3.5" y="13.5" width="7" height="7" rx="1.2" />
-      <rect x="13.5" y="13.5" width="7" height="7" rx="1.2" />
+      <circle cx="9.5" cy="8.5" r="3" />
+      <path d="M3.8 19.2c0-3 2.6-5.2 5.7-5.2s5.7 2.2 5.7 5.2" />
+      <path d="M16.4 6.4a3 3 0 0 1 0 5.6" />
+      <path d="M17.8 14.6c1.6.8 2.6 2.4 2.6 4.6" />
     </svg>
   );
 }

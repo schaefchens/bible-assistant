@@ -10,8 +10,8 @@ const MIN_SCALE_FACTOR = 0.5;
 /**
  * Pan/zoom state for the freeform board. The board layer is transformed
  * `translate(tx,ty) scale(s)` with transformOrigin '0 0'. Transient — reset to
- * fit-to-width whenever the board remounts (BoardsPage keys FreeformBoard by
- * board id).
+ * fit-to-width whenever the board remounts (both CardsPage and
+ * BoardCardsView key by board id).
  *
  * `applyLive` writes the transform imperatively (no React render — the 60fps
  * pan/pinch path); `commit` settles it into state on gesture end.

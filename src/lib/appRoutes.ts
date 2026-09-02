@@ -12,7 +12,6 @@ export const ROUTES = {
   spaces: '/spaces',
   subscribe: '/subscribe',
   cards: '/cards',
-  boards: '/boards',
   settings: '/settings',
 } as const;
 

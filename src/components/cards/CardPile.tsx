@@ -34,7 +34,7 @@ export function CardPile({ cards, emptyLabel }: Props) {
 
   // Reset transient state when the deck reference changes (board switch,
   // cards added/removed). In-render reset pattern matches the codebase
-  // convention (see BoardsPage tag-filter reset).
+  // convention (see CardsPage's corkboard-mode reset).
   const [deckRef, setDeckRef] = useState(cards);
   if (deckRef !== cards) {
     setDeckRef(cards);

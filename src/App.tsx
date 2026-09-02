@@ -8,7 +8,6 @@ import { ReadingListsPage } from '@/routes/ReadingListsPage';
 import { SpacesPage } from '@/routes/SpacesPage';
 import { SubscribePage } from '@/routes/SubscribePage';
 import { CardsPage } from '@/routes/CardsPage';
-import { BoardsPage } from '@/routes/BoardsPage';
 import { SettingsPage } from '@/routes/SettingsPage';
 
 const ROUTER_BASE = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
@@ -40,9 +39,12 @@ export default function App() {
             <Route path="spaces/:id" element={<SpacesPage />} />
             <Route path="subscribe/:code" element={<SubscribePage />} />
             <Route path="cards" element={<CardsPage />} />
-            <Route path="cards/:id" element={<CardsPage />} />
-            <Route path="boards" element={<BoardsPage />} />
-            <Route path="boards/:id" element={<BoardsPage />} />
+            <Route path="cards/:cardId" element={<CardsPage />} />
+            {/* Boards folded into /cards (one tab strip, All cards leftmost).
+                The aliases stay because a deep link outlives the nav tab it
+                came from; /boards/:boardId selects that board and rewrites. */}
+            <Route path="boards" element={<Navigate to="/cards" replace />} />
+            <Route path="boards/:boardId" element={<CardsPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

@@ -14,7 +14,9 @@ import {
 } from '@dnd-kit/sortable';
 import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
-import { boardTabClasses, colorClasses } from '@/components/cards/cardColors';
+import { boardTabClasses, colorClasses } from './cardColors';
+import { BOARD_TAB_ATTR, LIBRARY_TABS_ATTR } from '@/lib/boardTabDrop';
+import type { CardDragState } from '@/hooks/useCardTabDrop';
 import {
   DRAG_MOVE_THRESHOLD_PX,
   LONG_PRESS_MS,
@@ -27,13 +29,33 @@ export type BoardValues = { name: string; emoji?: string; color?: CardColor; bac
 
 type MenuMode = null | 'root' | 'new' | 'rename';
 
-/** The file-folder tab strip across the top of the Boards page: selectable,
- * drag-to-reorder tabs plus a ⋮ menu for new / rename / add-cards / delete and
- * the inline BoardEditor. All board mutations are delegated to props. */
-export function TabRow({
+/**
+ * The file-folder tab strip across the top of the library screen: "All cards"
+ * on the left, then one tab per board, then the contextual controls and the ⋮
+ * menu (new / rename / add-cards / delete, plus the inline BoardEditor). Every
+ * mutation is delegated to props.
+ *
+ * `selection === null` is the All-cards tab, mirroring `activeBoardId === null`
+ * in the store. That tab is a **sibling** of the scrolling board strip rather
+ * than an item in it, which is what keeps it on screen however many boards
+ * there are, out of `boardOrder`'s sortable, and clear of the long-press-to-
+ * rename gesture — three guards that would otherwise have to be written and
+ * then kept right.
+ *
+ * It is `sticky` because switching board after scrolling shouldn't mean
+ * scrolling back up first — and because a card can be carried onto a tab to
+ * join that board (`useCardTabDrop`), and a drop target you have to scroll to
+ * reach is no target. Its `z` sits between CardStack's raised card (999) and a
+ * dragging one (2000), so a raised card passes under the tabs and a carried
+ * one over them.
+ */
+export function LibraryTabs({
   boards,
-  activeBoardId,
+  selection,
+  cardCount,
+  boardCounts,
   onSelect,
+  onNewCard,
   onCreate,
   onEdit,
   onDelete,
@@ -44,11 +66,21 @@ export function TabRow({
   onToggleEditMode,
   orientation,
   onToggleOrientation,
-  solidBackdrop = false,
+  cardDrag = null,
+  flashBoardId = null,
 }: {
   boards: Board[];
-  activeBoardId: string | null;
-  onSelect: (id: string) => Promise<void>;
+  /** The selected tab: a board id, or `null` for All cards. */
+  selection: string | null;
+  /** Live cards in total — the All-cards tab's count. */
+  cardCount: number;
+  /** Live cards per board id. Not `board.cardIds.length`: deleting a card
+   * doesn't rewrite the boards holding it, so that would overcount. */
+  boardCounts: Map<string, number>;
+  /** Awaited on the long-press path, so the rename editor that opens right
+   * after sees the long-pressed board as the active one. */
+  onSelect: (id: string | null) => Promise<void>;
+  onNewCard: () => void;
   onCreate: (values: BoardValues) => Promise<void>;
   onEdit: (values: BoardValues) => Promise<void>;
   onDelete: () => Promise<void>;
@@ -62,10 +94,12 @@ export function TabRow({
    * arranging (editMode). */
   orientation?: BoardOrientation;
   onToggleOrientation?: () => void;
-  /** Give the header a solid backdrop so a board's background image stays
-   * confined to the content area below the tabs (instead of bleeding over the
-   * tab strip). */
-  solidBackdrop?: boolean;
+  /** A card being carried over the strip (`useCardTabDrop`): non-null arms
+   * every board tab, and `overBoardId` is the one under the finger. */
+  cardDrag?: CardDragState | null;
+  /** A board a card just landed on, ringed briefly — the list doesn't change
+   * on a drop, so this and the count are the only evidence it worked. */
+  flashBoardId?: string | null;
 }) {
   const { t } = useTranslation();
   const [menu, setMenu] = useState<MenuMode>(null);
@@ -118,19 +152,32 @@ export function TabRow({
     };
   }, [menu]);
 
-  const activeBoard = boards.find((b) => b.id === activeBoardId);
+  const activeBoard = boards.find((b) => b.id === selection);
   const hasActive = Boolean(activeBoard);
   // Tint the baseline rail to the active board's color so the active tab
-  // visually merges into it (file-folder seam disappears).
+  // visually merges into it (file-folder seam disappears). All cards has no
+  // color, so it lands on the brand rail the cards screen always had.
   const railBorder = railBorderClass(activeBoard?.color);
 
   return (
+    // Opaque unconditionally: it has to hide the content sliding under it, and
+    // that also confines a board's background image to the area below the tabs.
     <div
-      className={`relative border-b-2 ${railBorder}${solidBackdrop ? ' bg-surface' : ''}`}
+      className={`sticky top-0 z-[1000] bg-surface border-b-2 ${railBorder}`}
       ref={wrapperRef}
+      {...{ [LIBRARY_TABS_ATTR]: '' }}
     >
       <div className="flex items-stretch">
-        <div className="no-scrollbar flex-1 overflow-x-auto whitespace-nowrap flex items-end gap-1 px-2 pt-2">
+        <div className="shrink-0 flex items-end pl-2 pt-2">
+          <AllCardsTab
+            label={t('cards.allCards')}
+            count={cardCount}
+            countLabel={t('boards.cardCount', { count: cardCount })}
+            isActive={selection === null}
+            onSelect={() => void onSelect(null)}
+          />
+        </div>
+        <div className="no-scrollbar flex-1 min-w-0 overflow-x-auto whitespace-nowrap flex items-end gap-1 pl-1 pr-2 pt-2">
           <DndContext
             sensors={sensors}
             modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
@@ -144,24 +191,41 @@ export function TabRow({
                 <SortableTab
                   key={b.id}
                   board={b}
-                  isActive={b.id === activeBoardId}
-                  onSelect={() => onSelect(b.id)}
+                  count={boardCounts.get(b.id) ?? 0}
+                  countLabel={t('boards.cardCount', { count: boardCounts.get(b.id) ?? 0 })}
+                  isActive={b.id === selection}
+                  onSelect={() => void onSelect(b.id)}
+                  cardDrag={cardDrag}
+                  flashing={flashBoardId === b.id}
                 />
               ))}
             </SortableContext>
           </DndContext>
-          {boards.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setMenu('new')}
+            aria-label={t('boards.new') as string}
+            title={t('boards.new') as string}
+            className="shrink-0 -mb-[2px] px-3 py-2 text-base leading-none rounded-t-xl border border-b-0 border-surface-raised/70 bg-surface-sunken/70 text-ink-muted hover:text-brand hover:bg-surface-raised/70 transition-colors"
+          >
+            +
+          </button>
+        </div>
+        <div className="shrink-0 flex items-center px-2 gap-1">
+          {/* Two `+` affordances share this strip: the one among the tabs adds
+              a tab (a board), this one adds a card — so this one is labelled.
+              On a board the ⋮ menu carries it instead, since a card created
+              there would still be a card outside every board. */}
+          {selection === null && (
             <button
               type="button"
-              onClick={() => setMenu('new')}
-              aria-label={t('boards.new') as string}
-              className="shrink-0 -mb-[2px] px-3 py-2 text-base leading-none rounded-t-xl border border-b-0 border-surface-raised/70 bg-surface-sunken/70 text-ink-muted hover:text-brand hover:bg-surface-raised/70 transition-colors"
+              onClick={onNewCard}
+              aria-label={t('cards.new') as string}
+              className="shrink-0 px-2.5 py-1 text-sm leading-none rounded-xl border border-surface-raised/70 bg-surface-sunken/70 text-ink-muted hover:text-brand hover:bg-surface-raised/70 transition-colors"
             >
-              +
+              + {t('cards.newShort')}
             </button>
           )}
-        </div>
-        <div className="flex items-center px-2 gap-1">
           {showEditToggle && editMode && onToggleOrientation && (
             <button
               type="button"
@@ -204,6 +268,14 @@ export function TabRow({
           className="absolute right-2 top-full mt-1 z-30 bg-surface-raised rounded-xl shadow-lg border border-surface-raised/70 py-1 w-52"
           role="menu"
         >
+          <MenuItem
+            onClick={() => {
+              setMenu(null);
+              onNewCard();
+            }}
+          >
+            + {t('cards.new')}
+          </MenuItem>
           <MenuItem onClick={() => setMenu('new')}>+ {t('boards.new')}</MenuItem>
           <MenuItem disabled={!hasActive} onClick={() => setMenu('rename')}>
             ✎ {t('boards.rename') as string}
@@ -261,14 +333,80 @@ export function TabRow({
   );
 }
 
-function SortableTab({
-  board,
+/** Shared tab geometry: a file folder whose bottom border merges into the
+ * rail. Kept in one string so the pinned tab and the sortable ones can't
+ * drift apart. */
+const TAB_CLASSES = [
+  'shrink-0 max-w-[12rem] px-3 py-2 text-sm font-serif select-none',
+  'rounded-t-xl border border-b-0 -mb-[2px] transition-colors relative',
+  'flex items-center gap-1.5 focus:outline-none',
+].join(' ');
+
+function AllCardsTab({
+  label,
+  count,
+  countLabel,
   isActive,
   onSelect,
 }: {
-  board: Board;
+  label: string;
+  count: number;
+  countLabel: string;
   isActive: boolean;
   onSelect: () => void;
+}) {
+  const tabCls = boardTabClasses('none');
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={isActive}
+      aria-label={`${label} · ${countLabel}`}
+      className={`${TAB_CLASSES} cursor-pointer ${isActive ? tabCls.active : tabCls.inactive}`}
+    >
+      <span className="truncate">{label}</span>
+      <TabCount n={count} />
+    </button>
+  );
+}
+
+/** The card count, muted and small. It earns its place twice: a board's size
+ * is otherwise invisible from here, and it is the confirmation that a card
+ * dropped onto a tab landed.
+ *
+ * While a card is over the tab it says what the drop will do instead — `+` for
+ * an add, `✓` for a card the board already holds — so a no-op drop doesn't
+ * read as the gesture having failed. */
+function TabCount({ n, badge }: { n: number; badge?: '+' | '✓' | null }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={[
+        'shrink-0 text-[11px] tabular-nums',
+        badge ? 'font-bold opacity-100' : 'opacity-60',
+      ].join(' ')}
+    >
+      {badge ?? n}
+    </span>
+  );
+}
+
+function SortableTab({
+  board,
+  count,
+  countLabel,
+  isActive,
+  onSelect,
+  cardDrag,
+  flashing,
+}: {
+  board: Board;
+  count: number;
+  countLabel: string;
+  isActive: boolean;
+  onSelect: () => void;
+  cardDrag: CardDragState | null;
+  flashing: boolean;
 }) {
   const {
     attributes,
@@ -286,15 +424,30 @@ function SortableTab({
     opacity: isDragging ? 0.9 : 1,
     boxShadow: isDragging ? '0 12px 28px rgba(0,0,0,0.55)' : undefined,
   };
+  // Every board tab is armed while a card is in the air — that faint ring is
+  // most of what makes the gesture discoverable the first time — and the one
+  // under the finger is called out properly.
+  const targeted = cardDrag?.overBoardId === board.id;
+  const dropCls = targeted
+    ? cardDrag?.already
+      ? 'ring-2 ring-ink-muted/70'
+      : 'ring-2 ring-brand scale-[1.03]'
+    : flashing
+      ? 'ring-2 ring-brand'
+      : cardDrag
+        ? 'ring-1 ring-brand/30'
+        : '';
   return (
     <div
       ref={setNodeRef}
       style={style}
       {...attributes}
       {...listeners}
+      {...{ [BOARD_TAB_ATTR]: board.id }}
       role="button"
       tabIndex={0}
       aria-pressed={isActive}
+      aria-label={`${board.name} · ${countLabel}`}
       onClick={onSelect}
       onContextMenu={(e) => e.preventDefault()}
       onKeyDown={(e) => {
@@ -304,10 +457,10 @@ function SortableTab({
         }
       }}
       className={[
-        'shrink-0 max-w-[12rem] px-4 py-2 text-sm font-serif cursor-pointer touch-none select-none',
-        'rounded-t-xl border border-b-0 -mb-[2px] transition-colors relative',
-        'flex items-center gap-1.5 focus:outline-none',
+        TAB_CLASSES,
+        'cursor-pointer touch-none',
         isActive ? tabCls.active : tabCls.inactive,
+        dropCls,
       ].join(' ')}
     >
       {board.emoji && (
@@ -316,6 +469,7 @@ function SortableTab({
         </span>
       )}
       <span className="truncate">{board.name}</span>
+      <TabCount n={count} badge={targeted ? (cardDrag?.already ? '✓' : '+') : null} />
     </div>
   );
 }

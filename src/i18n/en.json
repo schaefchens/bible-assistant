@@ -15,7 +15,7 @@
     "chat": "Chat",
     "read": "Read",
     "cards": "Cards",
-    "boards": "Boards",
+    "spaces": "Spaces",
     "settings": "Settings"
   },
   "chat": {
@@ -109,6 +109,8 @@
   "cards": {
     "title": "Cards",
     "new": "New card",
+    "newShort": "Card",
+    "allCards": "All cards",
     "empty": "No cards yet. Save a verse to start your library.",
     "cardTitle": "Title",
     "emoji": "Emoji",
@@ -166,9 +168,8 @@
     "rename": "Edit board",
     "deleteConfirm": "Delete board?",
     "removeFromBoard": "Remove from board",
-    "noBoards": "No boards yet. Create your first one.",
-    "createFirst": "Create first board",
     "emptyBoard": "This board has no cards yet.",
+    "dragHint": "Or drag a card onto this board’s tab from All cards.",
     "menu": "Menu",
     "noCardsLeft": "No cards left to add.",
     "done": "Done",
@@ -630,10 +631,21 @@
     "requests_other": "{{count}} people want to read",
     "accept": "Accept",
     "block": "Decline",
+    "blockAuthor": {
+      "action": "Block author",
+      "confirm": "Block {{name}}?",
+      "confirmBody": "Every space of theirs is removed from your app and no invitation of theirs can be added again. They are not told.",
+      "confirmAction": "Block",
+      "blocked": "Blocked",
+      "none": "No blocked authors.",
+      "title": "Blocked authors",
+      "unblock": "Unblock",
+      "sectionHint": "Their spaces are gone from this device. Unblocking doesn't bring them back — you would need a fresh invitation."
+    },
     "readers": "Readers",
     "noReaders": "Nobody is reading this space yet.",
     "addByCode": "Add a space by code",
-    "addByCodePlaceholder": "XXXXX-XXXXX-XXXXXX",
+    "addByCodePlaceholder": "paste room code",
     "addByCodeAction": "Add",
     "pending": "Waiting for approval",
     "revoked": "No longer shared with you",
@@ -643,13 +655,36 @@
     "refused_other": "{{count}} pieces could not be verified and were not shown.",
     "keyChanged": "This author's signing key has changed. Nothing new will be shown until you confirm it is really them.",
     "keyChangedConfirm": "Trust the new key",
-    "report": "Report this space",
+    "report": {
+      "action": "Report",
+      "reportPost": "Report this piece",
+      "reportSpace": "Report this space",
+      "title": "Report to the moderators",
+      "reasonLabel": "What's wrong with it?",
+      "noteLabel": "Anything to add? (optional)",
+      "notePlaceholder": "What should a moderator know?",
+      "submit": "Send report",
+      "sent": "Reported. A moderator will look at it.",
+      "already": "You have already reported this.",
+      "failed": "The report couldn't be sent. Try again when you're online.",
+      "reasons": {
+        "offtopic": "Off-theme — not Bible-centred",
+        "political": "Political or worldly content",
+        "sexual": "Sexual content or nudity",
+        "dating": "Dating or romantic solicitation",
+        "hate": "Hate, harassment or abuse",
+        "spam": "Spam or advertising",
+        "other": "Something else"
+      }
+    },
     "errors": {
       "invalid_code": "That does not look like a share code.",
       "key_mismatch": "That code does not match the author it claims. Ask them to send it again.",
       "profile_required": "Create your profile first.",
       "failed": "That did not work. Try again.",
-      "space_not_ready": "That space isn't ready to be shared yet — its author needs to finish setting up their profile."
+      "space_not_ready": "That space isn't ready to be shared yet — its author needs to finish setting up their profile.",
+      "terms_required": "Accept the content standards first.",
+      "author_blocked": "You have blocked this author. Unblock them in Settings first."
     },
     "profile": {
       "title": "Your profile",
@@ -689,6 +724,29 @@
       "askedHint": "The author has been asked. You will see the pieces once they let you in.",
       "alreadyIn": "You already read this space",
       "alreadyInHint": "It is in your list of spaces."
+    },
+    "terms": {
+      "title": "Content standards",
+      "intro": "Spaces are for Christian, Bible-centred writing. By continuing you agree to keep what you publish here within that:",
+      "rule1": "Scripture, reflection, prayer and teaching rooted in the Bible.",
+      "rule2": "No worldly, political or commercial content.",
+      "rule3": "No sexual content or nudity, and no dating or romantic solicitation.",
+      "rule4": "No hate, harassment or abuse of anyone.",
+      "rule5": "Nothing off-theme — anything that doesn't fit the Bible focus belongs elsewhere.",
+      "moderation": "Moderators may remove any content, space or account at their own discretion, without notice.",
+      "tools": "You can report anything that breaks these rules, and block an author — which removes all of their spaces from your app.",
+      "accept": "I have read and accept the content standards",
+      "acceptAction": "Accept and continue",
+      "view": "Content standards",
+      "gateTitle": "Please review the content standards",
+      "gateBody": "The community now has written standards. Accept them to carry on publishing and reading, or leave the community — your own writing stays on this device either way.",
+      "required": "Accept the content standards first."
+    },
+    "addByCodeAdded": "Added",
+    "moderation": {
+      "refusedTitle": "Not published",
+      "refusedHint": "Edit the piece and publish again. The draft is saved.",
+      "refusedGeneric": "This piece doesn't fit the content standards for spaces."
     }
   }
 }

@@ -36,6 +36,22 @@ type Props = {
   raisedId?: string | null;
   onRaisedIdChange?: (id: string | null) => void;
   emptyLabel?: string;
+  /** Carrying a card out of the list (onto a board's tab — see
+   * `useCardTabDrop`). Reported at drag start with the card and at drag
+   * end/cancel with null, so the caller can arm the drop targets. */
+  onCardDrag?: (card: Card | null) => void;
+  /** Offered the drop before the reorder; `true` means the caller took it.
+   * Passing this also unclamps the drag from the list's box (see `modifiers`)
+   * and stops the carried card taking pointer events, so whatever is under the
+   * finger can be hit-tested. */
+  onDropOutside?: (card: Card) => boolean;
+  /** The carried card is over the drop zone (the sticky tab strip). Two
+   * consequences, which is why the prop names the *state* and not either one:
+   * dnd-kit's edge autoscroll is paused, since the strip sits inside the
+   * scroller's top threshold band and would otherwise scroll the list to the
+   * top while you aim; and the card fades, so the tab it is covering — the
+   * card spans the column, so it covers all of them — stays readable. */
+  overDropZone?: boolean;
 };
 
 const PEEK_PX = 96;
@@ -50,6 +66,9 @@ export function CardStack({
   raisedId: raisedIdProp,
   onRaisedIdChange,
   emptyLabel,
+  onCardDrag,
+  onDropOutside,
+  overDropZone,
 }: Props) {
   const { t } = useTranslation();
   const [raisedIdLocal, setRaisedIdLocal] = useState<string | null>(null);
@@ -182,21 +201,28 @@ export function CardStack({
     setFlippedId((f) => (f === id ? null : id));
   };
 
-  const handleDragStart = (_event: DragStartEvent) => {
-    void _event;
+  const handleDragStart = (event: DragStartEvent) => {
     setRaisedId(null);
     setFlippedId(null);
+    onCardDrag?.(cards.find((c) => c.id === event.active.id) ?? null);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over, delta } = event;
     const moved = Math.hypot(delta.x, delta.y) > DRAG_MOVE_THRESHOLD_PX;
     const card = cards.find((c) => c.id === active.id);
+    // The drop is offered *before* the carry is torn down, because the holder
+    // of the drop target is the same thing tracking the carry — asking it
+    // afterwards gets an answer it has just forgotten. A press that never
+    // moved is the edit gesture and never a drop, so it isn't offered at all.
+    const consumed = card && moved ? Boolean(onDropOutside?.(card)) : false;
+    onCardDrag?.(null);
     if (!card) return;
     if (!moved) {
       onEdit(card);
       return;
     }
+    if (consumed) return;
     if (onReorder && over && active.id !== over.id) {
       onReorder(String(active.id), String(over.id));
     }
@@ -226,6 +252,8 @@ export function CardStack({
             raisedRef={isRaised ? raisedRef : null}
             refsMap={itemRefs}
             sortable={Boolean(onReorder)}
+            carryable={Boolean(onDropOutside)}
+            faded={Boolean(overDropZone)}
             onTap={() => toggleRaise(card.id)}
             onFlip={() => toggleFlip(card.id)}
             onEditClick={() => onEdit(card)}
@@ -243,9 +271,20 @@ export function CardStack({
   return (
     <DndContext
       sensors={sensors}
-      modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+      // restrictToParentElement is dropped when a card may be carried out of
+      // the list: it is what pins the drag inside the list's box, and the tab
+      // strip is above it. The vertical clamp stays either way — the drop is
+      // hit-tested from the finger, not from the card, so the card has no
+      // reason to leave its column.
+      modifiers={
+        onDropOutside
+          ? [restrictToVerticalAxis]
+          : [restrictToVerticalAxis, restrictToParentElement]
+      }
+      autoScroll={!overDropZone}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragCancel={() => onCardDrag?.(null)}
     >
       <SortableContext
         items={cards.map((c) => c.id)}
@@ -269,6 +308,8 @@ function CardStackItem({
   raisedRef,
   refsMap,
   sortable,
+  carryable,
+  faded,
   onTap,
   onFlip,
   onEditClick,
@@ -287,6 +328,8 @@ function CardStackItem({
   raisedRef: React.RefObject<HTMLDivElement | null> | null;
   refsMap: React.RefObject<Map<string, HTMLDivElement>>;
   sortable: boolean;
+  carryable: boolean;
+  faded: boolean;
   onTap: () => void;
   onFlip: () => void;
   onEditClick: () => void;
@@ -319,10 +362,17 @@ function CardStackItem({
 
   const wrapperStyle: React.CSSProperties = {
     height: wrapperHeight,
+    // 2000 keeps a carried card above the sticky tab strip (z 1000), which in
+    // turn is above a merely raised card (999). The three are coupled.
     zIndex: isDragging ? 2000 : zIndex,
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.85 : 1,
+    opacity: isDragging ? (faded ? 0.45 : 0.85) : 1,
+    // The card sits under the finger, so while it is being carried it must not
+    // be what elementFromPoint answers with — see lib/boardTabDrop.ts. dnd-kit
+    // tracks the pointer on the document once a drag is active, so giving the
+    // card away costs the drag nothing.
+    pointerEvents: carryable && isDragging ? 'none' : undefined,
   };
 
   const setRefs = (el: HTMLDivElement | null) => {

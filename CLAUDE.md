@@ -52,6 +52,10 @@ This file is the orientation map. When changing code, find the relevant subsyste
 | What plays next (canonical order *or* a reading list) | `src/lib/readingContinuation.ts` |
 | Auto-continuation + prefetch (the machinery, not the policy) | `src/lib/autoPlay.ts` |
 | Bible reader screen | `src/routes/ReadPage.tsx` + `src/store/readerStore.ts` |
+| Cards + boards (one screen, one tab strip) | `src/routes/CardsPage.tsx` + `src/components/cards/*` |
+| Dragging a card onto a board's tab | `src/hooks/useCardTabDrop.ts` + `src/lib/boardTabDrop.ts` |
+| Community moderation (terms / block / report) | `src/lib/communityTerms.ts` + `src/components/community/{CommunityTerms,CommunityTermsGate,ReportDialog}.tsx` |
+| Automated moderation (the judge and the policy) | `public/api.php` — `MODERATION_POLICY`, `moderationJudge()` |
 | Reading lists (screen / editor) | `src/routes/ReadingListsPage.tsx` + `src/components/reading/*` |
 | Community spaces (screen / editors) | `src/routes/SpacesPage.tsx` + `src/components/community/*` |
 | Post signing (crypto / passphrase-bound) | `src/lib/postSignature.ts` + `src/lib/postSigning.ts` |
@@ -429,6 +433,119 @@ because clearing a filter is not a request to be sent somewhere else.
   the page doesn't follow). Same as `/cards` today; routing it into the reader needs a target-host
   field on `SendOpts`/`DispatchContext`.
 
+## Cards and boards — one screen, one tab strip
+
+A **card** is a verse note; a **board** groups cards for memorization. They were two
+nav tabs with near-identical headers until they became one screen, `/cards`
+(`src/routes/CardsPage.tsx`), whose tab strip is the whole selector: **All cards**
+leftmost, then one tab per board. The nav slot that freed up went to `/spaces`.
+
+**The selected tab *is* `libraryStore.activeBoardId`, and `null` means All cards.**
+That state already existed and was already persisted (as the *absence* of the
+`activeBoardId` preference row), so consolidating cost no store change and no
+migration. What had to go is the effect that force-selected `boards[0]` whenever the
+id was null — that is exactly what made `null` unreachable while any board existed.
+Two existing behaviours now land somewhere sensible rather than nowhere: `deleteBoard`
+and `pullFromServer` both null the id when the board is gone.
+
+The page derives the selection from **the board that actually exists**
+(`activeBoard?.id ?? null`), never from the raw id, so an id whose board was deleted
+on another device reads as All cards instead of as a blank screen.
+
+**All cards is pinned outside the horizontal scroller, not an item in it**
+(`components/cards/LibraryTabs.tsx`). That is what keeps it on screen with twenty
+boards, out of `boardOrder`'s sortable, and clear of the long-press-to-rename
+gesture — three guards that would otherwise have to be written and then kept right.
+
+**The strip is `sticky top-0 z-[1000]`.** The z sits between `CardStack`'s raised card
+(999) and a dragging one (2000), so a raised card passes under the tabs and a carried
+one over them — those three numbers are coupled. Sticky because switching board after
+scrolling shouldn't mean scrolling back up first, and because a card can be carried
+onto a board's tab (below): a drop target you have to scroll to reach is no target. It is opaque unconditionally, which also confines a board's background
+image to the area below the tabs (that used to be a `solidBackdrop` prop).
+
+**Two `+` affordances, deliberately.** The one among the tabs adds a tab (a board);
+the labelled one in the right cluster adds a card and shows only on All cards, since
+a card created while a board is selected would still be a card outside every board.
+The `⋮` menu carries both in full text either way, and the board-only items (edit /
+add cards / delete) are `disabled` on All cards rather than hidden.
+
+**Per-tab counts are resolved against the live cards**, not `board.cardIds.length`:
+deleting a card does not rewrite the boards holding it, so the stored ids overcount.
+
+**The two bodies are separate components** (`AllCardsView`, `BoardCardsView`), and
+the board one is keyed by board id — so a board switch drops its tag filter by
+remounting instead of resetting during render. The corkboard's arrange toggle can't
+do that (it is drawn in the header), so `freeformEdit` stays lifted into the page
+with the guarded in-render reset used elsewhere in this codebase.
+
+**All cards is stack-only.** Grid / pile / corkboard are `board.viewMode`, a per-board
+field, and the corkboard's placements live in `board.freeform` — a pseudo-board has
+nowhere to keep either.
+
+`/boards` and `/boards/:boardId` still resolve (the first redirects, the second
+selects that board and rewrites the URL), because a deep link outlives the nav tab it
+came from. Distinct route params — `:cardId` vs `:boardId` — are what let one
+component tell the two aliases apart.
+
+### Dragging a card onto a board's tab
+
+Long-press a card in All cards, carry it up to a board's tab, let go: the card joins
+that board. `hooks/useCardTabDrop.ts` is the gesture; `lib/boardTabDrop.ts` is the DOM
+contract between the list and the strip.
+
+**One `DndContext` over both was deliberately not hoisted**, which is the obvious
+dnd-kit answer. The two halves use different sensors on purpose — `CardStack` and
+`BoardGrid` take `MouseSensor + TouchSensor` so a quick touch swipe still scrolls on
+iOS, the strip takes `PointerSensor` — and dnd-kit's modifiers are per *context*, not
+per draggable, so one context would mean reconciling both plus a custom collision
+strategy. Instead the strip marks each tab with `data-board-tab` and the drop is
+hit-tested through `elementFromPoint`, which can't go stale the way a registry of tab
+rects does the moment the strip scrolls sideways mid-drag.
+
+Four things are load-bearing:
+
+- **The finger is hit-tested, not the card.** That is what lets the card keep
+  `restrictToVerticalAxis` — it stays in its column, exactly as before — and still
+  reach a tab at the far end of the strip. Only `restrictToParentElement` is dropped,
+  and only while the affordance is on, since that is what pins the drag inside the
+  list's box.
+- **The carried card gives up pointer events** (`pointerEvents: 'none'`), or it would
+  be what `elementFromPoint` answers with at every point under the finger. It costs the
+  drag nothing: dnd-kit tracks the pointer on the document once a drag is active.
+- **The pointer comes from a `pointermove` listener**, not from dnd-kit's
+  `activatorEvent + delta`. That delta is the *transform*, which carries scroll
+  compensation, so it drifts from the finger exactly when the list scrolls mid-drag.
+- **The drop is offered before the carry state is torn down.** The same hook holds both,
+  so asking it after `onCardDrag(null)` gets an answer it has just forgotten — which is
+  exactly the bug that made the first version silently do nothing.
+
+`overDropZone` (the finger is over the strip) does two jobs, which is why the prop names
+the state and not either one: it pauses dnd-kit's edge autoscroll — the sticky strip
+sits inside the scroller's top threshold band, so aiming at a tab would otherwise scroll
+the list to the top underneath you — and it fades the carried card, which spans the
+column and would otherwise cover the tab it is aimed at.
+
+**Feedback matters more here than usual, because a successful drop changes nothing in
+the list**: the card stays in All cards. So every board tab is faintly armed while a
+card is in the air (that ring is most of what makes the gesture discoverable at all),
+the tab under the finger swaps its count for `+`, a board that already holds the card
+shows `✓` instead, and the target keeps a ring for `FLASH_MS` after the drop. A `✓` drop
+is still **consumed** — the user aimed at a tab, and reordering the list instead would
+be a surprise. A drop that misses every tab but lands on the strip is **not** consumed:
+the sortable has been showing the card at the top of the list the whole way up, and
+cancelling would contradict what the user is looking at.
+
+The All-cards tab carries no `data-board-tab`, so it is not a target — every card is
+already in it. With no boards at all the page passes no drop handlers, and the drag is
+the clamped reorder it has always been.
+
+Only the All-cards stack has the affordance. The same two props (`onCardDrag`,
+`onDropOutside`) plus `overDropZone` extend it to a board's own views — moving a card
+from one board to another — if that is ever wanted. The non-gesture paths are unchanged
+and remain the accessible route: the ⋮ menu's *add cards*, and the board checkboxes in
+`CardEditor`.
+
 ## Reading lists
 
 A **reading list** is a compiled, ordered sequence of passages — a reading plan, or a custom
@@ -759,7 +876,7 @@ delivered through `onCommunityPulled()` rather than an import, so the dependency
 the `feedPosts` cache, which sits outside the machinery entirely because `dirty`/`deleted` and
 the pull's `pending*Ids` all assume one writer per row and somebody else's writing has none.
 
-`api.php` gained two rules and seventeen actions. **A share code is the only way to name a
+`api.php` gained two rules and nineteen actions. **A share code is the only way to name a
 space** — no action takes a target userId, `storage/shares/{code}.json` resolves it, and that
 file tree is HTTP-denied like `storage/users/` so nobody can enumerate it. **Nothing user-authored is echoed verbatim to
 another user**: every record crossing accounts goes through a `sanitize*` whitelist, which for
@@ -881,6 +998,15 @@ and api.php's `normalizeShareCode` stay strict.
 Two places, and both are progressive disclosure: `components/settings/CommunitySection.tsx`
 and a wizard step, `components/onboarding/steps/CommunityStep.tsx`.
 
+`/spaces` is now a **nav tab** (it took the slot Boards vacated), so the feature has a
+way in that isn't Settings or a step of the wizard. It shows whether or not a profile
+exists: without one the index already renders the make-a-profile pointer, and a tab
+that says so is the point — hiding it would keep the feature invisible to exactly the
+people who haven't found it. The index therefore lost its back button (a tab root has
+no parent); `/spaces/:id` keeps its own, whose fallback is that index. No badge on the
+tab: `useCommunityRefresh` is deliberately not global, so a count there would be
+either stale or bought with app-wide polling.
+
 The step comes **after** `sync` and is last, because it *implies* sync —
 `enableCommunity` turns it on, so asking first would enable something the next
 screen had not offered yet. Skipping is a first-class outcome: the footer says
@@ -919,6 +1045,122 @@ request inbox, which is invisible otherwise and cost real debugging time.
 `refreshSubscriptions` stays silent because it runs per subscription and offline
 is a normal state there.
 
+### Moderation — the four things a shared-writing feature owes its users
+
+Sharing other people's writing brings Apple guideline 1.2 and the Play UGC
+policy into scope, and both ask for the same four things. All four exist now.
+
+**1. Accepted content standards, before anything is published.**
+`settings.communityTermsVersion` records which version the user accepted; 0 is
+never. The text lives under `community.terms.*` in the locales and is rendered
+by one component (`CommunityTerms`) everywhere it appears, because a rule worded
+differently in one place is a rule nobody can be held to.
+`lib/communityTerms.ts` owns the version and the two ways to ask about it.
+
+Nothing backfills the acceptance, deliberately: an install that switched the
+community on before the standards existed has not agreed to them. So
+`SpacesPage` renders `CommunityTermsGate` **instead of** every community screen
+while a profile exists without an acceptance — the gate sits above the space
+editor and the post editor too, which is why it is placed before those branches
+rather than inside the index. `SubscribePage` shows the same gate, so an
+invitation survives the detour (its code is in the URL). Accepting is one tap;
+leaving is offered beside it, because a gate with one exit is a demand.
+
+`enableCommunity` and `subscribe` refuse without it as well, the way the
+`syncEnabled` chokepoints do: a new caller cannot switch the feature on by
+forgetting to ask.
+
+**2. Blocking an author** (`communityStore.blockAuthor`) is keyed by the
+author's **signing key**, not by space or share code. That key is derived from
+their mnemonic, so it is the same in every space they own — which is what lets
+one tap take *all* of them out, and a share code could never do. It needs no
+server support, and that is not a shortcut: nobody can push anything at a reader
+here (a subscriber *pulls* `space.feed`), so removing the subscriptions and
+refusing to add them back is a complete block from the reading side. `subscribe`
+matches the block list against the code's own fingerprint *before* asking, so a
+blocked author never even gets a membership row appended in their file. The
+author is not told.
+
+The list is a local `preferences` row. The subscription deletes sync, so the
+spaces disappear from the user's other devices; "don't let them back in" is
+remembered per device. Syncing it would want a server action and a merge rule
+for a list whose whole purpose is to be enforced offline.
+
+**3. Reporting** (`ReportDialog` → `report.create`) is offered on the piece, in
+the reader, and on the space, in the subscription row's menu. On the piece
+because that is where the offending text is — under endless scroll a header
+control could only ever mean "the one I guess you mean". The reasons are the
+content standards restated as choices: a report form whose options don't line up
+with the rules produces reports a moderator cannot act on.
+
+Server-side it is the third action that crosses accounts and the only one
+addressed to neither party — `storage/reports/` is HTTP-denied, so the author can
+neither see that they were reported nor delete what was said. Three things about
+it are deliberate: **the reported text is snapshotted** (deleting the piece is
+the obvious first move after being reported), **one file per (reporter, target)**
+so re-reporting overwrites instead of piling up, and **a profile is required**,
+since you cannot see somebody else's writing without one.
+
+**4. Automated moderation, before a piece is ever published.**
+`MODERATION_POLICY` in api.php is the server's copy of the standards — a *mirror
+of `community.terms.*`*, so changing the rules means changing both and bumping
+`COMMUNITY_TERMS_VERSION`. `moderationJudge()` asks for a JSON verdict on
+`MODERATION_MODEL` (`gpt-4o`, not the chat's `gpt-4o-mini`): the chat's job is
+corrected by the user in the next breath, the moderator's job is to refuse
+somebody's writing, and a wrong call there is either published abuse or a
+silenced author.
+
+Five things hold it up:
+
+- **The policy explicitly protects Scripture.** The Bible contains war, sex and
+  politics; a judge told only "no violence, no sexual content, nothing
+  political" refuses Judges, the Song of Songs and half the prophets. The
+  carve-out in the middle of the policy is what makes the feature usable at all.
+- **It runs server-side, in the write path.** A check the client performs is a
+  check a modified client skips. The client asks the same question first
+  (`moderation.check`) *only* so the refusal can be shown at the publish tap:
+  publishing rides the sync queue, where a 422 would otherwise surface as a
+  piece that silently never shared. The flush path handles that case anyway, by
+  dropping the `shared` claim along with the op.
+- **It fails open.** No key, no network or an unparseable answer publishes the
+  piece and records the verdict as *unchecked* rather than caching it as
+  approved. Refusing every publish while OpenAI is unreachable turns an outage
+  into a total outage; reporting and a human moderator stand behind this.
+- **Verdicts are cached by content** under `storage/moderation/`, like generated
+  speech, because the same text is judged up to three times (the ask, the write,
+  a later re-share). `temperature: 0` for the same reason: an author who fixes a
+  typo must not get a different answer.
+- **It always uses the shared key**, never the caller's own. Billing an author
+  for the judging of their own post is odd, and a user who removed their key
+  would otherwise have switched moderation off.
+
+Reports get that same judge as a **triage, not a filter**: a plausible report is
+filed in `storage/reports/` for a human, an implausible one in
+`storage/reports/unfounded/`, and **the reporter is told the same thing either
+way**. Telling someone a model dismissed their report teaches them to stop
+reporting, and teaches an abuser what passes. Nothing is deleted, because the
+judge is wrong sometimes.
+
+`MODERATION_STUB` in `secrets.php` short-circuits the judge with a fixed
+verdict. That is the seam `verifyBackend.mjs` drives — the refusal half cannot be
+tested against a live model — and it doubles as a kill switch. A stubbed verdict
+deliberately bypasses the cache in both directions, so flipping it changes the
+answer.
+
+### Where the share code is asked for
+
+The code field is **in the Rooms header, left of "new space"**. It used to sit at
+the bottom of the list of spaces you already read, which is exactly where nobody
+looks for the way in — and being handed a code is the commonest reason to open
+that screen at all.
+
+It has **no button**. `parseSpaceCodeInput` already answers "is this a code
+yet?" on every keystroke, so the field submits itself the moment the answer is
+yes, which is the moment a paste lands; `submittedRef` is what stops that firing
+twice while the request is in flight. The field is sized to its own placeholder
+(7rem) rather than to the room available — at 375px the header also holds the
+title and "new space", and that arithmetic is written down beside the class.
+
 ### Known limitations
 
 - A voice command on `/read` still produces a *chat* reading, as it does for the Bible.
@@ -940,9 +1182,12 @@ is a normal state there.
   the interstitial stops being reached on that platform.
 - No QR code yet. Sharing a code or a link covers it; scanning would need a camera plugin plus
   iOS/Android permissions.
-- User-generated content shared between users brings Apple guideline 1.2 / Play UGC policy into
-  scope. Invite-only plus approval-gated access covers most of it; a report affordance is not
-  built yet.
+- Moderation now covers the four things Apple guideline 1.2 and the Play UGC policy ask for
+  (see "Moderation" above), with two gaps left on purpose: a **reader's block does not remove
+  that person as a subscriber of the user's own spaces** — `Membership` is keyed by uuid and
+  carries no author key, so the two identities cannot be matched without changing
+  `space.request` — and the block list itself does not sync between the user's own devices.
+  The owner's accept / deny / block of a subscriber is unchanged and unrelated.
 
 ## Theming
 
@@ -1167,8 +1412,8 @@ and don't reintroduce an eager `mkdir` in `authenticate()`.
 Actions: `chat`, `tts`, `tts.speak`, `bible.chapter`, `transcribe`, `auth.openaiKey.{status,set,clear}`, `cards.{list,upsert,delete,order.get,order.set}`, `boards.{list,upsert,delete,order.get,order.set}`, `readingLists.{list,upsert,delete}`, `readingProgress.{list,set}`, `recording.upload`, `account.delete`, `ambient.list`, and the community actions:
 `profile.{get,set,delete}`, `profile.avatar.upload`, `spaces.{list,upsert,delete}`,
 `spaces.code.set`, `posts.{list,upsert,delete}`, `members.{list,decide}`,
-`subscriptions.{list,upsert,delete}`, plus the only two that cross accounts —
-`space.request` and `space.feed` (see "Community spaces").
+`subscriptions.{list,upsert,delete}`, `moderation.check`, and the three that cross
+accounts — `space.request`, `space.feed` and `report.create` (see "Community spaces").
 
 `readingProgress.set` is the one writer that **merges** rather than replaces — see "Reading
 lists". `readingLists.delete` also drops that list's progress row, which has no meaning without
