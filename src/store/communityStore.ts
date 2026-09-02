@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { db, PROFILE_PREF_KEY, type LocalProfile } from '@/db/dexie';
 import { authorKey } from '@/lib/postSigning';
 import { verifyPost } from '@/lib/postSignature';
-import { codeMatchesKey, mintSpaceCode, normalizeSpaceCode } from '@/lib/spaceCode';
+import { codeMatchesKey, mintSpaceCode, parseSpaceCodeInput } from '@/lib/spaceCode';
 import * as api from '@/services/api/community';
 import { onCommunityPulled } from '@/services/community/communitySync';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
@@ -435,7 +435,9 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
    * instead, and the author's fingerprint is comparable by hand in Settings.
    */
   subscribe: async (rawCode) => {
-    const code = normalizeSpaceCode(rawCode);
+    // Tolerant on the way in: a bare code, a link in either shape, or the whole
+    // message they were sent. See parseSpaceCodeInput.
+    const code = parseSpaceCodeInput(rawCode);
     if (!code) throw new Error('invalid_code');
     if (!get().profile) throw new Error('profile_required');
 

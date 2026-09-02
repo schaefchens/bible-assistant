@@ -109,6 +109,56 @@ export function formatSpaceCode(code: string): string {
 }
 
 /**
+ * Pull a share code out of whatever the user pasted.
+ *
+ * People do not paste tidy codes. They paste the whole message they were sent
+ * ("Halo\n9QQ5Z-41JCR-6YPV33" — the share sheet's own format), or a link, in
+ * either of the two shapes a link can take:
+ *
+ *   9QQ5Z-41JCR-6YPV33
+ *   9qq5z 41jcr 6ypv33
+ *   https://bibleassistant.apps.schaefchens.de/join/9QQ5Z-41JCR-6YPV33
+ *   bibleassistant://join/9QQ5Z-41JCR-6YPV33
+ *   Halo
+ *   9QQ5Z-41JCR-6YPV33
+ *
+ * Two passes, and the order matters. First the whole input goes through
+ * {@link normalizeSpaceCode}, which is what keeps a code typed with spaces
+ * ("9QQ5Z 41JCR 6YPV33") working — tokenizing first would split it. Only if
+ * that fails is the input broken into candidates and each tried.
+ *
+ * The split characters are the ones a code cannot contain. `-`, `.` and `_` are
+ * deliberately **not** among them: they appear *inside* a formatted code, and
+ * splitting on them would shatter every code into three useless pieces.
+ *
+ * Note it cannot simply strip everything outside the alphabet and look for a
+ * 16-character run: `join`, `https` and `bibleassistant` are all made of
+ * alphabet or foldable characters, so that approach happily splices URL text
+ * into a plausible-looking code.
+ *
+ * Tolerant here and nowhere else. `normalizeSpaceCode` stays strict, and so
+ * does api.php's `normalizeShareCode` — the server receives a code from our own
+ * client, not from a human.
+ */
+const MAX_INPUT = 2000;
+const NOT_IN_A_CODE = /[\s/:?#&=,;<>()"'[\]{}|\\!*+$@%^~`]+/;
+
+export function parseSpaceCodeInput(input: string): string | null {
+  const trimmed = input.slice(0, MAX_INPUT);
+
+  // Whole input first: handles a bare code however it is spaced or cased.
+  const whole = normalizeSpaceCode(trimmed);
+  if (whole) return whole;
+
+  for (const candidate of trimmed.split(NOT_IN_A_CODE)) {
+    if (candidate === '') continue;
+    const code = normalizeSpaceCode(candidate);
+    if (code) return code;
+  }
+  return null;
+}
+
+/**
  * Does this code commit to a key at all?
  *
  * True for a generated code, false for anything else. A caller that gets

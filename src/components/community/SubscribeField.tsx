@@ -9,6 +9,11 @@ import { useCommunityStore } from '@/store/communityStore';
  * pattern for the other pasted secret in this app: monospace, no autocorrect,
  * no capitalisation, and normalisation on submit rather than as you type.
  *
+ * It accepts more than a code — a link in either shape, or the whole message
+ * the sender's share sheet produced — because that is what people actually
+ * paste. `parseSpaceCodeInput` does the extracting; the hint says so, since an
+ * input that silently accepts more than it advertises is only half useful.
+ *
  * The error cases are worth reading. `key_mismatch` means the key the server
  * returned does not match the fingerprint carried in the code — so either the
  * code was altered on its way here or the server is offering a different
@@ -77,6 +82,9 @@ export function SubscribeField() {
           {t('community.addByCodeAction')}
         </button>
       </div>
+      {!status && !error && (
+        <p className="text-xs text-ink-muted">{t('community.addByCodeHint')}</p>
+      )}
       {status && <p className="text-xs text-brand-muted">{status}</p>}
       {error && <p className="text-xs text-red-400">{error}</p>}
     </div>

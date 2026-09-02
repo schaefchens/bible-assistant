@@ -672,6 +672,7 @@
     "allNewCount": "Alles Neue ({{count}})",
     "todayAll": "Heute, von allen",
     "todayAllCount": "Heute, von allen ({{count}})",
-    "nothingNew": "Nichts Neues zu lesen."
+    "nothingNew": "Nichts Neues zu lesen.",
+    "addByCodeHint": "Füge den Code, einen Link oder die ganze Nachricht ein, die du bekommen hast."
   }
 }

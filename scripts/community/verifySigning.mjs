@@ -21,6 +21,7 @@ import {
 import { postParagraphs, postToUnits } from '../../src/services/community/postUnits.ts';
 import {
   codeCarriesFingerprint,
+  parseSpaceCodeInput,
   codeMatchesKey,
   formatSpaceCode,
   keyFingerprint,
@@ -176,6 +177,43 @@ check('normalizing folds separators, case and look-alikes', () => {
   assert.equal(normalizeSpaceCode(` ${formatSpaceCode(code)} `), code);
   assert.equal(normalizeSpaceCode('IL'.padEnd(SPACE_CODE_LEN, '0')), '11'.padEnd(SPACE_CODE_LEN, '0'));
   assert.equal(normalizeSpaceCode('O'.padEnd(SPACE_CODE_LEN, '0')), '0'.padEnd(SPACE_CODE_LEN, '0'));
+});
+
+check('a pasted code is found in whatever surrounds it', () => {
+  const code = mintSpaceCode(keyHex);
+  const pretty = formatSpaceCode(code);
+  const host = 'https://bibleassistant.apps.schaefchens.de';
+  for (const input of [
+    code,
+    pretty,
+    pretty.toLowerCase(),
+    `  ${pretty}  `,
+    code.replace(/(.....)(.....)(......)/, '$1 $2 $3'), // spaced, not dashed
+    `${host}/join/${pretty}`,
+    `${host}/join/${code}?ref=wa`,
+    `${host}/join/${pretty}#x`,
+    `bibleassistant://join/${pretty}`,
+    // What the share sheet actually sends, pasted whole.
+    `Halo\n${pretty}`,
+    `Read my space: ${pretty} — see you there`,
+  ]) {
+    assert.equal(parseSpaceCodeInput(input), code, `failed for: ${input}`);
+  }
+});
+
+check('URL words are never spliced into a plausible code', () => {
+  // 'join', 'https' and 'bibleassistant' are all alphabet-or-foldable, so a
+  // strip-everything-and-look-for-16-chars approach would invent a code here.
+  assert.equal(parseSpaceCodeInput('https://bibleassistant.apps.schaefchens.de/join/'), null);
+  assert.equal(parseSpaceCodeInput('bibleassistant://join/'), null);
+  assert.equal(parseSpaceCodeInput('just some words about joining a space'), null);
+  assert.equal(parseSpaceCodeInput(''), null);
+});
+
+check('the first valid code wins when there are several', () => {
+  const a = mintSpaceCode(keyHex);
+  const b = mintSpaceCode(keyHex);
+  assert.equal(parseSpaceCodeInput(`${a} or ${b}`), a);
 });
 
 check('a wrong-length or out-of-alphabet code is refused', () => {
