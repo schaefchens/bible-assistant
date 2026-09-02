@@ -5,7 +5,7 @@ import clsx from 'clsx';
 import { ROUTES } from '@/lib/appRoutes';
 import { copyText, shareText } from '@/lib/nativeBridge';
 import { formatSpaceCode } from '@/lib/spaceCode';
-import { inviteShareText } from '@/lib/spaceInvite';
+import { webInviteUrl } from '@/lib/spaceInvite';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useCommunityStore } from '@/store/communityStore';
 import { useReaderStore } from '@/store/readerStore';
@@ -79,7 +79,7 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
   const onShare = async () => {
     const code = await shareSpace(space.id);
     if (!code) return;
-    await shareText(inviteShareText(title, code));
+    await shareText(webInviteUrl(code));
   };
 
   return (

@@ -1038,9 +1038,17 @@ stops being reached on that platform. Android needs
 key's is the wrong one) plus `autoVerify`, and both would need adding to
 `scripts/deploy.sh`'s allow-list.
 
-Input is tolerant at one boundary only: `parseSpaceCodeInput` takes a bare code,
-either link, or the whole message the share sheet produced. `normalizeSpaceCode`
-and api.php's `normalizeShareCode` stay strict.
+**The share sheet sends the https link alone.** It used to send the space's name
+and the bare code on two further lines, so that a mangled link could still be
+recovered by pasting the code — but a multi-line message is not a link: the OS
+sheet offers it as *text* rather than as a URL, and the targets that do linkify
+it pick the wrong span out of the three lines. The code is still shown beside
+its own copy button in the space, for passing along by hand.
+
+Input stays tolerant at that one boundary regardless: `parseSpaceCodeInput` takes
+a bare code, either link, or a whole message with one embedded — being liberal
+about what arrives costs nothing and older invitations are still out there.
+`normalizeSpaceCode` and api.php's `normalizeShareCode` stay strict.
 
 ### Where the opt-in is offered
 

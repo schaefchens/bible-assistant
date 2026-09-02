@@ -10,7 +10,15 @@ import { formatSpaceCode } from './spaceCode';
  * point at the same route, `/subscribe/<code>`, so whichever one arrives ends
  * up in the same place — and the code itself remains a perfectly good thing to
  * paste, since `parseSpaceCodeInput` accepts all three.
- */
+ *
+ * **The share sheet sends the https link and nothing else.** It used to send
+ * the space's name and the bare code alongside it, on the theory that a
+ * mangled link could still be recovered by pasting the code — but a
+ * multi-line message is not a link: the OS sheet then offers it as *text*
+ * rather than as a URL, and the messengers that do linkify it pick the wrong
+ * span out of the three lines. A single URL is unambiguous to every share
+ * target. The code stays visible next to its own copy button in the space, for
+ * anyone who wants to pass it along by hand.
 
 /**
  * The custom scheme that opens the installed app.
@@ -43,17 +51,6 @@ export function webInviteUrl(code: string): string {
  * anyone who does not have the app. */
 export function appInviteUrl(code: string): string {
   return `${APP_SCHEME}://subscribe/${formatSpaceCode(code)}`;
-}
-
-/**
- * What the share sheet sends: the space, the link, and the bare code.
- *
- * The code is included as well as the link because in-app browsers (WhatsApp,
- * Instagram) sometimes mangle or intercept links, and pasting a code into the
- * app always works.
- */
-export function inviteShareText(spaceLabel: string, code: string): string {
-  return `${spaceLabel}\n${webInviteUrl(code)}\n${formatSpaceCode(code)}`;
 }
 
 /**
