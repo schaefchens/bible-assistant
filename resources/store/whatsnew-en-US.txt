@@ -1,6 +1,5 @@
-Your own writing, read aloud like scripture.
+Cards and boards are one screen now.
 
-• Keep spaces of reflections and short pieces. They open in the reader, narrated with word-by-word highlighting.
-• Share a space by code or link — you decide who may read. No public listing, no discovery.
-• Everything you publish is signed on your device, so nobody can alter it.
-• Read everything new from everyone you follow in one sitting.
+• Every card and all your boards sit behind one row of tabs — and you can drag a card straight onto a board's tab to file it there.
+• Spaces has its own tab, with the code field at the top: paste an invitation and you're reading.
+• Spaces now have written content standards, plus reporting and blocking, so what you read stays Bible-centred.

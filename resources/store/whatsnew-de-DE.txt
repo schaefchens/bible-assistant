@@ -1,6 +1,5 @@
-Deine eigenen Texte, vorgelesen wie die Schrift.
+Karten und Tafeln sind jetzt ein Bildschirm.
 
-• Lege Räume für Gedanken und kurze Beiträge an. Sie öffnen sich im Leser, Wort für Wort mitgelesen.
-• Teile einen Raum per Code oder Link — du entscheidest, wer lesen darf. Kein öffentliches Verzeichnis.
-• Alles, was du veröffentlichst, wird auf deinem Gerät signiert und ist damit unveränderbar.
-• Alles Neue von allen, denen du folgst, in einem Zug lesen.
+• Alle Karten und alle Tafeln liegen hinter einer Reihe von Tabs — und du kannst eine Karte direkt auf den Tab einer Tafel ziehen.
+• Räume haben einen eigenen Tab, das Code-Feld sitzt ganz oben: Einladung einfügen, fertig.
+• Für Räume gibt es jetzt inhaltliche Regeln, dazu Melden und Blockieren, damit das Gelesene biblisch bleibt.
