@@ -955,6 +955,13 @@ renders the wizard *over* this route and the route is still matched when
 onboarding finishes, and someone sent to Settings to make a profile returns to
 the same link.
 
+That last part is only true because the wizard's `onDone` **leaves the subscribe
+route alone**. It resets to chat otherwise — a first run belongs there, not on
+whatever stale URL was restored — and doing that unconditionally is what quietly
+ate every invitation that arrived before onboarding was finished, `replace`
+taking it out of history too so there was nothing to go back to. The link is
+usually the reason that person installed the app at all.
+
 **`space.peek` exists because `space.request` writes.** A "subscribe to X?"
 confirmation built on `request` would be showing X only after having already
 asked on the user's behalf, so peek is a read-only lookup — the one community

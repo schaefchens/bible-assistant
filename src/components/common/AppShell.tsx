@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
@@ -10,6 +10,7 @@ import { useAppInitialization } from '@/hooks/useAppInitialization';
 import { useNativeShell } from '@/hooks/useNativeShell';
 import { useReadingHostFocus } from '@/hooks/useReadingHostFocus';
 import { getPassphrase } from '@/lib/passphrase';
+import { ROUTES } from '@/lib/appRoutes';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { VoiceController } from '@/components/voice/VoiceController';
 import { MicDock } from '@/components/voice/MicDock';
@@ -27,6 +28,7 @@ export function AppShell() {
   // device with no working crypto or storage can still reach here without one,
   // and the effects it gates would throw from requireIdentity().
   const hasPassphrase = !!getPassphrase();
+  const location = useLocation();
   const online = useLibraryStore((s) => s.online);
   const pendingOps = useLibraryStore((s) => s.pendingOps);
 
@@ -59,7 +61,17 @@ export function AppShell() {
       <OnboardingWizard
         onDone={() => {
           setOnboardingComplete(true);
-          navigate('/', { replace: true });
+          // Chat is where a first run belongs — unless the app was opened *on*
+          // something. An invite link is usually the reason that person
+          // installed the app at all, and the code lives in the route rather
+          // than in a stash precisely so it can survive the wizard (see
+          // SubscribePage, and useNativeShell's appUrlOpen handler, which
+          // deliberately doesn't care whether onboarding is done). Replacing
+          // the URL here discarded it, and `replace` took it out of history
+          // too, so there was nothing to go back to.
+          if (!location.pathname.startsWith(ROUTES.subscribe)) {
+            navigate('/', { replace: true });
+          }
         }}
       />
     );
