@@ -927,8 +927,19 @@ is a normal state there.
 - Per-post completion is not tracked; unread is a local dot (`seenPosts`), not a synced tick, so
   what you have seen does not travel between your devices. Doing it properly wants
   `readingProgress`'s union-merge machinery, which is keyed by `listId`.
-- No QR code yet. `shareText()` covers sending a code; scanning would need a camera plugin plus
-  iOS/Android permissions, and a QR that opens the app needs Universal Links / App Links.
+- **App Links / Universal Links: deliberately deferred.** The interstitial covers the gap, so
+  this is polish, not a gap in the feature. When it is worth doing, in order: Android needs
+  `.well-known/assetlinks.json` carrying the SHA-256 of the **App signing key** from Play
+  Console → Test and release → Setup → App signing (*not* the upload key's — you sign with the
+  upload key and Google re-signs, so devices only see the app signing key, and using the wrong
+  one fails silently); include the local release key's fingerprint too or a sideloaded
+  `android:apk` build will not verify; add a second intent-filter with `autoVerify` for the
+  https host; and add `.well-known/` to `scripts/deploy.sh`'s allow-list or the file never
+  ships. iOS then wants `.well-known/apple-app-site-association` plus the Associated Domains
+  entitlement and the Team ID. Once either is live, the https link opens the app directly and
+  the interstitial stops being reached on that platform.
+- No QR code yet. Sharing a code or a link covers it; scanning would need a camera plugin plus
+  iOS/Android permissions.
 - User-generated content shared between users brings Apple guideline 1.2 / Play UGC policy into
   scope. Invite-only plus approval-gated access covers most of it; a report affordance is not
   built yet.
