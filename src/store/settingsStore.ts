@@ -121,6 +121,18 @@ type SettingsState = {
    * the community screens gate on this rather than assume consent.
    */
   communityTermsVersion: number;
+  /**
+   * Whether the floating bug button is shown. **On by default**, including for
+   * every existing install: the button is how the app asks for the feedback it
+   * needs while it is being tested, and an off-by-default report channel
+   * gathers nothing.
+   *
+   * No migration backfills it and the persist version is unchanged — zustand's
+   * default merge is shallow, so a field absent from persisted state simply
+   * keeps the initializer's value. A migration would have written `true` over
+   * `true`.
+   */
+  feedbackEnabled: boolean;
   setLocale: (locale: Locale) => void;
   setTheme: (theme: ThemeChoice) => void;
   setTranslation: (translation: Translation, fromUser?: boolean) => void;
@@ -151,6 +163,7 @@ type SettingsState = {
   setOnboardingComplete: (v: boolean) => void;
   setSyncEnabled: (v: boolean) => void;
   acceptCommunityTerms: (version: number) => void;
+  setFeedbackEnabled: (v: boolean) => void;
 };
 
 /** Whether the user is currently using their own OpenAI key (server has it
@@ -267,6 +280,7 @@ export const useSettingsStore = create<SettingsState>()(
         onboardingComplete: false,
         syncEnabled: false,
         communityTermsVersion: 0,
+        feedbackEnabled: true,
         setTheme: (theme) => set({ theme }),
         setLocale: (locale) =>
           set((s) => ({
@@ -321,6 +335,8 @@ export const useSettingsStore = create<SettingsState>()(
         setSyncEnabled: (syncEnabled) => set({ syncEnabled }),
 
         acceptCommunityTerms: (communityTermsVersion) => set({ communityTermsVersion }),
+
+        setFeedbackEnabled: (feedbackEnabled) => set({ feedbackEnabled }),
       };
     },
     {

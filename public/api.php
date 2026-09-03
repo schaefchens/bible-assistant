@@ -32,6 +32,7 @@ declare(strict_types=1);
  *   recording.upload      multipart: audio + bookId, chapter, verse, translation
  *   account.delete        Erase everything stored for this identity.
  *   ambient.list (GET)    List ambient music tracks under storage/ambient/.
+ *   feedback.create       { kind, message, context } — testers' feedback/bugs.
  *
  * Auth: X-User-Id (UUID) + X-User-Secret (hex). The first *write* registers the
  * identity — see authenticate() / requireUserDir(). Reads and the OpenAI proxy
@@ -83,6 +84,23 @@ const MODERATION_DIR = STORAGE_DIR . '/moderation';
  * be used to store arbitrary data on the server. */
 const MAX_REPORT_NOTE = 1000;
 const MAX_REPORT_EXCERPT = 2000;
+
+/**
+ * In-app feedback: bug reports, feature requests, and plain remarks.
+ *
+ * Addressed to the maintainer, not to another user, so unlike REPORTS_DIR it
+ * needs no triage and no snapshot of anybody else's writing — but it is still
+ * user-authored text plus a device fingerprint (route, build, user agent), so
+ * it gets the same HTTP deny as everything else here.
+ *
+ * One sub-directory per identity, which is what makes MAX_FEEDBACK_PER_USER
+ * enforceable with a single scandir. There is no rate limiting anywhere in
+ * this file, and a feedback box is the one write in the app that a stranger
+ * can reach with no profile, no account directory and no sync opt-in.
+ */
+const FEEDBACK_DIR = STORAGE_DIR . '/feedback';
+const MAX_FEEDBACK_MESSAGE = 4000;
+const MAX_FEEDBACK_PER_USER = 50;
 
 /*
  * Caps on community data.
@@ -217,6 +235,7 @@ const ALIGNMENT_MODEL = 'whisper-1';
 @mkdir(REPORTS_DIR, 0775, true);
 @mkdir(REPORTS_UNFOUNDED_DIR, 0775, true);
 @mkdir(MODERATION_DIR, 0775, true);
+@mkdir(FEEDBACK_DIR, 0775, true);
 
 // Deny directory listings within storage if writable
 $htaccessPath = STORAGE_DIR . '/.htaccess';
@@ -274,6 +293,20 @@ $moderationHtaccessPath = MODERATION_DIR . '/.htaccess';
 if (!file_exists($moderationHtaccessPath)) {
     @file_put_contents(
         $moderationHtaccessPath,
+        "Require all denied\n" .
+        "<IfModule !mod_authz_core.c>\n" .
+        "  Order deny,allow\n" .
+        "  Deny from all\n" .
+        "</IfModule>\n",
+    );
+}
+
+// feedback/ holds what testers wrote about the app, along with the route and
+// user agent they wrote it from. Nobody but the maintainer reads it back.
+$feedbackHtaccessPath = FEEDBACK_DIR . '/.htaccess';
+if (!file_exists($feedbackHtaccessPath)) {
+    @file_put_contents(
+        $feedbackHtaccessPath,
         "Require all denied\n" .
         "<IfModule !mod_authz_core.c>\n" .
         "  Order deny,allow\n" .
@@ -752,6 +785,13 @@ switch ($action) {
         break;
     case 'moderation.check':
         handleModerationCheck($ctx);
+        break;
+
+    // In-app feedback. Not a community action and not an account action: it
+    // writes into its own directory, so a user who has never opted into sync
+    // (and so has no directory here at all) can still report a bug.
+    case 'feedback.create':
+        handleFeedbackCreate($ctx);
         break;
     default:
         fail(404, 'unknown action');
@@ -2615,6 +2655,77 @@ function handleReportCreate(array $ctx): void {
     if (file_exists($other . '/' . $name . '.json')) @unlink($other . '/' . $name . '.json');
 
     respond(200, ['reported' => true]);
+}
+
+/**
+ * Receive in-app feedback: a bug report, a feature request, or a remark.
+ *
+ * Addressed to the maintainer rather than to another user, which is what makes
+ * it the *simplest* write in this file — no triage, no signature, no
+ * projection, nothing crossing between two accounts. Four things are still
+ * deliberate:
+ *
+ *  - **No profile and no account directory are required.** It is not in
+ *    $ACCOUNT_ACTIONS and does not read profilePath(): the whole point of a
+ *    bug button is that it works for the tester whose app is broken, and for
+ *    the one who never opted into server sync. Nothing here touches
+ *    storage/users/.
+ *  - **The context is whitelisted, not stored as sent.** Every field lands in
+ *    front of the maintainer's eyes, and a client may put anything in the body.
+ *    The user agent is taken from the request instead of the body for the same
+ *    reason: the real one is right here.
+ *  - **One file per (identity, kind, message).** Re-tapping send after a
+ *    request that actually succeeded overwrites rather than piling up. Order is
+ *    carried by `reportedAt` inside the file, not by the filename.
+ *  - **A per-identity cap**, enforced by counting that user's own directory.
+ *    There is no rate limiting anywhere in this file and this is the one write
+ *    a stranger can reach with nothing set up, so it gets a ceiling like every
+ *    community collection does.
+ */
+function handleFeedbackCreate(array $ctx): void {
+    $body = readJsonBody();
+
+    // Same three values as the client's FeedbackKind union. Anything else is a
+    // client bug, not feedback.
+    $kind = safeString($body['kind'] ?? '', 16);
+    if (!in_array($kind, ['feedback', 'feature', 'bug'], true)) fail(400, 'invalid kind');
+
+    $message = trim(safeString($body['message'] ?? '', MAX_FEEDBACK_MESSAGE));
+    if ($message === '') fail(400, 'message required');
+
+    $sent = is_array($body['context'] ?? null) ? $body['context'] : [];
+    $context = [
+        'route' => optString($sent['route'] ?? null, 200),
+        'commit' => optString($sent['commit'] ?? null, 60),
+        'buildTime' => optString($sent['buildTime'] ?? null, 40),
+        'platform' => optString($sent['platform'] ?? null, 40),
+        'locale' => optString($sent['locale'] ?? null, 20),
+        'viewport' => optString($sent['viewport'] ?? null, 40),
+        'online' => isset($sent['online']) ? (bool)$sent['online'] : null,
+        'userAgent' => substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 400),
+    ];
+
+    // authenticate() has already matched the id against /^[0-9a-f-]{36}$/, so
+    // it holds no path separators and cannot escape this directory.
+    $dir = FEEDBACK_DIR . '/' . $ctx['userId'];
+    if (!is_dir($dir) && !@mkdir($dir, 0775, true)) fail(500, 'could not store feedback');
+
+    $name = hash('sha256', $kind . '|' . $message) . '.json';
+    $path = $dir . '/' . $name;
+    if (!file_exists($path)) {
+        $held = glob($dir . '/*.json') ?: [];
+        if (count($held) >= MAX_FEEDBACK_PER_USER) fail(429, 'too much feedback');
+    }
+
+    writeJsonFile($path, [
+        'reportedAt' => (int)(microtime(true) * 1000),
+        'kind' => $kind,
+        'message' => $message,
+        'userId' => $ctx['userId'],
+        'context' => $context,
+    ]);
+
+    respond(200, ['received' => true]);
 }
 
 /**

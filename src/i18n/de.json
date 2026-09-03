@@ -337,6 +337,11 @@
       "musicOn": "Musik an",
       "musicOff": "Musik aus",
       "community": "Community"
+    },
+    "feedback": {
+      "title": "Feedback-Knopf",
+      "hint": "Ein kleiner Käfer am rechten Bildschirmrand, um Fehler zu melden oder Ideen zu schicken.",
+      "show": "Feedback-Knopf anzeigen"
     }
   },
   "chatReader": {
@@ -751,5 +756,29 @@
       "refusedHint": "Bearbeite den Beitrag und veröffentliche erneut. Der Entwurf ist gespeichert.",
       "refusedGeneric": "Dieser Beitrag passt nicht zu den inhaltlichen Regeln für Räume."
     }
+  },
+  "feedback": {
+    "open": "Fehler melden oder Rückmeldung senden",
+    "title": "Sag uns, wie die App läuft",
+    "intro": "Geht direkt an den Entwickler. Niemand sonst liest es.",
+    "kinds": {
+      "bug": "Fehler",
+      "feature": "Idee",
+      "feedback": "Gedanken"
+    },
+    "prompts": {
+      "bug": "Was ist schiefgelaufen?",
+      "feature": "Was soll die App können?",
+      "feedback": "Was möchtest du loswerden?"
+    },
+    "placeholders": {
+      "bug": "Was du getan hast, was passiert ist und was du stattdessen erwartet hast.",
+      "feature": "Beschreibe die Idee und wofür du sie brauchst.",
+      "feedback": "Alles ist willkommen — was gut läuft, was nicht, was sich falsch anfühlt."
+    },
+    "contextToggle": "Was mitgesendet wird",
+    "submit": "Senden",
+    "sent": "Gesendet. Danke — genau das hilft weiter.",
+    "failed": "Konnte nicht gesendet werden. Dein Text steht noch da — versuch es erneut, wenn du online bist."
   }
 }

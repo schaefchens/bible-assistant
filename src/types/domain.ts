@@ -500,3 +500,14 @@ export type Membership = {
   requestedAt: number;
   decidedAt?: number;
 };
+
+/**
+ * What a piece of in-app feedback is.
+ *
+ * Three kinds rather than one free-form box because they are read at different
+ * times and by different eyes: a bug is triaged, a feature request is filed,
+ * and plain feedback is just read. api.php whitelists the same three.
+ */
+export type FeedbackKind = 'feedback' | 'feature' | 'bug';
+
+export const FEEDBACK_KINDS: readonly FeedbackKind[] = ['feedback', 'feature', 'bug'] as const;

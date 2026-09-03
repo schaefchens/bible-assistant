@@ -249,6 +249,18 @@ export function SettingsPage() {
         <SettingsField label={t('settings.updates.title')}>
           <UpdatesSection />
         </SettingsField>
+        {/* Beside the build stamp on purpose: both answer "what are you
+            running, and how do you tell me about it". */}
+        <SettingsField label={t('settings.feedback.title')} hint={t('settings.feedback.hint')}>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={settings.feedbackEnabled}
+              onChange={(e) => settings.setFeedbackEnabled(e.target.checked)}
+            />
+            <span className="text-sm">{t('settings.feedback.show')}</span>
+          </label>
+        </SettingsField>
         <SettingsField label={t('settings.dangerZone.title')}>
           <DangerZone />
         </SettingsField>

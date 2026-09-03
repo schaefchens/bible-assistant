@@ -6,6 +6,12 @@
  * a pending subscriber sees nothing, a blocked one cannot unblock themselves,
  * an expired item is gone, a forged post is refused.
  *
+ * `feedback.create` rides along at the end. It is not a community action, but
+ * it has the same shape as the one worth asserting here — user-authored text
+ * written into an HTTP-denied directory — and it makes a claim of its own that
+ * only an end-to-end run can check: that it touches nothing under
+ * storage/users/, so a tester who never opted into sync can still report a bug.
+ *
  * Self-managing: copies api.php into a temporary docroot (so the real
  * public/storage is never touched), starts `php -S` there, runs, tears down.
  *
@@ -15,6 +21,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import {
   copyFileSync,
+  existsSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -77,6 +84,16 @@ async function call(user, action, body) {
     body: JSON.stringify(body ?? {}),
   });
   return { status: res.status, body: await res.json().catch(() => null) };
+}
+
+/** Everything this identity has ever sent as feedback, newest first. */
+function readFeedback(user) {
+  const dir = join(root, 'storage', 'feedback', user.userId);
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => JSON.parse(readFileSync(join(dir, f), 'utf8')))
+    .sort((a, b) => b.reportedAt - a.reportedAt);
 }
 
 function makePost(space, user, over = {}) {
@@ -591,6 +608,91 @@ try {
     noStub();
   });
 
+  console.log('feedback');
+
+  await check('feedback needs no profile, no account and no sync opt-in', async () => {
+    // A brand-new identity: nothing has ever been stored for it, and after
+    // this it still must not have a directory under storage/users. That is the
+    // property the bug button rests on — the tester whose app is broken, or
+    // who never turned sync on, has to be able to reach this.
+    const tester = makeUser();
+    const r = await call(tester, 'feedback.create', {
+      kind: 'bug',
+      message: 'The reader shows Malachi 4 as missing.',
+      context: { route: '/read', commit: 'abc1234', platform: 'android', online: true },
+    });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.received, true);
+    assert.equal(existsSync(join(root, 'storage', 'users', tester.userId)), false);
+
+    const filed = readFeedback(tester);
+    assert.equal(filed.length, 1);
+    assert.equal(filed[0].kind, 'bug');
+    assert.equal(filed[0].context.route, '/read');
+    assert.equal(filed[0].context.online, true);
+  });
+
+  await check('the context is whitelisted, and the user agent is the real one', async () => {
+    const tester = makeUser();
+    const res = await fetch(`http://127.0.0.1:${PORT}/api.php?action=feedback.create`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Id': tester.userId,
+        'X-User-Secret': tester.userSecret,
+        'User-Agent': 'RealAgent/9.9',
+      },
+      body: JSON.stringify({
+        kind: 'feature',
+        message: 'A dark sepia paper, please.',
+        // Both of these must be dropped: everything in `context` is read by a
+        // human, and a client may put anything in the body.
+        context: { route: '/read', userAgent: 'Totally Not A Lie', smuggled: 'x'.repeat(50) },
+      }),
+    });
+    assert.equal(res.status, 200);
+    const [filed] = readFeedback(tester);
+    assert.equal(filed.context.userAgent, 'RealAgent/9.9');
+    assert.equal('smuggled' in filed.context, false);
+  });
+
+  await check('an unknown kind and an empty message are refused', async () => {
+    const tester = makeUser();
+    const kind = await call(tester, 'feedback.create', { kind: 'praise', message: 'hi' });
+    assert.equal(kind.status, 400);
+    const blank = await call(tester, 'feedback.create', { kind: 'bug', message: '   \n ' });
+    assert.equal(blank.status, 400);
+    assert.equal(existsSync(join(root, 'storage', 'feedback', tester.userId)), false);
+  });
+
+  await check('resending the same words overwrites; different words accumulate', async () => {
+    const tester = makeUser();
+    const same = { kind: 'feedback', message: 'It reads beautifully on the train.' };
+    await call(tester, 'feedback.create', same);
+    await call(tester, 'feedback.create', same);
+    assert.equal(readFeedback(tester).length, 1);
+    await call(tester, 'feedback.create', { ...same, message: 'And on the bus.' });
+    assert.equal(readFeedback(tester).length, 2);
+    // Same words, different kind, is a different thing to read.
+    await call(tester, 'feedback.create', { ...same, kind: 'bug' });
+    assert.equal(readFeedback(tester).length, 3);
+  });
+
+  await check('one identity cannot fill the disk', async () => {
+    const tester = makeUser();
+    for (let i = 0; i < 50; i++) {
+      const r = await call(tester, 'feedback.create', { kind: 'bug', message: `report ${i}` });
+      assert.equal(r.status, 200);
+    }
+    const over = await call(tester, 'feedback.create', { kind: 'bug', message: 'report 50' });
+    assert.equal(over.status, 429);
+    // The cap bounds new files only — a correction to something already sent
+    // still gets through.
+    const again = await call(tester, 'feedback.create', { kind: 'bug', message: 'report 7' });
+    assert.equal(again.status, 200);
+    assert.equal(readFeedback(tester).length, 50);
+  });
+
   console.log('leaving');
 
   await check('deleting the profile removes the shared copies and the codes', async () => {
@@ -610,7 +712,7 @@ try {
   });
 
   await check('every directory holding user text is HTTP-denied by generated .htaccess', () => {
-    for (const p of ['users', 'shares', 'reports', 'moderation']) {
+    for (const p of ['users', 'shares', 'reports', 'moderation', 'feedback']) {
       const ht = readFileSync(join(root, 'storage', p, '.htaccess'), 'utf8');
       assert.match(ht, /Require all denied/);
     }

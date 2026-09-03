@@ -337,6 +337,11 @@
       "musicOn": "Music on",
       "musicOff": "Music off",
       "community": "Community"
+    },
+    "feedback": {
+      "title": "Feedback button",
+      "hint": "A small beetle on the right edge of every screen, for reporting a bug or sending an idea.",
+      "show": "Show the feedback button"
     }
   },
   "chatReader": {
@@ -751,5 +756,29 @@
       "refusedHint": "Edit the piece and publish again. The draft is saved.",
       "refusedGeneric": "This piece doesn't fit the content standards for spaces."
     }
+  },
+  "feedback": {
+    "open": "Report a bug or send feedback",
+    "title": "Tell us how the app is doing",
+    "intro": "It goes straight to the maintainer. Nobody else sees it.",
+    "kinds": {
+      "bug": "Bug",
+      "feature": "Idea",
+      "feedback": "Thoughts"
+    },
+    "prompts": {
+      "bug": "What went wrong?",
+      "feature": "What should the app do?",
+      "feedback": "What's on your mind?"
+    },
+    "placeholders": {
+      "bug": "What you did, what happened, and what you expected instead.",
+      "feature": "Describe the idea and what you would use it for.",
+      "feedback": "Anything at all — what works, what doesn't, what feels wrong."
+    },
+    "contextToggle": "What gets sent with this",
+    "submit": "Send",
+    "sent": "Sent. Thank you — this is exactly what helps.",
+    "failed": "It couldn't be sent. Your text is still here — try again when you're online."
   }
 }

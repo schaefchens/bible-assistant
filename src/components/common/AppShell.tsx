@@ -20,6 +20,7 @@ import { EyesFreeMode } from '@/components/voice/EyesFreeMode';
 import { UpdateBanner } from '@/components/common/UpdateBanner';
 import { KeyFailureBanner } from '@/components/common/KeyFailureBanner';
 import { NarrationFallbackNotice } from '@/components/common/NarrationFallbackNotice';
+import { FeedbackButton } from '@/components/feedback/FeedbackButton';
 
 export function AppShell() {
   const { t } = useTranslation();
@@ -128,6 +129,11 @@ export function AppShell() {
       <VoiceController />
       <VoiceOverlay />
       <EyesFreeMode />
+      {/* Mounted with the floaters rather than per page: it is the same offer
+          on every screen, and it is only reached from here — so it never
+          appears over the onboarding wizard or the bare invite route, both of
+          which return above. It hides itself when the setting is off. */}
+      <FeedbackButton />
     </div>
   );
 }
