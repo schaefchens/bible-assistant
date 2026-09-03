@@ -690,7 +690,8 @@
       "failed": "That did not work. Try again.",
       "space_not_ready": "That space isn't ready to be shared yet — its author needs to finish setting up their profile.",
       "terms_required": "Accept the content standards first.",
-      "author_blocked": "You have blocked this author. Unblock them in Settings first."
+      "author_blocked": "You have blocked this author. Unblock them in Settings first.",
+      "own_space": "This is your own space — you are already reading everything in it."
     },
     "profile": {
       "title": "Your profile",
@@ -731,7 +732,8 @@
       "asking": "Asking…",
       "askedHint": "The author has been asked. You will see the pieces once they let you in.",
       "alreadyIn": "You already read this space",
-      "alreadyInHint": "It is in your list of spaces."
+      "alreadyInHint": "It is in your list of spaces.",
+      "ownSpaceTitle": "Your space"
     },
     "terms": {
       "title": "Content standards",
@@ -755,6 +757,14 @@
       "refusedTitle": "Not published",
       "refusedHint": "Edit the piece and publish again. The draft is saved.",
       "refusedGeneric": "This piece doesn't fit the content standards for spaces."
+    },
+    "shareSpace": {
+      "action": "Share this space",
+      "title": "Share this space",
+      "sendLink": "Share link",
+      "copyLink": "Copy link",
+      "copyCode": "Copy code",
+      "hint": "Whoever you send this to can ask the author to read the space. The author decides who gets in."
     }
   },
   "feedback": {

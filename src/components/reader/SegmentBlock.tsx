@@ -13,6 +13,7 @@ import { authorName, formatPostDate } from '@/services/community/spaceName';
 import { subscribedCodeForSpace } from '@/services/community/spaceReading';
 import { useCommunityStore } from '@/store/communityStore';
 import { ReportDialog } from '@/components/community/ReportDialog';
+import { ShareSpaceButton } from '@/components/community/ShareSpaceSheet';
 
 type Props = { segment: LoadedSegment };
 
@@ -113,6 +114,9 @@ export const SegmentBlock = memo(function SegmentBlock({ segment }: Props) {
               <FlagIcon />
             </button>
           )}
+          {/* Left of Play, which is the control this one is "near": both are
+              about doing something with this piece rather than about the page. */}
+          <ShareSpaceButton spaceId={isPost ? ref.spaceId : undefined} />
           <button
             type="button"
             aria-label={t(isPost ? 'read.playPost' : 'read.playChapter') as string}

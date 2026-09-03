@@ -28,6 +28,7 @@ const KNOWN_ERRORS = [
   'space_not_ready',
   'terms_required',
   'author_blocked',
+  'own_space',
 ];
 
 /**
@@ -70,6 +71,7 @@ export function SubscribePage() {
   const acceptTerms = useSettingsStore((s) => s.acceptCommunityTerms);
   const initialized = useCommunityStore((s) => s.initialized);
   const blocked = useCommunityStore((s) => s.blocked);
+  const spaces = useCommunityStore((s) => s.spaces);
   const termsAccepted = useCommunityTermsAccepted();
   const existing = useCommunityStore((s) =>
     code ? s.subscriptions.find((x) => x.code === code) : undefined,
@@ -252,6 +254,28 @@ export function SubscribePage() {
   // Same reasoning as the profile state above: the code stays in the URL, so
   // accepting the standards here lands straight back on the invitation.
   if (!termsAccepted) return <CommunityTermsGate />;
+
+  // Your own invitation, opened by you — usually the link you just sent
+  // yourself to see what it looks like. Offer the space rather than an "ask to
+  // read" button that can only refuse: `peek` answers even for your own space
+  // (it writes nothing), so the key comparison works before anything is asked.
+  const ownSpace =
+    (!!peek?.owner.authorKey && peek.owner.authorKey === profile.authorKey) ||
+    spaces.some((sp) => sp.shareCode === code);
+  if (ownSpace) {
+    return (
+      <Sheet
+        title={t('community.invite.ownSpaceTitle')}
+        subtitle={peek ? `${peek.owner.displayName} / ${peek.space.name}` : formatSpaceCode(code)}
+      >
+        <p className="text-sm text-ink-muted">{t('community.errors.own_space')}</p>
+        <Action onClick={() => navigate(ROUTES.spaces)}>{t('community.title')}</Action>
+        <Action ghost onClick={() => navigate(ROUTES.chat)}>
+          {t('common.cancel')}
+        </Action>
+      </Sheet>
+    );
+  }
 
   // Pre-empted rather than left to fail on the button: `peek` carries the
   // author's key, so an invitation from someone this device has blocked can say

@@ -73,10 +73,12 @@ export function SubscribeField() {
         'key_mismatch',
         'profile_required',
         'space_not_ready',
-        // Both raised by the store before it touches the network: the content
-        // standards have not been accepted, or this author is blocked.
+        // Raised by the store before it touches the network: the content
+        // standards have not been accepted, this author is blocked, or the code
+        // is the user's own.
         'terms_required',
         'author_blocked',
+        'own_space',
       ].includes(key);
       setError(t(`community.errors.${known ? key : 'failed'}`));
     } finally {

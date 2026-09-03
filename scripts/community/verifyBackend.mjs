@@ -330,6 +330,19 @@ try {
     assert.equal(after, before, 'peek must not create a membership');
   });
 
+  await check('an author cannot subscribe to their own space', async () => {
+    // Allowed, it wrote a request from the owner into the owner's own members
+    // file, and the client then listed the space twice — once as theirs, once
+    // as one they follow. The client refuses first (so it can explain); this is
+    // the half a modified client cannot skip, so it must create nothing.
+    const before = (await call(alice, 'members.list', {})).body.members.length;
+    const r = await call(alice, 'space.request', { code: blogCode });
+    assert.equal(r.status, 409);
+    assert.equal(r.body.error, 'own_space');
+    const after = (await call(alice, 'members.list', {})).body.members.length;
+    assert.equal(after, before, 'a refused self-request must append nothing');
+  });
+
   await check('an auto-approval space admits a subscriber immediately', async () => {
     const r = await call(bob, 'space.request', { code: blogCode });
     assert.equal(r.status, 200);

@@ -8,8 +8,14 @@ import {
 } from '@/db/dexie';
 import { authorKey } from '@/lib/postSigning';
 import { verifyPost } from '@/lib/postSignature';
-import { codeMatchesKey, mintSpaceCode, parseSpaceCodeInput } from '@/lib/spaceCode';
+import {
+  codeCarriesFingerprint,
+  codeMatchesKey,
+  mintSpaceCode,
+  parseSpaceCodeInput,
+} from '@/lib/spaceCode';
 import { communityTermsAccepted } from '@/lib/communityTerms';
+import { getIdentity } from '@/lib/identity';
 import * as api from '@/services/api/community';
 import { onCommunityPulled } from '@/services/community/communitySync';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
@@ -140,6 +146,49 @@ async function queued(op: Parameters<typeof enqueueOp>[0], payload: unknown): Pr
   await useLibraryStore.getState().refreshPendingOps();
 }
 
+/**
+ * Is this share code one of the user's **own** spaces?
+ *
+ * You cannot read your own writing as a subscriber. Asking to anyway appends a
+ * membership request to your own file — an invitation from yourself, sitting in
+ * your own inbox — and then the space is listed twice everywhere a space can be
+ * listed: the picker, `/spaces`, and the assistant's `read_space` lookup, where
+ * two identical names are also an ambiguity error.
+ *
+ * Two tests, because the obvious one is not enough. The stored `shareCode`
+ * catches the code as it is today; the fingerprint catches every other code
+ * that was ever *theirs* — one they have since rotated away, or one minted for a
+ * space that only exists on another device — because it commits to the signing
+ * key, and that key is the same for every space one author owns.
+ * `codeCarriesFingerprint` guards the second test: `codeMatchesKey` is
+ * vacuously true for a code that carries none.
+ */
+function isOwnCode(code: string, profile: Profile | null, spaces: Space[]): boolean {
+  if (spaces.some((sp) => sp.shareCode === code)) return true;
+  return !!profile && codeCarriesFingerprint(code) && codeMatchesKey(code, profile.authorKey);
+}
+
+/**
+ * Drop a membership request the user made to their own space.
+ *
+ * Older installs have one: asking to read your own space used to be allowed,
+ * and it left a request from yourself sitting in your own inbox — a decision
+ * nobody can sensibly make, and a "1 pending" badge that never clears. The row
+ * stays in the owner's file on the server (nothing here deletes another
+ * record's history); it is simply not a request, so it is not shown as one.
+ */
+function withoutSelf(rows: Membership[]): Membership[] {
+  const me = getIdentity()?.userId;
+  return me ? rows.filter((m) => m.userId !== me) : rows;
+}
+
+/** The same question about a subscription already on the device. `pinnedKey` is
+ * the owner's key as the server reported it, so it answers directly. */
+function isOwnSubscription(sub: Subscription, profile: Profile | null, spaces: Space[]): boolean {
+  if (profile && sub.pinnedKey === profile.authorKey) return true;
+  return isOwnCode(sub.code, profile, spaces);
+}
+
 function stripLocalPost(row: Post & { dirty?: number; deleted?: number; shared?: number }): Post {
   const { dirty: _d, deleted: _x, shared: _s, ...rest } = row;
   void _d;
@@ -197,22 +246,34 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     }
     for (const posts of Object.values(feed)) posts.sort((a, b) => b.publishedAt - a.publishedAt);
 
+    const profile = (profileRow?.value as LocalProfile | undefined) ?? null;
+    const liveSpaces = spaceRows.filter((s) => s.deleted !== 1);
+
     // A blocked author's spaces are dropped on the way in, not filtered at every
     // read site: a pull can legitimately hand back a subscription row the block
     // has already deleted (the delete op may still be queued), and one place
     // that enforces the block beats a dozen that remember to.
-    const liveSubs = subRows.filter((r) => r.deleted !== 1 && !blocked[r.pinnedKey]);
+    //
+    // A subscription to the user's *own* space is dropped the same way, and for
+    // the same reason: `subscribe` now refuses to make one, but installs that
+    // already have one (and a sync that hands it back) need it gone rather than
+    // hidden — a filtered row is a duplicate waiting to reappear on the next
+    // device. `init` is the one place this has to happen, since a completed
+    // pull re-runs it.
+    const unwanted = (r: (typeof subRows)[number]) =>
+      r.deleted !== 1 && (!!blocked[r.pinnedKey] || isOwnSubscription(r, profile, liveSpaces));
+    const liveSubs = subRows.filter((r) => r.deleted !== 1 && !unwanted(r));
     for (const row of subRows) {
-      if (row.deleted !== 1 && blocked[row.pinnedKey]) void get().unsubscribe(row.code);
+      if (unwanted(row)) void get().unsubscribe(row.code);
     }
 
     set({
-      profile: (profileRow?.value as LocalProfile | undefined) ?? null,
-      spaces: spaceRows.filter((s) => s.deleted !== 1).sort(byUpdatedDesc),
+      profile,
+      spaces: liveSpaces.sort(byUpdatedDesc),
       posts: livePosts.map(stripLocalPost).sort(byPublishedDesc),
       shared: Object.fromEntries(livePosts.map((p) => [p.id, p.shared === 1])),
       subscriptions: liveSubs,
-      memberships: memberRows,
+      memberships: withoutSelf(memberRows),
       feed,
       seen: Object.fromEntries(seenRows.map((r) => [r.id, r.seenAt])),
       blocked,
@@ -527,8 +588,13 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     // message they were sent. See parseSpaceCodeInput.
     const code = parseSpaceCodeInput(rawCode);
     if (!code) throw new Error('invalid_code');
-    if (!get().profile) throw new Error('profile_required');
+    const me = get().profile;
+    if (!me) throw new Error('profile_required');
     if (!communityTermsAccepted()) throw new Error('terms_required');
+    // Before the network, so a request from the owner never reaches their own
+    // members file. api.php refuses it too — this is the half that can explain
+    // itself, and the half that works offline.
+    if (isOwnCode(code, me, get().spaces)) throw new Error('own_space');
     // A code that carries a fingerprint can be matched against the block list
     // *before* asking, so a blocked author never even gets a membership row
     // appended in their file. A code without one is caught after the response.
@@ -678,12 +744,12 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     if (queued.some((q) => q.op === 'membership.decide')) return;
     try {
       const { members } = await api.listMembers();
-      const rows = (members ?? []).map((m) => ({ ...m, dirty: 0 as const }));
+      const rows = withoutSelf(members ?? []).map((m) => ({ ...m, dirty: 0 as const }));
       await db.transaction('rw', [db.memberships], async () => {
         await db.memberships.clear();
         await db.memberships.bulkPut(rows);
       });
-      set({ memberships: members ?? [] });
+      set({ memberships: withoutSelf(members ?? []) });
     } catch (e) {
       // Warned rather than swallowed: this runs once per poll and its failure
       // means the author's request inbox is quietly stale, which is invisible

@@ -900,6 +900,21 @@ api.php's `normalizeShareCode`**, which turns the result into a filename under `
 Replacing a code drops that space's memberships — not because the old code was a key, but
 because a membership is a decision about a particular invitation.
 
+**You cannot subscribe to yourself**, and it is refused in both places for the usual reason:
+`communityStore.subscribe` refuses before the network so it can *explain*, and `space.request`
+refuses (409 `own_space`) because a modified client would otherwise skip the first. Allowed, it
+wrote a membership request from the owner into the owner's own file — an invitation from
+yourself, waiting in your own inbox — and then listed the space twice everywhere a space is
+listed: the picker, `/spaces`, and `resolveSpaceByName`, where two identical names are also an
+ambiguity error. `isOwnCode` tests the stored `shareCode` *and* the code's fingerprint, because
+the fingerprint commits to the signing key and so catches every code that was ever theirs — one
+since rotated away, one minted on another device.
+
+Installs that already have one are healed rather than filtered: `init` tombstones a
+self-subscription the same way it drops a blocked author's, so the delete syncs and the row
+cannot reappear on the next device. `withoutSelf` does the matching job for the *request inbox*,
+where such an install has a pending request from itself that nobody can sensibly decide.
+
 ### Local-first ownership
 
 The writing is the user's and lives in Dexie; the server holds a *copy* of what is currently
@@ -1286,6 +1301,42 @@ Both system prompts carry the same rule in as many words, including that a name 
 to resolve is **never** a Bible reference. Prompt and matcher are two halves of one fix: the
 matcher makes the natural phrasing work, the prompt stops the fallback that made it look like
 scripture.
+
+### Passing a space on — readers share too
+
+Sharing used to be an owner's act only: the code lived in the space's own screen,
+behind a "Share code" section with mint and rotate beside it. But the person most likely to
+recommend a space is somebody who enjoys reading it, and a reader had no way to except by
+reading the code off a screen they had no reason to open.
+
+`components/community/ShareSpaceSheet.tsx` is the affordance for everyone else — the code, a
+link, a copy of either — and it appears in two places, both chosen the way `ReportDialog`'s
+were: on the **piece**, beside its play button, because wanting to recommend a space happens
+while reading something in it; and in the subscription row's `⋮` on `/spaces`, first in the
+menu and the only entry there that is not a complaint.
+
+What it hands on is exactly what the sharer was given: the same code, the same
+`/subscribe/<code>` link. That follows from the code being **an address, not a key** (above) —
+a resharer cannot grant access they don't control, because holding a code only buys the
+ability to *ask*. The exception is a space set to **auto**-approval, where the code is the
+gate; there a reshare does admit someone without the owner deciding, which is what that
+setting already means. The hint says what is true either way ("they can ask; the author
+decides") because a subscriber cannot see which mode a space is in — `Subscription` caches its
+kind, not its approval.
+
+`ShareSpaceButton` takes a **space id**, not a code, and that is load-bearing: keyed by code it
+was simply absent from the one space its owner had never got round to sharing — which is
+exactly the space you reach for a share button on. It mints on the tap. That is not a decision
+made behind anyone's back: a code is an *address*, the tap says "share this", and `SpaceDetail`
+offers the identical one-tap `shareCreate`. **Rotating** stays over there, because it is the
+one share action with a consequence — every current reader is cleared — and it belongs beside
+the sentence that says so. The button still renders nothing when there is no code *and* the
+space is not the user's to mint one for.
+
+`shareCodeForSpace` / `shareLabelForSpace` in `spaceReading.ts` answer for either side of a
+space from one `spaceId`, and both return primitives so a component can select them straight
+out of the store — the same trick `SegmentBlock` already used for `reportCode`, so a feed
+refresh cannot re-render the verse tree.
 
 ### Where the share code is asked for
 

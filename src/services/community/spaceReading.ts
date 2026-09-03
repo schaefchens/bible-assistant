@@ -7,7 +7,7 @@ import {
 } from '@/services/reading/readingSequence';
 import type { Translation } from '@/services/bible/bibleApi';
 import { postToUnits } from './postUnits';
-import { spaceDisplayName } from './spaceName';
+import { spaceDisplayName, spaceLabel } from './spaceName';
 
 /**
  * The seam between community data and the reading machinery.
@@ -196,6 +196,44 @@ export function subscribedCodeForSpace(
     if (posts.some((p) => p.spaceId === spaceId)) return code;
   }
   return undefined;
+}
+
+/**
+ * The code a space can be passed on by — whichever side of it you are on.
+ *
+ * A reader always has one: it is how they got in. An owner has one only once
+ * they have shared the space, and `undefined` there is the honest answer rather
+ * than a reason to mint one behind their back — creating the first code is a
+ * decision, and it belongs on the space's own screen.
+ *
+ * Own spaces are checked first: if the user somehow both owns a space and has a
+ * subscription row for it, their own code is the authoritative one.
+ */
+export function shareCodeForSpace(
+  state: SpaceSnapshot,
+  spaceId: string | undefined,
+): string | undefined {
+  if (!spaceId) return undefined;
+  const own = state.spaces.find((s) => s.id === spaceId);
+  if (own) return own.shareCode;
+  return subscribedCodeForSpace(state.feed, spaceId);
+}
+
+/**
+ * How to name a space to whoever is about to share it — `Christoph / Heute`.
+ *
+ * Returns a plain string so it can be selected straight out of the store
+ * without re-rendering on every feed refresh, the same trick
+ * `subscribedCodeForSpace` is used for in `SegmentBlock`.
+ */
+export function shareLabelForSpace(state: SpaceSnapshot, spaceId: string | undefined): string {
+  if (!spaceId) return '';
+  const own = state.spaces.find((s) => s.id === spaceId);
+  if (own) return spaceLabel(state.profile?.displayName ?? '', own);
+  const code = subscribedCodeForSpace(state.feed, spaceId);
+  const sub = code ? state.subscriptions.find((s) => s.code === code) : undefined;
+  if (!sub) return '';
+  return spaceLabel(sub.ownerName, { kind: sub.spaceKind ?? 'custom', name: sub.spaceName });
 }
 
 /**

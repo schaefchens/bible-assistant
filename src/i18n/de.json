@@ -690,7 +690,8 @@
       "failed": "Das hat nicht funktioniert. Bitte noch einmal versuchen.",
       "space_not_ready": "Dieser Raum kann noch nicht geteilt werden — die Autorin oder der Autor muss das Profil noch fertig einrichten.",
       "terms_required": "Bitte akzeptiere zuerst die inhaltlichen Regeln.",
-      "author_blocked": "Du hast diesen Autor blockiert. Gib ihn zuerst in den Einstellungen frei."
+      "author_blocked": "Du hast diesen Autor blockiert. Gib ihn zuerst in den Einstellungen frei.",
+      "own_space": "Das ist dein eigener Raum — du liest darin ohnehin schon alles."
     },
     "profile": {
       "title": "Dein Profil",
@@ -731,7 +732,8 @@
       "asking": "Frage an…",
       "askedHint": "Die Anfrage ist raus. Sobald du zugelassen wirst, siehst du die Beiträge.",
       "alreadyIn": "Diesen Raum liest du schon",
-      "alreadyInHint": "Er steht in deiner Liste."
+      "alreadyInHint": "Er steht in deiner Liste.",
+      "ownSpaceTitle": "Dein Raum"
     },
     "terms": {
       "title": "Inhaltliche Regeln",
@@ -755,6 +757,14 @@
       "refusedTitle": "Nicht veröffentlicht",
       "refusedHint": "Bearbeite den Beitrag und veröffentliche erneut. Der Entwurf ist gespeichert.",
       "refusedGeneric": "Dieser Beitrag passt nicht zu den inhaltlichen Regeln für Räume."
+    },
+    "shareSpace": {
+      "action": "Diesen Raum teilen",
+      "title": "Diesen Raum teilen",
+      "sendLink": "Link teilen",
+      "copyLink": "Link kopieren",
+      "copyCode": "Code kopieren",
+      "hint": "Wem du das schickst, der kann die Autorin oder den Autor um Zutritt bitten. Wer hineindarf, entscheidet die Autorin oder der Autor."
     }
   },
   "feedback": {

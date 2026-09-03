@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
-import { BookChapterPicker } from '@/components/chat/BookChapterPicker';
+import { BookChapterPicker, SourceIcon } from '@/components/chat/BookChapterPicker';
 import { playSegmentInReader } from '@/lib/readingListPlayback';
 import { BIBLE_SOURCE, formatSegment, isPostSegment } from '@/services/reading/readingSequence';
 import { useCommunityStore } from '@/store/communityStore';
@@ -63,66 +63,81 @@ export function ReaderHeader({ onOpenTranslations, onOpenAppearance }: Props) {
 
   return (
     <header className="flex items-center justify-between gap-2 px-4 py-2 border-b border-surface-raised/50 bg-surface/90 backdrop-blur">
-      <BookChapterPicker
-        showReadingLists
-        // Choosing a chapter out of the Bible *is* choosing to read the Bible,
-        // so it leaves whatever list was being followed. No separate control.
-        onPick={(bookId, chapter) => {
-          void setSource(BIBLE_SOURCE).then(() =>
-            goTo({ translation, bookId, chapter }),
-          );
-        }}
-        // Continue *reads*, unlike a passage tap: it is the "carry on where I
-        // left off" button, and stopping at a jump would make it a slower way to
-        // do what tapping the passage already does.
-        onContinue={(ref) => {
-          void playSegmentInReader(ref);
-        }}
-        // A list passage jumps the page instead of reading aloud: the reader's
-        // own play button is right there, and the chapter tap above doesn't
-        // start audio either.
-        onPickSegment={(ref) => {
-          void (ref.listId
-            ? useReaderStore
-                .getState()
-                .setSource({ kind: 'list', listId: ref.listId })
-                .then(() => goTo(ref))
-            : goTo(ref));
-        }}
-        trigger={(open) => (
-          <button
-            type="button"
-            onClick={open}
-            aria-label={t('read.pickChapter') as string}
-            className="flex items-center gap-1.5 min-w-0 text-brand hover:text-brand-bright transition-colors"
-          >
-            <span className="min-w-0 text-left leading-tight">
-              {sourceName && (
-                <span className="block text-[10px] uppercase tracking-wider text-brand-muted truncate">
-                  {sourceName}
-                </span>
-              )}
-              <span className="block font-serif text-lg truncate">{label}</span>
-            </span>
-            <ChevronDown />
-          </button>
-        )}
-      />
+      {/* **What you are reading**, on the left: the passage, the copy of it you
+          can keep, and the text it is in. The two on the right are about how it
+          is *presented* — how it scrolls, and how it looks. Grouping them that
+          way puts the download and the translation beside the thing they both
+          name, instead of at the far end of the bar from it.
 
-      <div className="flex items-center gap-1 shrink-0">
+          `min-w-0` so the group can shrink: the picker's title is the one thing
+          here allowed to truncate, and every control beside it is `shrink-0`. */}
+      <div className="flex items-center gap-1 min-w-0">
+        <BookChapterPicker
+          showReadingLists
+          // Choosing a chapter out of the Bible *is* choosing to read the Bible,
+          // so it leaves whatever list was being followed. No separate control.
+          onPick={(bookId, chapter) => {
+            void setSource(BIBLE_SOURCE).then(() =>
+              goTo({ translation, bookId, chapter }),
+            );
+          }}
+          // Continue *reads*, unlike a passage tap: it is the "carry on where I
+          // left off" button, and stopping at a jump would make it a slower way to
+          // do what tapping the passage already does.
+          onContinue={(ref) => {
+            void playSegmentInReader(ref);
+          }}
+          // A list passage jumps the page instead of reading aloud: the reader's
+          // own play button is right there, and the chapter tap above doesn't
+          // start audio either.
+          onPickSegment={(ref) => {
+            void (ref.listId
+              ? useReaderStore
+                  .getState()
+                  .setSource({ kind: 'list', listId: ref.listId })
+                  .then(() => goTo(ref))
+              : goTo(ref));
+          }}
+          trigger={(open) => (
+            <button
+              type="button"
+              onClick={open}
+              aria-label={t('read.pickChapter') as string}
+              className="flex items-center gap-1.5 min-w-0 text-brand hover:text-brand-bright transition-colors"
+            >
+              {/* The glyph of whatever is being read — a book, a reading list, a
+                  quill for somebody's writing — so the trigger shows the same
+                  mark as the row the user tapped in the sheet. `shrink-0`
+                  because the title beside it is what gives way on a narrow
+                  phone. */}
+              <SourceIcon source={source} className="shrink-0" />
+              <span className="min-w-0 text-left leading-tight">
+                {sourceName && (
+                  <span className="block text-[10px] uppercase tracking-wider text-brand-muted truncate">
+                    {sourceName}
+                  </span>
+                )}
+                <span className="block font-serif text-lg truncate">{label}</span>
+              </span>
+              <ChevronDown />
+            </button>
+          )}
+        />
         {position && (
-          <NarrationDownloadButton
-            subject={
-              isPostSegment(position)
-                ? { kind: 'post', spaceId: position.spaceId!, postId: position.postId! }
-                : {
-                    kind: 'chapter',
-                    translation,
-                    bookId: position.bookId,
-                    chapter: position.chapter,
-                  }
-            }
-          />
+          <span className="shrink-0">
+            <NarrationDownloadButton
+              subject={
+                isPostSegment(position)
+                  ? { kind: 'post', spaceId: position.spaceId!, postId: position.postId! }
+                  : {
+                      kind: 'chapter',
+                      translation,
+                      bookId: position.bookId,
+                      chapter: position.chapter,
+                    }
+              }
+            />
+          </span>
         )}
         {/* A post has no translation to switch, and offering one would imply the
             text could be re-rendered in another — it can't. */}
@@ -131,11 +146,14 @@ export function ReaderHeader({ onOpenTranslations, onOpenAppearance }: Props) {
             type="button"
             onClick={onOpenTranslations}
             aria-label={t('read.switchTranslation') as string}
-            className="px-2 py-1 text-[10px] uppercase tracking-wider text-brand-muted hover:text-brand transition-colors"
+            className="shrink-0 px-2 py-1 text-[10px] uppercase tracking-wider text-brand-muted hover:text-brand transition-colors"
           >
             {translation}
           </button>
         )}
+      </div>
+
+      <div className="flex items-center gap-1 shrink-0">
         <button
           type="button"
           onClick={() => setEndless(!endless)}

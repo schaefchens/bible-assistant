@@ -2302,6 +2302,13 @@ function handleSpaceRequest(array $ctx): void {
     if ($me === null) fail(403, 'profile_required');
 
     $target = resolveShareCode($code);
+    // Nobody subscribes to themselves. Allowed, it wrote a membership request
+    // from the owner into the owner's own file — an invitation from yourself,
+    // waiting in your own inbox — and the client then listed the space twice,
+    // once as theirs and once as one they follow. The client refuses first so it
+    // can explain; this is the half a modified client cannot skip.
+    if ($target['userId'] === $ctx['userId']) fail(409, 'own_space');
+
     $space = findById(readJsonArrayFile(spacesPath($target['userDir'])), $target['spaceId']);
     if ($space === null) fail(404, 'unknown share code');
     requireOwnerPublished($target['userDir']);

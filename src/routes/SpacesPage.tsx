@@ -14,6 +14,7 @@ import { spaceDisplayName, spaceLabel } from '@/services/community/spaceName';
 import { NewPiecesBar } from '@/components/community/NewPiecesBar';
 import { CommunityTermsGate } from '@/components/community/CommunityTermsGate';
 import { ReportDialog } from '@/components/community/ReportDialog';
+import { ShareSpaceSheet } from '@/components/community/ShareSpaceSheet';
 import { useCommunityTermsAccepted } from '@/lib/communityTerms';
 import { useCommunityRefresh } from '@/hooks/useCommunityRefresh';
 
@@ -268,6 +269,7 @@ function SubscriptionMenu({
   const [open, setOpen] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState(false);
   const [reporting, setReporting] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   /** Don't leave the reader walking a space that is about to disappear. */
   const releaseReader = (codes: string[]) => {
@@ -308,6 +310,17 @@ function SubscriptionMenu({
               className="absolute right-0 top-full mt-1 z-40 w-52 py-1 rounded-xl bg-surface-raised border border-surface-raised/70 shadow-lg"
               role="menu"
             >
+              {/* First, and the only one here that isn't a complaint: a reader
+                  who likes a space is the likeliest person to recommend it, and
+                  what they pass on is the same code they were given. */}
+              <MenuItem
+                onClick={() => {
+                  setOpen(false);
+                  setSharing(true);
+                }}
+              >
+                {t('community.shareSpace.action')}
+              </MenuItem>
               <MenuItem
                 onClick={() => {
                   setOpen(false);
@@ -353,6 +366,12 @@ function SubscriptionMenu({
       {reporting && (
         <ReportDialog code={code} title={label} onClose={() => setReporting(false)} />
       )}
+      <ShareSpaceSheet
+        code={code}
+        title={label}
+        open={sharing}
+        onClose={() => setSharing(false)}
+      />
     </>
   );
 }
