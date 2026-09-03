@@ -1338,6 +1338,25 @@ space from one `spaceId`, and both return primitives so a component can select t
 out of the store — the same trick `SegmentBlock` already used for `reportCode`, so a feed
 refresh cannot re-render the verse tree.
 
+**Several spaces from one author collapse into one row** in the picker's spaces view
+(`groupSubscriptionsByAuthor` + `AuthorGroup`). Follow a few prolific people and the flat list
+was mostly the same name repeated, and it grows without bound. Grouping is presentation, so it
+stays out of the store — but *how* to group is a correctness question: it keys on the **pinned
+signing key**, never on the display name. A name is neither unique nor claimed (see
+`spaceLabel`), so two people called Christoph would be merged under one heading, which for a
+feature about knowing whose writing you are reading is the one mistake not to make. Same
+identity `blockAuthor` keys on.
+
+Only where it earns the tap: one space from someone stays a flat row naming both, several
+become a collapsible whose children name the space alone — the author is the heading. Closed
+by default, since a shorter list is the point, with the counts on the closed row so a collapsed
+group still says what is inside it.
+
+**The user's own spaces group by the same rule**, since four rows all beginning with your own
+name is the same noise and the same unbounded list. Its heading is "your spaces" rather than
+your display name: it is the one group you can write in, and nobody thinks of their own writing
+as belonging to their own name.
+
 ### Where the share code is asked for
 
 The code field is **in the Rooms header, left of "new space"**. It used to sit at

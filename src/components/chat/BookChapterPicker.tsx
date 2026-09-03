@@ -18,7 +18,7 @@ import {
   type ReaderSource,
   type SegmentRef,
 } from '@/services/reading/readingSequence';
-import { resolveSpaceFrom } from '@/services/community/spaceReading';
+import { groupSubscriptionsByAuthor, resolveSpaceFrom } from '@/services/community/spaceReading';
 import { ROUTES } from '@/lib/appRoutes';
 import { listChapterCount, passageDetail } from '@/services/reading/readingEntries';
 import { progressStats } from '@/services/reading/readingProgress';
@@ -28,7 +28,7 @@ import { TranslationList } from '@/components/bible/TranslationList';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { playSegmentInChat } from '@/lib/readingListPlayback';
 import { BottomSheet } from '@/components/common/BottomSheet';
-import { spaceLabel } from '@/services/community/spaceName';
+import { spaceDisplayName, spaceLabel } from '@/services/community/spaceName';
 import { NewPiecesBar } from '@/components/community/NewPiecesBar';
 
 type View = 'books' | 'chapters' | 'translations' | 'lists' | 'spaces';
@@ -173,6 +173,70 @@ function SourceRow({
       </span>
       <span className="block text-[11px] text-ink-muted truncate">{detail}</span>
     </button>
+  );
+}
+
+/**
+ * One author's spaces behind a single row.
+ *
+ * **Closed by default**, because the whole point is a shorter list: someone
+ * who follows five people with three spaces each was looking at fifteen rows
+ * where five will do. The count is on the closed row so a collapsed group still
+ * says how much is inside it.
+ *
+ * A component rather than a branch in the loop, so each group owns its own open
+ * state — a hook cannot live inside a `map`.
+ */
+function AuthorGroup({
+  ownerName,
+  detail,
+  children,
+}: {
+  ownerName: string;
+  detail: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="w-full text-left px-3 py-2 rounded-xl bg-surface/60 hover:bg-brand/10 transition-colors flex items-center gap-2"
+      >
+        <Caret open={open} />
+        <span className="min-w-0 flex-1">
+          <span className="block font-serif text-brand text-sm truncate">{ownerName}</span>
+          <span className="block text-[11px] text-ink-muted truncate">{detail}</span>
+        </span>
+      </button>
+      {/* Indented under a rule, so a space inside a group is unmistakably one of
+          that author's rather than the next row down. */}
+      {open && (
+        <ul className="mt-1 mb-1 ml-3 pl-2 space-y-1 border-l border-brand/20">{children}</ul>
+      )}
+    </li>
+  );
+}
+
+/** The group's disclosure marker: right when closed, down when open. */
+function Caret({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={clsx('text-brand-muted shrink-0 transition-transform', open && 'rotate-90')}
+      aria-hidden="true"
+    >
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
   );
 }
 
@@ -356,6 +420,10 @@ export function BookChapterPicker({
     [],
   );
   const selectedBook = getBookById(selectedBookId) ?? BOOKS[0];
+  const authorGroups = useMemo(
+    () => groupSubscriptionsByAuthor(subscriptions),
+    [subscriptions],
+  );
   const currentTranslation = getTranslationInfo(translation);
   const chapters = useMemo(
     () => Array.from({ length: selectedBook.chapters }, (_, i) => i + 1),
@@ -782,41 +850,91 @@ export function BookChapterPicker({
               <NewPiecesBar compact onOpened={() => setOpen(false)} />
             </div>
             <ul className="py-2 space-y-1">
-              {ownSpaces.map((space) => (
-                <li key={space.id}>
-                  <SourceRow
-                    label={spaceLabel(profileName, space)}
-                    emoji={space.emoji}
-                    detail={t('community.pieces', {
-                      count: ownPosts.filter((p) => p.spaceId === space.id && p.publishedAt > 0)
-                        .length,
-                    })}
-                    onSelect={() => {
-                      void setSource({ kind: 'space', spaceId: space.id });
-                      setView('books');
-                    }}
-                  />
-                </li>
-              ))}
-              {subscriptions.map((sub) => (
-                <li key={sub.code}>
-                  <SourceRow
-                    label={spaceLabel(sub.ownerName, { kind: sub.spaceKind ?? 'custom', name: sub.spaceName })}
-                    emoji={sub.spaceEmoji}
-                    detail={
-                      sub.status === 'accepted'
-                        ? (t('community.pieces', { count: (feed[sub.code] ?? []).length }) as string)
-                        : (t(
-                            sub.status === 'pending' ? 'community.pending' : 'community.revoked',
-                          ) as string)
-                    }
-                    onSelect={() => {
-                      void setSource({ kind: 'space', code: sub.code });
-                      setView('books');
-                    }}
-                  />
-                </li>
-              ))}
+              {/* The user's own spaces group by the same rule as anybody
+                  else's — four rows all beginning with your own name is the
+                  same noise, and the same unbounded list. The heading is
+                  "your spaces" rather than your name: it is the one group you
+                  can write in, and nobody thinks of their own writing as
+                  belonging to their display name. */}
+              {(() => {
+                const grouped = ownSpaces.length > 1;
+                const rows = ownSpaces.map((space) => (
+                  <li key={space.id}>
+                    <SourceRow
+                      label={grouped ? spaceDisplayName(space) : spaceLabel(profileName, space)}
+                      emoji={space.emoji}
+                      detail={t('community.pieces', {
+                        count: ownPosts.filter((p) => p.spaceId === space.id && p.publishedAt > 0)
+                          .length,
+                      })}
+                      onSelect={() => {
+                        void setSource({ kind: 'space', spaceId: space.id });
+                        setView('books');
+                      }}
+                    />
+                  </li>
+                ));
+                if (!grouped) return rows;
+                const pieces = ownPosts.filter((p) => p.publishedAt > 0).length;
+                return (
+                  <AuthorGroup
+                    ownerName={t('community.yourSpaces')}
+                    detail={`${t('community.spacesCount', { count: ownSpaces.length })} · ${t('community.pieces', { count: pieces })}`}
+                  >
+                    {rows}
+                  </AuthorGroup>
+                );
+              })()}
+              {/* Grouped by author, but only where grouping earns its tap: one
+                  space from someone is a row, several are a collapsible. Follow
+                  a few prolific people and the flat list was mostly the same
+                  name over and over. */}
+              {authorGroups.map((group) => {
+                const rows = group.subs.map((sub) => (
+                  <li key={sub.code}>
+                    <SourceRow
+                      // Inside a group the author is the heading, so the row is
+                      // the space alone; ungrouped it still names both.
+                      label={
+                        group.subs.length > 1
+                          ? spaceDisplayName({ kind: sub.spaceKind ?? 'custom', name: sub.spaceName })
+                          : spaceLabel(sub.ownerName, {
+                              kind: sub.spaceKind ?? 'custom',
+                              name: sub.spaceName,
+                            })
+                      }
+                      emoji={sub.spaceEmoji}
+                      detail={
+                        sub.status === 'accepted'
+                          ? (t('community.pieces', {
+                              count: (feed[sub.code] ?? []).length,
+                            }) as string)
+                          : (t(
+                              sub.status === 'pending' ? 'community.pending' : 'community.revoked',
+                            ) as string)
+                      }
+                      onSelect={() => {
+                        void setSource({ kind: 'space', code: sub.code });
+                        setView('books');
+                      }}
+                    />
+                  </li>
+                ));
+                if (group.subs.length === 1) return rows;
+                const pieces = group.subs.reduce(
+                  (n, sub) => n + (feed[sub.code] ?? []).length,
+                  0,
+                );
+                return (
+                  <AuthorGroup
+                    key={group.authorKey}
+                    ownerName={group.ownerName}
+                    detail={`${t('community.spacesCount', { count: group.subs.length })} · ${t('community.pieces', { count: pieces })}`}
+                  >
+                    {rows}
+                  </AuthorGroup>
+                );
+              })}
             </ul>
             <button
               type="button"

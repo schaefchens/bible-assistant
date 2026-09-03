@@ -765,7 +765,10 @@
       "copyLink": "Link kopieren",
       "copyCode": "Code kopieren",
       "hint": "Wem du das schickst, der kann die Autorin oder den Autor um Zutritt bitten. Wer hineindarf, entscheidet die Autorin oder der Autor."
-    }
+    },
+    "spacesCount_one": "{{count}} Raum",
+    "spacesCount_other": "{{count}} Räume",
+    "yourSpaces": "Deine Räume"
   },
   "feedback": {
     "open": "Fehler melden oder Rückmeldung senden",

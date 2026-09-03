@@ -765,7 +765,10 @@
       "copyLink": "Copy link",
       "copyCode": "Copy code",
       "hint": "Whoever you send this to can ask the author to read the space. The author decides who gets in."
-    }
+    },
+    "spacesCount_one": "{{count}} space",
+    "spacesCount_other": "{{count}} spaces",
+    "yourSpaces": "Your spaces"
   },
   "feedback": {
     "open": "Report a bug or send feedback",

@@ -236,6 +236,53 @@ export function shareLabelForSpace(state: SpaceSnapshot, spaceId: string | undef
   return spaceLabel(sub.ownerName, { kind: sub.spaceKind ?? 'custom', name: sub.spaceName });
 }
 
+/** Several spaces by one author, in the order they were first subscribed to. */
+export type AuthorSubscriptions = {
+  /** The author's signing key — see below for why it, and not their name. */
+  authorKey: string;
+  ownerName: string;
+  subs: Subscription[];
+};
+
+/**
+ * Group subscriptions by who wrote them.
+ *
+ * A flat list is fine until someone follows a few prolific authors: every row
+ * then begins with the same name, and finding a space means reading past the
+ * repeats. Grouping is presentation, so it stays out of the store — but *how* to
+ * group is a correctness question, and it belongs here with the rest of what a
+ * space is.
+ *
+ * **Keyed by the pinned signing key, never by the display name.** A name is
+ * neither unique nor claimed — two people can both be "Christoph", and merging
+ * them would put one author's spaces under another's heading, which for a
+ * feature whose whole point is knowing whose writing you are reading is the one
+ * mistake not to make. It is the same identity `blockAuthor` keys on, and for
+ * the same reason.
+ *
+ * Order is preserved: first appearance decides where a group sits, so nothing
+ * jumps around as feeds refresh.
+ */
+export function groupSubscriptionsByAuthor(subs: Subscription[]): AuthorSubscriptions[] {
+  const out: AuthorSubscriptions[] = [];
+  const byKey = new Map<string, AuthorSubscriptions>();
+  for (const sub of subs) {
+    const existing = byKey.get(sub.pinnedKey);
+    if (existing) {
+      existing.subs.push(sub);
+      continue;
+    }
+    const group: AuthorSubscriptions = {
+      authorKey: sub.pinnedKey,
+      ownerName: sub.ownerName,
+      subs: [sub],
+    };
+    byKey.set(sub.pinnedKey, group);
+    out.push(group);
+  }
+  return out;
+}
+
 /**
  * Every accepted subscription's pieces, newest first across all of them.
  *
