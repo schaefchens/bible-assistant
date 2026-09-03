@@ -403,6 +403,15 @@ because clearing a filter is not a request to be sent somewhere else.
   bibles carries paragraph markup — `public/bibles/*.xml` has only `<verse>`/`<chapter>`/`<book>`
   — so the rule is "break after a verse that ends a sentence, once ≥4 verses have accumulated".
   Deterministic and never mid-sentence, but not editorial. `MIN_VERSES_PER_PARAGRAPH` is the knob.
+- **Auto-continuation moves the reader the way the reader moves** (`readerStore.adopt`).
+  Endless scroll grows downward, so a continuation appends and the page carries on under the
+  voice; **paged mode turns the page** — the window is replaced and `position` follows, because
+  appending there stacked the next chapter under the current one while the header and the pager
+  still named the old one, three answers on screen to "where am I?". The position move is
+  reported as a `'jump'`: `autoPlay` has already ticked the passage that finished and claimed
+  the new one, and letting the dwell rule fire as well would count progress twice off two
+  different clocks. `ReadPage` scrolls a self-turned page to the top (`pagedAt`), which the
+  pager's own next button was already doing and the picker was not.
 - **Two fields, not one array**: `segments` is a bounded cache keyed by group id, `visible` is the
   mounted window (`MAX_VISIBLE = 6`). The cache outlives window trimming so a track queued for a
   scrolled-away segment still resolves. `MAX_VISIBLE` is the load-bearing render-cost mitigation
@@ -796,6 +805,16 @@ chapter 0 of book 0: **auto-play reads a blog post and then starts Genesis.**
 `nextReadingAfter` now has a `nextInSpace` branch (next post, stop at the end, no canonical
 fallback — the alternative to the end of a space is silence), plus a defensive guard for a post
 group carrying no provenance at all.
+
+**Provenance is only as good as the host that emits it**, and that is where this went wrong
+first: `readerReadingHost.toGroup` derived provenance from `ref.listId && ref.entryId` alone,
+so every post group reached `nextReadingAfter` carrying nothing. The defensive guard then did
+its job — no Genesis after a blog post — and a space stopped dead after its first piece with
+auto-continuation on and the pager still showing another piece after it. `provenanceOf(ref)`
+now answers for both kinds, **post first**, since a post ref has no list ids to fall back on.
+Nothing else needed changing: `nextInSpace`, `appendReading`'s space branch and
+`noteEntryStarted`'s `markSeen` were all in place and simply never called. Anything that
+teaches the reader a new kind of segment has to extend that one function too.
 
 ### Audio, and why the server needs no new storage
 
@@ -1239,6 +1258,35 @@ tested against a live model — and it doubles as a kill switch. A stubbed verdi
 deliberately bypasses the cache in both directions, so flipping it changes the
 answer.
 
+### Asking the assistant for a space
+
+`list_spaces`, `write_post`, `read_space` and `read_new` are the space half of the tool
+contract; `read_space` and `read_new` are in `READ_TOOL_NAMES`, so like `read_verses` the
+reading *is* the reply. Both open the **reader**, not the chat — chat has no representation
+for a post (`ChatMessage` carries a list provenance but not a space's).
+
+**A space is named after its author far more often than after itself.** "Read Christoph's
+Today" is the ordinary phrasing, and matching `space.name` alone answered *nothing* to it —
+half the people you follow have a space called Today, and none of them is called "Christoph's
+Today". The model's next move was to look for a book of the Bible called Christoph, which is
+the failure the user actually sees. So `resolveSpaceByName` matches over **aliases**: the
+localized name, the stored name (a Today space is stored as the literal `'Today'` and shown
+as "Heute", so both are needed), the author alone, and author-plus-name. Three tiers — exact
+alias, alias containing the phrase, then every content word appearing in the author-plus-name
+text — with the possessive folded away in both languages (`'s` by the normalizer, the German
+trailing `s` by `looselyEqual`) and filler words dropped from the last tier only, so a space
+genuinely called "The Room" still matches exactly one tier earlier.
+
+Ambiguity stays an error rather than a guess — reading the wrong person's writing aloud is
+worse than asking — but the error now *names the candidates* (and "no match" names every
+space there is), because the model's next turn is only as good as what the failure told it.
+"my Today" is not ambiguous, though: an ownership word narrows to the user's own.
+
+Both system prompts carry the same rule in as many words, including that a name which fails
+to resolve is **never** a Bible reference. Prompt and matcher are two halves of one fix: the
+matcher makes the natural phrasing work, the prompt stops the fallback that made it look like
+scripture.
+
 ### Where the share code is asked for
 
 The code field is **in the Rooms header, left of "new space"**. It used to sit at
@@ -1557,6 +1605,15 @@ stops, and Settings' storage readout is where that becomes visible. Downloads ar
 **per chapter** on purpose — a book means up to 2,461 verses of TTS plus forced
 alignment — and cover exactly what the current settings would *play*, so a reader with
 announcements off isn't billed for clips they'll never hear.
+
+**A continuation stays on the engine that is already reading.** `readingUsesBrowserVoice`
+answers from the *setting* and the network, so it cannot see a reading that dropped to the
+device voice because TTS was unreachable — an OpenAI voice is still selected and the browser is
+still online. `autoPlay.browserTtsIsReading()` is the other half, and without it a reading that
+fell back simply stopped at the chunk boundary: measured against a backend returning 502, every
+track failed to build and the continuation enqueued nothing at all, with no error anywhere. The
+same episode is why an **empty prefetch is treated as a failed one** rather than cached — a
+cached empty track list reads as "this chunk is silent" at enqueue time.
 
 **A reading never plays silence.** `startPlayback.readingUsesBrowserVoice(plan)` folds
 "definitely offline" into the engine choice — *unless* the whole plan is already

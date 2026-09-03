@@ -17,7 +17,27 @@ import {
   type ReadingGroup,
   type ReadingGroupId,
   type ReadingHost,
+  type ReadingProvenance,
 } from './readingHosts';
+
+/**
+ * What a segment's ref says about where the reading came from — the reader's
+ * half of the contract `lib/readingContinuation.ts` reads.
+ *
+ * **A post is checked first, and it is not an optimisation.** A post's ref
+ * carries no list ids, so without this branch a piece of somebody's writing
+ * reached `nextReadingAfter` with no provenance at all, hit its defensive
+ * "post units but nowhere to continue" guard, and the reading stopped dead at
+ * the end of the first piece — with auto-continuation on, and with the pager
+ * quite happily showing another piece after it. Everything downstream of here
+ * (`nextInSpace`, `appendReading`'s space branch, `noteEntryStarted`'s
+ * markSeen) was already in place and simply never got called.
+ */
+function provenanceOf(ref: SegmentRef): ReadingProvenance | undefined {
+  if (ref.spaceId && ref.postId) return { spaceId: ref.spaceId, postId: ref.postId };
+  if (ref.listId && ref.entryId) return { listId: ref.listId, entryId: ref.entryId };
+  return undefined;
+}
 
 function toGroup(segment: LoadedSegment): ReadingGroup {
   const { ref } = segment;
@@ -27,8 +47,7 @@ function toGroup(segment: LoadedSegment): ReadingGroup {
     // A Bible segment is always a whole chapter, so headings read "John,
     // chapter 3"; a list entry with verse ranges reads "John 3:16-18".
     wholeChapter: isWholeChapter(ref),
-    provenance:
-      ref.listId && ref.entryId ? { listId: ref.listId, entryId: ref.entryId } : undefined,
+    provenance: provenanceOf(ref),
   };
 }
 

@@ -98,6 +98,10 @@ export function ReadPage() {
   // deliberately. Going back lands at the *end* of the previous chapter, the way
   // turning back a page in a physical book does.
   const pendingScroll = useRef<'top' | 'bottom' | null>(null);
+  /** The single page last rendered, so a window replaced by something other
+   * than the pager (the picker, auto-continuation turning the page) can be told
+   * apart from a window that merely grew. */
+  const pagedAt = useRef<string | null>(null);
   const step = useCallback(
     (dir: 1 | -1) => {
       pendingScroll.current = dir === 1 ? 'top' : 'bottom';
@@ -107,11 +111,22 @@ export function ReadPage() {
   );
   useLayoutEffect(() => {
     const el = scrollRef.current;
+    if (!el || visible.length === 0) return;
     const want = pendingScroll.current;
-    if (!el || !want || visible.length === 0) return;
     pendingScroll.current = null;
-    el.scrollTop = want === 'top' ? 0 : el.scrollHeight;
-  }, [visible]);
+    const single = !endless && visible.length === 1 ? visible[0] : null;
+    const turnedElsewhere = single !== null && single !== pagedAt.current;
+    pagedAt.current = single;
+    if (want) {
+      el.scrollTop = want === 'top' ? 0 : el.scrollHeight;
+      return;
+    }
+    // A page the reader turned for itself — auto-continuation, or the picker —
+    // starts at the top, exactly as the pager's next button does. Without this
+    // the old page's scroll offset survives into a page that may be shorter,
+    // landing the reader at the end of a piece that has not been read yet.
+    if (turnedElsewhere) el.scrollTop = 0;
+  }, [visible, endless]);
 
   const jumpToTop = useCallback(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;

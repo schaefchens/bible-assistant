@@ -60,6 +60,18 @@ function autoPlayOn(): boolean {
   return useSettingsStore.getState().autoPlayReading;
 }
 
+/**
+ * True when the device voice is the engine that just read — still speaking, or
+ * soft-ended and waiting for a continuation to bridge into.
+ *
+ * `readingUsesBrowserVoice` cannot answer this: it decides from the *setting*
+ * and the network, and a reading that fell back to the device voice because TTS
+ * was unreachable still has an OpenAI voice selected and an online browser.
+ */
+function browserTtsIsReading(): boolean {
+  return browserTts.isActive() || browserTts.isSoftEnded();
+}
+
 export function cancelAutoPlayPrefetch(): void {
   if (prefetchController) {
     prefetchController.abort();
@@ -100,7 +112,13 @@ async function enqueueContinuationFor(
     .hostFor(anchorGroupId)
     ?.appendReading(summaries, {
       wholeChapter,
-      historyNote: rangeHistoryNote(summaries, settings.locale),
+      // Post units have no reference to note — `rangeHistoryNote` would format
+      // book 0, chapter 0. The reader (the only host that can hold a post)
+      // ignores the note anyway, but a "(Played aloud: ?0 0.)" waiting for the
+      // first host that doesn't is not worth leaving lying around.
+      historyNote: summaries[0]?.unit
+        ? undefined
+        : rangeHistoryNote(summaries, settings.locale),
       provenance: next.provenance,
     });
   if (!newGroupId) return;
@@ -125,18 +143,31 @@ async function enqueueContinuationFor(
   // going through a tunnel instead of falling silent at the chunk boundary.
   // If the network dropped *during* the previous chunk the two engines can
   // briefly overlap on its last verse — a far better outcome than silence.
-  if (await readingUsesBrowserVoice(contPlan)) {
+  //
+  // `browserTtsIsReading()` is the second half of that, and it is about
+  // *continuity* rather than about the network: whichever engine read the last
+  // chunk has to read this one. `streamReading` drops a fresh reading to the
+  // device voice when its first track won't build (TTS unreachable, no key,
+  // quota), and without this the continuation would ask the same dead service
+  // again and the reading would simply stop — measured, with a backend
+  // returning 502: every track failed to build and nothing was enqueued at all.
+  if (browserTtsIsReading() || (await readingUsesBrowserVoice(contPlan))) {
     const items: BrowserTtsItem[] = planToBrowserItems(contPlan, newGroupId);
     void browserTts.enqueue(items);
     return;
   }
 
-  if (tracksFromPrefetch) {
+  // An empty prefetch is a *failed* prefetch, not a silent chunk — fall through
+  // to the cold build rather than enqueueing nothing.
+  const prefetchTracks = tracksFromPrefetch?.length
+    ? tracksFromPrefetch.map((t) => ({ ...t, groupId: newGroupId }))
+    : null;
+
+  if (prefetchTracks) {
     // Prefetch hit: the whole chunk is already built, so enqueue it at once.
     // (Tracks were tagged with the prefetch's reserved groupId — swap to our
     // actual new group so the WordHighlighter binds correctly.)
-    const tracks = tracksFromPrefetch.map((t) => ({ ...t, groupId: newGroupId }));
-    if (tracks.length > 0) void audioPlayback.enqueue(tracks);
+    void audioPlayback.enqueue(prefetchTracks);
   } else {
     // Cold build: stream so the continuation's first verse plays after one TTS
     // round-trip instead of after the whole (possibly chapter-long) chunk —
@@ -191,6 +222,10 @@ async function schedulePrefetchFor(groupId: string): Promise<void> {
       );
     }
     if (controller.signal.aborted) return;
+    // Nothing built means TTS failed for every item, which is a failure to
+    // report by *not* caching: a cached empty result reads as "this chunk is
+    // silent" at enqueue time, and the reading ends with no error anywhere.
+    if (!usingBrowser && tracks !== null && tracks.length === 0) return;
     prefetched = {
       key: continuationKey(next),
       next,

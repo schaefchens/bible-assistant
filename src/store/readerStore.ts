@@ -610,19 +610,42 @@ export const useReaderStore = create<ReaderState>()(
               chapter: first.chapter,
             };
           const id = segmentId(segmentRef);
-          if (get().visible.includes(id)) return id;
-          const segment: LoadedSegment = { id, ref: segmentRef, verses };
+          // **Auto-continuation moves the reader the way the reader moves.**
+          // Endless scroll grows downward, so the continuation appends and the
+          // page carries on under the voice. Paged mode turns pages — so it
+          // turns this one. Appending there stacked the next chapter (or the
+          // next piece of somebody's writing) underneath the current one while
+          // the header and the pager still named the old one: three different
+          // answers on screen to "where am I?".
+          const endless = useSettingsStore.getState().readerEndlessScroll;
+          const already = get().visible.includes(id);
+          if (already && (endless || get().visible.length === 1)) return id;
+
+          // Reuse the cached segment when there is one, so `SegmentBlock`'s memo
+          // (keyed on object identity) doesn't re-render a piece already mounted.
+          const segment: LoadedSegment = get().segments[id] ?? { id, ref: segmentRef, verses };
+          const previousPosition = get().position;
           set((s) => {
-            // Auto-continuation extends the window regardless of the
-            // endless-scroll setting: reading aloud a passage the user cannot
-            // see is worse than growing the page.
-            const visible = [...s.visible.filter((v) => v !== id), id].slice(-MAX_VISIBLE);
+            const visible = endless
+              ? [...s.visible.filter((v) => v !== id), id].slice(-MAX_VISIBLE)
+              : [id];
             return {
               segments: pruneCache({ ...s.segments, [id]: segment }, visible),
               visible,
               error: null,
+              // Endless mode leaves the position to the scroll observer, which
+              // moves it as the voice scrolls into the new segment. Paged mode
+              // has no scroll to observe: the page just turned, so say so.
+              position: endless ? s.position : segment.ref,
             };
           });
+          if (!endless) {
+            // 'jump', not 'turn': auto-play already ticked the passage that
+            // finished (`noteEntryFinished`) and claimed the new one
+            // (`noteEntryStarted`). Letting the dwell rule fire here as well
+            // would mark progress twice, from two different clocks.
+            trackListProgress(previousPosition, segment.ref, 'jump');
+          }
           return id;
         },
 
