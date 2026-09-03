@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   DndContext,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -48,6 +49,13 @@ type MenuMode = null | 'root' | 'new' | 'rename';
  * reach is no target. Its `z` sits between CardStack's raised card (999) and a
  * dragging one (2000), so a raised card passes under the tabs and a carried
  * one over them.
+ *
+ * **The board strip scrolls horizontally, and that is the browser's job, not
+ * this component's.** What it has to do is stay out of the way: the tabs cover
+ * their own scroller, so their `touch-action` decides whether a swipe pans at
+ * all — which is why the sensors are `CardStack`'s pair and not a
+ * `PointerSensor` — and the native scrollbar is left visible, so a wheel mouse
+ * has something to drag.
  */
 export function LibraryTabs({
   boards,
@@ -104,8 +112,20 @@ export function LibraryTabs({
   const { t } = useTranslation();
   const [menu, setMenu] = useState<MenuMode>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  // MouseSensor + TouchSensor (not PointerSensor), matching `CardStack`: a
+  // PointerSensor needs `touch-action: none` on every draggable to keep the
+  // gesture once it activates, and that is precisely what stopped the strip
+  // panning — with the tabs filling it, there was nowhere left to swipe. These
+  // two hold the long-press delay while leaving the pan to the browser until
+  // the drag actually starts.
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
+      activationConstraint: {
+        delay: LONG_PRESS_MS,
+        tolerance: MOVE_TOLERANCE_PX,
+      },
+    }),
+    useSensor(TouchSensor, {
       activationConstraint: {
         delay: LONG_PRESS_MS,
         tolerance: MOVE_TOLERANCE_PX,
@@ -177,7 +197,25 @@ export function LibraryTabs({
             onSelect={() => void onSelect(null)}
           />
         </div>
-        <div className="no-scrollbar flex-1 min-w-0 overflow-x-auto whitespace-nowrap flex items-end gap-1 pl-1 pr-2 pt-2">
+        {/* Scrolling is entirely the browser's: `overflow-x-auto` with the
+            native scrollbar left visible, so a wheel mouse has a bar to drag
+            and the strip needs no wheel handling of its own. Keeping the bar is
+            the reason not to re-add `no-scrollbar` here — hiding it is what
+            left a plain wheel mouse with no way into the strip at all.
+
+            `pb-[2px] -mb-[2px] overflow-y-hidden` is what keeps it scrolling in
+            *one* axis. CSS computes the other axis from `visible` to `auto` as
+            soon as one scrolls, and each tab's `-mb-[2px]` — the overlap that
+            merges it into the rail — then reads as 2px of vertical overflow: the
+            strip scrolled a couple of pixels up and down, and the overhang was
+            absorbed rather than laid over the rail, so the folder seam showed.
+            The padding absorbs the overhang instead and the negative margin puts
+            the whole scroller back over the rail, which is the same geometry
+            with nothing left to scroll; hiding the y axis then also swallows the
+            sub-pixel from a targeted tab's `scale-[1.03]` mid card-drag. Doing
+            it here rather than in `TAB_CLASSES` is deliberate — the pinned
+            All-cards tab needs its overlap and has no scroller to overflow. */}
+        <div className="flex-1 min-w-0 overflow-x-auto overflow-y-hidden whitespace-nowrap flex items-end gap-1 pl-1 pr-2 pt-2 pb-[2px] -mb-[2px]">
           <DndContext
             sensors={sensors}
             modifiers={[restrictToHorizontalAxis, restrictToParentElement]}
@@ -458,7 +496,10 @@ function SortableTab({
       }}
       className={[
         TAB_CLASSES,
-        'cursor-pointer touch-none',
+        // `touch-manipulation`, never `touch-none`: the tabs cover their own
+        // scroller, so a tab that swallows the pan makes the strip unscrollable.
+        // The long-press delay is what keeps a pan and a reorder apart.
+        'cursor-pointer touch-manipulation',
         isActive ? tabCls.active : tabCls.inactive,
         dropCls,
       ].join(' ')}

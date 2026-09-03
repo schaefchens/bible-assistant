@@ -482,6 +482,39 @@ remounting instead of resetting during render. The corkboard's arrange toggle ca
 do that (it is drawn in the header), so `freeformEdit` stays lifted into the page
 with the guarded in-render reset used elsewhere in this codebase.
 
+**Every draggable here takes `MouseSensor + TouchSensor`, never `PointerSensor`** —
+the card list, the board grid *and* the tab strip. A `PointerSensor` only keeps the
+gesture once it activates if the draggable carries `touch-action: none`, and both
+these things sit on top of a scroller they cover completely: with `touch-none` on the
+tabs the board strip could not be panned at all, and the same on a card would kill the
+list's vertical scroll. The touch sensor's `move` listener is non-passive and
+`preventDefault`s, so it suppresses the native pan itself from the moment the
+long-press elapses — which is what lets the tabs sit at `touch-manipulation` and still
+reorder. A swipe pans (movement inside `MOVE_TOLERANCE_PX` of the delay cancels the
+drag), a hold drags.
+
+**The scrolling itself is the browser's**, and deliberately nothing else: plain
+`overflow-x-auto` with the **native scrollbar left visible**. `no-scrollbar` is what
+must not come back here — with the bar hidden, a plain wheel mouse has no way into a
+horizontal scroller at all (a vertical wheel does nothing to one, and there is nothing
+to drag), which is what made the strip look unscrollable on the desktop. Mapping the
+wheel onto `scrollLeft` by hand covers that too, and was tried, but it means a sticky
+44px strip under the cursor intercepting the page's own scrolling; the bar costs
+nothing on a phone or under macOS overlay scrollbars, and is what the user already
+knows how to use.
+
+**It scrolls in one axis, and that takes three utilities rather than one.** CSS
+computes the other axis from `visible` to `auto` the moment one of them scrolls, and
+each tab's `-mb-[2px]` — the overlap that merges it into the rail — then reads as 2px
+of vertical overflow: the strip scrolled a couple of pixels up and down, and the
+overhang was absorbed instead of laid over the rail, so the folder seam showed. So the
+scroller carries `pb-[2px] -mb-[2px] overflow-y-hidden`: the padding absorbs the
+overhang, the negative margin puts the scroller back over the rail (same geometry,
+nothing left to scroll), and hiding the y axis also swallows the sub-pixel a targeted
+tab's `scale-[1.03]` adds mid card-drag. It belongs on the scroller and not in
+`TAB_CLASSES` — the pinned All-cards tab needs its overlap and has no scroller to
+overflow.
+
 **All cards is stack-only.** Grid / pile / corkboard are `board.viewMode`, a per-board
 field, and the corkboard's placements live in `board.freeform` — a pseudo-board has
 nowhere to keep either.
@@ -498,13 +531,12 @@ that board. `hooks/useCardTabDrop.ts` is the gesture; `lib/boardTabDrop.ts` is t
 contract between the list and the strip.
 
 **One `DndContext` over both was deliberately not hoisted**, which is the obvious
-dnd-kit answer. The two halves use different sensors on purpose — `CardStack` and
-`BoardGrid` take `MouseSensor + TouchSensor` so a quick touch swipe still scrolls on
-iOS, the strip takes `PointerSensor` — and dnd-kit's modifiers are per *context*, not
-per draggable, so one context would mean reconciling both plus a custom collision
-strategy. Instead the strip marks each tab with `data-board-tab` and the drop is
-hit-tested through `elementFromPoint`, which can't go stale the way a registry of tab
-rects does the moment the strip scrolls sideways mid-drag.
+dnd-kit answer. dnd-kit's modifiers are per *context*, not per draggable, so one
+context would mean reconciling the list's vertical clamp with the strip's horizontal
+one, plus a custom collision strategy. Instead the strip marks each tab with
+`data-board-tab` and the drop is hit-tested through `elementFromPoint`, which can't go
+stale the way a registry of tab rects does the moment the strip scrolls sideways
+mid-drag.
 
 Four things are load-bearing:
 
