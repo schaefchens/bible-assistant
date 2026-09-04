@@ -1003,6 +1003,35 @@ They cover subscribed spaces only — the user's own writing is not new to them 
 and `todayPosts` is deliberately *not* filtered by seen: asking for today's
 pieces is a request for today's, not for what is left of them.
 
+**Two presentations, one definition.** `hooks/useNewPieceSelections.ts` owns what
+the two selections *are* (the pieces, the name the reading carries, and opening
+it); `NewPiecesBar` renders them as pills on `/spaces`, and the picker's spaces
+view renders them as the **first two rows of the list**, above a rule and then
+the spaces. Rows rather than pills there because that is what they are on that
+screen: things you pick, exactly like a space — the pills read as a toolbar
+above the list you were choosing from. Splitting the hook out is what keeps the
+two from drifting into disagreeing about what "today" means.
+
+**"Everything new" is shown wherever the community is on at all**, not only where
+it has something to offer. Gated on `hasSubscriptions` it was simply *absent*
+for anyone whose install is their own writing — which is every author before
+they follow their first person, and they then have no way to learn the feature
+exists. The row says why it is empty instead (`community.newNeedsSubscriptions`
+when you follow nobody, `community.nothingNew` when you have read it all), and
+it is disabled either way. "Today" is the exception and still hides: it needs an
+ephemeral space to draw from, and there is nothing to explain about not having
+one.
+
+Both still **cover subscribed spaces only**, which is the reason those empty
+states exist rather than the rows quietly filling with your own pieces:
+publishing does not mark a piece seen, so an author's own writing would sit in
+"everything new" as unread until they read it back. Asked directly, the
+maintainer confirmed keeping it that way.
+
+`SourceRow` carries its background and hover on the *wrapper* rather than on the
+button, so a row can hold a control of its own beside the tap target — which is
+how those two rows carry a group download without nesting a button in a button.
+
 **Continuation follows the reader's source, not the piece's own space**
 (`nextInSpace`). A piece read as part of "everything new" is usually followed by
 one from a *different* space, so continuing within its own space would quietly
@@ -1686,6 +1715,70 @@ stops, and Settings' storage readout is where that becomes visible. Downloads ar
 **per chapter** on purpose — a book means up to 2,461 verses of TTS plus forced
 alignment — and cover exactly what the current settings would *play*, so a reader with
 announcements off isn't billed for clips they'll never hear.
+
+**A day of a plan — or a room's pieces, or everything unread — downloads as one tap, but
+not as one download.** `lib/narrationGroup.ts` is a *coordinator* over the per-item
+machinery, not a third kind of `NarrationTarget`: a chapter and a post are what get
+generated, keyed, pinned and deleted, and a group is only ever "these, in order". So the
+group control (`NarrationGroupButton`) and the per-row controls
+(`NarrationDownloadButton`) read the *same* `narrationStore` entries — neither is the
+other's source of truth, something downloaded on its own already counts toward its group,
+and the rows tick over one by one as the run works through them.
+
+`subjectsForSegments` is why one control serves both halves of the app: a `SegmentRef` with
+a `postId` becomes a post subject and a scripture one becomes a chapter, so a group may mix
+kinds and nothing downstream cares. Four places offer one, and each covers **what its
+surface is showing**, which is the rule to keep:
+
+| where | covers |
+| --- | --- |
+| above the passages, picker's list view | the day of a plan, or that page of a plain list |
+| above the pieces, picker's space view | every piece in the room (a room has no pager) |
+| on the "everything new" row / pill | that selection's pieces |
+| on the "today from everyone" row / pill | the same |
+
+Those last two are `compact` (icon-only) and *siblings* of the tap target, never inside it: a
+button in a button is invalid, and a download is not what selecting "everything new" should
+mean. Four things about the mechanism are load-bearing:
+
+- **The aggregate selectors return primitives** (`groupStatus`, `groupFraction`,
+  `groupInstalledCount`). The per-item progress ticks write to this store, so a selector
+  building an array or an object would hand back a new reference on every one of them and
+  re-render the whole sheet.
+- **The run is held outside the component**, keyed by the group. The sheet can be closed and
+  reopened mid-download, and a cancel from the *remounted* button has to stop the loop the
+  old one started — otherwise the abort lands on the current chapter and the run carries
+  cheerfully on to the next.
+- **One failure is stepped over, two in a row end the run.** A plan can legitimately name a
+  chapter the chosen translation lacks (versification is English) and one gap must not cost
+  the rest of the day; two is the backend or the network being gone, and grinding through a
+  day of doomed requests is a long wait for nothing.
+- **A segment's own translation is what gets downloaded**, not the active one — an entry
+  pinned to LUT is read in LUT, and narration is keyed by translation. `ReaderHeader` had
+  this wrong (it passed the global setting), which for a pinned entry reported on and
+  downloaded a text that passage never plays in.
+
+A group is hidden entirely for a single item: that row's own button already *is* it. Post
+coverage is far cheaper than a chapter's — `spacePostUnits` reads the store, where a chapter
+loads a book pack — which is why an "everything unread" group can check thirty pieces on
+mount without thinking about it, and why the same button is *not* offered over the 25 rows
+of the list screen's week page: answering "is this downloaded?" for a week of a plan can
+mean fifteen book packs loaded and parsed on open, and it would buy a screen whose job is
+ticking things off. Doing it there wants a cheaper coverage read first — the narration
+index's verse keys are prefix-queryable, so a count could come from one indexed range query
+instead of a chapter load plus a read per verse.
+
+Verse ranges are widened to their whole chapter, which over-downloads a hand-written
+"Genesis 1:1-5" — accepted deliberately, since the alternative is a second key space for
+range audio that playback would never look in. A plan's entries are chapters anyway
+(`expandEntryToChapters`).
+
+**A failed or cancelled download must leave 'downloading' before re-deriving.**
+`narrationStore.download`'s catch re-derives coverage rather than assuming either extreme —
+but `check` refuses to speak over a live download, so it found the status still
+`'downloading'` and returned without touching it: a spinner that never stopped, and a cancel
+button that looked like it had done nothing. It now sets `'unknown'` first. Easy to miss with
+one chapter and glaring with a day of them, which is how it was found.
 
 **A continuation stays on the engine that is already reading.** `readingUsesBrowserVoice`
 answers from the *setting* and the network, so it cannot see a reading that dropped to the

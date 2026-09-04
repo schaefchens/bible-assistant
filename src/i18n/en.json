@@ -493,7 +493,15 @@
       "resume": "Finish downloading this chapter",
       "downloaded": "Downloaded — plays offline",
       "cancel": "Cancel download",
-      "removeConfirm": "Tap again to remove this download"
+      "removeConfirm": "Tap again to remove this download",
+      "downloadDay": "Download this day",
+      "downloadPassages": "Download these passages",
+      "groupResume": "Finish this download ({{done}}/{{total}})",
+      "groupProgress": "{{done}} of {{total}} chapters",
+      "groupDownloaded": "Downloaded",
+      "groupRemove": "Tap again to remove",
+      "downloadPieces": "Download these pieces",
+      "downloadSelection": "Download “{{name}}” for offline listening"
     },
     "endOfList": "End of the list.",
     "startOfList": "Start of the list.",
@@ -768,7 +776,8 @@
     },
     "spacesCount_one": "{{count}} space",
     "spacesCount_other": "{{count}} spaces",
-    "yourSpaces": "Your spaces"
+    "yourSpaces": "Your spaces",
+    "newNeedsSubscriptions": "Nothing yet — you are not reading anyone’s space."
   },
   "feedback": {
     "open": "Report a bug or send feedback",

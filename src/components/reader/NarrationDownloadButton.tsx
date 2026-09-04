@@ -1,22 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
-import type { Translation } from '@/services/bible/bibleApi';
 import {
   effectiveReadingVoice,
   effectiveVoiceStyle,
   useSettingsStore,
 } from '@/store/settingsStore';
-import { narrationTargetKey, useNarrationStore } from '@/store/narrationStore';
+import {
+  narrationTargetKey,
+  useNarrationStore,
+  type NarrationSubject,
+} from '@/store/narrationStore';
 import { isBrowserVoice, type OpenAiVoiceId } from '@/types/domain';
-
-/**
- * What to download, minus the voice — which this component supplies, since it
- * is the thing that knows narration is per-voice.
- */
-export type NarrationSubject =
-  | { kind: 'chapter'; translation: Translation; bookId: number; chapter: number }
-  | { kind: 'post'; spaceId: string; postId: string };
 
 type Props = { subject: NarrationSubject };
 
@@ -138,8 +133,10 @@ export function NarrationDownloadButton({ subject }: Props) {
   );
 }
 
-/** Circular progress ring; doubles as the cancel target while downloading. */
-function ProgressRing({ pct }: { pct: number }) {
+/** Circular progress ring; doubles as the cancel target while downloading.
+ * Shared with `NarrationGroupButton` — the two controls sit one above the
+ * other, so a second set of glyphs would read as a second feature. */
+export function ProgressRing({ pct }: { pct: number }) {
   const r = 9;
   const c = 2 * Math.PI * r;
   return (
@@ -160,7 +157,7 @@ function ProgressRing({ pct }: { pct: number }) {
   );
 }
 
-function DownloadIcon() {
+export function DownloadIcon() {
   return (
     <svg
       width="17"
@@ -180,7 +177,7 @@ function DownloadIcon() {
   );
 }
 
-function TrashIcon() {
+export function TrashIcon() {
   return (
     <svg
       width="17"
@@ -201,7 +198,7 @@ function TrashIcon() {
   );
 }
 
-function CheckIcon() {
+export function CheckIcon() {
   return (
     <svg
       width="17"

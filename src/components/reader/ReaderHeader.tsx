@@ -131,7 +131,11 @@ export function ReaderHeader({ onOpenTranslations, onOpenAppearance }: Props) {
                   ? { kind: 'post', spaceId: position.spaceId!, postId: position.postId! }
                   : {
                       kind: 'chapter',
-                      translation,
+                      // The segment's own translation, which for a list entry
+                      // with an override is not the active one — and narration
+                      // is keyed by translation, so the global one would report
+                      // on (and download) a text this passage never plays in.
+                      translation: position.translation,
                       bookId: position.bookId,
                       chapter: position.chapter,
                     }

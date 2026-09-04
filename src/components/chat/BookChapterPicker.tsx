@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
@@ -23,13 +23,16 @@ import { ROUTES } from '@/lib/appRoutes';
 import { listChapterCount, passageDetail } from '@/services/reading/readingEntries';
 import { progressStats } from '@/services/reading/readingProgress';
 import { PassageRow } from '@/components/reading/PassageRow';
+import { NarrationDownloadButton } from '@/components/reader/NarrationDownloadButton';
+import { NarrationGroupButton } from '@/components/reader/NarrationGroupButton';
+import { subjectsForSegments } from '@/lib/narrationGroup';
+import { useNewPieceSelections } from '@/hooks/useNewPieceSelections';
 import { ProgressBar } from '@/components/reading/ProgressBar';
 import { TranslationList } from '@/components/bible/TranslationList';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { playSegmentInChat } from '@/lib/readingListPlayback';
 import { BottomSheet } from '@/components/common/BottomSheet';
 import { spaceDisplayName, spaceLabel } from '@/services/community/spaceName';
-import { NewPiecesBar } from '@/components/community/NewPiecesBar';
 
 type View = 'books' | 'chapters' | 'translations' | 'lists' | 'spaces';
 
@@ -149,30 +152,50 @@ export function SourceIcon({
   return <BookIcon className={size} />;
 }
 
-/** One selectable source in the spaces list. */
+/**
+ * One selectable source in the spaces list.
+ *
+ * The background and hover live on the *wrapper*, not the button, so a row can
+ * carry a control of its own (`trailing`) beside the tap target rather than
+ * inside it — a button in a button is invalid, and here it would mean
+ * downloading a selection was one mis-tap away from opening it.
+ */
 function SourceRow({
   label,
   emoji,
   detail,
   onSelect,
+  trailing,
+  disabled = false,
 }: {
   label: string;
   emoji?: string;
   detail: string;
   onSelect: () => void;
+  trailing?: React.ReactNode;
+  disabled?: boolean;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className="w-full text-left px-3 py-2 rounded-xl bg-surface/60 hover:bg-brand/10 transition-colors"
+    <div
+      className={clsx(
+        'flex items-center gap-1 rounded-xl bg-surface/60 transition-colors',
+        !disabled && 'hover:bg-brand/10',
+      )}
     >
-      <span className="flex items-center gap-2">
-        {emoji && <span aria-hidden>{emoji}</span>}
-        <span className="font-serif text-brand text-sm truncate">{label}</span>
-      </span>
-      <span className="block text-[11px] text-ink-muted truncate">{detail}</span>
-    </button>
+      <button
+        type="button"
+        onClick={onSelect}
+        disabled={disabled}
+        className="flex-1 min-w-0 text-left px-3 py-2 disabled:opacity-50"
+      >
+        <span className="flex items-center gap-2">
+          {emoji && <span aria-hidden>{emoji}</span>}
+          <span className="font-serif text-brand text-sm truncate">{label}</span>
+        </span>
+        <span className="block text-[11px] text-ink-muted truncate">{detail}</span>
+      </button>
+      {trailing && <span className="shrink-0 pr-1.5">{trailing}</span>}
+    </div>
   );
 }
 
@@ -410,6 +433,10 @@ export function BookChapterPicker({
   const seen = useCommunityStore((s) => s.seen);
   const setSource = useReaderStore((s) => s.setSource);
   const setEntryDone = useLibraryStore((s) => s.setEntryDone);
+  // The two cross-space readings, offered as the first two rows of the spaces
+  // list. Closing the sheet is this screen's part of opening one.
+  const closeSheet = useCallback(() => setOpen(false), []);
+  const { hasSubscriptions, allNew, today } = useNewPieceSelections(closeSheet);
 
   const lang: 'en' | 'de' = (i18n.language || 'en').startsWith('de') ? 'de' : 'en';
   const { ot, nt } = useMemo(
@@ -816,40 +843,126 @@ export function BookChapterPicker({
                 {t('community.empty')}
               </p>
             ) : (
-              <ul className="py-2 space-y-1">
-                {spaceSegments.map((seg) => (
-                  <li key={seg.postId}>
-                    <PassageRow
-                      text={seg.postTitle || (t('community.untitledPost') as string)}
-                      done={false}
-                      showDone={false}
-                      current={readerPosition?.postId === seg.postId}
-                      onOpen={() => pickSegment(seg)}
-                      trailing={
-                        seg.postId && !seen[seg.postId] ? (
-                          <span
-                            aria-hidden
-                            className="h-1.5 w-1.5 rounded-full bg-brand inline-block"
-                          />
-                        ) : undefined
-                      }
-                    />
-                  </li>
-                ))}
-              </ul>
+              <>
+                {/* Same place and the same rule as a reading list's: it covers
+                    what the sheet is showing, which for a room is all of it —
+                    a room has no pager. */}
+                <div className="flex justify-end pt-2">
+                  <NarrationGroupButton
+                    subjects={subjectsForSegments(spaceSegments)}
+                    label={t('read.narration.downloadPieces') as string}
+                  />
+                </div>
+                <ul className="py-2 space-y-1">
+                  {spaceSegments.map((seg) => (
+                    <li key={seg.postId}>
+                      <PassageRow
+                        text={seg.postTitle || (t('community.untitledPost') as string)}
+                        done={false}
+                        showDone={false}
+                        current={readerPosition?.postId === seg.postId}
+                        onOpen={() => pickSegment(seg)}
+                        trailing={
+                          <span className="flex items-center gap-1.5 shrink-0">
+                            {seg.postId && !seen[seg.postId] && (
+                              <span
+                                aria-hidden
+                                className="h-1.5 w-1.5 rounded-full bg-brand inline-block"
+                              />
+                            )}
+                            {seg.spaceId && seg.postId && (
+                              <NarrationDownloadButton
+                                subject={{
+                                  kind: 'post',
+                                  spaceId: seg.spaceId,
+                                  postId: seg.postId,
+                                }}
+                              />
+                            )}
+                          </span>
+                        }
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </div>
         )}
 
         {view === 'spaces' && (
           <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-safe">
-            {/* Reading across everyone is usually why you opened this, so it
-                comes before the list of individual spaces. Closes the sheet
-                itself, since it navigates the reader somewhere new. */}
-            <div className="pt-2">
-              <NewPiecesBar compact onOpened={() => setOpen(false)} />
-            </div>
             <ul className="py-2 space-y-1">
+              {/* Reading across everyone is usually why you opened this, so the
+                  two selections are the first two things you can pick — rows
+                  like any other source rather than pills above the list, since
+                  that is what they are: pick one and the reader is reading it.
+                  Shown wherever the community is on at all, *not* only where
+                  they have something to offer: gated on following somebody they
+                  were simply absent for anyone whose install is their own
+                  writing, who then has no way to learn they exist. The row says
+                  why it is empty instead. "Today" is the exception and still
+                  hides — it needs an ephemeral space to mean anything at all,
+                  and there is nothing to explain about not having one. */}
+              {communityProfile && (
+                <>
+                  <li>
+                    <SourceRow
+                      label={allNew.name}
+                      emoji="✨"
+                      disabled={allNew.posts.length === 0}
+                      detail={
+                        !hasSubscriptions
+                          ? (t('community.newNeedsSubscriptions') as string)
+                          : allNew.posts.length === 0
+                            ? (t('community.nothingNew') as string)
+                            : (t('community.pieces', { count: allNew.posts.length }) as string)
+                      }
+                      onSelect={allNew.open}
+                      trailing={
+                        allNew.posts.length > 0 ? (
+                          <NarrationGroupButton
+                            compact
+                            subjects={allNew.subjects}
+                            label={
+                              t('read.narration.downloadSelection', {
+                                name: allNew.name,
+                              }) as string
+                            }
+                          />
+                        ) : undefined
+                      }
+                    />
+                  </li>
+                  {today.posts.length > 0 && (
+                    <li>
+                      <SourceRow
+                        label={today.name}
+                        emoji="🌅"
+                        detail={t('community.pieces', { count: today.posts.length }) as string}
+                        onSelect={today.open}
+                        trailing={
+                          <NarrationGroupButton
+                            compact
+                            subjects={today.subjects}
+                            label={
+                              t('read.narration.downloadSelection', {
+                                name: today.name,
+                              }) as string
+                            }
+                          />
+                        }
+                      />
+                    </li>
+                  )}
+                  {/* The selections read across every space; what follows is one
+                      space at a time. A rule is the whole of that distinction —
+                      a heading over two rows would be more furniture than list. */}
+                  <li aria-hidden className="pt-1 pb-1">
+                    <span className="block border-t border-surface-raised/60" />
+                  </li>
+                </>
+              )}
               {/* The user's own spaces group by the same rule as anybody
                   else's — four rows all beginning with your own name is the
                   same noise, and the same unbounded list. The heading is
@@ -1081,9 +1194,25 @@ export function BookChapterPicker({
                   </PagerButton>
                 </div>
 
-                {/* A touch more than the list screen's `space-y-1`: these
-                    rows carry no play button, so they're 36px rather than
-                    44px and the same gap reads tighter between them. */}
+                {/* Above the passages and right-aligned, so it sits at the
+                    head of the column of per-passage download buttons it
+                    stands for. Its scope is whatever the pager is showing —
+                    the day, or this page of a plain list — which is the unit
+                    someone actually wants before a flight. */}
+                <div className="flex justify-end pb-1">
+                  <NarrationGroupButton
+                    subjects={subjectsForSegments(visiblePassages)}
+                    label={
+                      (grouped
+                        ? t('read.narration.downloadDay')
+                        : t('read.narration.downloadPassages')) as string
+                    }
+                  />
+                </div>
+
+                {/* A touch more than the list screen's `space-y-1`: these rows
+                    carry no play button, so they stay a little shorter and the
+                    same gap reads tighter between them. */}
                 <ul className="space-y-1.5 pb-3">
                   {visiblePassages.map((seg, i) => (
                     <li key={`${seg.entryId ?? seg.bookId}:${seg.chapter}:${i}`}>
@@ -1111,6 +1240,19 @@ export function BookChapterPicker({
                             : undefined
                         }
                         onOpen={() => pickSegment(seg)}
+                        trailing={
+                          <NarrationDownloadButton
+                            subject={{
+                              kind: 'chapter',
+                              // The segment's own translation, not the active
+                              // one: an entry pinned to LUT is downloaded in
+                              // LUT, which is what it will be read in.
+                              translation: seg.translation,
+                              bookId: seg.bookId,
+                              chapter: seg.chapter,
+                            }}
+                          />
+                        }
                       />
                     </li>
                   ))}

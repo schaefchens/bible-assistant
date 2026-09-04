@@ -493,7 +493,15 @@
       "resume": "Download dieses Kapitels abschließen",
       "downloaded": "Heruntergeladen — spielt offline",
       "cancel": "Download abbrechen",
-      "removeConfirm": "Zum Entfernen erneut tippen"
+      "removeConfirm": "Zum Entfernen erneut tippen",
+      "downloadDay": "Diesen Tag herunterladen",
+      "downloadPassages": "Diese Abschnitte herunterladen",
+      "groupResume": "Download abschließen ({{done}}/{{total}})",
+      "groupProgress": "{{done}} von {{total}} Kapiteln",
+      "groupDownloaded": "Heruntergeladen",
+      "groupRemove": "Erneut tippen zum Entfernen",
+      "downloadPieces": "Diese Beiträge herunterladen",
+      "downloadSelection": "„{{name}}“ zum Offline-Hören herunterladen"
     },
     "endOfList": "Ende der Liste.",
     "startOfList": "Anfang der Liste.",
@@ -768,7 +776,8 @@
     },
     "spacesCount_one": "{{count}} Raum",
     "spacesCount_other": "{{count}} Räume",
-    "yourSpaces": "Deine Räume"
+    "yourSpaces": "Deine Räume",
+    "newNeedsSubscriptions": "Noch nichts — du liest noch keinen Raum von anderen."
   },
   "feedback": {
     "open": "Fehler melden oder Rückmeldung senden",
