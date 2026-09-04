@@ -7,6 +7,7 @@ import { cancelAutoPlayPrefetch } from './autoPlay';
 import { AmbientAudioBus } from './ambientAudioBus';
 import { ElementTrackPlayer } from './elementTrackPlayer';
 import { clamp01 } from './math';
+import { MediaSessionBridge } from './mediaSession';
 
 export type PlaybackTrack = {
   groupId: string;
@@ -117,6 +118,27 @@ class AudioPlaybackManager {
   // AudioContext, so it's constructed eagerly — one less thing gated behind a
   // user gesture, and it keeps playing when the app backgrounds.
   private ambientBus = new AmbientAudioBus(() => this.maybeSuspendContext());
+
+  /** The lock screen and the OS transport buttons. See lib/mediaSession.ts. */
+  private mediaSession = new MediaSessionBridge(
+    {
+      play: () => this.resume(),
+      pause: () => this.pause(),
+      stop: () => this.stop(),
+      next: () => this.next(),
+      previous: () => this.previous(),
+    },
+    () => ({
+      duration: this.currentLoaded?.duration ?? 0,
+      position: this.player.currentTime,
+      rate: this.currentRate,
+    }),
+  );
+
+  /** Called when a reading starts so the lock screen shows the reference. */
+  setNowPlaying(title: string, subtitle?: string): void {
+    this.mediaSession.setNowPlaying(title, subtitle);
+  }
   readonly ambient = {
     load: (url: string): Promise<void> => this.ambientBus.load(url),
     play: (): void => this.ambientBus.play(),
@@ -143,7 +165,7 @@ class AudioPlaybackManager {
         this.pauseTimer = null;
       }
       usePlaybackStore.getState().setStatus('paused');
-      this.syncMediaSessionState('paused');
+      this.mediaSession.syncState('paused');
     };
 
     // Resumed from outside — a lock-screen or headphone-button play that went
@@ -152,7 +174,7 @@ class AudioPlaybackManager {
       if (usePlaybackStore.getState().status !== 'paused') return;
       usePlaybackStore.getState().setStatus('playing');
       this.startTick();
-      this.syncMediaSessionState('playing');
+      this.mediaSession.syncState('playing');
     };
   }
 
@@ -482,7 +504,7 @@ class AudioPlaybackManager {
       isVerse: track.highlightVerse !== false,
     });
     usePlaybackStore.getState().setStatus('playing');
-    this.publishMediaSession(handle.duration, startOffset);
+    this.mediaSession.trackStarted(handle.duration, startOffset);
   }
 
   /** Start (or restart) the already-loaded track at `offset` seconds. */
@@ -578,7 +600,7 @@ class AudioPlaybackManager {
     this.currentOffset = this.player.currentTime;
     this.player.pause();
     usePlaybackStore.getState().setStatus('paused');
-    this.syncMediaSessionState('paused');
+    this.mediaSession.syncState('paused');
     if (this.tickHandle !== null) {
       cancelAnimationFrame(this.tickHandle);
       this.tickHandle = null;
@@ -602,7 +624,7 @@ class AudioPlaybackManager {
     this.hasTrack = true;
     this.startTick();
     usePlaybackStore.getState().setStatus('playing');
-    this.syncMediaSessionState('playing');
+    this.mediaSession.syncState('playing');
   }
 
   toggle(): void {
@@ -650,7 +672,7 @@ class AudioPlaybackManager {
     this.player.onEnded = null;
     this.player.stop();
     this.hasTrack = false;
-    this.clearMediaSession();
+    this.mediaSession.clear();
     if (this.tickHandle !== null) {
       cancelAnimationFrame(this.tickHandle);
       this.tickHandle = null;
@@ -713,7 +735,7 @@ class AudioPlaybackManager {
     this.player.onEnded = null;
     this.player.stop();
     this.hasTrack = false;
-    this.clearMediaSession();
+    this.mediaSession.clear();
     if (this.tickHandle !== null) {
       cancelAnimationFrame(this.tickHandle);
       this.tickHandle = null;
@@ -807,7 +829,7 @@ class AudioPlaybackManager {
       position: targetTime,
       currentWordIndex: wordIndex,
     });
-    this.syncMediaSessionState();
+    this.mediaSession.syncState();
   }
 
   /** Jump backward/forward by `delta` words within the current verse. */
@@ -837,7 +859,7 @@ class AudioPlaybackManager {
       position: targetTime,
       currentWordIndex: target,
     });
-    this.syncMediaSessionState();
+    this.mediaSession.syncState();
   }
 
   /** Change playback rate without losing position. */
@@ -877,101 +899,6 @@ class AudioPlaybackManager {
       cur.groupId === groupId &&
       usePlaybackStore.getState().status === 'playing'
     );
-  }
-
-  // ─── MediaSession: lock screen / Control Center / headphone buttons ──
-  //
-  // Only works because playback moved to a media element — iOS attaches
-  // now-playing info and remote commands to media elements, never to Web
-  // Audio. Registering the handlers is also what lets headphone and Bluetooth
-  // transport buttons reach the app.
-
-  private mediaSessionReady = false;
-
-  private ensureMediaSessionHandlers(): void {
-    if (this.mediaSessionReady || !('mediaSession' in navigator)) return;
-    this.mediaSessionReady = true;
-    const ms = navigator.mediaSession;
-    const set = (action: MediaSessionAction, handler: () => void) => {
-      try {
-        ms.setActionHandler(action, handler);
-      } catch {
-        // Unsupported action on this platform — skip it rather than abort the
-        // rest of the handlers.
-      }
-    };
-    set('play', () => this.resume());
-    set('pause', () => this.pause());
-    set('stop', () => this.stop());
-    set('nexttrack', () => this.next());
-    set('previoustrack', () => this.previous());
-  }
-
-  /** Publish now-playing metadata for the track that just started. */
-  private publishMediaSession(duration: number, position: number): void {
-    if (!('mediaSession' in navigator)) return;
-    this.ensureMediaSessionHandlers();
-    try {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: this.mediaTitle ?? 'Bible Assistant',
-        artist: this.mediaArtist ?? '',
-        album: 'Bible Assistant',
-      });
-    } catch {
-      /* MediaMetadata unavailable */
-    }
-    this.syncMediaSessionState('playing', position, duration);
-  }
-
-  /** Title/subtitle shown on the lock screen; set by the reading pipeline. */
-  private mediaTitle: string | null = null;
-  private mediaArtist: string | null = null;
-
-  /** Called when a reading starts so the lock screen shows the reference. */
-  setNowPlaying(title: string, subtitle?: string): void {
-    this.mediaTitle = title;
-    this.mediaArtist = subtitle ?? '';
-    if (!('mediaSession' in navigator)) return;
-    try {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title,
-        artist: this.mediaArtist,
-        album: 'Bible Assistant',
-      });
-    } catch {
-      /* ignore */
-    }
-  }
-
-  private syncMediaSessionState(
-    state?: 'playing' | 'paused',
-    position?: number,
-    duration?: number,
-  ): void {
-    if (!('mediaSession' in navigator)) return;
-    const ms = navigator.mediaSession;
-    if (state) ms.playbackState = state;
-    const dur = duration ?? this.currentLoaded?.duration ?? 0;
-    const pos = position ?? this.player.currentTime;
-    // setPositionState throws if position > duration, which can happen for a
-    // frame around track transitions.
-    if (dur > 0 && pos <= dur) {
-      try {
-        ms.setPositionState({ duration: dur, position: pos, playbackRate: this.currentRate });
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-
-  private clearMediaSession(): void {
-    if (!('mediaSession' in navigator)) return;
-    try {
-      navigator.mediaSession.playbackState = 'none';
-      navigator.mediaSession.metadata = null;
-    } catch {
-      /* ignore */
-    }
   }
 
   /** Unlock the media elements inside a user gesture (iOS autoplay policy). */
