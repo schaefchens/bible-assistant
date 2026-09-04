@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { db, stripLocal } from '@/db/dexie';
+import { db, stripLocal, type SyncOp } from '@/db/dexie';
 import {
   flushCommunityOp,
   isCommunityOp,
@@ -37,6 +37,7 @@ import {
   readStoredOrder,
   shouldDropSyncOp,
   syncEnabled,
+  type StoredOrder,
 } from './syncQueueManager';
 
 type LibraryState = {
@@ -94,6 +95,171 @@ function nowId(): string {
   return crypto.randomUUID();
 }
 
+// ─── The two ordered collections ──────────────────────────────────────────
+//
+// Cards and boards are the same machinery twice: a Dexie table, a state array,
+// a user-controlled order array with its own logical clock, and one sync op
+// each for a row and for the order. Every step below used to exist in two
+// copies — which is how `setCardOrder` and `setBoardOrder` came to be
+// byte-identical apart from their names, and how four of the six writers came
+// to skip the `hadPending` accounting the fifth does. The steps live here once
+// now; what stays duplicated in the actions is a name, which the compiler
+// checks.
+
+type OrderOp = Extract<SyncOp['op'], 'cardOrder.set' | 'boardOrder.set'>;
+
+// Both helpers below take a table structurally rather than as `Table<T>`:
+// Dexie's own generics fight a `T & LocalFlags` parameter (its `UpdateSpec`
+// key paths can't be resolved through the intersection), and every row table
+// here answers these shapes. Two types, not one, so each helper asks only for
+// the methods it uses — `markSynced` never puts, and inferring `T` from a
+// `put` it doesn't call is what makes the call sites stop compiling.
+
+/** A table of rows carrying the local `dirty` flag. */
+type DirtyFlaggedTable = {
+  get(id: string): Promise<{ updatedAt: number } | undefined>;
+  update(id: string, changes: { dirty: 0 }): Promise<number>;
+};
+
+/** A table of `T` rows carrying the local flags. */
+type SyncedTable<T> = {
+  get(id: string): Promise<(T & { dirty?: 0 | 1; deleted?: 0 | 1 }) | undefined>;
+  put(row: T & { dirty: 0; deleted: 0 }): Promise<string>;
+};
+
+/** Orders are compared as whole arrays; this is the cheap way to say so. */
+const sameOrder = (a: string[], b: string[]): boolean => a.join('|') === b.join('|');
+
+/**
+ * The order-side of a write: persist it locally, and queue it for the server.
+ *
+ * Takes the timestamp rather than minting one, so the caller can put the new
+ * order in the store **first**. That matters: the card list renders straight
+ * from `cardOrder`, and dnd-kit resets its transforms the instant a card is
+ * dropped — a store update that lands a frame later shows the *old* order for
+ * that frame.
+ *
+ * Returns whether the queue actually *grew*. `enqueueOrderSync` replaces a
+ * pending op of the same kind rather than adding to it (only the newest order
+ * matters), so counting every call as +1 walks `pendingOps` above the real
+ * queue length — the same accounting `updateProgress` does for progress ops.
+ */
+async function commitOrder(
+  prefKey: string,
+  op: OrderOp,
+  order: string[],
+  updatedAt: number,
+): Promise<boolean> {
+  await persistOrder(prefKey, order, updatedAt);
+  const hadPending = (await db.syncQueue.where('op').equals(op).count()) > 0;
+  const queued = await enqueueOrderSync(op, order, updatedAt);
+  return queued && !hadPending;
+}
+
+/** Read a persisted order and reconcile it against the rows that actually
+ * exist, re-persisting it if reconciliation changed anything. */
+function reconcileStoredOrder(
+  prefKey: string,
+  raw: unknown,
+  live: { id: string }[],
+): StoredOrder {
+  const stored = readStoredOrder(raw);
+  const order = reconcileOrder(stored.order, live);
+  if (!sameOrder(order, stored.order)) void persistOrder(prefKey, order, stored.updatedAt);
+  return { order, updatedAt: stored.updatedAt };
+}
+
+/**
+ * Adopt every remote row newer than its local counterpart.
+ *
+ * A local row only blocks the adoption if it has a genuinely pending upsert in
+ * the queue. A leftover `dirty` flag with no pending op is stale — its edit
+ * already synced — and must NOT freeze the row forever, or a device that has
+ * ever edited a board never pulls in another device's changes to it (a
+ * background URL, say).
+ */
+async function adoptRemoteRows<T extends { id: string; updatedAt: number }>(
+  table: SyncedTable<T>,
+  remote: T[],
+  pendingUpsertIds: Set<string>,
+): Promise<void> {
+  for (const row of remote) {
+    const local = await table.get(row.id);
+    const blocked = local?.dirty === 1 && pendingUpsertIds.has(row.id);
+    if (!local || (!blocked && row.updatedAt > local.updatedAt)) {
+      await table.put({ ...row, dirty: 0, deleted: 0 });
+    }
+  }
+}
+
+/** The ids carrying a still-unsent upsert of `op`. */
+function pendingUpsertIds(queued: SyncOp[], op: SyncOp['op']): Set<string> {
+  return new Set(
+    queued.filter((o) => o.op === op).map((o) => (o.payload as { id: string }).id),
+  );
+}
+
+/**
+ * The order after a pull: the server's if it is newer *and* nothing local is
+ * still pending, else the local one — then reconciled against the rows that
+ * actually exist, and re-persisted if any of that changed it.
+ *
+ * Skipping the adoption while an op is pending is what stops an in-flight
+ * reorder being clobbered by the very order it is about to replace.
+ */
+async function adoptedOrder(
+  prefKey: string,
+  op: OrderOp,
+  remote: { order?: unknown; updatedAt?: unknown } | undefined,
+  local: StoredOrder,
+  live: { id: string }[],
+): Promise<StoredOrder> {
+  const remoteUpdatedAt = typeof remote?.updatedAt === 'number' ? remote.updatedAt : 0;
+  const pending = (await db.syncQueue.where('op').equals(op).count()) > 0;
+  const adopted =
+    !pending && remoteUpdatedAt > local.updatedAt
+      ? {
+          order: Array.isArray(remote?.order) ? (remote.order as string[]) : [],
+          updatedAt: remoteUpdatedAt,
+        }
+      : local;
+  const order = reconcileOrder(adopted.order, live);
+  if (!sameOrder(order, local.order) || adopted.updatedAt !== local.updatedAt) {
+    void persistOrder(prefKey, order, adopted.updatedAt);
+  }
+  return { order, updatedAt: adopted.updatedAt };
+}
+
+/**
+ * Mark a row clean now that the server has it — but only if it hasn't been
+ * edited again since the op was queued, or a newer local edit would be lost.
+ *
+ * Being clean is what lets a future pull adopt a remote edit to the same row.
+ */
+async function markSynced(
+  table: DirtyFlaggedTable,
+  id: string,
+  updatedAt: number,
+): Promise<void> {
+  const cur = await table.get(id);
+  if (cur && cur.updatedAt === updatedAt) await table.update(id, { dirty: 0 });
+}
+
+/** Queue every dirty row of one table — an upsert, or a delete for a
+ * tombstone. Without the tombstones, a card deleted offline would be
+ * resurrected by the first pull from another device. */
+async function seedRows<T extends { id: string; dirty?: 0 | 1; deleted?: 0 | 1 }>(
+  rows: T[],
+  upsertOp: SyncOp['op'],
+  deleteOp: SyncOp['op'],
+): Promise<void> {
+  for (const row of rows) {
+    if (row.dirty !== 1) continue;
+    if (row.deleted === 1) await enqueueOp(deleteOp, { id: row.id });
+    else await enqueueOp(upsertOp, stripLocal(row));
+  }
+}
+
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   cards: [],
   boards: [],
@@ -134,16 +300,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     ]);
     const liveCards = cards.map(stripLocal).map(normalizeCard);
     const liveBoards = boards.map(stripLocal);
-    const storedCardOrder = readStoredOrder(savedCardOrderRow?.value);
-    const reconciledCardOrder = reconcileOrder(storedCardOrder.order, liveCards);
-    if (reconciledCardOrder.join('|') !== storedCardOrder.order.join('|')) {
-      void persistOrder(CARD_ORDER_KEY, reconciledCardOrder, storedCardOrder.updatedAt);
-    }
-    const storedBoardOrder = readStoredOrder(savedBoardOrderRow?.value);
-    const reconciledBoardOrder = reconcileOrder(storedBoardOrder.order, liveBoards);
-    if (reconciledBoardOrder.join('|') !== storedBoardOrder.order.join('|')) {
-      void persistOrder(BOARD_ORDER_KEY, reconciledBoardOrder, storedBoardOrder.updatedAt);
-    }
+    const cardOrder = reconcileStoredOrder(CARD_ORDER_KEY, savedCardOrderRow?.value, liveCards);
+    const boardOrder = reconcileStoredOrder(BOARD_ORDER_KEY, savedBoardOrderRow?.value, liveBoards);
     const storedActiveId =
       typeof activeRow?.value === 'string' ? activeRow.value : null;
     const activeBoardId =
@@ -155,10 +313,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       boards: liveBoards,
       readingLists: sortLists(readingListRows.map(stripLocal).map(normalizeList)),
       readingProgress: indexProgress(progressRows.map(stripLocal)),
-      cardOrder: reconciledCardOrder,
-      cardOrderUpdatedAt: storedCardOrder.updatedAt,
-      boardOrder: reconciledBoardOrder,
-      boardOrderUpdatedAt: storedBoardOrder.updatedAt,
+      cardOrder: cardOrder.order,
+      cardOrderUpdatedAt: cardOrder.updatedAt,
+      boardOrder: boardOrder.order,
+      boardOrderUpdatedAt: boardOrder.updatedAt,
       activeBoardId,
       pendingOps: pending,
       initialized: true,
@@ -174,44 +332,39 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const updated: Card = { ...card, updatedAt: Date.now() };
     await db.cards.put({ ...updated, dirty: 1 });
     const queued = await enqueueOp('card.upsert', updated);
+    // A new card joins at the *front*: the stack reads newest-first.
     const isNew = !get().cards.some((c) => c.id === updated.id);
-    let nextOrder = get().cardOrder;
-    let nextOrderUpdatedAt = get().cardOrderUpdatedAt;
-    let orderQueued = false;
-    if (isNew) {
-      nextOrder = [updated.id, ...nextOrder.filter((id) => id !== updated.id)];
-      nextOrderUpdatedAt = Date.now();
-      await persistOrder(CARD_ORDER_KEY, nextOrder, nextOrderUpdatedAt);
-      orderQueued = await enqueueOrderSync('cardOrder.set', nextOrder, nextOrderUpdatedAt);
-    }
+    const order = isNew
+      ? [updated.id, ...get().cardOrder.filter((cid) => cid !== updated.id)]
+      : null;
+    const orderAt = Date.now();
     set((s) => ({
       cards: replaceOrAdd(s.cards, updated),
-      cardOrder: nextOrder,
-      cardOrderUpdatedAt: nextOrderUpdatedAt,
-      pendingOps: s.pendingOps + (queued ? 1 : 0) + (orderQueued ? 1 : 0),
+      cardOrder: order ?? s.cardOrder,
+      cardOrderUpdatedAt: order ? orderAt : s.cardOrderUpdatedAt,
+      pendingOps: s.pendingOps + (queued ? 1 : 0),
     }));
+    if (order && (await commitOrder(CARD_ORDER_KEY, 'cardOrder.set', order, orderAt))) {
+      set((s) => ({ pendingOps: s.pendingOps + 1 }));
+    }
     if (get().online) void get().flushQueue();
   },
 
   deleteCard: async (id) => {
     await db.cards.update(id, { deleted: 1, dirty: 1 });
     const queued = await enqueueOp('card.delete', { id });
-    const prevOrder = get().cardOrder;
-    const nextOrder = prevOrder.filter((cid) => cid !== id);
-    const orderChanged = nextOrder.length !== prevOrder.length;
-    let nextOrderUpdatedAt = get().cardOrderUpdatedAt;
-    let orderQueued = false;
-    if (orderChanged) {
-      nextOrderUpdatedAt = Date.now();
-      await persistOrder(CARD_ORDER_KEY, nextOrder, nextOrderUpdatedAt);
-      orderQueued = await enqueueOrderSync('cardOrder.set', nextOrder, nextOrderUpdatedAt);
-    }
+    const without = get().cardOrder.filter((cid) => cid !== id);
+    const order = without.length === get().cardOrder.length ? null : without;
+    const orderAt = Date.now();
     set((s) => ({
       cards: s.cards.filter((c) => c.id !== id),
-      cardOrder: nextOrder,
-      cardOrderUpdatedAt: nextOrderUpdatedAt,
-      pendingOps: s.pendingOps + (queued ? 1 : 0) + (orderQueued ? 1 : 0),
+      cardOrder: order ?? s.cardOrder,
+      cardOrderUpdatedAt: order ? orderAt : s.cardOrderUpdatedAt,
+      pendingOps: s.pendingOps + (queued ? 1 : 0),
     }));
+    if (order && (await commitOrder(CARD_ORDER_KEY, 'cardOrder.set', order, orderAt))) {
+      set((s) => ({ pendingOps: s.pendingOps + 1 }));
+    }
     if (get().online) void get().flushQueue();
   },
 
@@ -223,16 +376,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   setCardOrder: async (order) => {
     const reconciled = reconcileOrder(order, get().cards);
-    if (reconciled.join('|') === get().cardOrder.join('|')) return;
+    if (sameOrder(reconciled, get().cardOrder)) return;
     const updatedAt = Date.now();
     set({ cardOrder: reconciled, cardOrderUpdatedAt: updatedAt });
-    await persistOrder(CARD_ORDER_KEY, reconciled, updatedAt);
-    const hadPending = (await db.syncQueue
-      .where('op')
-      .equals('cardOrder.set')
-      .count()) > 0;
-    const queued = await enqueueOrderSync('cardOrder.set', reconciled, updatedAt);
-    if (queued && !hadPending) {
+    if (await commitOrder(CARD_ORDER_KEY, 'cardOrder.set', reconciled, updatedAt)) {
       set((s) => ({ pendingOps: s.pendingOps + 1 }));
     }
     if (get().online) void get().flushQueue();
@@ -242,22 +389,22 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const updated: Board = { ...board, updatedAt: Date.now() };
     await db.boards.put({ ...updated, dirty: 1 });
     const queued = await enqueueOp('board.upsert', updated);
+    // A new board joins at the *end* — the tab strip reads left to right, and
+    // the tabs are folders, not a stack. The one asymmetry with cards.
     const isNew = !get().boards.some((b) => b.id === updated.id);
-    let nextOrder = get().boardOrder;
-    let nextOrderUpdatedAt = get().boardOrderUpdatedAt;
-    let orderQueued = false;
-    if (isNew) {
-      nextOrder = [...nextOrder.filter((bid) => bid !== updated.id), updated.id];
-      nextOrderUpdatedAt = Date.now();
-      await persistOrder(BOARD_ORDER_KEY, nextOrder, nextOrderUpdatedAt);
-      orderQueued = await enqueueOrderSync('boardOrder.set', nextOrder, nextOrderUpdatedAt);
-    }
+    const order = isNew
+      ? [...get().boardOrder.filter((bid) => bid !== updated.id), updated.id]
+      : null;
+    const orderAt = Date.now();
     set((s) => ({
       boards: replaceOrAdd(s.boards, updated),
-      boardOrder: nextOrder,
-      boardOrderUpdatedAt: nextOrderUpdatedAt,
-      pendingOps: s.pendingOps + (queued ? 1 : 0) + (orderQueued ? 1 : 0),
+      boardOrder: order ?? s.boardOrder,
+      boardOrderUpdatedAt: order ? orderAt : s.boardOrderUpdatedAt,
+      pendingOps: s.pendingOps + (queued ? 1 : 0),
     }));
+    if (order && (await commitOrder(BOARD_ORDER_KEY, 'boardOrder.set', order, orderAt))) {
+      set((s) => ({ pendingOps: s.pendingOps + 1 }));
+    }
     if (get().online) void get().flushQueue();
   },
 
@@ -274,27 +421,23 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   deleteBoard: async (id) => {
     await db.boards.update(id, { deleted: 1, dirty: 1 });
     const queued = await enqueueOp('board.delete', { id });
+    // Deleting the selected board falls back to All cards, not to another
+    // board — see CardsPage: `activeBoardId === null` *is* the All-cards tab.
     const wasActive = get().activeBoardId === id;
-    if (wasActive) {
-      await db.preferences.delete(ACTIVE_BOARD_KEY);
-    }
-    const prevOrder = get().boardOrder;
-    const nextOrder = prevOrder.filter((bid) => bid !== id);
-    const orderChanged = nextOrder.length !== prevOrder.length;
-    let nextOrderUpdatedAt = get().boardOrderUpdatedAt;
-    let orderQueued = false;
-    if (orderChanged) {
-      nextOrderUpdatedAt = Date.now();
-      await persistOrder(BOARD_ORDER_KEY, nextOrder, nextOrderUpdatedAt);
-      orderQueued = await enqueueOrderSync('boardOrder.set', nextOrder, nextOrderUpdatedAt);
-    }
+    if (wasActive) await db.preferences.delete(ACTIVE_BOARD_KEY);
+    const without = get().boardOrder.filter((bid) => bid !== id);
+    const order = without.length === get().boardOrder.length ? null : without;
+    const orderAt = Date.now();
     set((s) => ({
       boards: s.boards.filter((b) => b.id !== id),
-      boardOrder: nextOrder,
-      boardOrderUpdatedAt: nextOrderUpdatedAt,
+      boardOrder: order ?? s.boardOrder,
+      boardOrderUpdatedAt: order ? orderAt : s.boardOrderUpdatedAt,
       activeBoardId: wasActive ? null : s.activeBoardId,
-      pendingOps: s.pendingOps + (queued ? 1 : 0) + (orderQueued ? 1 : 0),
+      pendingOps: s.pendingOps + (queued ? 1 : 0),
     }));
+    if (order && (await commitOrder(BOARD_ORDER_KEY, 'boardOrder.set', order, orderAt))) {
+      set((s) => ({ pendingOps: s.pendingOps + 1 }));
+    }
     if (get().online) void get().flushQueue();
   },
 
@@ -304,16 +447,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
   setBoardOrder: async (order) => {
     const reconciled = reconcileOrder(order, get().boards);
-    if (reconciled.join('|') === get().boardOrder.join('|')) return;
+    if (sameOrder(reconciled, get().boardOrder)) return;
     const updatedAt = Date.now();
     set({ boardOrder: reconciled, boardOrderUpdatedAt: updatedAt });
-    await persistOrder(BOARD_ORDER_KEY, reconciled, updatedAt);
-    const hadPending = (await db.syncQueue
-      .where('op')
-      .equals('boardOrder.set')
-      .count()) > 0;
-    const queued = await enqueueOrderSync('boardOrder.set', reconciled, updatedAt);
-    if (queued && !hadPending) {
+    if (await commitOrder(BOARD_ORDER_KEY, 'boardOrder.set', reconciled, updatedAt)) {
       set((s) => ({ pendingOps: s.pendingOps + 1 }));
     }
     if (get().online) void get().flushQueue();
@@ -401,17 +538,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           set((s) => ({ pendingOps: Math.max(0, s.pendingOps - 1) }));
           continue;
         }
+        // `markSynced` is what lets a future pull adopt a remote edit to the
+        // same row; see its comment for the updatedAt guard.
         switch (op.op) {
           case 'card.upsert': {
             await apiPostJson('cards.upsert', { card: op.payload });
-            // Mark the local row clean once synced, so future pulls can adopt
-            // remote edits (last-write-wins). Guard on updatedAt so a newer
-            // local edit made since this op was enqueued stays dirty.
             const c = op.payload as Card;
-            const cur = await db.cards.get(c.id);
-            if (cur && cur.updatedAt === c.updatedAt) {
-              await db.cards.update(c.id, { dirty: 0 });
-            }
+            await markSynced(db.cards, c.id, c.updatedAt);
             break;
           }
           case 'card.delete':
@@ -422,14 +555,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             break;
           case 'board.upsert': {
             await apiPostJson('boards.upsert', { board: op.payload });
-            // Mark clean once synced so future pulls can adopt remote edits
-            // (otherwise a device that has ever edited a board never pulls in
-            // another device's changes to it — e.g. a background URL).
             const b = op.payload as Board;
-            const cur = await db.boards.get(b.id);
-            if (cur && cur.updatedAt === b.updatedAt) {
-              await db.boards.update(b.id, { dirty: 0 });
-            }
+            await markSynced(db.boards, b.id, b.updatedAt);
             break;
           }
           case 'board.delete':
@@ -441,10 +568,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           case 'readingList.upsert': {
             await apiPostJson('readingLists.upsert', { readingList: op.payload });
             const l = op.payload as ReadingList;
-            const cur = await db.readingLists.get(l.id);
-            if (cur && cur.updatedAt === l.updatedAt) {
-              await db.readingLists.update(l.id, { dirty: 0 });
-            }
+            await markSynced(db.readingLists, l.id, l.updatedAt);
             break;
           }
           case 'readingList.delete':
@@ -453,10 +577,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           case 'readingProgress.set': {
             await apiPostJson('readingProgress.set', { progress: op.payload });
             const p = op.payload as ReadingProgress;
-            const cur = await db.readingProgress.get(p.listId);
-            if (cur && cur.updatedAt === p.updatedAt) {
-              await db.readingProgress.update(p.listId, { dirty: 0 });
-            }
+            await markSynced(db.readingProgress, p.listId, p.updatedAt);
             break;
           }
         }
@@ -546,48 +667,18 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       .map(normalizeReadingProgress)
       .filter((p): p is ReadingProgress => p !== null);
 
-    // A local row should only block adopting a newer remote if it has a
-    // genuinely pending upsert in the queue. A leftover dirty flag with no
-    // pending op is stale (its edit already synced) and must NOT freeze the
-    // row forever — otherwise a device that has ever edited a board never
-    // pulls in another device's changes to it (e.g. a background URL).
     const queued = await db.syncQueue.toArray();
-    const pendingCardIds = new Set(
-      queued.filter((o) => o.op === 'card.upsert').map((o) => (o.payload as Card).id),
-    );
-    const pendingBoardIds = new Set(
-      queued.filter((o) => o.op === 'board.upsert').map((o) => (o.payload as Board).id),
-    );
-    const pendingListIds = new Set(
-      queued
-        .filter((o) => o.op === 'readingList.upsert')
-        .map((o) => (o.payload as ReadingList).id),
-    );
-
     await db.transaction('rw', db.cards, db.boards, db.readingLists, db.readingProgress, async () => {
-      for (const c of remoteCards) {
-        const local = await db.cards.get(c.id);
-        const blocked = local?.dirty === 1 && pendingCardIds.has(c.id);
-        if (!local || (!blocked && c.updatedAt > local.updatedAt)) {
-          await db.cards.put({ ...c, dirty: 0, deleted: 0 });
-        }
-      }
-      for (const b of remoteBoards) {
-        const local = await db.boards.get(b.id);
-        const blocked = local?.dirty === 1 && pendingBoardIds.has(b.id);
-        if (!local || (!blocked && b.updatedAt > local.updatedAt)) {
-          await db.boards.put({ ...b, dirty: 0, deleted: 0 });
-        }
-      }
-      for (const l of remoteLists) {
-        const local = await db.readingLists.get(l.id);
-        const blocked = local?.dirty === 1 && pendingListIds.has(l.id);
-        if (!local || (!blocked && l.updatedAt > local.updatedAt)) {
-          await db.readingLists.put({ ...l, dirty: 0, deleted: 0 });
-        }
-      }
-      // Progress needs no "blocked" case: the merge is a union, so adopting the
-      // remote row can't drop a local tick. The dirty flag is carried over so a
+      await adoptRemoteRows(db.cards, remoteCards, pendingUpsertIds(queued, 'card.upsert'));
+      await adoptRemoteRows(db.boards, remoteBoards, pendingUpsertIds(queued, 'board.upsert'));
+      await adoptRemoteRows(
+        db.readingLists,
+        remoteLists,
+        pendingUpsertIds(queued, 'readingList.upsert'),
+      );
+      // Progress is the one collection that merges rather than races, so it
+      // needs no "blocked" case: the merge is a union, and adopting the remote
+      // row can't drop a local tick. The dirty flag is carried over so a
       // still-pending push happens anyway.
       for (const p of remoteProgress) {
         const local = await db.readingProgress.get(p.listId);
@@ -607,47 +698,20 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const liveCards = cards.map(stripLocal).map(normalizeCard);
     const liveBoards = boards.map(stripLocal);
 
-    // Adopt remote order only if it's newer AND no local change is still
-    // pending — otherwise an in-flight reorder could be clobbered.
-    const remoteCardOrder = Array.isArray(cardOrderResp?.order) ? cardOrderResp.order : [];
-    const remoteCardOrderUpdatedAt = typeof cardOrderResp?.updatedAt === 'number' ? cardOrderResp.updatedAt : 0;
-    const pendingCardOrderCount = await db.syncQueue
-      .where('op')
-      .equals('cardOrder.set')
-      .count();
-    let nextCardOrder = get().cardOrder;
-    let nextCardOrderUpdatedAt = get().cardOrderUpdatedAt;
-    if (pendingCardOrderCount === 0 && remoteCardOrderUpdatedAt > nextCardOrderUpdatedAt) {
-      nextCardOrder = remoteCardOrder;
-      nextCardOrderUpdatedAt = remoteCardOrderUpdatedAt;
-    }
-    const reconciledCardOrder = reconcileOrder(nextCardOrder, liveCards);
-    const cardOrderChanged =
-      reconciledCardOrder.join('|') !== get().cardOrder.join('|') ||
-      nextCardOrderUpdatedAt !== get().cardOrderUpdatedAt;
-    if (cardOrderChanged) {
-      void persistOrder(CARD_ORDER_KEY, reconciledCardOrder, nextCardOrderUpdatedAt);
-    }
-
-    const remoteBoardOrder = Array.isArray(boardOrderResp?.order) ? boardOrderResp.order : [];
-    const remoteBoardOrderUpdatedAt = typeof boardOrderResp?.updatedAt === 'number' ? boardOrderResp.updatedAt : 0;
-    const pendingBoardOrderCount = await db.syncQueue
-      .where('op')
-      .equals('boardOrder.set')
-      .count();
-    let nextBoardOrder = get().boardOrder;
-    let nextBoardOrderUpdatedAt = get().boardOrderUpdatedAt;
-    if (pendingBoardOrderCount === 0 && remoteBoardOrderUpdatedAt > nextBoardOrderUpdatedAt) {
-      nextBoardOrder = remoteBoardOrder;
-      nextBoardOrderUpdatedAt = remoteBoardOrderUpdatedAt;
-    }
-    const reconciledBoardOrder = reconcileOrder(nextBoardOrder, liveBoards);
-    const boardOrderChanged =
-      reconciledBoardOrder.join('|') !== get().boardOrder.join('|') ||
-      nextBoardOrderUpdatedAt !== get().boardOrderUpdatedAt;
-    if (boardOrderChanged) {
-      void persistOrder(BOARD_ORDER_KEY, reconciledBoardOrder, nextBoardOrderUpdatedAt);
-    }
+    const cardOrder = await adoptedOrder(
+      CARD_ORDER_KEY,
+      'cardOrder.set',
+      cardOrderResp,
+      { order: get().cardOrder, updatedAt: get().cardOrderUpdatedAt },
+      liveCards,
+    );
+    const boardOrder = await adoptedOrder(
+      BOARD_ORDER_KEY,
+      'boardOrder.set',
+      boardOrderResp,
+      { order: get().boardOrder, updatedAt: get().boardOrderUpdatedAt },
+      liveBoards,
+    );
 
     const currentActive = get().activeBoardId;
     const nextActive =
@@ -662,10 +726,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       boards: liveBoards,
       readingLists: sortLists(listRows.map(stripLocal).map(normalizeList)),
       readingProgress: indexProgress(progressRows.map(stripLocal)),
-      cardOrder: reconciledCardOrder,
-      cardOrderUpdatedAt: nextCardOrderUpdatedAt,
-      boardOrder: reconciledBoardOrder,
-      boardOrderUpdatedAt: nextBoardOrderUpdatedAt,
+      cardOrder: cardOrder.order,
+      cardOrderUpdatedAt: cardOrder.updatedAt,
+      boardOrder: boardOrder.order,
+      boardOrderUpdatedAt: boardOrder.updatedAt,
       activeBoardId: nextActive,
     });
     void expandStoredSpans();
@@ -737,16 +801,9 @@ async function seedSyncQueue(): Promise<void> {
     db.readingLists.toArray(),
     db.readingProgress.toArray(),
   ]);
-  for (const row of cardRows) {
-    if (row.dirty !== 1) continue;
-    if (row.deleted === 1) await enqueueOp('card.delete', { id: row.id });
-    else await enqueueOp('card.upsert', stripLocal(row));
-  }
-  for (const row of boardRows) {
-    if (row.dirty !== 1) continue;
-    if (row.deleted === 1) await enqueueOp('board.delete', { id: row.id });
-    else await enqueueOp('board.upsert', stripLocal(row));
-  }
+  await seedRows(cardRows, 'card.upsert', 'card.delete');
+  await seedRows(boardRows, 'board.upsert', 'board.delete');
+  await seedRows(listRows, 'readingList.upsert', 'readingList.delete');
   const { cardOrder, cardOrderUpdatedAt, boardOrder, boardOrderUpdatedAt } =
     useLibraryStore.getState();
   // An order that has never been set has nothing to say, and pushing it would
@@ -757,11 +814,6 @@ async function seedSyncQueue(): Promise<void> {
   }
   if (boardOrder.length > 0 || boardOrderUpdatedAt > 0) {
     await enqueueOrderSync('boardOrder.set', boardOrder, boardOrderUpdatedAt);
-  }
-  for (const row of listRows) {
-    if (row.dirty !== 1) continue;
-    if (row.deleted === 1) await enqueueOp('readingList.delete', { id: row.id });
-    else await enqueueOp('readingList.upsert', stripLocal(row));
   }
   for (const row of progressRows) {
     if (row.dirty !== 1) continue;
