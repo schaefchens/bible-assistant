@@ -257,17 +257,39 @@ export function getLastPlayedGroupId(): string | null {
 export const triggerContinuation = (groupId: string): Promise<void> =>
   onSoftEnd(groupId);
 
+/**
+ * Record that a reading ran to its end — the "narration finished a passage"
+ * caller of `readingProgressTracker`.
+ *
+ * Kept out of `onSoftEnd` because that only runs with auto-play **on**, and
+ * ticking a passage off has nothing to do with whether the next one plays by
+ * itself. In the reader the dwell rule covered the difference; in the chat
+ * nothing did, so a plan played from a voice command (`play_reading_list`) or a
+ * passage tapped in the picker ticked *nothing at all* on a default install,
+ * where `autoPlayReading` is off.
+ *
+ * Idempotent: `setEntryDone` no-ops when the entry is already ticked, so the
+ * continuation path below may call it again for the same group.
+ */
+function notePassageFinished(groupId: string): void {
+  const finished = readingHosts.getGroup(groupId);
+  noteEntryFinished(
+    finished?.provenance,
+    // The *last* chapter of the group: an entry spanning several is only
+    // finished when its final segment is.
+    finished?.verses[finished.verses.length - 1]?.chapter,
+  );
+}
+
 async function onSoftEnd(groupId: string): Promise<void> {
   if (firingContinuation) return;
   firingContinuation = true;
   try {
     // Whatever just finished is finished, whether or not anything follows it —
-    // the last entry of a plan has to tick too.
-    const finished = readingHosts.getGroup(groupId);
-    noteEntryFinished(
-      finished?.provenance,
-      finished?.verses[finished.verses.length - 1]?.chapter,
-    );
+    // the last entry of a plan has to tick too. Also reached from the manual
+    // next button (`triggerContinuation`), which is the one caller the
+    // subscription's own tick doesn't cover: no soft-end has fired there.
+    notePassageFinished(groupId);
     const next = await nextReadingAfter(groupId);
     if (!next) {
       // Nothing to continue with (the end of a reading list, the end of the
@@ -311,14 +333,17 @@ export function initAutoPlay(): void {
 
     const wasPlaying = prev.status === 'playing' || prev.status === 'loading';
     const becameIdle = state.status === 'idle';
+    // A soft-end is a reading reaching its own end (a user stop clears the
+    // flag), so it is the signal for both jobs — but only continuing is the
+    // auto-play setting's business.
     if (
       wasPlaying &&
       becameIdle &&
       (audioPlayback.isSoftEnded() || browserTts.isSoftEnded()) &&
-      autoPlayOn() &&
       lastPlayedGroupId
     ) {
-      void onSoftEnd(lastPlayedGroupId);
+      notePassageFinished(lastPlayedGroupId);
+      if (autoPlayOn()) void onSoftEnd(lastPlayedGroupId);
     }
 
     // Prefetch trigger: only when the playing group CHANGES. The

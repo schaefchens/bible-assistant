@@ -682,6 +682,17 @@ writes progress, and three things call it: narration finishing a passage, the re
 past* one, and a manual tick in the editor. It holds no playback or reader import precisely so
 both can use it.
 
+**The narration tick does not depend on auto-play.** It used to: the tick lived inside
+`autoPlay.onSoftEnd`, which the playback subscription only calls when `autoPlayReading` is on —
+and that is **off by default**. The reader's dwell rule hid it, but a plan played in the *chat*
+(`play_reading_list`, or a passage tapped in the picker) has no other reporter, so it ticked
+nothing at all on a fresh install. A soft-end means a reading reached its own end (a user stop
+clears the flag), so it is the signal for both jobs, and only *continuing* is the setting's
+business: `notePassageFinished` fires on every soft-end, `onSoftEnd` only when auto-play is on.
+It still runs inside `onSoftEnd` too, for the manual next button (`triggerContinuation`), which
+fires no soft-end; `setEntryDone` no-ops when the entry is already ticked, so the double call
+costs nothing.
+
 The reader's rule is the fiddly one, and it takes two signals:
 
 1. **Intent, declared by the caller** (`PositionIntent`): the pager's next button is a `turn`,
