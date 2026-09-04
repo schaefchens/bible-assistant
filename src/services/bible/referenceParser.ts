@@ -1,4 +1,4 @@
-import { findBookByName, getBookById } from './bookCatalog';
+import { findBookByName } from './bookCatalog';
 import type { VerseRange } from '@/types/domain';
 
 export type { VerseRange };
@@ -78,14 +78,4 @@ export function parseReference(input: string): ParsedReference | null {
   };
 }
 
-export function isReferenceValid(ref: ParsedReference): boolean {
-  const book = getBookById(ref.bookId);
-  if (!book) return false;
-  if (ref.chapter < 1 || ref.chapter > book.chapters) return false;
-  if (ref.verseRanges) {
-    for (const r of ref.verseRanges) {
-      if (r.end < r.start) return false;
-    }
-  }
-  return true;
-}
+

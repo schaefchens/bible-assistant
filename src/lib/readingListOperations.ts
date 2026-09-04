@@ -30,23 +30,6 @@ export function withEntryRemoved(list: ReadingList, entryId: string): ReadingLis
   return touched ? { ...list, days } : list;
 }
 
-export function withEntryUpdated(
-  list: ReadingList,
-  entryId: string,
-  patch: Partial<Omit<ReadingEntry, 'id'>>,
-): ReadingList {
-  let touched = false;
-  const days = list.days.map((day) => {
-    if (!day.entries.some((e) => e.id === entryId)) return day;
-    touched = true;
-    return {
-      ...day,
-      entries: day.entries.map((e) => (e.id === entryId ? { ...e, ...patch } : e)),
-    };
-  });
-  return touched ? { ...list, days } : list;
-}
-
 /**
  * Move one entry a single step in reading order.
  *

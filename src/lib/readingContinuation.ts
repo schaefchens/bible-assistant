@@ -113,16 +113,15 @@ export async function nextReadingAfter(groupId: string): Promise<NextReading | n
  * Consulting the reader here is not the host leak it looks like: a post can only
  * be read in the reader (chat has no representation for one — see
  * `useContinueReading`), so the reader's sequence is the only answer there is.
- * Dynamically imported to keep this module's load order independent of the
- * store's.
+ * `spaceReading` and `readerStore` are imported dynamically to keep this
+ * module's evaluation order independent of the store's; `useSettingsStore` is
+ * not, because it is already a static import at the top of this file.
  */
 async function nextInSpace(provenance: SpaceProvenance): Promise<NextReading | null> {
-  const [{ spacePosts, selectionSegments }, { useReaderStore }, { useSettingsStore }] =
-    await Promise.all([
-      import('@/services/community/spaceReading'),
-      import('@/store/readerStore'),
-      import('@/store/settingsStore'),
-    ]);
+  const [{ spacePosts, selectionSegments }, { useReaderStore }] = await Promise.all([
+    import('@/services/community/spaceReading'),
+    import('@/store/readerStore'),
+  ]);
 
   const source = useReaderStore.getState().source;
   const translation = useSettingsStore.getState().translation;

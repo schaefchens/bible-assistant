@@ -120,11 +120,6 @@ type CommunityState = {
   markSeen: (postId: string) => Promise<void>;
 };
 
-/** Community is on exactly when a profile exists. One switch, one test. */
-export function hasCommunity(): boolean {
-  return useCommunityStore.getState().profile !== null;
-}
-
 function online(): boolean {
   return useLibraryStore.getState().online;
 }

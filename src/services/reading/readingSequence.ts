@@ -2,7 +2,7 @@ import type { Post, ReadingList, VerseRange } from '@/types/domain';
 import type { Translation } from '@/services/bible/bibleApi';
 import { formatRangeList, formatReference, getBookById } from '@/services/bible/bookCatalog';
 import { nextChapterRef, prevChapterRef } from '@/services/bible/chapterNavigation';
-import { isFlatList, listEntries } from './readingEntries';
+import { isFlatList } from './readingEntries';
 
 /**
  * What the reader (and playback) walks through: the whole Bible in canonical
@@ -360,13 +360,4 @@ export function formatSegment(ref: SegmentRef, lang: 'en' | 'de'): string {
     : formatRangeList(ref.bookId, ref.chapter, ref.ranges ?? [], lang);
 }
 
-export function sameSegment(a: SegmentRef | null, b: SegmentRef | null): boolean {
-  if (!a || !b) return a === b;
-  return segmentId(a) === segmentId(b);
-}
 
-/** How many entries of `list` precede `entryId`, for "3 of 21" style progress
- * without re-expanding the list. */
-export function entryIndex(list: ReadingList, entryId: string): number {
-  return listEntries(list).findIndex((e) => e.id === entryId);
-}
