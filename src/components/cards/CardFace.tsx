@@ -14,7 +14,6 @@ type Props = {
 
 export function CardFace({ card, size: _size, isActive = false }: Props) {
   const c = colorClasses(card.color);
-  void _size;
   const showTags = card.tags && card.tags.length > 0;
   // Text sizes are em-based so the whole card's text scales off the root
   // font-size below (driven by card.textScale).

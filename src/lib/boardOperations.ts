@@ -22,6 +22,5 @@ export function withoutCardInBoard(board: Board, cardId: string): Board {
   // Also drop the card's freeform placement so boards.json doesn't accumulate
   // stale layout entries.
   const { [cardId]: _drop, ...freeform } = board.freeform;
-  void _drop;
   return { ...board, cardIds, freeform };
 }

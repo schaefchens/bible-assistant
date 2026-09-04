@@ -71,7 +71,6 @@ export function BoardGrid({ cards, onOpen, onReorder, onRemove, emptyLabel }: Pr
   };
 
   const handleDragStart = (_event: DragStartEvent) => {
-    void _event;
     // Clear all flipped states on drag start so the dragged card shows its face.
     setFlipped(new Set());
   };

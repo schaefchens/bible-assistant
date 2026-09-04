@@ -20,5 +20,29 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      /**
+       * Two deliberate ways to name something you are not going to use, so
+       * neither needs a `void x;` line after it to keep the linter quiet:
+       *
+       *   const { dirty: _d, ...rest } = row;   // omit a field by destructuring
+       *   function Face({ size: _size }) {}     // accept a prop, ignore it
+       *
+       * `ignoreRestSiblings` is the idiom `stripLocal` and `partialize` are
+       * built on; the `^_` patterns are what makes the underscore mean
+       * anything.
+       */
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          ignoreRestSiblings: true,
+          args: 'after-used',
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+        },
+      ],
+    },
   },
 ])
