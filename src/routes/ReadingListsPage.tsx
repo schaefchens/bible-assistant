@@ -13,6 +13,7 @@ import {
 } from '@/services/reading/readingEntries';
 import { progressStats } from '@/services/reading/readingProgress';
 import type { ReadingList } from '@/types/domain';
+import { ChevronIcon } from '@/components/common/icons';
 
 /**
  * Reading lists: plans and custom lists of what to read.
@@ -59,7 +60,7 @@ export function ReadingListsPage() {
           aria-label={t('common.back') as string}
           className="shrink-0 text-ink-muted hover:text-ink transition-colors -ml-1 px-1"
         >
-          <BackChevron />
+          <ChevronIcon dir="left" size={20} />
         </button>
         <div className="flex-1 min-w-0">
           <h1 className="font-serif text-brand text-lg truncate">{t('lists.title')}</h1>
@@ -124,24 +125,6 @@ function ListRow({ list, onOpen }: { list: ReadingList; onOpen: () => void }) {
         <span>{t('lists.chapters', { count: listChapterCount(list) })}</span>
       </div>
     </button>
-  );
-}
-
-function BackChevron() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <polyline points="15 18 9 12 15 6" />
-    </svg>
   );
 }
 

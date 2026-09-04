@@ -7,7 +7,7 @@ import {
   ProgressRing,
   RetryIcon,
   TrashIcon,
-} from './NarrationDownloadButton';
+} from '@/components/common/icons';
 import {
   cancelNarrationGroup,
   checkNarrationGroup,

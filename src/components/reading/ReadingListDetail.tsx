@@ -29,6 +29,8 @@ import {
   withEntryRemoved,
 } from '@/lib/readingListOperations';
 import type { ReadingDay, ReadingEntry, ReadingList } from '@/types/domain';
+import { PlayIcon } from '@/components/common/icons';
+import { ChevronIcon } from '@/components/common/icons';
 
 /** A week of a plan per page — the unit people think in for a daily plan. */
 const DAYS_PER_PAGE = 7;
@@ -156,7 +158,7 @@ export function ReadingListDetail({ list, startEditing = false }: Props) {
           aria-label={t('common.back') as string}
           className="text-ink-muted hover:text-ink transition-colors -ml-1 px-1"
         >
-          <BackChevron />
+          <ChevronIcon dir="left" size={20} />
         </button>
         <h1 className="flex-1 min-w-0 font-serif text-brand text-lg truncate">
           {list.emoji ? `${list.emoji} ` : ''}
@@ -591,35 +593,3 @@ function IconButton({
   );
 }
 
-function PlayIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden="true"
-      className="inline-block"
-    >
-      <path d="M7 4l14 8-14 8V4z" />
-    </svg>
-  );
-}
-
-function BackChevron() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <polyline points="15 18 9 12 15 6" />
-    </svg>
-  );
-}

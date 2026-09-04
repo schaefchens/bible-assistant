@@ -14,6 +14,7 @@ import { subscribedCodeForSpace } from '@/services/community/spaceReading';
 import { useCommunityStore } from '@/store/communityStore';
 import { ReportDialog } from '@/components/community/ReportDialog';
 import { ShareSpaceButton } from '@/components/community/ShareSpaceSheet';
+import { FlagIcon, PlayIcon } from '@/components/common/icons';
 
 type Props = { segment: LoadedSegment };
 
@@ -179,29 +180,3 @@ export const SegmentBlock = memo(function SegmentBlock({ segment }: Props) {
   );
 });
 
-/** A small flag, distinct enough from the play triangle beside it. */
-function FlagIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M5 21V4.5c3.5-1.6 6.5.9 10-.5v9c-3.5 1.4-6.5-1.1-10 .5" />
-    </svg>
-  );
-}
-
-function PlayIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M7 4l14 8-14 8V4z" />
-    </svg>
-  );
-}

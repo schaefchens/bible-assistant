@@ -21,6 +21,7 @@ import { UpdateBanner } from '@/components/common/UpdateBanner';
 import { KeyFailureBanner } from '@/components/common/KeyFailureBanner';
 import { NarrationFallbackNotice } from '@/components/common/NarrationFallbackNotice';
 import { FeedbackButton } from '@/components/feedback/FeedbackButton';
+import { GearIcon } from '@/components/common/icons';
 
 export function AppShell() {
   const { t } = useTranslation();
@@ -175,6 +176,8 @@ function NavTab({
   );
 }
 
+/** The nav's five glyphs are a designed family — one stroke weight, sized by
+ * their slot — so they stay here rather than in `common/icons.tsx`. */
 const ICON_PROPS = {
   viewBox: '0 0 24 24',
   fill: 'none',
@@ -228,11 +231,8 @@ function SpacesIcon() {
   );
 }
 
+/** The one nav glyph that already existed as a shared icon; given the nav's
+ * own stroke and sizing so it still matches its four neighbours. */
 function SettingsIcon() {
-  return (
-    <svg {...ICON_PROPS}>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 14.8a1.6 1.6 0 0 0 .32 1.77l.06.06a1.94 1.94 0 1 1-2.74 2.74l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-.97 1.47V21a1.94 1.94 0 1 1-3.88 0v-.09a1.6 1.6 0 0 0-1.04-1.46 1.6 1.6 0 0 0-1.77.32l-.06.06A1.94 1.94 0 1 1 4.75 17.1l.06-.06a1.6 1.6 0 0 0 .32-1.77 1.6 1.6 0 0 0-1.47-.97H3.5a1.94 1.94 0 1 1 0-3.88h.09a1.6 1.6 0 0 0 1.46-1.04 1.6 1.6 0 0 0-.32-1.77l-.06-.06A1.94 1.94 0 1 1 7.4 4.81l.06.06a1.6 1.6 0 0 0 1.77.32H9.3a1.6 1.6 0 0 0 .97-1.47V3.5a1.94 1.94 0 1 1 3.88 0v.09a1.6 1.6 0 0 0 .97 1.47 1.6 1.6 0 0 0 1.77-.32l.06-.06a1.94 1.94 0 1 1 2.74 2.74l-.06.06a1.6 1.6 0 0 0-.32 1.77v.07a1.6 1.6 0 0 0 1.47.97H21a1.94 1.94 0 1 1 0 3.88h-.09a1.6 1.6 0 0 0-1.47.97z" />
-    </svg>
-  );
+  return <GearIcon stroke={ICON_PROPS.strokeWidth} className={ICON_PROPS.className} />;
 }

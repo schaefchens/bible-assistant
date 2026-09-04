@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
+import { ChevronIcon } from '@/components/common/icons';
 
 /** Drag far enough and let go, and the sheet closes rather than snapping back. */
 const DISMISS_PX = 96;
@@ -220,7 +221,7 @@ export function BottomSheet({ open, onClose, title, onBack, children }: Props) {
                   aria-label={t('common.back') as string}
                   className="text-ink-muted hover:text-ink transition-colors -ml-1 px-1 flex items-center gap-1 min-w-0"
                 >
-                  <BackChevron />
+                  <ChevronIcon dir="left" size={20} />
                   <span className="font-serif text-brand text-lg truncate">{title}</span>
                 </button>
               ) : (
@@ -252,20 +253,3 @@ export function BottomSheetBody({ children }: { children: React.ReactNode }) {
   return <div className="flex-1 overflow-y-auto px-5 pb-8 pb-safe">{children}</div>;
 }
 
-function BackChevron() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <polyline points="15 18 9 12 15 6" />
-    </svg>
-  );
-}

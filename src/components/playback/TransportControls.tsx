@@ -14,6 +14,28 @@ import {
 import { EyesFreeIcon } from '@/components/voice/EyesFreeIcon';
 import { isReadingRoute } from '@/lib/appRoutes';
 import { PlaybackSettingsSheet } from './PlaybackSettingsSheet';
+import {
+  ChevronIcon,
+  FollowIcon,
+  GearIcon,
+  InfinityIcon,
+  NextIcon,
+  PauseIcon,
+  PlayIcon,
+  PrevIcon,
+  SeekIcon,
+  SpinnerIcon,
+} from '@/components/common/icons';
+
+/** The settings sheet's collapse marker: points left, turns to point right. */
+const SheetChevron = ({ flipped }: { flipped: boolean }) => (
+  <ChevronIcon
+    dir="left"
+    size={14}
+    stroke={2.4}
+    className={clsx('transition-transform duration-200', flipped && 'rotate-180')}
+  />
+);
 
 /** Width of the grip, and the only part of the arm the collapsed capsule shows.
  * `MicDock` needs it to compute the collapsed width, so it lives here with the
@@ -109,7 +131,7 @@ export function TransportArm({ rowRef, expanded, onToggle, onRightSide }: ArmPro
           )}
           style={{ width: HANDLE_W }}
         >
-          <ChevronIcon flipped={onRightSide === expanded} />
+          <SheetChevron flipped={onRightSide === expanded} />
         </button>
 
         {/* Everything but the grip fades as it slides under the mic — the
@@ -249,7 +271,7 @@ function Play({ isPlaying, isLoading }: TransportState) {
         isLoading && 'animate-pulse-soft',
       )}
     >
-      {isLoading ? <LoadingIcon /> : isPlaying ? <PauseIcon /> : <PlayIcon />}
+      {isLoading ? <SpinnerIcon /> : isPlaying ? <PauseIcon /> : <PlayIcon />}
     </button>
   );
 }
@@ -353,7 +375,7 @@ function SettingsButton({ setSheetOpen }: TransportState) {
       aria-label={t('playbackSheet.title')}
       onClick={() => setSheetOpen(true)}
     >
-      <SettingsIcon />
+      <GearIcon />
     </ToggleButton>
   );
 }
@@ -404,119 +426,3 @@ function ToggleButton({
   );
 }
 
-/** Points left; `flipped` turns it round. The caller decides which way is
- * "outward" from the mic. */
-function ChevronIcon({ flipped }: { flipped: boolean }) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={clsx('transition-transform duration-200', flipped && 'rotate-180')}
-    >
-      <polyline points="15 6 9 12 15 18" />
-    </svg>
-  );
-}
-
-function PrevIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M6 5h2v14H6V5zm14 0v14L9 12l11-7z" />
-    </svg>
-  );
-}
-
-function NextIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M16 5h2v14h-2V5zM4 5l11 7L4 19V5z" />
-    </svg>
-  );
-}
-
-/** Bare double triangle — deliberately not Prev/Next's barred glyph, which
- * means "whole verse", where this means "a few words". */
-function SeekIcon({ forward }: { forward: boolean }) {
-  return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
-      <g transform={forward ? undefined : 'translate(24,0) scale(-1,1)'}>
-        <path d="M3 5l8 7-8 7V5zm10 0l8 7-8 7V5z" />
-      </g>
-    </svg>
-  );
-}
-
-function PlayIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M7 4l14 8-14 8V4z" />
-    </svg>
-  );
-}
-
-function PauseIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-      <rect x="6" y="4" width="4" height="16" rx="1" />
-      <rect x="14" y="4" width="4" height="16" rx="1" />
-    </svg>
-  );
-}
-
-function LoadingIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      className="animate-spin"
-    >
-      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-    </svg>
-  );
-}
-
-function InfinityIcon() {
-  return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5.5 12c0-2.2 1.8-4 4-4s3 1.2 4.5 4 3 4 4.5 4 2-1.8 2-4-1.8-4-4-4-3 1.2-4.5 4-3 4-4.5 4-2-1.8-2-4z" />
-    </svg>
-  );
-}
-
-function FollowIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="6 9 12 15 18 9" />
-      <line x1="4" y1="19" x2="20" y2="19" />
-    </svg>
-  );
-}
-
-function SettingsIcon() {
-  return (
-    <svg
-      width="17"
-      height="17"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 14.8a1.6 1.6 0 0 0 .32 1.77l.06.06a1.94 1.94 0 1 1-2.74 2.74l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-.97 1.47V21a1.94 1.94 0 1 1-3.88 0v-.09a1.6 1.6 0 0 0-1.04-1.46 1.6 1.6 0 0 0-1.77.32l-.06.06A1.94 1.94 0 1 1 4.75 17.1l.06-.06a1.6 1.6 0 0 0 .32-1.77 1.6 1.6 0 0 0-1.47-.97H3.5a1.94 1.94 0 1 1 0-3.88h.09a1.6 1.6 0 0 0 1.46-1.04 1.6 1.6 0 0 0-.32-1.77l-.06-.06A1.94 1.94 0 1 1 7.4 4.81l.06.06a1.6 1.6 0 0 0 1.77.32H9.3a1.6 1.6 0 0 0 .97-1.47V3.5a1.94 1.94 0 1 1 3.88 0v.09a1.6 1.6 0 0 0 .97 1.47 1.6 1.6 0 0 0 1.77-.32l.06-.06a1.94 1.94 0 1 1 2.74 2.74l-.06.06a1.6 1.6 0 0 0-.32 1.77v.07a1.6 1.6 0 0 0 1.47.97H21a1.94 1.94 0 1 1 0 3.88h-.09a1.6 1.6 0 0 0-1.47.97z" />
-    </svg>
-  );
-}

@@ -2,33 +2,12 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import type { Translation } from '@/services/bible/bibleApi';
+import { ProgressRing } from '@/components/common/icons';
 import {
   packSizeLabel,
   useBiblePacksStore,
   type PackStatus,
 } from '@/store/biblePacksStore';
-
-/** Circular progress ring; doubles as the cancel target while downloading. */
-function ProgressRing({ pct }: { pct: number }) {
-  const r = 9;
-  const c = 2 * Math.PI * r;
-  return (
-    <svg viewBox="0 0 24 24" className="h-6 w-6 -rotate-90" aria-hidden="true">
-      <circle cx="12" cy="12" r={r} fill="none" strokeWidth="2.5" className="stroke-surface-raised" />
-      <circle
-        cx="12"
-        cy="12"
-        r={r}
-        fill="none"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        className="stroke-brand"
-        strokeDasharray={c}
-        strokeDashoffset={c * (1 - pct)}
-      />
-    </svg>
-  );
-}
 
 /**
  * Trailing control for one row of the translation list: download, resume,
@@ -88,7 +67,7 @@ export function PackActionButton({ code }: { code: Translation }) {
         aria-label={t('bible.packs.cancel')}
         className="shrink-0 self-center relative grid place-items-center h-8 w-8"
       >
-        <ProgressRing pct={pct} />
+        <ProgressRing className="h-6 w-6" pct={pct} />
         <span className="absolute text-[9px] tabular-nums text-ink-muted">
           {Math.round(pct * 100)}
         </span>

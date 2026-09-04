@@ -1,4 +1,13 @@
 import clsx from 'clsx';
+import { ChevronIcon } from '@/components/common/icons';
+
+/** The group's disclosure marker: right when closed, down when open. */
+const Caret = ({ open }: { open: boolean }) => (
+  <ChevronIcon
+    size={16}
+    className={clsx('shrink-0 text-brand-muted transition-transform duration-200', open && 'rotate-90')}
+  />
+);
 
 /**
  * One collapsible category of settings.
@@ -85,24 +94,3 @@ export function SettingsField({
   );
 }
 
-function Caret({ open }: { open: boolean }) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={clsx(
-        'shrink-0 text-brand-muted transition-transform duration-200',
-        open && 'rotate-90',
-      )}
-      aria-hidden="true"
-    >
-      <polyline points="9 18 15 12 9 6" />
-    </svg>
-  );
-}

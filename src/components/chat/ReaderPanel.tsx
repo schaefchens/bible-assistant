@@ -13,6 +13,7 @@ import { getBookById } from '@/services/bible/bookCatalog';
 import { MessageActionsMenu, type MessageActionItem } from './MessageActionsMenu';
 import { copyText, shareText } from '@/lib/nativeBridge';
 import type { ChatMessage } from '@/types/domain';
+import { DotsIcon } from '@/components/common/icons';
 
 type Props = {
   message: ChatMessage;
@@ -320,16 +321,6 @@ export function ReaderPanel({ message, selected, onSelect }: Props) {
         />
       )}
     </>
-  );
-}
-
-function DotsIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-      <circle cx="5" cy="12" r="1.6" />
-      <circle cx="12" cy="12" r="1.6" />
-      <circle cx="19" cy="12" r="1.6" />
-    </svg>
   );
 }
 

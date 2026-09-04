@@ -12,6 +12,13 @@ import {
 } from '@/services/narration/narrationDownload';
 import { useNarrationStore } from '@/store/narrationStore';
 import { isBrowserVoice, type OpenAiVoiceId } from '@/types/domain';
+import {
+  CheckIcon,
+  DownloadIcon,
+  ProgressRing,
+  RetryIcon,
+  TrashIcon,
+} from '@/components/common/icons';
 
 type Props = { subject: NarrationSubject };
 
@@ -157,110 +164,3 @@ export function NarrationDownloadButton({ subject }: Props) {
   );
 }
 
-/** Circular progress ring; doubles as the cancel target while downloading.
- * Shared with `NarrationGroupButton` — the two controls sit one above the
- * other, so a second set of glyphs would read as a second feature. */
-export function ProgressRing({ pct }: { pct: number }) {
-  const r = 9;
-  const c = 2 * Math.PI * r;
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5 -rotate-90" aria-hidden="true">
-      <circle cx="12" cy="12" r={r} fill="none" strokeWidth="2.5" className="stroke-surface-raised" />
-      <circle
-        cx="12"
-        cy="12"
-        r={r}
-        fill="none"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        className="stroke-brand"
-        strokeDasharray={c}
-        strokeDashoffset={c * (1 - pct)}
-      />
-    </svg>
-  );
-}
-
-export function DownloadIcon() {
-  return (
-    <svg
-      width="17"
-      height="17"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 3v11" />
-      <polyline points="8 11 12 15 16 11" />
-      <path d="M5 19h14" />
-    </svg>
-  );
-}
-
-/**
- * A download that failed and can be tried again — the arrow curled back on
- * itself rather than a warning triangle, because the state is "this didn't
- * happen, tap to retry" and not "something is wrong with your library".
- * Shared with `NarrationGroupButton`, like {@link ProgressRing}.
- */
-export function RetryIcon() {
-  return (
-    <svg
-      width="17"
-      height="17"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M20 12a8 8 0 1 1-2.34-5.66" />
-      <polyline points="20 4 20 9 15 9" />
-    </svg>
-  );
-}
-
-export function TrashIcon() {
-  return (
-    <svg
-      width="17"
-      height="17"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M4 7h16" />
-      <path d="M10 11v6M14 11v6" />
-      <path d="M6 7l1 13h10l1-13" />
-      <path d="M9 7V4h6v3" />
-    </svg>
-  );
-}
-
-export function CheckIcon() {
-  return (
-    <svg
-      width="17"
-      height="17"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
-  );
-}

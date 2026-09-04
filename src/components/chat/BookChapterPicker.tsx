@@ -33,6 +33,15 @@ import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { playSegmentInChat } from '@/lib/readingListPlayback';
 import { BottomSheet } from '@/components/common/BottomSheet';
 import { spaceDisplayName, spaceLabel } from '@/services/community/spaceName';
+import {
+  BookIcon,
+  CheckIcon,
+  ChevronIcon,
+  ListIcon,
+  PencilIcon,
+  PlayIcon,
+  QuillIcon,
+} from '@/components/common/icons';
 
 type View = 'books' | 'chapters' | 'translations' | 'lists' | 'spaces';
 
@@ -55,73 +64,6 @@ function clampIndex(value: number, length: number): number {
   return Math.min(Math.max(value, 0), Math.max(0, length - 1));
 }
 
-
-/** A closed book, deliberately distinct from `AppShell`'s open one — that one
- * means "the Read tab", this one means "choose a passage". */
-function BookIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-    </svg>
-  );
-}
-
-function ListIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <line x1="9" y1="6" x2="20" y2="6" />
-      <line x1="9" y1="12" x2="20" y2="12" />
-      <line x1="9" y1="18" x2="20" y2="18" />
-      <circle cx="4.5" cy="6" r="1.3" fill="currentColor" />
-      <circle cx="4.5" cy="12" r="1.3" fill="currentColor" />
-      <circle cx="4.5" cy="18" r="1.3" fill="currentColor" />
-    </svg>
-  );
-}
-
-/** A quill, for the spaces selector — a list icon already means a reading list. */
-function QuillIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <path d="M4 20s2-8 8-12 8-4 8-4-1 5-4 9-7 5-9 5" />
-      <path d="M4 20l4-4" />
-    </svg>
-  );
-}
 
 /**
  * The glyph for whatever the reader is walking through.
@@ -243,71 +185,27 @@ function AuthorGroup({
   );
 }
 
+// Named wrappers over the shared glyphs, so a call site says what the mark
+// *means* here rather than restating its size and stroke every time.
+
 /** The group's disclosure marker: right when closed, down when open. */
-function Caret({ open }: { open: boolean }) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={clsx('text-brand-muted shrink-0 transition-transform', open && 'rotate-90')}
-      aria-hidden="true"
-    >
-      <polyline points="9 18 15 12 9 6" />
-    </svg>
-  );
-}
+const Caret = ({ open }: { open: boolean }) => (
+  <ChevronIcon
+    size={14}
+    stroke={2.4}
+    className={clsx('text-brand-muted shrink-0 transition-transform', open && 'rotate-90')}
+  />
+);
 
-function ChevronRight() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="text-ink-muted shrink-0"
-      aria-hidden="true"
-    >
-      <polyline points="9 18 15 12 9 6" />
-    </svg>
-  );
-}
+/** A row that leads somewhere. */
+const ChevronRight = () => <ChevronIcon size={18} className="text-ink-muted shrink-0" />;
 
-function PlayGlyph() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M7 4l14 8-14 8V4z" />
-    </svg>
-  );
-}
+/** Small enough to sit inside a row's label. */
+const PlayGlyph = () => <PlayIcon size={11} />;
 
-function CheckMark({ className }: { className?: string }) {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="3.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
-  );
-}
+const CheckMark = ({ className }: { className?: string }) => (
+  <CheckIcon size={12} stroke={3.5} className={className} />
+);
 
 /** Step one day (or one page) through a long list. */
 /**
@@ -346,26 +244,6 @@ function PagerButton({
         <span className="flex items-center gap-1 min-w-0">{children}</span>
       )}
     </button>
-  );
-}
-
-/** Edit glyph for the "manage this list" button on the selection row. */
-function PencilIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
   );
 }
 
