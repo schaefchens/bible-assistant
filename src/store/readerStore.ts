@@ -5,17 +5,14 @@ import { isChapterMissing } from '@/services/bible/chapterSources';
 import { nextBookRef } from '@/services/bible/chapterNavigation';
 import { resolveSpace, selectionSegments } from '@/services/community/spaceReading';
 import { absorbsGaps, loadSegmentUnits } from '@/services/reading/segmentLoader';
+import { readerSequence } from '@/services/reading/readerSequence';
 import {
   BIBLE_SOURCE,
-  bibleSequence,
   findListSegment,
   isPostSegment,
   isWholeChapter,
-  listSequence,
   sameSource,
   segmentId,
-  selectionSequence,
-  spaceSequence,
   type ReaderSource,
   type ReadingSequence,
   type SegmentRef,
@@ -108,30 +105,6 @@ function locale() {
   return useSettingsStore.getState().locale;
 }
 
-/**
- * The sequence for the current source. Resolved on demand rather than stored,
- * so editing a list (adding tomorrow's chapter) is reflected the next time the
- * reader steps, with no cache to invalidate.
- *
- * Falls back to the Bible when a source outlives what it points at — a list
- * deleted, or a space unsubscribed, on another device must not leave the tab
- * unable to navigate. `useReaderSequence()` is the reactive twin of this and
- * has to grow the same branches.
- */
-function sequenceFor(source: ReaderSource, translation: Translation): ReadingSequence {
-  if (source.kind === 'list') {
-    const list = useLibraryStore.getState().readingLists.find((l) => l.id === source.listId);
-    if (list) return listSequence(list, translation);
-  }
-  if (source.kind === 'space') {
-    const space = resolveSpace(source);
-    if (space) return spaceSequence(space.spaceId, space.posts, translation);
-  }
-  if (source.kind === 'selection') {
-    return selectionSequence(selectionSegments(source.postIds, translation));
-  }
-  return bibleSequence(translation);
-}
 
 /** Drop the oldest cache entries once past MAX_CACHED, never evicting anything
  * currently mounted. */
@@ -243,7 +216,7 @@ let dwell: { id: string; since: number } | null = null;
  * must not tick anything off. */
 function isForwardInList(previous: SegmentRef, next: SegmentRef): boolean {
   if (!next.listId) return false;
-  const all = sequenceFor(
+  const all = readerSequence(
     { kind: 'list', listId: next.listId },
     useSettingsStore.getState().translation,
   ).all();
@@ -404,7 +377,7 @@ export const useReaderStore = create<ReaderState>()(
         if (cached && mode !== 'replace' && get().visible.includes(id)) return id;
 
         set({ status: 'loading', error: null });
-        const sequence = sequenceFor(get().source, useSettingsStore.getState().translation);
+        const sequence = readerSequence(get().source, useSettingsStore.getState().translation);
         const result = cached
           ? { segment: cached, error: null as null }
           : await loadSegment(ref, dir, sequence);
@@ -447,7 +420,7 @@ export const useReaderStore = create<ReaderState>()(
        * is only right on a genuinely fresh install.
        */
       function resumeOf(source: ReaderSource, translation: Translation): SegmentRef | null {
-        const sequence = sequenceFor(source, translation);
+        const sequence = readerSequence(source, translation);
         if (source.kind === 'list') {
           const progress = useLibraryStore.getState().readingProgress[source.listId];
           const all = sequence.all();
@@ -573,7 +546,7 @@ export const useReaderStore = create<ReaderState>()(
         step: async (dir) => {
           const pos = get().position;
           if (!pos) return;
-          const sequence = sequenceFor(get().source, useSettingsStore.getState().translation);
+          const sequence = readerSequence(get().source, useSettingsStore.getState().translation);
           const ref = dir === 1 ? sequence.next(pos) : sequence.prev(pos);
           if (!ref) return;
           // Only forward is a page turn; stepping back is not a read.
@@ -585,7 +558,7 @@ export const useReaderStore = create<ReaderState>()(
           const edgeId = dir === 1 ? visible[visible.length - 1] : visible[0];
           const edge = edgeId ? segments[edgeId] : undefined;
           if (!edge) return null;
-          const sequence = sequenceFor(get().source, useSettingsStore.getState().translation);
+          const sequence = readerSequence(get().source, useSettingsStore.getState().translation);
           const ref = dir === 1 ? sequence.next(edge.ref) : sequence.prev(edge.ref);
           if (!ref) return null;
           return load(ref, dir === 1 ? 'append' : 'prepend', dir === 1 ? 'forward' : 'backward');
