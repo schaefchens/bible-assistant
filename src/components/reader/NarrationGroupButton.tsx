@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
-import { CheckIcon, DownloadIcon, ProgressRing, TrashIcon } from './NarrationDownloadButton';
+import {
+  CheckIcon,
+  DownloadIcon,
+  ProgressRing,
+  RetryIcon,
+  TrashIcon,
+} from './NarrationDownloadButton';
 import {
   cancelNarrationGroup,
   checkNarrationGroup,
@@ -81,6 +87,13 @@ export function NarrationGroupButton({ subjects, label, compact = false }: Props
   const status = useNarrationStore((s) => groupStatus(s.status, keys));
   const fraction = useNarrationStore((s) => groupFraction(s.status, s.progress, keys));
   const installed = useNarrationStore((s) => groupInstalledCount(s.status, keys));
+  // A run that ended early — two failures in a row, which is the backend or the
+  // network being gone. Also a primitive, for the reason above: the per-item
+  // ticks write to this store, so an array of messages would re-render the
+  // sheet on each one. See `NarrationDownloadButton` for why this is shown at
+  // all; a group is where the silence was worst, because ending after two of
+  // thirty chapters looked exactly like finishing.
+  const anyFailed = useNarrationStore((s) => keys.some((k) => !!s.error[k]));
 
   // Same two-tap-with-timeout idiom as NarrationDownloadButton: giving back a
   // day someone waited to generate deserves a confirm, not a modal.
@@ -157,22 +170,31 @@ export function NarrationGroupButton({ subjects, label, compact = false }: Props
     );
   }
 
+  // A failed run still says how far it got, since "3/30" plus "carry on" is the
+  // whole state: what to expect offline, and that tapping resumes rather than
+  // restarts. Offline gets its own wording — there is nothing to retry yet.
+  const failedLabel = (
+    navigator.onLine === false ? t('read.narration.failedOffline') : t('read.narration.groupFailed')
+  ) as string;
+
   return (
     <button
       type="button"
       onClick={() => void downloadNarrationGroup(targets)}
-      aria-label={label}
-      title={label}
+      aria-label={anyFailed ? failedLabel : label}
+      title={anyFailed ? failedLabel : label}
       className={clsx(
         base,
-        status === 'partial'
-          ? 'text-brand-muted hover:text-brand'
-          : 'text-ink-muted hover:text-ink',
+        anyFailed
+          ? 'text-amber-500 hover:text-amber-400'
+          : status === 'partial'
+            ? 'text-brand-muted hover:text-brand'
+            : 'text-ink-muted hover:text-ink',
       )}
     >
-      <DownloadIcon />
+      {anyFailed ? <RetryIcon /> : <DownloadIcon />}
       {!compact &&
-        (status === 'partial'
+        (anyFailed || status === 'partial'
           ? t('read.narration.groupResume', { done: installed, total: targets.length })
           : label)}
     </button>

@@ -501,7 +501,10 @@
       "groupDownloaded": "Heruntergeladen",
       "groupRemove": "Erneut tippen zum Entfernen",
       "downloadPieces": "Diese Beiträge herunterladen",
-      "downloadSelection": "„{{name}}“ zum Offline-Hören herunterladen"
+      "downloadSelection": "„{{name}}“ zum Offline-Hören herunterladen",
+      "failed": "Der Download ist nicht fertig geworden — zum Wiederholen tippen",
+      "failedOffline": "Keine Verbindung — für die Tonaufnahme wird das Netz gebraucht",
+      "groupFailed": "Der Download wurde vorzeitig beendet — zum Fortsetzen tippen"
     },
     "endOfList": "Ende der Liste.",
     "startOfList": "Anfang der Liste.",

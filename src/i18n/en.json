@@ -501,7 +501,10 @@
       "groupDownloaded": "Downloaded",
       "groupRemove": "Tap again to remove",
       "downloadPieces": "Download these pieces",
-      "downloadSelection": "Download “{{name}}” for offline listening"
+      "downloadSelection": "Download “{{name}}” for offline listening",
+      "failed": "That download didn't finish — tap to try again",
+      "failedOffline": "No connection — this needs the network to prepare the audio",
+      "groupFailed": "That download stopped early — tap to carry on"
     },
     "endOfList": "End of the list.",
     "startOfList": "Start of the list.",

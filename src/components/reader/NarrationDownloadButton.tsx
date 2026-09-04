@@ -54,6 +54,19 @@ export function NarrationDownloadButton({ subject }: Props) {
   const key = narrationTargetKey(target);
   const status = useNarrationStore((s) => s.status[key]) ?? 'unknown';
   const progress = useNarrationStore((s) => s.progress[key]);
+  /**
+   * Whether the last attempt failed. The store has recorded this all along —
+   * `narrationGroup` reads it to decide when to give up on a run — but nothing
+   * ever showed it, so a download that failed (offline, backend down, no key,
+   * quota) spun briefly and returned to the plain glyph: indistinguishable from
+   * a tap that did nothing. Offline is the commonest reason to reach for this
+   * button, which is what made the silence worth fixing.
+   *
+   * Selecting the boolean, not the message: the string is a network error, not
+   * something to put in front of a reader, and a boolean cannot re-render this
+   * on an unrelated key's failure.
+   */
+  const failed = useNarrationStore((s) => !!s.error[key]);
 
   useEffect(() => {
     if (usesDeviceVoice) return;
@@ -113,22 +126,33 @@ export function NarrationDownloadButton({ subject }: Props) {
     );
   }
 
+  // Offline is named for what it is rather than reported as a failure: there is
+  // nothing to retry until the connection is back, and "try again" would be a
+  // lie. The tap stays live either way — the network may have returned since.
+  const label = failed
+    ? ((navigator.onLine === false
+        ? t('read.narration.failedOffline')
+        : t('read.narration.failed')) as string)
+    : status === 'partial'
+      ? (t('read.narration.resume') as string)
+      : (t('read.narration.download') as string);
+
   return (
     <button
       type="button"
       onClick={() => void download(target)}
-      aria-label={t('read.narration.download') as string}
-      title={
-        status === 'partial'
-          ? (t('read.narration.resume') as string)
-          : (t('read.narration.download') as string)
-      }
+      aria-label={label}
+      title={label}
       className={clsx(
         'h-8 w-8 rounded-lg flex items-center justify-center transition-all active:scale-95',
-        status === 'partial' ? 'text-brand-muted hover:text-brand' : 'text-ink-muted hover:text-ink',
+        failed
+          ? 'text-amber-500 hover:text-amber-400'
+          : status === 'partial'
+            ? 'text-brand-muted hover:text-brand'
+            : 'text-ink-muted hover:text-ink',
       )}
     >
-      <DownloadIcon />
+      {failed ? <RetryIcon /> : <DownloadIcon />}
     </button>
   );
 }
@@ -173,6 +197,31 @@ export function DownloadIcon() {
       <path d="M12 3v11" />
       <polyline points="8 11 12 15 16 11" />
       <path d="M5 19h14" />
+    </svg>
+  );
+}
+
+/**
+ * A download that failed and can be tried again — the arrow curled back on
+ * itself rather than a warning triangle, because the state is "this didn't
+ * happen, tap to retry" and not "something is wrong with your library".
+ * Shared with `NarrationGroupButton`, like {@link ProgressRing}.
+ */
+export function RetryIcon() {
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+      <polyline points="20 4 20 9 15 9" />
     </svg>
   );
 }
