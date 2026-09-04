@@ -175,8 +175,6 @@ export function hasActivePersonalKey(state: SettingsState): boolean {
   return state.hasUserOpenAiKey && !state.sessionPreferSharedKey;
 }
 
-/** Back-compat alias — older callers used readingVoicesUnlocked(). */
-export const readingVoicesUnlocked = hasActivePersonalKey;
 
 /** Reading-voice allowlist when locked (shared server key). Echo because
  * it's the canonical reading voice; browser for offline / API-free. */
@@ -345,83 +343,35 @@ export const useSettingsStore = create<SettingsState>()(
       // Don't persist server-derived state — hydrate fresh on every boot.
       // Otherwise an older "hasUserOpenAiKey: true" could outlive a key the
       // server has since cleared.
-      partialize: (state) => {
-        const { hasUserOpenAiKey, userOpenAiKeyMasked, sessionPreferSharedKey, ...rest } = state;
-        void hasUserOpenAiKey;
-        void userOpenAiKeyMasked;
-        void sessionPreferSharedKey;
-        return rest as SettingsState;
-      },
+      // `ignoreRestSiblings` (on in the recommended eslint preset) is what lets
+      // these three be named only to be dropped.
+      partialize: ({ hasUserOpenAiKey, userOpenAiKeyMasked, sessionPreferSharedKey, ...rest }) =>
+        rest as SettingsState,
+      /**
+       * **Only fields whose default changed need a block here.**
+       *
+       * zustand's default `merge` is shallow, so a field that is simply absent
+       * from persisted state already keeps the initializer's value — a
+       * migration that backfills the same default writes `false` over `false`.
+       * Eleven of these had accumulated (v3–v10, v12, v13, v15), one per field
+       * added, all no-ops; they are gone, and the version number is not
+       * rewound because the surviving blocks below are keyed off it.
+       *
+       * So: add a block when an *existing* install must end up with something
+       * other than what a *fresh* install gets. Otherwise add the field to the
+       * initializer and stop.
+       */
       migrate: (persisted, version) => {
         let prev = (persisted as Partial<SettingsState>) ?? {};
         if (version < 2) {
+          // Fresh installs dock the mic (DEFAULT_MIC_POSITION = 'bar'); an
+          // install from before that keeps the corner it has always had.
           prev = {
             ...prev,
             micCorner: (prev.micCorner as MicPosition | undefined) ?? 'br',
+            // Spread rather than replaced, so a later build can add a field to
+            // the shape without needing another migration to backfill it.
             ambient: { ...DEFAULT_AMBIENT, ...(prev.ambient ?? {}) },
-          };
-        }
-        if (version < 3) {
-          prev = {
-            ...prev,
-            speechVolume: typeof prev.speechVolume === 'number' ? prev.speechVolume : 1,
-          };
-        }
-        if (version < 4) {
-          prev = {
-            ...prev,
-            autoScrollReader:
-              typeof prev.autoScrollReader === 'boolean' ? prev.autoScrollReader : true,
-          };
-        }
-        if (version < 5) {
-          prev = {
-            ...prev,
-            micSoundEnabled:
-              typeof prev.micSoundEnabled === 'boolean' ? prev.micSoundEnabled : true,
-          };
-        }
-        if (version < 6) {
-          prev = {
-            ...prev,
-            readChapterHeadings:
-              typeof prev.readChapterHeadings === 'boolean' ? prev.readChapterHeadings : false,
-            readVerseNumbers:
-              typeof prev.readVerseNumbers === 'boolean' ? prev.readVerseNumbers : false,
-            pauseBetweenVersesMs:
-              typeof prev.pauseBetweenVersesMs === 'number' ? prev.pauseBetweenVersesMs : 0,
-            pauseBetweenChaptersMs:
-              typeof prev.pauseBetweenChaptersMs === 'number' ? prev.pauseBetweenChaptersMs : 0,
-          };
-        }
-        if (version < 7) {
-          prev = {
-            ...prev,
-            verseNumberStyle:
-              prev.verseNumberStyle === 'plain' || prev.verseNumberStyle === 'spoken'
-                ? prev.verseNumberStyle
-                : 'spoken',
-          };
-        }
-        if (version < 8) {
-          prev = {
-            ...prev,
-            autoPlayReading:
-              typeof prev.autoPlayReading === 'boolean' ? prev.autoPlayReading : false,
-          };
-        }
-        if (version < 9) {
-          prev = {
-            ...prev,
-            readingOnlyView:
-              typeof prev.readingOnlyView === 'boolean' ? prev.readingOnlyView : false,
-          };
-        }
-        if (version < 10) {
-          prev = {
-            ...prev,
-            hideComposer:
-              typeof prev.hideComposer === 'boolean' ? prev.hideComposer : false,
           };
         }
         if (version < 11) {
@@ -430,6 +380,9 @@ export const useSettingsStore = create<SettingsState>()(
           prev = { ...prev, onboardingComplete: true };
         }
         if (version < 12) {
+          // The one field an existing install gets *on* and a fresh one gets
+          // off. Left alone since: there's no way to tell someone who chose the
+          // thinking drone from someone who just never turned it off.
           prev = {
             ...prev,
             thinkingSoundEnabled:
@@ -438,32 +391,14 @@ export const useSettingsStore = create<SettingsState>()(
                 : true,
           };
         }
-        if (version < 13) {
-          prev = {
-            ...prev,
-            readerEndlessScroll:
-              typeof prev.readerEndlessScroll === 'boolean'
-                ? prev.readerEndlessScroll
-                : false,
-          };
-        }
         if (version < 14) {
           // Every install that reaches this migration predates the sync opt-in,
           // which means it already has cards and boards on the server. Default
           // it to on so nothing is orphaned; a fresh install starts at false.
           prev = { ...prev, syncEnabled: true };
         }
-        if (version < 15) {
-          // Explicitly 'dark', not 'system': the app had no light theme until
-          // now, so every existing install is a dark-theme install. Defaulting
-          // them to 'system' would repaint the app for anyone whose phone is in
-          // light mode, which is not a change they asked for.
-          prev = { ...prev, theme: 'dark' };
-        }
         if (version < 16) {
-          // Spread over the defaults rather than replacing, matching the v2
-          // `ambient` block: a later build can add a field to the shape without
-          // needing another migration to backfill it.
+          // Same spread-over-defaults reasoning as `ambient` above.
           prev = {
             ...prev,
             readingAppearance: {
@@ -483,8 +418,6 @@ export const useSettingsStore = create<SettingsState>()(
               paperHue?: unknown;
               inkHue?: unknown;
             };
-          void paperHue;
-          void inkHue;
           prev = {
             ...prev,
             readingAppearance: {
