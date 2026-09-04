@@ -33,7 +33,7 @@ import {
   pickWeightedChapter,
 } from '@/services/bible/randomPassage';
 import { isChapterMissing } from '@/services/bible/chapterSources';
-import { clamp01 } from '@/lib/math';
+import { clamp, clamp01 } from '@/lib/math';
 import {
   advanceOneVerse,
   resolveLastReadVerse,
@@ -67,7 +67,7 @@ import {
   resolveReadingList,
 } from '@/services/library/cardResolver';
 import { withoutCardInBoard } from '@/lib/boardOperations';
-import { autoPlaceCard, clamp } from '@/lib/freeformLayout';
+import { autoPlaceCard } from '@/lib/freeformLayout';
 import {
   TEXT_SCALE_MIN,
   TEXT_SCALE_MAX,

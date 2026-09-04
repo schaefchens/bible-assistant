@@ -1,3 +1,4 @@
+import { clamp } from '@/lib/math';
 import type { Board, FreeformCardLayout, BoardOrientation } from '@/types/domain';
 
 /** Design dimensions of the A4 corkboard, in px (210×297mm @ 96dpi). All
@@ -30,10 +31,6 @@ export type Vec = { x: number; y: number };
 export type HandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'rotate';
 
 // ── helpers ────────────────────────────────────────────────────────────────
-
-export function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, v));
-}
 
 const deg2rad = (d: number) => (d * Math.PI) / 180;
 

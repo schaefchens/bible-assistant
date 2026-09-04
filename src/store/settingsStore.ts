@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Locale, VoiceId } from '@/types/domain';
 import type { Translation } from '@/services/bible/bibleApi';
+import { clamp, clamp01 } from '@/lib/math';
 import type { ThemeChoice } from '@/lib/theme';
 import {
   DEFAULT_READING_APPEARANCE,
@@ -299,8 +300,7 @@ export const useSettingsStore = create<SettingsState>()(
         setUseWhisperFallback: (useWhisperFallback) => set({ useWhisperFallback }),
         setMicCorner: (micCorner) => set({ micCorner }),
         setAmbient: (patch) => set((s) => ({ ambient: { ...s.ambient, ...patch } })),
-        setSpeechVolume: (v) =>
-          set({ speechVolume: Math.max(0, Math.min(1, v)) }),
+        setSpeechVolume: (v) => set({ speechVolume: clamp01(v) }),
         setAutoScrollReader: (autoScrollReader) => set({ autoScrollReader }),
         setReadingOnlyView: (readingOnlyView) => set({ readingOnlyView }),
         setHideComposer: (hideComposer) => set({ hideComposer }),
@@ -312,9 +312,9 @@ export const useSettingsStore = create<SettingsState>()(
         setReadVerseNumbers: (readVerseNumbers) => set({ readVerseNumbers }),
         setVerseNumberStyle: (verseNumberStyle) => set({ verseNumberStyle }),
         setPauseBetweenVersesMs: (v) =>
-          set({ pauseBetweenVersesMs: Math.max(0, Math.min(6000, Math.round(v))) }),
+          set({ pauseBetweenVersesMs: clamp(Math.round(v), 0, 6000) }),
         setPauseBetweenChaptersMs: (v) =>
-          set({ pauseBetweenChaptersMs: Math.max(0, Math.min(10000, Math.round(v))) }),
+          set({ pauseBetweenChaptersMs: clamp(Math.round(v), 0, 10000) }),
         setAutoPlayReading: (autoPlayReading) => set({ autoPlayReading }),
         setReaderEndlessScroll: (readerEndlessScroll) =>
           set({ readerEndlessScroll }),

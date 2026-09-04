@@ -19,7 +19,9 @@ export type Rgb = { r: number; g: number; b: number };
 /** OKLCH. `l` 0–1, `c` roughly 0–0.37, `h` degrees 0–360. */
 export type Oklch = { l: number; c: number; h: number };
 
-export function clamp(v: number, lo: number, hi: number): number {
+/** Local on purpose — see the module comment above: this file imports nothing.
+ * Everywhere else in the app, `clamp` comes from `lib/math.ts`. */
+function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 

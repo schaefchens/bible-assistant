@@ -6,6 +6,7 @@ import { browserTts } from './browserTts';
 import { cancelAutoPlayPrefetch } from './autoPlay';
 import { AmbientAudioBus } from './ambientAudioBus';
 import { ElementTrackPlayer } from './elementTrackPlayer';
+import { clamp01 } from './math';
 
 export type PlaybackTrack = {
   groupId: string;
@@ -211,7 +212,7 @@ class AudioPlaybackManager {
   /** Speech volume with the current duck factor applied, for the elements. */
   private effectiveSpeechVolume(): number {
     const factor = this.ducked ? this.DUCK_FACTOR : 1;
-    return Math.max(0, Math.min(1, useSettingsStore.getState().speechVolume * factor));
+    return clamp01(useSettingsStore.getState().speechVolume * factor);
   }
 
   private applyDuckedGains(): void {
@@ -993,7 +994,7 @@ class AudioPlaybackManager {
   // ─── Speech-bus volume (ambient bus lives in ambientAudioBus.ts) ─────
 
   _speechSetVolume(v: number): void {
-    const clamped = Math.max(0, Math.min(1, v));
+    const clamped = clamp01(v);
     // Elements first — they're the ones actually producing verse audio now.
     const factor = this.ducked ? this.DUCK_FACTOR : 1;
     this.player.setVolume(clamped * factor);

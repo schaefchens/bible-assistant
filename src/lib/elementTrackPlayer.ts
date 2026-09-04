@@ -1,3 +1,4 @@
+import { clamp01 } from './math';
 import { fetchCached } from './mediaCache';
 
 /**
@@ -283,6 +284,6 @@ export class ElementTrackPlayer {
 
   /** 0..1. Replaces the GainNode ducking the Web Audio graph used to do. */
   setVolume(v: number): void {
-    this.el.volume = Math.max(0, Math.min(1, v));
+    this.el.volume = clamp01(v);
   }
 }

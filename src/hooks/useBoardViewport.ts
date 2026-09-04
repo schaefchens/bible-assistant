@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { clamp } from '@/lib/freeformLayout';
+import { clamp } from '@/lib/math';
 
 export type Viewport = { scale: number; tx: number; ty: number };
 

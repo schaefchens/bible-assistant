@@ -1,6 +1,5 @@
 import {
   channels,
-  clamp,
   contrastRatio,
   cssColor,
   maxChromaFor,
@@ -11,6 +10,7 @@ import {
   type Oklch,
   type Rgb,
 } from '@/lib/color';
+import { clamp } from '@/lib/math';
 import type { ThemeMode, ThemeToken } from '@/lib/theme';
 
 /**

@@ -1,5 +1,6 @@
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { clamp01 } from './math';
 import { fetchCached } from './mediaCache';
 
 const AMBIENT_FADE_MS = 2000;
@@ -69,7 +70,7 @@ export class AmbientAudioBus {
   private fadeTo(target: number, durationMs: number, onDone?: () => void): void {
     this.cancelFade();
     const from = this.el.volume;
-    const clampedTarget = Math.max(0, Math.min(1, target));
+    const clampedTarget = clamp01(target);
     if (durationMs <= 0 || from === clampedTarget) {
       this.el.volume = clampedTarget;
       onDone?.();
@@ -80,7 +81,7 @@ export class AmbientAudioBus {
     this.fadeTimer = window.setInterval(() => {
       step++;
       const t = Math.min(1, step / steps);
-      this.el.volume = Math.max(0, Math.min(1, from + (clampedTarget - from) * t));
+      this.el.volume = clamp01(from + (clampedTarget - from) * t);
       if (t >= 1) {
         this.cancelFade();
         onDone?.();
@@ -118,7 +119,7 @@ export class AmbientAudioBus {
   }
 
   setVolume(v: number): void {
-    const clamped = Math.max(0, Math.min(1, v));
+    const clamped = clamp01(v);
     if (this.playing) this.fadeTo(clamped * this.duckFactor, VOLUME_RAMP_MS);
     useSettingsStore.getState().setAmbient({ volume: clamped });
   }
