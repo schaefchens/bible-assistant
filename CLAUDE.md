@@ -31,6 +31,8 @@ This file is the orientation map. When changing code, find the relevant subsyste
   agree and that the totals are still 1,189 chapters / 31,102 verses.
 - `./scripts/deploy.sh [--dry-run]` — deploy the PWA + PHP over SFTP. Uses an explicit
   allow-list: it must never upload `storage/` (live user data) or `secrets.php`.
+- TypeScript runs with `erasableSyntaxOnly`, so **constructor parameter properties
+  (`constructor(private x: T)`) do not compile** — declare the field and assign it.
 - `npm run lint` — ESLint. Note: a handful of pre-existing `react-hooks/refs` errors live in `EyesFreeMode.tsx`, plus one `exhaustive-deps` warning in `CardStack.tsx`; don't add new ones. `set-state-in-effect` is an error here — adjust state during render (guarded) instead, the way `AppShell` and `MicDock` do.
 
 ## Entry points
@@ -42,14 +44,15 @@ This file is the orientation map. When changing code, find the relevant subsyste
 | Global mic / push-to-talk | `src/hooks/useGlobalVoice.ts` + `src/components/voice/*` |
 | The mic + transport dock (one element, five positions) | `src/components/voice/MicDock.tsx`, `MicButton.tsx` + `src/components/playback/TransportControls.tsx` |
 | AI tool definitions (the model's API) | `src/services/ai/tools.ts` |
-| AI tool dispatch (the handlers) | `src/services/ai/dispatch.ts` (table-driven `TOOL_REGISTRY`) |
+| AI tool dispatch (the routing table) | `src/services/ai/dispatch.ts` — `TOOL_REGISTRY`, one line per tool |
+| AI tool handlers (the implementations) | `src/services/ai/handlers/{reading,library,readingLists,spaces,settings}.ts` |
 | Audio engine (OpenAI TTS) | `src/lib/audioPlaybackManager.ts` singleton `audioPlayback` |
 | Verse/reply/ambient playback (HTMLAudioElement) | `src/lib/elementTrackPlayer.ts`, `src/lib/ambientAudioBus.ts` |
 | Browser TTS engine (SpeechSynthesis) | `src/lib/browserTts.ts` singleton `browserTts` |
 | Persistent audio + alignment cache (IndexedDB) | `src/lib/mediaCache.ts` |
 | Theme application (palettes live in `src/index.css`) | `src/lib/theme.ts` |
 | Narration source chain (cached → server) | `src/services/narration/narrationSources.ts` |
-| Chapter narration download | `src/services/narration/downloadChapter.ts` + `src/store/narrationStore.ts` |
+| Narration download (a chapter *or* a post) | `src/services/narration/narrationDownload.ts` + `src/store/narrationStore.ts` |
 | Native speech recognition | `src/lib/nativeSpeech.ts` (Whisper stays the fallback) |
 | What plays next (canonical order *or* a reading list) | `src/lib/readingContinuation.ts` |
 | Auto-continuation + prefetch (the machinery, not the policy) | `src/lib/autoPlay.ts` |
@@ -70,6 +73,9 @@ This file is the orientation map. When changing code, find the relevant subsyste
 | Reading-list order + expansion | `src/services/reading/readingSequence.ts` |
 | Playing a list, and its progress | `src/lib/readingListPlayback.ts` |
 | Playback ⇄ content seam | `src/lib/readingHosts.ts` |
+| What sequence the reader walks | `src/services/reading/readerSequence.ts` (one pure + one live form) |
+| Shared icons | `src/components/common/icons.tsx` (`Glyph` is the frame) |
+| Clamps | `src/lib/math.ts` — `clamp`, `clamp01`; nothing else defines one |
 | Bible data / references | `src/services/bible/*` |
 | HTTP to backend | `src/services/api/*` (all via `client.ts`) |
 
@@ -80,7 +86,7 @@ mic / text input
        ├─ isStopCommand? → cancelAllActivity() (kills audio + aborts in-flight)
        └─ postChat({messages, tools})            [services/api/chat.ts → api.php ?action=chat]
             └─ orchestrateToolCalls() loops while the model calls tools:
-                 dispatchTool(name, args)         [services/ai/dispatch.ts → TOOL_REGISTRY]
+                 dispatchTool(name, args)         [services/ai/dispatch.ts → TOOL_REGISTRY → handlers/*]
                    ├─ read_verses → getChapter/getVerses → buildPlaybackPlan
                    │     → startPlayback → audioPlayback.enqueue / browserTts.enqueue
                    │         → playbackStore.setStatus / setCurrent  (UI reads these)
@@ -210,13 +216,50 @@ is playback-group → verses, via `src/lib/readingHosts.ts` (see above).
 - `components/` → call hooks + store selector hooks; presentational.
 - `hooks/` → orchestrate; call `lib/` and `services/`.
 - `lib/` → stateful singletons & logic (audio, gestures, sound cues); read stores via `getState()`.
-- `services/` → stateless data access. `services/api/*` = HTTP; `services/bible/*` = reference parsing + verse fetch/format; `services/ai/*` = tool contract + dispatch.
+- `services/` → stateless data access. `services/api/*` = HTTP; `services/bible/*` = reference parsing + verse fetch/format; `services/ai/*` = tool contract (`tools.ts`), routing table (`dispatch.ts`) and handlers (`handlers/*`).
 - `store/` → Zustand state. `types/domain.ts` = canonical shared types. `utils/` = pure helpers.
 
 ## Naming conventions
 - `use*` is reserved for **React hooks** (`hooks/`) and **Zustand store hooks** (`store/`).
 - `lib/` singletons are camelCase nouns: `audioPlayback`, `browserTts`.
 - `services/` modules export plain functions, not singletons.
+
+## One copy of a rule — where the shared things live
+
+This app grew feature by feature, and the recurring failure mode was *two
+copies of one rule*: a chapter path and a post path, a card path and a board
+path, a store's answer and a hook's answer. Both copies were right the day they
+were written and neither survived the next change to the other. Everything
+below is a place that used to be two.
+
+Before writing a helper, check whether one of these already exists.
+
+| looking for | it lives in | it used to be |
+| --- | --- | --- |
+| `clamp` / `clamp01` | `lib/math.ts` | two `clamp`s (`freeformLayout`, `color`) plus eight inline `Math.max(0, Math.min(1, …))` |
+| `stripLocal(row)` — drop `dirty`/`deleted`/`shared` | `db/dexie.ts` | three copies, two of which forgot `shared` |
+| an icon | `components/common/icons.tsx` | ~40 inline `<svg>`s across 22 files; three `PlayIcon`s, three chevrons, two 700-char gear paths |
+| "what does this reader source play?" | `services/reading/readerSequence.ts` | `readerStore.sequenceFor` + `useReaderSequence` |
+| "what plays after this?" | `lib/readingContinuation.ts` | `autoPlay` + `readerStore` + `useContinueReading` |
+| "which narration path does this item take?" | `services/narration/narrationRequest.ts` | the same three-way test in three functions |
+| downloading narration (chapter *or* post) | `services/narration/narrationDownload.ts` | `downloadChapter.ts` + `downloadPost.ts` |
+| the lock screen / OS transport buttons | `lib/mediaSession.ts` | ~100 lines inside `audioPlaybackManager` |
+| a tool handler | `services/ai/handlers/<domain>.ts` | one 1,380-line `dispatch.ts` |
+| card/board order: persist + queue | `libraryStore`'s `commitOrder` / `adoptedOrder` | six writers, four of which mis-counted `pendingOps` |
+| resolving a space from a spoken name | `services/community/spaceNameMatch.ts` | 170 lines inside `dispatch.ts` |
+
+Two conventions that follow from the same idea:
+
+- **A new field in a persisted store needs no migration.** zustand's default
+  `merge` is shallow, so a field absent from persisted state already keeps the
+  initializer's value. `settingsStore` had accumulated eleven migration blocks
+  that each wrote a default over the same default; only a field whose value must
+  differ for an *existing* install earns a block. Add the field to the
+  initializer and stop.
+- **`const { dirty: _d, ...rest } = row` needs no `void _d;` after it.**
+  `no-unused-vars` is configured with `ignoreRestSiblings` and an `^_` pattern
+  (`eslint.config.js`), so the underscore means something now. Twelve `void _x;`
+  lines existed only to keep the linter quiet.
 
 ## The mic dock — one control, five positions
 
@@ -806,8 +849,12 @@ narration key changes with it, orphaning generated audio and pinned downloads.
   loading machinery turned out to be source-agnostic. `absorbsGaps()` is the other half:
   versification gaps are normal for scripture and a *step* walks past them, but a missing post
   is a real miss and skipping to the next one would show something the reader didn't ask for.
-- Both copies of `sequenceFor` need the space branch — `readerStore.ts` and
-  `useReaderSequence.ts`. They were already duplicated; they must not diverge.
+- The reader's sequence resolution lives **once**, in
+  `services/reading/readerSequence.ts`: `readerSequenceFrom(source, translation, deps)`
+  is pure and `readerSequence(source, translation)` reads the stores. A new kind
+  of source is one new branch there, and `readerStore` and `useReaderSequence`
+  both get it. (These were two copies with a comment on each saying they must
+  not diverge.)
 
 ### Continuation — the one place a mistake produces wrong *audio*
 
@@ -846,9 +893,12 @@ upload step, no per-user audio.
 
 `services/narration/narrationRequest.ts` is the single answer to *which* narration path an
 item takes, because playback (`startPlayback.buildTrack`), the offline download
-(`downloadChapter` / `downloadPost`) and the offline-coverage check (`planFullyCached`) must
+(`narrationDownload`) and the offline-coverage check (`planFullyCached`) must
 all agree — a key computed one way in one place means a downloaded chapter is silently
-re-fetched, or a post's audio is filed under a scripture reference that does not exist. Three
+re-fetched, or a post's audio is filed under a scripture reference that does not exist.
+**`narrationRequestFor()` is the one place the classification happens**; the key, the fetch
+and the offline check are each a two-way `switch` on its result, so they cannot drift (they
+used to be three copies of the same test, each rebuilding the request by hand). Three
 kinds, which do **not** map onto `PlanItem['kind']`: a Bible verse (reference-keyed), a post
 paragraph (`kind: 'verse'` but text-keyed), an announcement (text-keyed).
 
@@ -1341,7 +1391,9 @@ played. The flag is not inferable from the tool name: `read_verses` also reads, 
 Today" is the ordinary phrasing, and matching `space.name` alone answered *nothing* to it —
 half the people you follow have a space called Today, and none of them is called "Christoph's
 Today". The model's next move was to look for a book of the Bible called Christoph, which is
-the failure the user actually sees. So `resolveSpaceByName` matches over **aliases**: the
+the failure the user actually sees. So `resolveSpaceByName`
+(`services/community/spaceNameMatch.ts`, beside `spaceName.ts` which answers the other half
+— what a space is *called*) matches over **aliases**: the
 localized name, the stored name (a Today space is stored as the literal `'Today'` and shown
 as "Heute", so both are needed), the author alone, and author-plus-name. Three tiers — exact
 alias, alias containing the phrase, then every content word appearing in the author-plus-name
@@ -1732,6 +1784,13 @@ stops, and Settings' storage readout is where that becomes visible. Downloads ar
 **per chapter** on purpose — a book means up to 2,461 verses of TTS plus forced
 alignment — and cover exactly what the current settings would *play*, so a reader with
 announcements off isn't billed for clips they'll never hear.
+
+**One module downloads both kinds.** `services/narration/narrationDownload.ts` covers a
+Bible chapter and a user-written post: the coverage loop, the one-at-a-time generation loop,
+the pin and the delete are identical, and only `planFor()` — "which text is this?" — ever
+differed. They were two files of the same shape (`downloadChapter.ts` / `downloadPost.ts`)
+plus three `t.kind === 'post' ? … : …` branches in `narrationStore`, which is three places
+to fix a cache bug in; the store no longer knows there are two kinds.
 
 **A day of a plan — or a room's pieces, or everything unread — downloads as one tap, but
 not as one download.** `lib/narrationGroup.ts` is a *coordinator* over the per-item
