@@ -693,6 +693,7 @@
     },
     "errors": {
       "invalid_code": "That does not look like a share code.",
+      "unknown_code": "No space answers to that code. It may have been replaced since it was sent — ask for a fresh one.",
       "key_mismatch": "That code does not match the author it claims. Ask them to send it again.",
       "profile_required": "Create your profile first.",
       "failed": "That did not work. Try again.",

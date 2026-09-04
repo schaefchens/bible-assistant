@@ -162,8 +162,16 @@ async function queued(op: Parameters<typeof enqueueOp>[0], payload: unknown): Pr
  * key, and that key is the same for every space one author owns.
  * `codeCarriesFingerprint` guards the second test: `codeMatchesKey` is
  * vacuously true for a code that carries none.
+ *
+ * **Exported because `/subscribe/:code` has to reach the same answer.** That
+ * route used to ask the question its own way — the stored `shareCode`, or the
+ * author key the *server* reported for the code — which meant a code the server
+ * no longer resolves (rotated away, or minted on another device that has not
+ * synced) failed its lookup and was reported as a malformed code, while the
+ * Rooms field refused the very same code as the user's own. One question, one
+ * answer.
  */
-function isOwnCode(code: string, profile: Profile | null, spaces: Space[]): boolean {
+export function isOwnCode(code: string, profile: Profile | null, spaces: Space[]): boolean {
   if (spaces.some((sp) => sp.shareCode === code)) return true;
   return !!profile && codeCarriesFingerprint(code) && codeMatchesKey(code, profile.authorKey);
 }

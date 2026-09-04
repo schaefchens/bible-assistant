@@ -12,7 +12,7 @@ import {
 } from '@/lib/spaceInvite';
 import { extractErrorDetail } from '@/lib/extractErrorDetail';
 import { peekSpace, type SpacePeekResponse } from '@/services/api/community';
-import { useCommunityStore } from '@/store/communityStore';
+import { isOwnCode, useCommunityStore } from '@/store/communityStore';
 import { COMMUNITY_TERMS_VERSION, useCommunityTermsAccepted } from '@/lib/communityTerms';
 import { CommunityTermsConsent } from '@/components/community/CommunityTerms';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -23,6 +23,7 @@ import { CommunityTermsGate } from '@/components/community/CommunityTermsGate';
  * under `community.errors.*`. Anything else falls back to the generic one. */
 const KNOWN_ERRORS = [
   'invalid_code',
+  'unknown_code',
   'key_mismatch',
   'profile_required',
   'space_not_ready',
@@ -30,6 +31,28 @@ const KNOWN_ERRORS = [
   'author_blocked',
   'own_space',
 ];
+
+/**
+ * The server's word for a code it cannot resolve. Not a message key — it comes
+ * back as prose — so it is folded to one here rather than at each call site.
+ */
+const UNKNOWN_CODE = 'unknown share code';
+
+/**
+ * Which `community.errors.*` key a thrown refusal should be shown as.
+ *
+ * One helper for all three catch blocks (the peek, the ask, and the
+ * make-a-profile-and-ask), because they previously mapped the same thrown
+ * strings three slightly different ways — which is how "unknown share code"
+ * came to be shown as "that does not look like a share code". Returns null when
+ * there is no known key, leaving the caller to fall back to the server's own
+ * detail.
+ */
+function errorKeyFor(e: unknown): string | null {
+  const raw = e instanceof Error ? e.message : '';
+  if (raw === UNKNOWN_CODE) return 'unknown_code';
+  return KNOWN_ERRORS.includes(raw) ? raw : null;
+}
 
 /**
  * `/subscribe/:code` — where an invitation lands.
@@ -91,6 +114,8 @@ export function SubscribePage() {
 
   const [peek, setPeek] = useState<SpacePeekResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The code is well-formed but names no space, so asking cannot succeed. */
+  const [unresolved, setUnresolved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [asked, setAsked] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -108,9 +133,18 @@ export function SubscribePage() {
       })
       .catch((e) => {
         if (cancelled) return;
-        const key = e instanceof Error ? e.message : 'failed';
-        const known = ['space_not_ready', 'unknown share code'].includes(key);
-        setError(known ? t(`community.errors.${key === 'space_not_ready' ? key : 'invalid_code'}`) : (extractErrorDetail(e) ?? t('community.errors.failed')));
+        const key = errorKeyFor(e);
+        // "unknown share code" is not "malformed share code", and saying the
+        // latter sends someone hunting for a typo in a code they pasted
+        // correctly. A well-formed code the server cannot resolve has usually
+        // been rotated away since it was sent, so it gets its own message —
+        // and `unresolved` disables the ask, because `space.request` would fail
+        // on the same lookup. Anything else may be transient (offline above
+        // all), so the button stays live to retry.
+        if (key === 'unknown_code') setUnresolved(true);
+        setError(
+          key ? t(`community.errors.${key}`) : (extractErrorDetail(e) ?? t('community.errors.failed')),
+        );
       });
     return () => {
       cancelled = true;
@@ -140,11 +174,9 @@ export function SubscribePage() {
       await subscribe(code);
       setAsked(true);
     } catch (e) {
-      const key = e instanceof Error ? e.message : 'failed';
+      const key = errorKeyFor(e);
       setError(
-        KNOWN_ERRORS.includes(key)
-          ? t(`community.errors.${key}`)
-          : (extractErrorDetail(e) ?? t('community.errors.failed')),
+        key ? t(`community.errors.${key}`) : (extractErrorDetail(e) ?? t('community.errors.failed')),
       );
     } finally {
       setJoining(false);
@@ -159,8 +191,11 @@ export function SubscribePage() {
       await subscribe(code);
       setAsked(true);
     } catch (e) {
-      const key = e instanceof Error ? e.message : 'failed';
-      setError(t(`community.errors.${KNOWN_ERRORS.includes(key) ? key : 'failed'}`));
+      const key = errorKeyFor(e);
+      if (key === 'unknown_code') setUnresolved(true);
+      setError(
+        key ? t(`community.errors.${key}`) : (extractErrorDetail(e) ?? t('community.errors.failed')),
+      );
     } finally {
       setBusy(false);
     }
@@ -257,11 +292,18 @@ export function SubscribePage() {
 
   // Your own invitation, opened by you — usually the link you just sent
   // yourself to see what it looks like. Offer the space rather than an "ask to
-  // read" button that can only refuse: `peek` answers even for your own space
-  // (it writes nothing), so the key comparison works before anything is asked.
+  // read" button that can only refuse.
+  //
+  // `isOwnCode` is the store's own test, shared rather than restated: it reads
+  // the code's key fingerprint, so it still answers when the *peek* found
+  // nothing — a code you have since rotated away, or one minted on another
+  // device. Restating it here as "the key the server reported, or the stored
+  // shareCode" is what made those codes report as malformed, while the Rooms
+  // field refused the same code as your own. The peek's key stays as a first
+  // test, since it also covers a code carrying no fingerprint at all.
   const ownSpace =
     (!!peek?.owner.authorKey && peek.owner.authorKey === profile.authorKey) ||
-    spaces.some((sp) => sp.shareCode === code);
+    isOwnCode(code, profile, spaces);
   if (ownSpace) {
     return (
       <Sheet
@@ -329,7 +371,7 @@ export function SubscribePage() {
       {error && <p className="text-sm text-rose-400">{error}</p>}
       <Action
         onClick={() => void onSubscribe()}
-        disabled={busy || (!peek && !error) || !initialized}
+        disabled={busy || unresolved || (!peek && !error) || !initialized}
       >
         {busy ? t('community.invite.asking') : t('community.invite.ask')}
       </Action>

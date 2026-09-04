@@ -693,6 +693,7 @@
     },
     "errors": {
       "invalid_code": "Das sieht nicht nach einem Freigabecode aus.",
+      "unknown_code": "Zu diesem Code gibt es keinen Raum. Vielleicht wurde er inzwischen ersetzt — bitte einen neuen erfragen.",
       "key_mismatch": "Der Code passt nicht zur angegebenen Person. Bitte noch einmal senden lassen.",
       "profile_required": "Erstelle zuerst dein Profil.",
       "failed": "Das hat nicht funktioniert. Bitte noch einmal versuchen.",
