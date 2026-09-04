@@ -36,6 +36,18 @@ export function ReaderHeader({ onOpenTranslations, onOpenAppearance }: Props) {
   const setEndless = useSettingsStore((s) => s.setReaderEndlessScroll);
 
   const position = useReaderStore((s) => s.position);
+  /**
+   * The badge names **the text on screen**, not the global setting — the same
+   * reason the download button beside it uses `position.translation`. A list
+   * entry pinned to LUT is read in LUT however the app is set, and labelling
+   * that German page "KJV" describes a text the reader is not showing.
+   *
+   * Tapping still opens the global switcher, which is unchanged: for a pinned
+   * entry that leaves this passage alone (by design), and for everything else
+   * the two values are the same anyway.
+   */
+  const shownTranslation =
+    position && !isPostSegment(position) ? position.translation : translation;
   const goTo = useReaderStore((s) => s.goTo);
   const setSource = useReaderStore((s) => s.setSource);
   const source = useReaderStore((s) => s.source);
@@ -152,7 +164,7 @@ export function ReaderHeader({ onOpenTranslations, onOpenAppearance }: Props) {
             aria-label={t('read.switchTranslation') as string}
             className="shrink-0 px-2 py-1 text-[10px] uppercase tracking-wider text-brand-muted hover:text-brand transition-colors"
           >
-            {translation}
+            {shownTranslation}
           </button>
         )}
       </div>
