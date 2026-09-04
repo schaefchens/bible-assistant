@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { db } from '@/db/dexie';
+import { db, stripLocal } from '@/db/dexie';
 import {
   flushCommunityOp,
   isCommunityOp,
@@ -770,12 +770,6 @@ async function seedSyncQueue(): Promise<void> {
   await seedCommunityQueue(enqueueOp);
 }
 
-function stripLocal<T extends { dirty?: number; deleted?: number }>(local: T): Omit<T, 'dirty' | 'deleted'> {
-  const { dirty: _d, deleted: _x, ...rest } = local;
-  void _d;
-  void _x;
-  return rest;
-}
 
 // Normalize a card read from storage/server into the current shape. Migrates
 // legacy `references: string[]` (and any partial structured data) into

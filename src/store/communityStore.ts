@@ -4,6 +4,7 @@ import {
   db,
   PROFILE_PREF_KEY,
   REPORTED_PREF_KEY,
+  stripLocal,
   type LocalProfile,
 } from '@/db/dexie';
 import { authorKey } from '@/lib/postSigning';
@@ -192,13 +193,6 @@ function isOwnSubscription(sub: Subscription, profile: Profile | null, spaces: S
   return isOwnCode(sub.code, profile, spaces);
 }
 
-function stripLocalPost(row: Post & { dirty?: number; deleted?: number; shared?: number }): Post {
-  const { dirty: _d, deleted: _x, shared: _s, ...rest } = row;
-  void _d;
-  void _x;
-  void _s;
-  return rest;
-}
 
 export const useCommunityStore = create<CommunityState>((set, get) => ({
   profile: null,
@@ -245,7 +239,7 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
       // A cached post that failed verification should never have been stored,
       // but a build that changed the canonicalization could leave one behind.
       if (!row.verified) continue;
-      (feed[row.code] ??= []).push(stripLocalPost(row));
+      (feed[row.code] ??= []).push(stripLocal(row));
     }
     for (const posts of Object.values(feed)) posts.sort((a, b) => b.publishedAt - a.publishedAt);
 
@@ -273,7 +267,7 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     set({
       profile,
       spaces: liveSpaces.sort(byUpdatedDesc),
-      posts: livePosts.map(stripLocalPost).sort(byPublishedDesc),
+      posts: livePosts.map(stripLocal).sort(byPublishedDesc),
       shared: Object.fromEntries(livePosts.map((p) => [p.id, p.shared === 1])),
       subscriptions: liveSubs,
       memberships: withoutSelf(memberRows),
@@ -806,7 +800,7 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
           // Never go backwards: `updatedAt` is signed, so a server replaying an
           // older-but-valid version is detectable exactly here.
           if (cached && cached.updatedAt > post.updatedAt) {
-            accepted.push(stripLocalPost(cached));
+            accepted.push(stripLocal(cached));
             continue;
           }
           accepted.push(post);

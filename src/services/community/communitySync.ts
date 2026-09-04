@@ -1,4 +1,4 @@
-import { db, PROFILE_PREF_KEY, type LocalProfile, type SyncOp } from '@/db/dexie';
+import { db, PROFILE_PREF_KEY, stripLocal, type LocalProfile, type SyncOp } from '@/db/dexie';
 import * as api from '@/services/api/community';
 import { ApiError } from '@/services/api/client';
 import type { Membership, Post, Space, Subscription } from '@/types/domain';
@@ -278,9 +278,7 @@ export async function seedCommunityQueue(
 ): Promise<void> {
   const profile = (await db.preferences.get(PROFILE_PREF_KEY))?.value as LocalProfile | undefined;
   if (profile && profile.dirty === 1) {
-    const { dirty: _d, ...rest } = profile;
-    void _d;
-    await enqueue('profile.set', rest);
+    await enqueue('profile.set', stripLocal(profile));
   }
 
   for (const row of await db.spaces.toArray()) {
@@ -324,13 +322,3 @@ export async function seedCommunityQueue(
   }
 }
 
-/** Drop the local-only flags before a record goes over the wire. */
-function stripLocal<T extends { dirty?: number; deleted?: number; shared?: number }>(
-  local: T,
-): Omit<T, 'dirty' | 'deleted' | 'shared'> {
-  const { dirty: _d, deleted: _x, shared: _s, ...rest } = local;
-  void _d;
-  void _x;
-  void _s;
-  return rest;
-}

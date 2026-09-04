@@ -32,6 +32,27 @@ export type LocalReadingProgress = ReadingProgress & {
   dirty?: 0 | 1;
 };
 
+/** The three flags that live only on the device. */
+type LocalFlags = { dirty?: number; deleted?: number; shared?: number };
+
+/**
+ * Drop the local-only flags before a record goes over the wire, or into the
+ * store where the app's own types apply.
+ *
+ * One copy, here with the `Local*` row types, because there were three —
+ * `libraryStore`, `communityStore` and `communitySync` each had their own, two
+ * of which omitted `shared`. A row is a row whichever table it came out of.
+ */
+export function stripLocal<T extends object>(
+  local: T,
+): Omit<T, 'dirty' | 'deleted' | 'shared'> {
+  // `T extends object`, not `T extends LocalFlags`: an all-optional constraint
+  // is a *weak type*, which TypeScript refuses for a row that happens to carry
+  // none of the three (a `FeedPost`, say) even though omitting them is a no-op.
+  const { dirty: _d, deleted: _x, shared: _s, ...rest } = local as T & LocalFlags;
+  return rest;
+}
+
 /**
  * The community profile lives as one row in `preferences` under
  * {@link PROFILE_PREF_KEY} rather than in a table of its own — there is only
