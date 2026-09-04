@@ -21,9 +21,9 @@ import {
 } from '@/lib/narrationGroup';
 import {
   narrationTargetKey,
-  useNarrationStore,
   type NarrationSubject,
-} from '@/store/narrationStore';
+} from '@/services/narration/narrationDownload';
+import { useNarrationStore } from '@/store/narrationStore';
 import {
   effectiveReadingVoice,
   effectiveVoiceStyle,

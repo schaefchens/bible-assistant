@@ -2,11 +2,13 @@ import type { SegmentRef } from '@/services/reading/readingSequence';
 import { isPostSegment } from '@/services/reading/readingSequence';
 import {
   narrationTargetKey,
-  useNarrationStore,
-  type ChapterNarrationProgressMap,
-  type NarrationStatus,
   type NarrationSubject,
   type NarrationTarget,
+} from '@/services/narration/narrationDownload';
+import {
+  useNarrationStore,
+  type NarrationProgressMap,
+  type NarrationStatus,
 } from '@/store/narrationStore';
 import type { OpenAiVoiceId } from '@/types/domain';
 
@@ -39,7 +41,7 @@ export type GroupNarrationStatus = 'missing' | 'partial' | 'installed' | 'downlo
  * translation**, which is what makes a list entry pinned to LUT download in
  * LUT rather than in whatever is globally selected; and verse ranges are
  * widened to their whole chapter, because the chapter is the unit
- * `downloadChapterNarration` deals in. A superset of what the entry needs is
+ * `downloadNarration` deals in. A superset of what the entry needs is
  * the honest trade for not inventing a second key space — the alternative
  * quietly files a range's audio where playback would never look for it.
  */
@@ -112,7 +114,7 @@ export async function checkNarrationGroup(targets: NarrationTarget[]): Promise<v
 /**
  * Download every item of the group that isn't already installed.
  *
- * One at a time, extending the same courtesy `downloadChapterNarration` pays
+ * One at a time, extending the same courtesy `downloadNarration` pays
  * per item: a day is up to four chapters of per-verse TTS plus forced
  * alignment on a shared backend, and firing them all at once would push the
  * queue in front of whoever is trying to listen right now.
@@ -209,7 +211,7 @@ export function groupInstalledCount(
  */
 export function groupFraction(
   status: Partial<Record<string, NarrationStatus>>,
-  progress: ChapterNarrationProgressMap,
+  progress: NarrationProgressMap,
   keys: string[],
 ): number {
   if (keys.length === 0) return 0;

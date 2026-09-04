@@ -1,70 +1,28 @@
 import { create } from 'zustand';
-import type { Translation } from '@/services/bible/bibleApi';
-import type { OpenAiVoiceId } from '@/types/domain';
 import {
-  chapterCoverage,
-  chapterNarrationKey,
-  deleteChapterNarration,
-  downloadChapterNarration,
-  type ChapterCoverage,
-  type ChapterNarrationProgress,
-} from '@/services/narration/downloadChapter';
-import {
-  deletePostNarration,
-  downloadPostNarration,
-  postCoverage,
-  postNarrationKey,
-} from '@/services/narration/downloadPost';
+  deleteNarration,
+  downloadNarration,
+  narrationCoverage,
+  narrationTargetKey,
+  type NarrationCoverage,
+  type NarrationProgress,
+  type NarrationTarget,
+} from '@/services/narration/narrationDownload';
 
-export type NarrationStatus = ChapterCoverage | 'downloading' | 'unknown';
-
-export type ChapterSubject = {
-  kind: 'chapter';
-  translation: Translation;
-  bookId: number;
-  chapter: number;
-};
-
-export type PostSubject = { kind: 'post'; spaceId: string; postId: string };
-
-/**
- * What a download is of, *minus* the voice — which is what every caller
- * actually has in hand. Narration is per-voice, but a chapter row or a post
- * knows nothing about that; the control that renders it supplies the voice
- * (`effectiveReadingVoice`) and hands over a full `NarrationTarget`.
- */
-export type NarrationSubject = ChapterSubject | PostSubject;
-
-/**
- * What a download is *of*.
- *
- * A union rather than two stores, because everything around it — the status
- * map, the progress ring, the one-controller-per-key cancellation, the
- * two-tap remove — is identical for a Bible chapter and a user-written post.
- * Only the key and the three service calls differ, and they are the three
- * places this file branches.
- *
- * The two arms are spelled out rather than intersected with the whole subject
- * union, so the `kind` discriminant still narrows in those three places.
- */
-export type NarrationTarget =
-  | (ChapterSubject & { voice: OpenAiVoiceId; voiceStyle: string })
-  | (PostSubject & { voice: OpenAiVoiceId; voiceStyle: string });
-
-type Target = NarrationTarget;
+export type NarrationStatus = NarrationCoverage | 'downloading' | 'unknown';
 
 /** Item progress of whatever is downloading, keyed like `status`. */
-export type ChapterNarrationProgressMap = Partial<Record<string, ChapterNarrationProgress>>;
+export type NarrationProgressMap = Partial<Record<string, NarrationProgress>>;
 
 type NarrationState = {
   /** Keyed by narrationTargetKey — voice included, since narration is per-voice. */
   status: Partial<Record<string, NarrationStatus>>;
-  progress: ChapterNarrationProgressMap;
+  progress: NarrationProgressMap;
   error: Partial<Record<string, string>>;
-  check: (t: Target) => Promise<void>;
-  download: (t: Target) => Promise<void>;
-  cancel: (t: Target) => void;
-  remove: (t: Target) => Promise<void>;
+  check: (t: NarrationTarget) => Promise<void>;
+  download: (t: NarrationTarget) => Promise<void>;
+  cancel: (t: NarrationTarget) => void;
+  remove: (t: NarrationTarget) => Promise<void>;
 };
 
 /** One controller per in-flight download, so cancel targets the right item. */
@@ -82,15 +40,12 @@ const controllers = new Map<string, AbortController>();
  */
 const checking = new Map<string, Promise<void>>();
 
-export const narrationTargetKey = (t: Target) =>
-  t.kind === 'post'
-    ? postNarrationKey(t.voice, t.spaceId, t.postId)
-    : chapterNarrationKey(t.voice, t.translation, t.bookId, t.chapter);
-
-const keyOf = narrationTargetKey;
-
 /**
- * Per-target narration download state.
+ * Per-target narration download state, for a Bible chapter or a post alike —
+ * the status map, the progress ring, the one-controller-per-key cancellation
+ * and the two-tap remove are identical for both, and since
+ * `services/narration/narrationDownload.ts` took over the kind branch this file
+ * no longer knows there is one.
  *
  * Transient by design — nothing here is persisted. The truth lives in Dexie
  * (the narration index plus the pinned mediaCache rows) and `check()` re-derives
@@ -103,16 +58,13 @@ export const useNarrationStore = create<NarrationState>((set, get) => ({
   error: {},
 
   async check(t) {
-    const key = keyOf(t);
+    const key = narrationTargetKey(t);
     // Don't stomp a live download's status with a coverage read.
     if (get().status[key] === 'downloading') return;
     const running = checking.get(key);
     if (running) return running;
     const run = (async () => {
-      const coverage =
-        t.kind === 'post'
-          ? await postCoverage(t.voice, t.voiceStyle, t.spaceId, t.postId)
-          : await chapterCoverage(t.voice, t.voiceStyle, t.translation, t.bookId, t.chapter);
+      const coverage = await narrationCoverage(t);
       set((s) => ({ status: { ...s.status, [key]: coverage } }));
     })().finally(() => {
       checking.delete(key);
@@ -122,7 +74,7 @@ export const useNarrationStore = create<NarrationState>((set, get) => ({
   },
 
   async download(t) {
-    const key = keyOf(t);
+    const key = narrationTargetKey(t);
     if (controllers.has(key)) return; // already running
     const controller = new AbortController();
     controllers.set(key, controller);
@@ -132,28 +84,11 @@ export const useNarrationStore = create<NarrationState>((set, get) => ({
     }));
 
     try {
-      const onProgress = (p: ChapterNarrationProgress) =>
-        set((s) => ({ progress: { ...s.progress, [key]: p } }));
-      if (t.kind === 'post') {
-        await downloadPostNarration(
-          t.voice,
-          t.voiceStyle,
-          t.spaceId,
-          t.postId,
-          onProgress,
-          controller.signal,
-        );
-      } else {
-        await downloadChapterNarration(
-          t.voice,
-          t.voiceStyle,
-          t.translation,
-          t.bookId,
-          t.chapter,
-          onProgress,
-          controller.signal,
-        );
-      }
+      await downloadNarration(
+        t,
+        (p) => set((s) => ({ progress: { ...s.progress, [key]: p } })),
+        controller.signal,
+      );
       set((s) => ({ status: { ...s.status, [key]: 'installed' } }));
     } catch (e) {
       // An abort is a user action, not a failure — whatever landed before it
@@ -183,21 +118,14 @@ export const useNarrationStore = create<NarrationState>((set, get) => ({
   },
 
   cancel(t) {
-    const key = keyOf(t);
+    const key = narrationTargetKey(t);
     controllers.get(key)?.abort();
     controllers.delete(key);
   },
 
   async remove(t) {
-    const key = keyOf(t);
     get().cancel(t);
-    if (t.kind === 'post') {
-      await deletePostNarration(t.voice, t.voiceStyle, t.spaceId, t.postId);
-    } else {
-      await deleteChapterNarration(t.voice, t.voiceStyle, t.translation, t.bookId, t.chapter);
-    }
-    set((s) => ({ status: { ...s.status, [key]: 'missing' } }));
+    await deleteNarration(t);
+    set((s) => ({ status: { ...s.status, [narrationTargetKey(t)]: 'missing' } }));
   },
 }));
-
-export { chapterNarrationKey };

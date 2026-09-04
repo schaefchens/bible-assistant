@@ -8,9 +8,9 @@ import {
 } from '@/store/settingsStore';
 import {
   narrationTargetKey,
-  useNarrationStore,
   type NarrationSubject,
-} from '@/store/narrationStore';
+} from '@/services/narration/narrationDownload';
+import { useNarrationStore } from '@/store/narrationStore';
 import { isBrowserVoice, type OpenAiVoiceId } from '@/types/domain';
 
 type Props = { subject: NarrationSubject };

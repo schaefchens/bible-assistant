@@ -5,7 +5,7 @@ import { ROUTES } from '@/lib/appRoutes';
 import { openSelectionInReader } from '@/lib/spacePlayback';
 import { todayPosts, unseenPosts, type LocatedPost } from '@/services/community/spaceReading';
 import { useCommunityStore } from '@/store/communityStore';
-import type { NarrationSubject } from '@/store/narrationStore';
+import type { NarrationSubject } from '@/services/narration/narrationDownload';
 
 /**
  * The two cross-space readings: everything you have not seen, and today's
