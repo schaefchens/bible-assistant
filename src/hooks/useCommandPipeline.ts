@@ -1,4 +1,6 @@
 import { useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ROUTES } from '@/lib/appRoutes';
 import { postChat, type ChatRequestMessage } from '@/services/api/chat';
 import {
   TOOL_DEFINITIONS,
@@ -83,6 +85,10 @@ function newId(): string {
 export type SendOpts = { source?: VoiceSource };
 
 export function useCommandPipeline() {
+  // Only so a tool that reads into the reader can take the user there; see
+  // `ToolDispatchResult.opensReader`. Stable in react-router v7, so `send`
+  // keeps its identity and the components holding it don't re-render.
+  const navigate = useNavigate();
   const send = useCallback(async (userText: string, opts?: SendOpts) => {
     const text = userText.trim();
     if (!text) return;
@@ -175,6 +181,8 @@ export function useCommandPipeline() {
     try {
       let loops = 0;
       let didReadAction = false;
+      /** A tool put its reading in the reader, so that is where to go. */
+      let openReader = false;
       const readReferences: string[] = [];
       // Canonical keys of passages already played this turn. Used to silently
       // ignore the gpt-4o-mini tic of issuing `read_verses` with the exact
@@ -272,6 +280,7 @@ export function useCommandPipeline() {
               messageId: assistantMsg.id,
               signal: controller.signal,
             });
+            if (result.opensReader) openReader = true;
             if (isRead && result.ok && result.data && typeof result.data === 'object') {
               // `references` (plural) is how a multi-draw reports what it read;
               // everything else reports the one `reference`. Both are recorded
@@ -308,6 +317,15 @@ export function useCommandPipeline() {
           });
           if (choice.content && !didReadAction) {
             useChatStore.getState().updateMessage(assistantMsg.id, { text: choice.content });
+          }
+          // The reading is in the reader, so go there — as soon as it starts,
+          // rather than after the model's closing turn, since the audio is
+          // already playing. Once only: the flag stays set for the rest of the
+          // loop, but a second navigation would fight a user who has just
+          // stepped somewhere else.
+          if (openReader && !controller.signal.aborted) {
+            openReader = false;
+            navigate(ROUTES.read);
           }
           continue;
         }
@@ -354,7 +372,7 @@ export function useCommandPipeline() {
       useChatStore.getState().setProcessing(false);
       useChatStore.getState().setCurrentTool(null);
     }
-  }, []);
+  }, [navigate]);
 
   return { send };
 }

@@ -1328,6 +1328,15 @@ contract; `read_space` and `read_new` are in `READ_TOOL_NAMES`, so like `read_ve
 reading *is* the reply. Both open the **reader**, not the chat — chat has no representation
 for a post (`ChatMessage` carries a list provenance but not a space's).
 
+**Opening it takes two halves, because a tool cannot navigate.** `playSpaceInReader` sets the
+reader's source and position and starts the audio, but routing belongs to a component —
+`lib/` and `services/` have no router — so the handler reports
+`ToolDispatchResult.opensReader` and `useCommandPipeline` (a hook) does the `navigate`. With
+only the first half, which is how this shipped at first, the reading was correctly *prepared*
+and the user was left on the chat screen watching the previous turn's verse panel while a post
+played. The flag is not inferable from the tool name: `read_verses` also reads, into chat.
+`play_reading_list` deliberately reads into chat too, so it sets nothing.
+
 **A space is named after its author far more often than after itself.** "Read Christoph's
 Today" is the ordinary phrasing, and matching `space.name` alone answered *nothing* to it —
 half the people you follow have a space called Today, and none of them is called "Christoph's

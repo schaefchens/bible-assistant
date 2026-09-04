@@ -98,6 +98,19 @@ export type ToolDispatchResult = {
   ok: boolean;
   data?: unknown;
   error?: string;
+  /**
+   * This tool put a reading into the **reader**, so the reader is where the
+   * user should now be looking.
+   *
+   * Reported rather than acted on, because navigation belongs to a component:
+   * `lib/` and `services/` cannot call the router, which is exactly how these
+   * tools came to set the reader's source and position, start the audio, and
+   * leave the user on the chat screen watching the previous turn's verse panel.
+   * `useCommandPipeline` is a hook, so it can do the last step.
+   *
+   * Not inferable from the tool name: `read_verses` also reads, but into chat.
+   */
+  opensReader?: boolean;
 };
 
 /** A handler for tool `N`, receiving that tool's typed args and the dispatch
@@ -952,7 +965,7 @@ async function handleReadSpace(args: ToolArgs['read_space']): Promise<ToolDispat
   if (!started) {
     return { ok: false, error: `"${lookup.label}" has nothing to read yet` };
   }
-  return { ok: true, data: { reading: lookup.label, alreadyRead: true } };
+  return { ok: true, opensReader: true, data: { reading: lookup.label, alreadyRead: true } };
 }
 
 /**
@@ -984,7 +997,11 @@ async function handleReadNew(args: ToolArgs['read_new']): Promise<ToolDispatchRe
     true,
   );
   if (!started) return { ok: false, error: 'could not start reading' };
-  return { ok: true, data: { reading: label, pieces: chosen.length, alreadyRead: true } };
+  return {
+    ok: true,
+    opensReader: true,
+    data: { reading: label, pieces: chosen.length, alreadyRead: true },
+  };
 }
 
 async function handlePlayReadingList(
