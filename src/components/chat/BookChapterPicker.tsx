@@ -20,7 +20,7 @@ import {
 } from '@/services/reading/readingSequence';
 import { groupSubscriptionsByAuthor, resolveSpaceFrom } from '@/services/community/spaceReading';
 import { ROUTES } from '@/lib/appRoutes';
-import { listChapterCount, passageDetail } from '@/services/reading/readingEntries';
+import { isFlatList, listChapterCount, passageDetail } from '@/services/reading/readingEntries';
 import { progressStats } from '@/services/reading/readingProgress';
 import { PassageRow } from '@/components/reading/PassageRow';
 import { NarrationDownloadButton } from '@/components/reader/NarrationDownloadButton';
@@ -526,20 +526,21 @@ export function BookChapterPicker({
   const dayGroups = useMemo<DayGroup[]>(() => {
     if (!lockedList) return [];
     const done = new Set(lockedProgress?.completed ?? []);
-    const groups: DayGroup[] = [];
-    let currentDay: number | undefined;
+    // One group per day the list *has*, not per day its segments happen to
+    // mention. A day with no entries yields no segments, so deriving the groups
+    // from the segments alone dropped it — and a two-day plan whose second day
+    // was still empty then rendered here as a flat, ungrouped list while the
+    // editor showed it as Day 1 + Day 2 and the reader's heading said "Day 1".
+    // Three answers to "is this a plan?"; `isFlatList` is the one that decides.
+    const groups: DayGroup[] = lockedList.days.map((day) => ({
+      title: day.title ?? null,
+      titled: day.title !== undefined,
+      items: [],
+      done: false,
+    }));
     for (const seg of expandList(lockedList, translation)) {
-      if (groups.length === 0 || seg.dayIndex !== currentDay) {
-        currentDay = seg.dayIndex;
-        groups.push({
-          title: seg.dayTitle ?? null,
-          titled: seg.dayTitle !== undefined,
-          items: [seg],
-          done: false,
-        });
-      } else {
-        groups[groups.length - 1].items.push(seg);
-      }
+      // A flat list's segments carry no dayIndex, and it has exactly one day.
+      groups[seg.dayIndex ?? 0]?.items.push(seg);
     }
     for (const g of groups) {
       g.done = g.items.length > 0 && g.items.every((i) => !!i.entryId && done.has(i.entryId));
@@ -547,7 +548,7 @@ export function BookChapterPicker({
     return groups;
   }, [lockedList, lockedProgress, translation]);
 
-  const grouped = dayGroups.length > 1;
+  const grouped = !!lockedList && !isFlatList(lockedList);
 
   /**
    * Which group is "today": the one holding the entry the user is on, else the
@@ -561,7 +562,10 @@ export function BookChapterPicker({
       const at = dayGroups.findIndex((g) => g.items.some((i) => i.entryId === currentEntryId));
       if (at !== -1) return at;
     }
-    const firstUnread = dayGroups.findIndex((g) => !g.done);
+    // An empty day is never "where you are": it has nothing to read, and it is
+    // never `done` (that needs at least one ticked passage), so without this it
+    // would swallow the window the moment the day before it was finished.
+    const firstUnread = dayGroups.findIndex((g) => g.items.length > 0 && !g.done);
     return firstUnread === -1 ? dayGroups.length - 1 : firstUnread;
   }, [dayGroups, lockedProgress]);
 

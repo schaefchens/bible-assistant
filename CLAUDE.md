@@ -611,6 +611,14 @@ about that shape are load-bearing:
   work in. Reading order is entry order, always. It is also the one place that decides a plain
   list has *no* day structure (its segments carry no `dayIndex`), which is what keeps "Day 1"
   off both the reader's heading and the picker's groups.
+- **`isFlatList` is that decision; nothing may re-derive it.** A day with no entries yields no
+  segments, so the picker used to conclude groupedness from the segments it got and dropped the
+  empty day — and a two-day plan whose second day was still empty was then three different
+  things at once: a flat one-page list in the picker, Day 1 + a dangling "DAY 2" heading in the
+  editor, and a reader heading that said "Day 1". So `BookChapterPicker` asks `isFlatList` and
+  builds one group per day the list *has* (bucketing segments by `dayIndex`), which also means
+  an empty day can be a group with nothing in it — hence the `items.length > 0` guard on
+  "which day am I on", or finishing a day would move the window onto an empty one.
 
 A `SegmentRef` is a **copy**, and copies of list data go stale — a renamed day, an added
 translation override, a field a later build computes differently. Anything holding one for a
