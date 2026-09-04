@@ -7,6 +7,8 @@ import {
   resolveSpeechNarration,
   resolveVerseNarration,
   type NarrationRef,
+  type SpeechNarrationRequest,
+  type VerseNarrationRequest,
 } from './narrationSources';
 
 /**
@@ -44,34 +46,33 @@ function languageOf(it: PlanItem): 'en' | 'de' {
   return localeForTranslation(it.translation);
 }
 
-export function narrationKeyFor(
-  it: PlanItem,
-  voice: OpenAiVoiceId,
-  voiceStyle: string,
-): string {
-  if (it.kind === 'verse' && !isPostItem(it)) {
-    return verseKey(
-      voice,
-      voiceStyle,
-      it.verse.translation,
-      it.verse.bookId,
-      it.verse.chapter,
-      it.verse.verse,
-    );
-  }
-  const text = it.kind === 'verse' ? it.verse.text : it.text;
-  return speakKey(voice, voiceStyle, languageOf(it), text);
-}
+/**
+ * **The one place a plan item is classified**, as a request one of the two
+ * narration sources can take directly.
+ *
+ * The three functions below — the cache key, the fetch, the offline check —
+ * used to open with the same `it.kind === 'verse' && !isPostItem(it)` test and
+ * then rebuild the same request object by hand. Three copies of a rule whose
+ * whole job is that playback, the download and the coverage check agree: a key
+ * computed one way in one of them means a downloaded chapter is silently
+ * re-fetched, or a post's audio is filed under a scripture reference that does
+ * not exist. Now they share a `switch` and can't drift.
+ */
+export type NarrationRequest =
+  /** Keyed by its reference — what lets a downloaded chapter resolve offline. */
+  | { addressed: 'reference'; verse: VerseNarrationRequest }
+  /** Keyed by a sha256 of the text: a post paragraph, or an announcement. */
+  | { addressed: 'text'; speech: SpeechNarrationRequest };
 
-export function resolveNarrationFor(
+export function narrationRequestFor(
   it: PlanItem,
   voice: OpenAiVoiceId,
   voiceStyle: string,
-  signal?: AbortSignal,
-): Promise<NarrationRef> {
+): NarrationRequest {
   if (it.kind === 'verse' && !isPostItem(it)) {
-    return resolveVerseNarration(
-      {
+    return {
+      addressed: 'reference',
+      verse: {
         voice,
         voiceStyle,
         text: it.verse.text,
@@ -80,49 +81,67 @@ export function resolveNarrationFor(
         chapter: it.verse.chapter,
         verse: it.verse.verse,
       },
-      signal,
-    );
+    };
   }
-  return resolveSpeechNarration(
-    {
+  return {
+    addressed: 'text',
+    speech: {
       voice,
       voiceStyle,
       language: languageOf(it),
       text: it.kind === 'verse' ? it.verse.text : it.text,
     },
-    signal,
-  );
+  };
+}
+
+/** How this item is addressed in the narration index. */
+export function narrationKeyFor(
+  it: PlanItem,
+  voice: OpenAiVoiceId,
+  voiceStyle: string,
+): string {
+  const req = narrationRequestFor(it, voice, voiceStyle);
+  return req.addressed === 'reference'
+    ? verseKey(
+        voice,
+        voiceStyle,
+        req.verse.translation,
+        req.verse.bookId,
+        req.verse.chapter,
+        req.verse.verse,
+      )
+    : speakKey(voice, voiceStyle, req.speech.language, req.speech.text);
+}
+
+/** Fetch it, generating on the server if it isn't cached anywhere. */
+export function resolveNarrationFor(
+  it: PlanItem,
+  voice: OpenAiVoiceId,
+  voiceStyle: string,
+  signal?: AbortSignal,
+): Promise<NarrationRef> {
+  const req = narrationRequestFor(it, voice, voiceStyle);
+  return req.addressed === 'reference'
+    ? resolveVerseNarration(req.verse, signal)
+    : resolveSpeechNarration(req.speech, signal);
 }
 
 /**
  * Is this item already in the local cache, with no request?
  *
- * The same three-way branch as {@link resolveNarrationFor}, and it has to be:
- * `readingUsesBrowserVoice` uses this to decide "offline, but fully downloaded,
- * so play the premium narration anyway". Asking the *verse* source about a post
- * paragraph misses every time, and a downloaded post would silently drop to the
- * device voice the moment the network went away.
+ * `readingUsesBrowserVoice` uses this to decide "offline, but fully
+ * downloaded, so play the premium narration anyway" — which is why it has to
+ * classify the item exactly as the fetch does. Asking the *verse* source about
+ * a post paragraph misses every time, and a downloaded post would silently
+ * drop to the device voice the moment the network went away.
  */
-export async function cachedNarrationFor(
+export function cachedNarrationFor(
   it: PlanItem,
   voice: OpenAiVoiceId,
   voiceStyle: string,
 ): Promise<NarrationRef | null> {
-  if (it.kind === 'verse' && !isPostItem(it)) {
-    return cachedNarrationSource.getVerse({
-      voice,
-      voiceStyle,
-      text: it.verse.text,
-      translation: it.verse.translation,
-      bookId: it.verse.bookId,
-      chapter: it.verse.chapter,
-      verse: it.verse.verse,
-    });
-  }
-  return cachedNarrationSource.getSpeech({
-    voice,
-    voiceStyle,
-    language: languageOf(it),
-    text: it.kind === 'verse' ? it.verse.text : it.text,
-  });
+  const req = narrationRequestFor(it, voice, voiceStyle);
+  return req.addressed === 'reference'
+    ? cachedNarrationSource.getVerse(req.verse)
+    : cachedNarrationSource.getSpeech(req.speech);
 }
