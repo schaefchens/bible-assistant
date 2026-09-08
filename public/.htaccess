@@ -1,0 +1,58 @@
+# SPA fallback for Apache shared hosting (Hetzner).
+# Any path that doesn't resolve to a real file or to api.php / storage/ /
+# bible-packs/ is rewritten to index.html so React Router can take over.
+#
+# The app is served from the root of its own subdomain
+# (https://bibleassistant.apps.schaefchens.de/), so RewriteBase is /.
+
+# The backend's handler files live in api/ and are denied by api/.htaccess —
+# a per-directory file, because <Directory> is **not valid in .htaccess** and
+# Apache answers every request on the whole site with 500 if it appears here.
+# (Proven against Apache 2.4: "<Directory not allowed here", and `/` 500s too.)
+# No test could catch that: every harness here runs PHP's CLI server, which
+# ignores .htaccess entirely. Each handler also refuses to run without
+# APP_ROOT, which is what holds on a host where AllowOverride is off.
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Don't rewrite real files or directories
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Pass through PHP, storage and Bible-pack paths
+  RewriteRule ^api\.php$ - [L]
+  RewriteRule ^storage/ - [L]
+  RewriteRule ^bible-packs/ - [L]
+
+  # Everything else → index.html
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+# Reasonable caching for hashed assets
+<IfModule mod_headers.c>
+  <FilesMatch "\.(?:js|css|woff2|svg|png|webp|mp3)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  <FilesMatch "^(index\.html|sw\.js|registerSW\.js|manifest\.webmanifest)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+
+  # Verse audio (.mp3) and word-alignment (.json) under storage/ are pulled
+  # with fetch() -> arrayBuffer -> decodeAudioData from the native WebView
+  # (capacitor://localhost / https://localhost), not via <audio src>, so they
+  # are fully CORS-governed. Plain GETs with no custom headers => no preflight,
+  # so the response header alone is enough. These files are already publicly
+  # readable by URL, so "*" exposes nothing new. `always` so 304s carry it too.
+  # NB: this belongs here, not in storage/.htaccess — that file is gitignored
+  # and gets auto-recreated by api.php with only "Options -Indexes".
+  #
+  # Profile pictures (storage/avatars/) are on the list for the same reason:
+  # an <img src> needs no CORS, but caching one into mediaCache does, and on
+  # native every fetch() is cross-origin.
+  <FilesMatch "\.(?:mp3|json|jpe?g|png|webp)$">
+    Header always set Access-Control-Allow-Origin "*"
+  </FilesMatch>
+</IfModule>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark configuration. These are the values the app shipped with; the
+         defaults in values/ are the light ones. Only the system-bar backgrounds
+         and the pre-splash window use them — SystemBars.setStyle() handles the
+         bar *icon* contrast at runtime from src/lib/theme.ts. -->
+    <color name="chrome">#1a1a2e</color>
+    <color name="chromeDark">#12121f</color>
+</resources>

@@ -1,0 +1,12 @@
+# The fourteen files beside this one are *includes*, required by ../api.php,
+# and never endpoints — the router is the only way in.
+#
+# Denied per-directory rather than from the root .htaccess, where the natural
+# spelling (<Directory "api">) is invalid and makes Apache 500 the entire site.
+# Belt and braces only: each file also refuses to run without APP_ROOT, which
+# is what holds where AllowOverride is off and under PHP's CLI server.
+Require all denied
+<IfModule !mod_authz_core.c>
+  Order deny,allow
+  Deny from all
+</IfModule>

@@ -1,0 +1,5 @@
+Karten und Tafeln sind jetzt ein Bildschirm.
+
+• Alle Karten und alle Tafeln liegen hinter einer Reihe von Tabs — und du kannst eine Karte direkt auf den Tab einer Tafel ziehen.
+• Räume haben einen eigenen Tab, das Code-Feld sitzt ganz oben: Einladung einfügen, fertig.
+• Für Räume gibt es jetzt inhaltliche Regeln, dazu Melden und Blockieren, damit das Gelesene biblisch bleibt.

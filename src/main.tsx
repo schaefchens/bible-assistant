@@ -1,0 +1,56 @@
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { Capacitor } from '@capacitor/core';
+import { SplashScreen } from '@capacitor/splash-screen';
+import './index.css';
+import './i18n';
+import App from './App';
+import { hydrateIdentity } from '@/lib/bootIdentity';
+import { reclaimLegacyAudioCache } from '@/lib/mediaCache';
+import { initPwaUpdate } from '@/lib/pwaUpdate';
+import { initReadingHosts } from '@/lib/readingHosts';
+import { initPlaybackController } from '@/lib/playbackController';
+import { initAutoPlay } from '@/lib/autoPlay';
+import { applyTheme } from '@/lib/theme';
+import { useSettingsStore } from '@/store/settingsStore';
+
+initPwaUpdate();
+// Must come first: the two initializers below install playbackStore
+// subscribers that resolve verses through the host registry.
+initReadingHosts();
+initPlaybackController();
+initAutoPlay();
+// Reclaim the disk held by the retired Workbox `verse-audio-v2` cache; nothing
+// reads or expires it now that mediaCache has taken over.
+void reclaimLegacyAudioCache();
+
+// Before the first mount, not in an effect: the persisted settings are already
+// hydrated by this point (zustand/persist reads localStorage synchronously), and
+// applying the theme after React paints would flash the wrong palette. The bare
+// :root defaults in index.css cover the dark case, so this only really matters
+// for someone who chose light — but that is exactly who would notice.
+applyTheme(useSettingsStore.getState().theme);
+
+// The mnemonic lives in async native storage, but AppShell reads it during
+// render to decide between onboarding and the app — so hydration has to finish
+// before the first mount. `.finally` rather than `await` so a storage failure
+// still boots the app instead of leaving a blank screen forever.
+void hydrateIdentity().finally(() => {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+
+  // capacitor.config.ts sets launchAutoHide:false so the splash covers this
+  // whole boot rather than flashing an empty WebView — which means *we* own
+  // hiding it. Forget this and the app is stuck on the splash forever.
+  // Deferred one frame so the first paint has landed underneath.
+  if (Capacitor.isNativePlatform()) {
+    requestAnimationFrame(() => {
+      void SplashScreen.hide().catch(() => {
+        /* best-effort: a visible splash beats a boot failure */
+      });
+    });
+  }
+});

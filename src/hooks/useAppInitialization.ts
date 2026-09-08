@@ -1,0 +1,178 @@
+import { useEffect } from 'react';
+import { useCommunityStore } from '@/store/communityStore';
+import { useLibraryStore } from '@/store/libraryStore';
+import {
+  effectiveAssistantVoice,
+  effectiveReadingVoice,
+  useSettingsStore,
+} from '@/store/settingsStore';
+import { usePlaybackStore } from '@/store/playbackStore';
+import { useLastReadingStore } from '@/store/lastReadingStore';
+import { audioPlayback } from '@/lib/audioPlaybackManager';
+import { readingHosts } from '@/lib/readingHosts';
+import { isScriptureUnit } from '@/types/domain';
+import { getOpenAiKeyStatus } from '@/services/api/auth';
+import { getAmbientTrackUrl } from '@/services/api/ambient';
+import { useBiblePacksStore } from '@/store/biblePacksStore';
+import { applyTheme, applyThemeMode, watchSystemTheme } from '@/lib/theme';
+
+/**
+ * App-boot side effects, kept out of AppShell's render body so the shell is a
+ * thin layout component. Owns seven independent effects; all the
+ * passphrase-gated ones no-op until `hasPassphrase` is true:
+ *   1. tear down any audio session left alive by an iOS PWA suspend
+ *   2. persist a "last reading" slot as the active verse advances
+ *   3. library init + online/offline listeners
+ *   4. hydrate the personal-OpenAI-key status (and prune now-disallowed voices)
+ *   5. prefetch the selected ambient track
+ *   6. finish any Bible pack the user asked for but couldn't download yet
+ *   7. keep the theme in step with the setting and with the OS
+ */
+export function useAppInitialization(hasPassphrase: boolean): void {
+  const init = useLibraryStore((s) => s.init);
+  const setOnline = useLibraryStore((s) => s.setOnline);
+  const theme = useSettingsStore((s) => s.theme);
+  const ambientEnabled = useSettingsStore((s) => s.ambient.enabled);
+  const ambientTrackId = useSettingsStore((s) => s.ambient.trackId);
+
+  // 1. Defensive: if an iOS PWA was suspended (not killed) the previous audio
+  // session can still be alive when we boot. Tear down all buses once at
+  // start so nothing keeps playing into a fresh session without a user
+  // gesture.
+  useEffect(() => {
+    audioPlayback.stop();
+  }, []);
+
+  // 2. Persist a "last reading" slot whenever the active verse advances, so a
+  // fresh app load (or cleared chat) can still resume what the user was
+  // hearing. Guards on (groupId, verseIndex) since the playbackStore
+  // subscription also fires per-frame on currentWordIndex ticks.
+  useEffect(() => {
+    let prevKey = '';
+    const unsub = usePlaybackStore.subscribe((state) => {
+      const cur = state.current;
+      if (!cur) return;
+      const key = `${cur.groupId}:${cur.verseIndex}`;
+      if (key === prevKey) return;
+      prevKey = key;
+      // Resolved through the host registry, so a reading played from the reader
+      // screen captures a resume point exactly like a chat reading does.
+      const v = readingHosts.getGroup(cur.groupId)?.verses[cur.verseIndex];
+      if (!v) return;
+      // The slot is a Bible reference — "play my last reading" resolves it
+      // through `resolveLastReadVerse`. A post paragraph has no reference
+      // (bookId 0, chapter 0), so recording one would leave the resume point
+      // pointing at nothing and lose the real one.
+      if (!isScriptureUnit(v)) return;
+      useLastReadingStore.getState().setSlot({
+        translation: v.translation,
+        bookId: v.bookId,
+        chapter: v.chapter,
+        verse: v.verse,
+        savedAt: Date.now(),
+      });
+    });
+    return unsub;
+  }, []);
+
+  // 3. Library init + online/offline listeners.
+  useEffect(() => {
+    if (!hasPassphrase) return;
+    void init();
+    // Community spaces read from the same Dexie database and are needed before
+    // the reader can resolve a space-sourced position it restored from
+    // localStorage. No network unless a profile exists.
+    void useCommunityStore.getState().init();
+    const onUp = () => setOnline(true);
+    const onDown = () => setOnline(false);
+    window.addEventListener('online', onUp);
+    window.addEventListener('offline', onDown);
+    return () => {
+      window.removeEventListener('online', onUp);
+      window.removeEventListener('offline', onDown);
+    };
+  }, [init, setOnline, hasPassphrase]);
+
+  // 4. Hydrate the personal-OpenAI-key status from the server. On hasKey=false,
+  // call the effective-voice helpers once so previously-stored non-allowed
+  // values (reading or assistant voice) get force-reset to their locked
+  // defaults before the first playback / chat reply.
+  //
+  // Skipped while offline: the request is guaranteed to fail, and prune() (the
+  // catch path) is what we'd do anyway. An offline-first install shouldn't fire
+  // a doomed request on every cold start.
+  useEffect(() => {
+    if (!hasPassphrase) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      effectiveReadingVoice();
+      effectiveAssistantVoice();
+      return;
+    }
+    let cancelled = false;
+    const prune = () => {
+      effectiveReadingVoice();
+      effectiveAssistantVoice();
+    };
+    void getOpenAiKeyStatus()
+      .then((s) => {
+        if (cancelled) return;
+        useSettingsStore.getState().setUserOpenAiKeyStatus(!!s.hasKey, s.masked ?? null);
+        prune();
+      })
+      .catch(() => {
+        if (!cancelled) prune();
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasPassphrase]);
+
+  // 5. Prefetch the selected ambient track so playback can start instantly.
+  useEffect(() => {
+    if (!hasPassphrase) return;
+    if (!ambientEnabled || !ambientTrackId) return;
+    let cancelled = false;
+    void getAmbientTrackUrl(ambientTrackId)
+      .then((url) => {
+        if (cancelled || !url) return;
+        return audioPlayback.ambient.load(url);
+      })
+      .catch((e) => {
+        console.warn('ambient prefetch failed', e);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasPassphrase, ambientEnabled, ambientTrackId]);
+
+  // 7. Theme. main.tsx applies it once before the first paint; this keeps it
+  // current afterwards — when the user changes the setting, and (while the
+  // setting is 'system') when the OS flips appearance under us.
+  useEffect(() => {
+    applyTheme(theme);
+    if (theme !== 'system') return;
+    return watchSystemTheme(applyThemeMode);
+  }, [theme]);
+
+  // 6. Finish downloading any Bible the user has asked for. Runs at boot and
+  // again on every reconnect, so a translation chosen in airplane mode arrives
+  // on its own instead of waiting for the user to notice and retry.
+  //
+  // Not passphrase-gated: pack files are plain static fetches with no identity
+  // headers, so this works before (and without) any account.
+  useEffect(() => {
+    const retry = () => {
+      const packs = useBiblePacksStore.getState();
+      // The active translation is wanted by definition, even when the user
+      // never tapped its row — a fresh install picks one from the device
+      // locale, and that one has to be readable offline too.
+      void packs
+        .want(useSettingsStore.getState().translation)
+        .then(() => packs.retryWanted())
+        .catch(() => {});
+    };
+    retry();
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, []);
+}

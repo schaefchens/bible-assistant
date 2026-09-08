@@ -1,0 +1,5 @@
+Cards and boards are one screen now.
+
+• Every card and all your boards sit behind one row of tabs — and you can drag a card straight onto a board's tab to file it there.
+• Spaces has its own tab, with the code field at the top: paste an invitation and you're reading.
+• Spaces now have written content standards, plus reporting and blocking, so what you read stays Bible-centred.

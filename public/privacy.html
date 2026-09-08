@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Datenschutz · Privacy — Bible Assistant</title>
+<meta name="robots" content="index, follow">
+<style>
+  :root {
+    --navy: #1a1a2e;
+    --navy-deep: #0f0f1e;
+    --navy-soft: #26263f;
+    --gold: #c8a96e;
+    --gold-glow: #e7c98a;
+    --cream: #e8e0d0;
+    --cream-dim: #bdb6a9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0;
+    background: var(--navy);
+    color: var(--cream);
+    font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 46rem; margin: 0 auto; padding: 3rem 1.25rem 5rem; }
+  h1 {
+    font-family: Georgia, Cambria, serif;
+    font-weight: normal;
+    color: var(--gold-glow);
+    font-size: 2.1rem;
+    margin: 0 0 .25rem;
+  }
+  h2 {
+    font-family: Georgia, Cambria, serif;
+    font-weight: normal;
+    color: var(--gold-glow);
+    font-size: 1.5rem;
+    margin: 2.75rem 0 .5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--navy-soft);
+  }
+  h3 {
+    color: var(--gold);
+    font-size: 1.02rem;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    margin: 1.75rem 0 .4rem;
+  }
+  p, li { color: var(--cream); }
+  a { color: var(--gold-glow); }
+  .lede { color: var(--cream-dim); margin-top: 0; }
+  .updated { color: var(--cream-dim); font-size: .92rem; }
+  .langbar { margin: 1.5rem 0 0; font-size: .95rem; }
+  .langbar a { margin-right: 1rem; }
+  ul { padding-left: 1.25rem; }
+  li { margin: .35rem 0; }
+  table { width: 100%; border-collapse: collapse; margin: .75rem 0 1rem; font-size: .95rem; }
+  th, td { text-align: left; vertical-align: top; padding: .5rem .6rem; border-bottom: 1px solid var(--navy-soft); }
+  th { color: var(--gold); font-weight: 600; }
+  code { background: var(--navy-soft); padding: .1rem .35rem; border-radius: .25rem; font-size: .9em; }
+  footer { margin-top: 3.5rem; padding-top: 1.25rem; border-top: 1px solid var(--navy-soft); color: var(--cream-dim); font-size: .92rem; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Datenschutzerklärung</h1>
+<p class="lede">Bible Assistant — App und Web-App</p>
+<p class="updated">Stand: 20. August 2026</p>
+<p class="langbar"><a href="#en">English version below ↓</a></p>
+
+<h2>1. Verantwortlicher</h2>
+<p>
+  Christoph Scharf<br>
+  E-Mail: <a href="mailto:app.support@schaefchens.de">app.support@schaefchens.de</a>
+</p>
+
+<h2>2. Kurzfassung</h2>
+<ul>
+  <li>Es gibt <strong>kein Benutzerkonto</strong>: keine E-Mail-Adresse, kein Passwort, keine Anmeldung.</li>
+  <li>Es gibt <strong>keine Werbung, keine Analyse-Werkzeuge, kein Tracking</strong> und keine Weitergabe oder
+      Verkauf von Daten zu Werbezwecken.</li>
+  <li>Deine Karten, Tafeln und Einstellungen liegen auf dem Server des Anbieters, damit du sie auf mehreren
+      Geräten nutzen kannst.</li>
+  <li>Für Spracherkennung, Antworten des Assistenten und das Vorlesen wird OpenAI als Auftragsverarbeiter
+      eingesetzt.</li>
+  <li>Der Bibeltext selbst wird auf dem Gerät gespeichert und benötigt keine Verbindung.</li>
+</ul>
+
+<h2>3. Identität ohne Konto</h2>
+<p>
+  Beim ersten Start erzeugt die App aus einer Folge von 12 Wörtern eine Kennung (<code>userId</code>) und ein
+  Geheimnis (<code>userSecret</code>). Beide werden bei jeder Anfrage an den Server mitgesendet und dienen
+  ausschließlich dazu, deine Bibliothek wiederzufinden. Sie enthalten keinen Namen, keine E-Mail-Adresse und
+  keine Gerätekennung. Wer die 12 Wörter kennt, hat Zugriff auf die zugehörige Bibliothek — bewahre sie
+  entsprechend auf.
+</p>
+
+<h2>4. Welche Daten verarbeitet werden</h2>
+<table>
+  <tr><th>Daten</th><th>Zweck</th><th>Wo</th></tr>
+  <tr>
+    <td>Karten, Tafeln, Reihenfolge</td>
+    <td>Speichern und Synchronisieren deiner Bibliothek</td>
+    <td>Server des Anbieters</td>
+  </tr>
+  <tr>
+    <td>Einstellungen, Lesebändchen, Leseposition</td>
+    <td>Bedienung der App</td>
+    <td>Nur auf dem Gerät</td>
+  </tr>
+  <tr>
+    <td>Sprachaufnahme bei Nutzung des Mikrofons</td>
+    <td>Umwandlung in Text, um deinen Befehl auszuführen</td>
+    <td>Server des Anbieters → OpenAI</td>
+  </tr>
+  <tr>
+    <td>Eingegebener oder gesprochener Text, Gesprächsverlauf</td>
+    <td>Verstehen der Anfrage, Antwort des Assistenten</td>
+    <td>Server des Anbieters → OpenAI</td>
+  </tr>
+  <tr>
+    <td>Bibeltext des vorzulesenden Abschnitts</td>
+    <td>Erzeugen der Vorlese-Stimme</td>
+    <td>Server des Anbieters → OpenAI</td>
+  </tr>
+  <tr>
+    <td>Eigene Vers-Aufnahmen (nur wenn du sie anlegst)</td>
+    <td>Anhören der eigenen Aufnahme beim Auswendiglernen</td>
+    <td>Server des Anbieters</td>
+  </tr>
+  <tr>
+    <td>Eigener OpenAI-Schlüssel (optional)</td>
+    <td>Nutzung deines eigenen Kontingents, Freischalten aller Stimmen</td>
+    <td>Server des Anbieters</td>
+  </tr>
+  <tr>
+    <td>Server-Protokolle (IP-Adresse, Zeitpunkt, Anfrage)</td>
+    <td>Betrieb und Sicherheit</td>
+    <td>Server des Anbieters</td>
+  </tr>
+</table>
+
+<h3>Erzeugte Audiodateien</h3>
+<p>
+  Vorgelesene Verse werden als Audiodatei auf dem Server zwischengespeichert, damit derselbe Vers nicht
+  mehrfach erzeugt werden muss. Dieser Zwischenspeicher ist nach Übersetzung, Stimme und Versstelle geordnet
+  und wird von allen Nutzenden gemeinsam verwendet. Er enthält ausschließlich Bibeltext und ist keiner Person
+  zugeordnet.
+</p>
+
+<h2>5. Berechtigungen</h2>
+<ul>
+  <li><strong>Mikrofon</strong> — nur während du die Spracheingabe aktiv benutzt. Es wird nicht im Hintergrund
+      und nicht dauerhaft aufgenommen.</li>
+  <li><strong>Internet</strong> — für Assistent, Vorlesen, Übersetzungs-Downloads und das Synchronisieren
+      deiner Bibliothek.</li>
+</ul>
+<p>
+  In der Android-App wird zunächst die Spracherkennung des Geräts verwendet. Diese wird vom Betriebssystem
+  bereitgestellt; dabei kann die Verarbeitung je nach Gerät und Einstellung durch Google erfolgen. Steht sie
+  nicht zur Verfügung, wird die Aufnahme an den Server und von dort an OpenAI übermittelt.
+</p>
+
+<h2>6. Empfänger und Auftragsverarbeiter</h2>
+<ul>
+  <li><strong>OpenAI</strong> (OpenAI Ireland Ltd. / OpenAI, L.L.C.) — Spracherkennung, Sprachmodell,
+      Sprachsynthese. Nach den Bedingungen für die OpenAI-API werden über die API übermittelte Inhalte nicht
+      zum Trainieren der Modelle verwendet.
+      <a href="https://openai.com/policies/privacy-policy" rel="noreferrer">Datenschutzhinweise von OpenAI</a></li>
+  <li><strong>Hetzner Online GmbH</strong> — Hosting des Servers innerhalb der Europäischen Union.</li>
+  <li><strong>Google</strong> — Verteilung der Android-App über Google Play sowie, je nach Gerät, die
+      Spracherkennung des Betriebssystems.</li>
+</ul>
+
+<h2>7. Rechtsgrundlagen</h2>
+<p>
+  Die Verarbeitung erfolgt zur Erfüllung des Nutzungsverhältnisses und zur Bereitstellung der von dir
+  angeforderten Funktionen (Art. 6 Abs. 1 lit. b DSGVO) sowie zum sicheren Betrieb (Art. 6 Abs. 1 lit. f
+  DSGVO). Die Nutzung des Mikrofons erfolgt auf Grundlage deiner Einwilligung (Art. 6 Abs. 1 lit. a DSGVO),
+  die du jederzeit durch Entziehen der Berechtigung widerrufen kannst.
+</p>
+
+<h2>8. Speicherdauer und Löschung</h2>
+<ul>
+  <li>Karten, Tafeln und eigene Aufnahmen bleiben gespeichert, bis du sie löschst.</li>
+  <li>Sprachaufnahmen zur Umwandlung in Text werden nach der Verarbeitung nicht dauerhaft aufbewahrt.</li>
+  <li>Einen eigenen OpenAI-Schlüssel kannst du in den Einstellungen jederzeit entfernen.</li>
+  <li>Für die vollständige Löschung deiner Bibliothek genügt eine E-Mail an die oben genannte Adresse mit
+      deiner Kennung.</li>
+</ul>
+
+<h2>9. Kinder</h2>
+<p>
+  Die App richtet sich nicht speziell an Kinder und erhebt bewusst keine Altersangaben oder sonstigen
+  persönlichen Angaben.
+</p>
+
+<h2>10. Deine Rechte</h2>
+<p>
+  Du hast das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung, Datenübertragbarkeit
+  und Widerspruch sowie das Recht, dich bei einer Datenschutz-Aufsichtsbehörde zu beschweren. Wende dich dazu
+  an die oben genannte E-Mail-Adresse.
+</p>
+
+<h2>11. Änderungen</h2>
+<p>
+  Bei Änderungen an der App wird diese Erklärung angepasst. Das Datum oben nennt den aktuellen Stand.
+</p>
+
+<h1 id="en" style="margin-top:4rem">Privacy Policy</h1>
+<p class="lede">Bible Assistant — app and web app</p>
+<p class="updated">Last updated: 20 August 2026</p>
+
+<h2>1. Who is responsible</h2>
+<p>
+  Christoph Scharf<br>
+  Email: <a href="mailto:app.support@schaefchens.de">app.support@schaefchens.de</a>
+</p>
+
+<h2>2. The short version</h2>
+<ul>
+  <li>There is <strong>no user account</strong>: no email address, no password, no sign-up.</li>
+  <li>There are <strong>no ads, no analytics, no tracking</strong>, and no sharing or selling of data for
+      advertising.</li>
+  <li>Your cards, boards and settings are kept on the provider's server so you can use them on more than one
+      device.</li>
+  <li>OpenAI is used as a processor for speech recognition, assistant replies and reading aloud.</li>
+  <li>The Bible text itself is stored on your device and needs no connection.</li>
+</ul>
+
+<h2>3. Identity without an account</h2>
+<p>
+  On first launch the app derives an identifier (<code>userId</code>) and a secret (<code>userSecret</code>)
+  from a sequence of 12 words. Both are sent with every request to the server and serve only to find your
+  library again. They contain no name, no email address and no device identifier. Anyone who knows the 12
+  words can reach the matching library, so keep them safe.
+</p>
+
+<h2>4. What data is processed</h2>
+<table>
+  <tr><th>Data</th><th>Purpose</th><th>Where</th></tr>
+  <tr>
+    <td>Cards, boards, their order</td>
+    <td>Storing and syncing your library</td>
+    <td>Provider's server</td>
+  </tr>
+  <tr>
+    <td>Settings, ribbons, reading position</td>
+    <td>Running the app</td>
+    <td>On your device only</td>
+  </tr>
+  <tr>
+    <td>Voice recording while you use the microphone</td>
+    <td>Turning speech into text so your command can be carried out</td>
+    <td>Provider's server → OpenAI</td>
+  </tr>
+  <tr>
+    <td>Text you type or speak, conversation history</td>
+    <td>Understanding the request and answering it</td>
+    <td>Provider's server → OpenAI</td>
+  </tr>
+  <tr>
+    <td>The Bible text of the passage to be read</td>
+    <td>Generating the reading voice</td>
+    <td>Provider's server → OpenAI</td>
+  </tr>
+  <tr>
+    <td>Your own verse recordings (only if you make them)</td>
+    <td>Playing your own recording back while memorizing</td>
+    <td>Provider's server</td>
+  </tr>
+  <tr>
+    <td>Your own OpenAI key (optional)</td>
+    <td>Using your own quota and unlocking every voice</td>
+    <td>Provider's server</td>
+  </tr>
+  <tr>
+    <td>Server logs (IP address, timestamp, request)</td>
+    <td>Operation and security</td>
+    <td>Provider's server</td>
+  </tr>
+</table>
+
+<h3>Generated audio</h3>
+<p>
+  Verses that have been read aloud are cached as audio files on the server so the same verse need not be
+  generated twice. That cache is keyed by translation, voice and reference, and is shared by everyone. It
+  contains Bible text only and is not linked to any person.
+</p>
+
+<h2>5. Permissions</h2>
+<ul>
+  <li><strong>Microphone</strong> — only while you are actively using voice input. Nothing is recorded in the
+      background or continuously.</li>
+  <li><strong>Internet</strong> — for the assistant, reading aloud, translation downloads and syncing your
+      library.</li>
+</ul>
+<p>
+  The Android app prefers your device's own speech recognition. That is provided by the operating system, and
+  depending on your device and settings the processing may be carried out by Google. Where it is unavailable,
+  the recording is sent to the server and on to OpenAI.
+</p>
+
+<h2>6. Recipients and processors</h2>
+<ul>
+  <li><strong>OpenAI</strong> (OpenAI Ireland Ltd. / OpenAI, L.L.C.) — speech recognition, language model,
+      speech synthesis. Under the OpenAI API terms, content submitted through the API is not used to train
+      their models.
+      <a href="https://openai.com/policies/privacy-policy" rel="noreferrer">OpenAI privacy policy</a></li>
+  <li><strong>Hetzner Online GmbH</strong> — server hosting within the European Union.</li>
+  <li><strong>Google</strong> — distribution of the Android app through Google Play and, depending on the
+      device, the operating system's speech recognition.</li>
+</ul>
+
+<h2>7. Legal bases</h2>
+<p>
+  Processing takes place to perform the usage relationship and to provide the features you ask for (Art. 6(1)(b)
+  GDPR) and for secure operation (Art. 6(1)(f) GDPR). Use of the microphone rests on your consent
+  (Art. 6(1)(a) GDPR), which you can withdraw at any time by revoking the permission.
+</p>
+
+<h2>8. Retention and deletion</h2>
+<ul>
+  <li>Cards, boards and your own recordings stay until you delete them.</li>
+  <li>Voice recordings sent for transcription are not retained after processing.</li>
+  <li>You can remove your own OpenAI key at any time in Settings.</li>
+  <li>To have your library deleted in full, email the address above with your identifier.</li>
+</ul>
+
+<h2>9. Children</h2>
+<p>
+  The app is not directed at children and deliberately collects no age or other personal details.
+</p>
+
+<h2>10. Your rights</h2>
+<p>
+  You have the right of access, rectification, erasure, restriction of processing, data portability and
+  objection, and the right to lodge a complaint with a data protection authority. Please use the email address
+  above.
+</p>
+
+<h2>11. Changes</h2>
+<p>
+  This policy is updated when the app changes. The date at the top shows the current version.
+</p>
+
+<footer>
+  Bible Assistant · <a href="/">bibleassistant.apps.schaefchens.de</a>
+</footer>
+
+</main>
+</body>
+</html>

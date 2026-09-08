@@ -1,0 +1,18 @@
+# The Bible sources are byte-sensitive and must round-trip through git
+# unchanged.
+#
+# Three of the four (ELB, KJV, S51) are CRLF as published, and git's default
+# `text=auto` would normalise them to LF on the next checkout — which changes
+# the bytes, and these bytes are load-bearing twice over: `bible:build` records
+# a `sha256` per pack, and `bible:verify` asserts the JS parser agrees with the
+# PHP parser on golden fixtures generated from the file the server actually
+# serves. A clone whose XML had been silently re-lined would fail that
+# comparison for a reason nobody would look for.
+#
+# `binary` is `-text -diff`: never convert, and don't try to diff a 5 MB
+# single-line XML either.
+public/bibles/*.xml binary
+
+# Generated packs are gzip and JSON blobs, hashed the same way.
+public/bible-packs/**/*.json binary
+public/bible-packs/**/*.gz   binary

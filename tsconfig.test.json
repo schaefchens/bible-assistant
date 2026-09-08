@@ -1,0 +1,38 @@
+{
+  /* The test projects. Referenced from tsconfig.json so `tsc -b` — the
+   * project's stated correctness gate — typechecks the tests too. Without this
+   * they would be checked by nothing: tsconfig.app.json includes only `src`
+   * and tsconfig.node.json only the two build configs.
+   *
+   * Shape mirrors tsconfig.node.json, plus DOM (page.evaluate callbacks are
+   * typed against browser globals), the `@` alias the specs import through, and
+   * `jsx` — `tests/component` renders real components. */
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "esnext",
+    // `vite/client` as well as node: the specs import app modules, and
+    // `services/api/origin.ts` evaluates `import.meta.env` at module load.
+    "types": ["node", "vite/client"],
+    "skipLibCheck": true,
+    "strict": true,
+
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "resolveJsonModule": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["tests", "vitest.config.ts", "playwright.config.ts"]
+}
