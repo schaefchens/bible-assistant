@@ -159,6 +159,13 @@ function SpacesIndex({
           </div>
         ) : (
           <>
+            {/* What a shelf is *for*, above the list of them. The header's
+                subtitle says what the screen holds; this says what you can do
+                with one, which is the part that is not guessable from a list of
+                names — a shelf takes reading lists and boards as well as
+                pieces, and sharing it is an accept/deny rather than a link. */}
+            <p className="text-xs leading-relaxed text-ink-muted">{t('community.indexHint')}</p>
+
             <section className="space-y-2">
               <SectionTitle>{t('community.mine')}</SectionTitle>
               {spaces.length === 0 && <Empty>{t('community.empty')}</Empty>}

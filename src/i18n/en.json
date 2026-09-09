@@ -804,7 +804,8 @@
     "shareWholeRoom": "The whole shelf",
     "shareFailed": "Couldn't share that. Try again once you're back online.",
     "deleteItem": "Delete",
-    "shareCodeIsRoom": "The code opens the shelf; only the link opens this piece."
+    "shareCodeIsRoom": "The code opens the shelf; only the link opens this piece.",
+    "indexHint": "Put your writing, reading lists and boards on a shelf, then share its code — you decide who may read it."
   },
   "feedback": {
     "open": "Report a bug or send feedback",

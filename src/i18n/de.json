@@ -804,7 +804,8 @@
     "shareWholeRoom": "Das ganze Regal",
     "shareFailed": "Konnte nicht geteilt werden. Versuche es erneut, sobald du online bist.",
     "deleteItem": "Löschen",
-    "shareCodeIsRoom": "Der Code öffnet das Regal; nur der Link öffnet dieses Stück."
+    "shareCodeIsRoom": "Der Code öffnet das Regal; nur der Link öffnet dieses Stück.",
+    "indexHint": "Lege deine Texte, Leselisten und Tafeln in ein Regal und teile seinen Code — du entscheidest, wer es lesen darf."
   },
   "feedback": {
     "open": "Fehler melden oder Rückmeldung senden",
