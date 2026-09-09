@@ -39,7 +39,7 @@ import { parseSpaceCodeInput } from '@/lib/spaceCode';
  * author. There is no benign reading of that, so it is a hard failure with a
  * plain-language message, never a warning to click through.
  */
-export function SubscribeField() {
+export function SubscribeField({ onSubscribed }: { onSubscribed?: () => void }) {
   const { t } = useTranslation();
   const subscribe = useCommunityStore((s) => s.subscribe);
   const [code, setCode] = useState('');
@@ -64,6 +64,11 @@ export function SubscribeField() {
       setCode('');
       setStatus(result === 'accepted' ? t('community.addByCodeAdded') : t('community.pending'));
       window.setTimeout(() => setStatus(null), 4000);
+      // The shelf just added lands in a list this screen may not be showing —
+      // the index puts your own and the ones you read behind tabs — so the
+      // caller gets a chance to reveal it. Without this the field clears, says
+      // "added", and nothing visibly changes.
+      onSubscribed?.();
     } catch (e) {
       // ApiError's message is api.php's `error` string, so a reason the server
       // gave (space_not_ready, profile_required) lands here alongside the ones

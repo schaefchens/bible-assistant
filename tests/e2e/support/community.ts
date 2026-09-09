@@ -123,7 +123,20 @@ export async function makeRoom(page: Page, name: string): Promise<Room> {
 export async function askToJoin(page: Page, room: Room, roomName: string): Promise<void> {
   await page.getByRole('link', { name: 'Shelves' }).click();
   await page.getByRole('textbox', { name: /Add a shelf by code/ }).fill(room.formatted);
+  await showShelvesYouRead(page);
   await expect(page.locator('main')).toContainText(roomName, { timeout: 30_000 });
+}
+
+/**
+ * Switch the index to the shelves you read.
+ *
+ * It keeps your own and the ones you read behind two tabs, and it opens on your
+ * own — every profile has an undeletable "Today", so that is never the empty
+ * one. Subscribing switches the tab by itself, but a **reload** puts it back,
+ * which is why any poll that re-enters this screen has to ask again.
+ */
+export async function showShelvesYouRead(page: Page): Promise<void> {
+  await page.getByRole('button', { name: /^You are reading/ }).click();
 }
 
 /**

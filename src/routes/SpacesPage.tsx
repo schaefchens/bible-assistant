@@ -5,8 +5,8 @@ import { PostEditor } from '@/components/community/PostEditor';
 import { SpaceDetail } from '@/components/community/SpaceDetail';
 import { SubscribeField } from '@/components/community/SubscribeField';
 import { ROUTES } from '@/lib/appRoutes';
-import {  } from '@/services/reading/readingSequence';
-import { Empty, Row, SectionTitle } from '@/components/community/spaceRows';
+import clsx from 'clsx';
+import { Empty, Row } from '@/components/community/spaceRows';
 import { SubscriptionMenu } from '@/components/community/SubscriptionMenu';
 import { useCommunityStore } from '@/store/communityStore';
 import { useReaderStore } from '@/store/readerStore';
@@ -27,7 +27,6 @@ import { useCommunityRefresh } from '@/hooks/useCommunityRefresh';
  * space it belongs to.
  */
 export function SpacesPage() {
-  const { t } = useTranslation();
   const navigate = useNavigate();
   const { id: routeId } = useParams<{ id?: string }>();
 
@@ -74,7 +73,6 @@ export function SpacesPage() {
       spaces={spaces}
       subscriptions={subscriptions}
       onOpenSettings={() => navigate(ROUTES.settings)}
-      emptyLabel={t('community.empty')}
     />
   );
 }
@@ -89,7 +87,6 @@ function SpacesIndex({
   spaces: Space[];
   subscriptions: Subscription[];
   onOpenSettings: () => void;
-  emptyLabel: string;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -101,6 +98,15 @@ function SpacesIndex({
   const memberships = useCommunityStore((s) => s.memberships);
   const setSource = useReaderStore((s) => s.setSource);
 
+  /**
+   * Which of the two lists is showing.
+   *
+   * Always your own first: every profile has a "Today" shelf that cannot be
+   * deleted, so "you have none of your own" is not a state a profiled user can
+   * be in, and there is nothing for a cleverer default to fix.
+   */
+  const [tab, setTab] = useState<'mine' | 'following'>('mine');
+
   const counts = useMemo(() => {
     const out: Record<string, number> = {};
     for (const p of posts) {
@@ -108,6 +114,16 @@ function SpacesIndex({
     }
     return out;
   }, [posts]);
+
+  /** New pieces across every shelf you read — what the hidden tab would show. */
+  const unreadFollowing = useMemo(
+    () =>
+      subscriptions.reduce(
+        (n, sub) => n + (feed[sub.code] ?? []).filter((p) => !seen[p.id]).length,
+        0,
+      ),
+    [subscriptions, feed, seen],
+  );
 
   const create = async () => {
     const space = await createSpace(t('community.newSpace'));
@@ -136,15 +152,19 @@ function SpacesIndex({
             phone squeezed the title column (`min-w-0 flex-1`) to nothing: the
             two of them do not shrink, so the heading and its subtitle were the
             only things that could. */}
-        {hasProfile && <SubscribeField />}
+        {hasProfile && <SubscribeField onSubscribed={() => setTab('following')} />}
       </header>
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 pb-28 space-y-6">
+      {/* A column rather than one long scroller: only one of the two lists
+          shows at a time, and it takes the whole remaining height and scrolls
+          on its own. Stacked, a long list of your own pushed the ones you read
+          off the bottom of a phone entirely. */}
+      <div className="flex-1 min-h-0 flex flex-col px-4 py-4">
         {!hasProfile ? (
           // Without a profile there is nothing to show and nothing to do here,
           // so point at the one place that fixes it rather than rendering two
           // empty lists.
-          <div className="space-y-2">
+          <div className="space-y-2 pb-28">
             <p className="text-sm text-ink-muted">{t('community.profile.hint')}</p>
             <button type="button" onClick={onOpenSettings} className="btn-primary">
               {t('community.profile.create')}
@@ -156,7 +176,7 @@ function SpacesIndex({
                 because the sentence is what makes the button worth pressing.
                 Above the list of them, so the screen reads as an explanation,
                 the action it implies, and then what you already have. */}
-            <div className="space-y-3">
+            <div className="shrink-0 space-y-3">
               <p className="text-xs leading-relaxed text-ink-muted">
                 {t('community.indexHint')}
               </p>
@@ -165,85 +185,152 @@ function SpacesIndex({
               </button>
             </div>
 
-            <section className="space-y-2">
-              <SectionTitle>{t('community.mine')}</SectionTitle>
-              {spaces.length === 0 && <Empty>{t('community.empty')}</Empty>}
-              {spaces.map((space) => {
-                const pending = memberships.filter(
-                  (m) => m.spaceId === space.id && m.status === 'pending',
-                ).length;
-                return (
-                  <Row
-                    key={space.id}
-                    emoji={space.emoji}
-                    title={spaceDisplayName(space)}
-                    detail={t('community.pieces', { count: counts[space.id] ?? 0 })}
-                    badge={pending > 0 ? String(pending) : undefined}
-                    onOpen={() => navigate(`${ROUTES.spaces}/${space.id}`)}
-                    onRead={
-                      (counts[space.id] ?? 0) > 0
-                        ? () => void openSpace({ spaceId: space.id })
-                        : undefined
-                    }
-                  />
-                );
-              })}
-            </section>
+            {/* `aria-pressed` buttons rather than ARIA tabs, matching the two
+                switches this app already has — the /cards strip and the share
+                sheet's piece/shelf toggle. The counts are on the labels because
+                with one list hidden they are the only thing that says whether
+                there is anything behind it, and the dot is there for the same
+                reason: new pieces used to be visible without a tap. */}
+            <div className="mt-5 mb-3 shrink-0 flex gap-1 rounded-xl bg-surface-raised p-1">
+              <IndexTab
+                label={t('community.mine')}
+                count={spaces.length}
+                active={tab === 'mine'}
+                onClick={() => setTab('mine')}
+              />
+              <IndexTab
+                label={t('community.following')}
+                count={subscriptions.length}
+                unread={unreadFollowing}
+                active={tab === 'following'}
+                onClick={() => setTab('following')}
+              />
+            </div>
 
-            <section className="space-y-2">
-              <SectionTitle>{t('community.following')}</SectionTitle>
-              {/* Above the list, because reading across everyone is the more
-                  common intent than picking one person. */}
-              <NewPiecesBar />
-              {subscriptions.length === 0 && <Empty>{t('community.emptyFollowing')}</Empty>}
-              {subscriptions.map((sub) => {
-                const posts = feed[sub.code] ?? [];
-                const state = feedState[sub.code];
-                const unread = posts.filter((p) => !seen[p.id]).length;
-                const status =
-                  state?.keyChanged || sub.status === 'revoked'
-                    ? t(state?.keyChanged ? 'community.keyChanged' : 'community.revoked')
-                    : sub.status === 'pending'
-                      ? t('community.pending')
-                      : t('community.pieces', { count: posts.length });
-                return (
-                  <Row
-                    key={sub.code}
-                    emoji={sub.spaceEmoji}
-                    // Whose space it is belongs in the name, not in a detail
-                    // line — it is half of what identifies it.
-                    title={spaceLabel(sub.ownerName, { kind: sub.spaceKind ?? 'custom', name: sub.spaceName })}
-                    detail={status as string}
-                    badge={unread > 0 ? String(unread) : undefined}
-                    warn={state?.keyChanged}
-                    // These two were the *same* function until a room could
-                    // hold plans and boards; the row now opens the room and the
-                    // ▶ keeps starting the reading, which is what the own-space
-                    // rows above have always meant. A room with no pieces is
-                    // still worth opening — it may hold a plan.
-                    onOpen={() => navigate(`${ROUTES.rooms}/${sub.code}`)}
-                    onRead={
-                      posts.length > 0 ? () => void openSpace({ code: sub.code }) : undefined
-                    }
-                    trailing={
-                      <SubscriptionMenu
-                        code={sub.code}
-                        authorKey={sub.pinnedKey}
-                        ownerName={sub.ownerName}
-                        spaceLabel={spaceLabel(sub.ownerName, {
-                          kind: sub.spaceKind ?? 'custom',
-                          name: sub.spaceName,
-                        })}
+            <div className="flex-1 min-h-0 space-y-2 overflow-y-auto pb-28">
+              {tab === 'mine' ? (
+                <>
+                  {spaces.length === 0 && <Empty>{t('community.empty')}</Empty>}
+                  {spaces.map((space) => {
+                    const pending = memberships.filter(
+                      (m) => m.spaceId === space.id && m.status === 'pending',
+                    ).length;
+                    return (
+                      <Row
+                        key={space.id}
+                        emoji={space.emoji}
+                        title={spaceDisplayName(space)}
+                        detail={t('community.pieces', { count: counts[space.id] ?? 0 })}
+                        badge={pending > 0 ? String(pending) : undefined}
+                        onOpen={() => navigate(`${ROUTES.spaces}/${space.id}`)}
+                        onRead={
+                          (counts[space.id] ?? 0) > 0
+                            ? () => void openSpace({ spaceId: space.id })
+                            : undefined
+                        }
                       />
-                    }
-                  />
-                );
-              })}
-            </section>
+                    );
+                  })}
+                </>
+              ) : (
+                <>
+                  {/* Above the list, because reading across everyone is the more
+                      common intent than picking one person. */}
+                  <NewPiecesBar />
+                  {subscriptions.length === 0 && <Empty>{t('community.emptyFollowing')}</Empty>}
+                  {subscriptions.map((sub) => {
+                    const posts = feed[sub.code] ?? [];
+                    const state = feedState[sub.code];
+                    const unread = posts.filter((p) => !seen[p.id]).length;
+                    const status =
+                      state?.keyChanged || sub.status === 'revoked'
+                        ? t(state?.keyChanged ? 'community.keyChanged' : 'community.revoked')
+                        : sub.status === 'pending'
+                          ? t('community.pending')
+                          : t('community.pieces', { count: posts.length });
+                    return (
+                      <Row
+                        key={sub.code}
+                        emoji={sub.spaceEmoji}
+                        // Whose space it is belongs in the name, not in a detail
+                        // line — it is half of what identifies it.
+                        title={spaceLabel(sub.ownerName, { kind: sub.spaceKind ?? 'custom', name: sub.spaceName })}
+                        detail={status as string}
+                        badge={unread > 0 ? String(unread) : undefined}
+                        warn={state?.keyChanged}
+                        // These two were the *same* function until a room could
+                        // hold plans and boards; the row now opens the room and the
+                        // ▶ keeps starting the reading, which is what the own-space
+                        // rows above have always meant. A room with no pieces is
+                        // still worth opening — it may hold a plan.
+                        onOpen={() => navigate(`${ROUTES.rooms}/${sub.code}`)}
+                        onRead={
+                          posts.length > 0 ? () => void openSpace({ code: sub.code }) : undefined
+                        }
+                        trailing={
+                          <SubscriptionMenu
+                            code={sub.code}
+                            authorKey={sub.pinnedKey}
+                            ownerName={sub.ownerName}
+                            spaceLabel={spaceLabel(sub.ownerName, {
+                              kind: sub.spaceKind ?? 'custom',
+                              name: sub.spaceName,
+                            })}
+                          />
+                        }
+                      />
+                    );
+                  })}
+                </>
+              )}
+            </div>
           </>
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * One of the index's two lists, as a switch.
+ *
+ * The unread dot carries an accessible name rather than being decoration only:
+ * a dot is the whole signal that the other list has something new in it, and a
+ * screen reader would otherwise hear the two tabs as identical but for a count.
+ */
+function IndexTab({
+  label,
+  count,
+  unread = 0,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  unread?: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={clsx(
+        'flex-1 min-w-0 flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-colors',
+        active ? 'bg-brand text-on-brand' : 'text-ink-muted hover:text-ink',
+      )}
+    >
+      <span className="truncate">{label}</span>
+      <span className="shrink-0 opacity-60">{count}</span>
+      {unread > 0 && (
+        <span
+          aria-label={t('community.unread', { count: unread }) as string}
+          className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', active ? 'bg-on-brand' : 'bg-brand')}
+        />
+      )}
+    </button>
   );
 }
 

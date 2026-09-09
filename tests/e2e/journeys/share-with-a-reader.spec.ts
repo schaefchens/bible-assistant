@@ -129,6 +129,7 @@ test('a piece is published, shared by code, accepted, and read by someone else',
     // the moment `parseSpaceCodeInput` says the input is a code — which is the
     // moment a paste lands. No button.
     await bob.getByRole('textbox', { name: /Add a shelf by code/ }).fill(code);
+    await bob.getByRole('button', { name: /^You are reading/ }).click();
     await expect(bob.locator('main')).toContainText(SPACE, { timeout: 30_000 });
 
     // Holding the code is not access: the author has not decided yet.
@@ -165,6 +166,9 @@ test('a piece is published, shared by code, accepted, and read by someone else',
           await bob.reload();
           await appReady(bob);
           await bob.getByRole('link', { name: 'Shelves' }).click();
+          // A reload puts the index back on your own shelves; the one being
+          // waited for is in the other tab.
+          await bob.getByRole('button', { name: /^You are reading/ }).click();
           return bob.locator('main').innerText();
         },
         { timeout: 90_000, intervals: [1000, 2000, 3000, 5000, 5000, 5000] },

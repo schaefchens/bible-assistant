@@ -444,6 +444,13 @@ matching `*.upsert` — `makeRoom`'s predicate additionally checks the **request
 body carries the name**, since waiting for "a `spaces.upsert`" is satisfied by
 the creation itself.
 
+**The shelves index opens on your own shelves, and a reload puts it back
+there.** So a spec that re-enters that screen to wait for something in the other
+tab has to ask for it every iteration — `support/community.ts`'s
+`showShelvesYouRead`. Subscribing switches the tab by itself, which is why
+`askToJoin` mostly works without it; it asks anyway, so the spec does not depend
+on that convenience staying.
+
 **Two identities are the expensive part**, so the sharing specs are
 `describe.serial` blocks over one `beforeAll` rather than independent tests, and
 both installs are minted fresh: the `app` project's saved profile is shared by
@@ -1474,8 +1481,10 @@ screen: things you pick, exactly like a space — the pills read as a toolbar
 above the list you were choosing from. Splitting the hook out is what keeps the
 two from drifting into disagreeing about what "today" means.
 
-**"Everything new" is shown wherever the community is on at all**, not only where
-it has something to offer. Gated on `hasSubscriptions` it was simply *absent*
+**"Everything new" is shown wherever the community is on at all** — *in the
+picker*. `NewPiecesBar`, the pill version on `/spaces`, still returns `null`
+without subscriptions, so the two disagree; the reasoning below argues for
+ungating both. Gated on `hasSubscriptions` it was simply *absent*
 for anyone whose install is their own writing — which is every author before
 they follow their first person, and they then have no way to learn the feature
 exists. The row says why it is empty instead (`community.newNeedsSubscriptions`
@@ -2047,6 +2056,28 @@ not trip that file's mirror-and-bump instruction.
 and its extracted text — deleting the thing is the obvious first move after
 being reported. Blocking needs no change: it is keyed by the author's signing
 key and deletes their subscriptions, so their shelf goes with them.
+
+### The index is two tabs, not two sections
+
+Your own shelves and the ones you read used to stack in one scroller. Stacked,
+a long list of your own pushed the ones you read off the bottom of a phone
+entirely — and the second list is the one with new writing in it. So the body is
+now a **column**: a fixed head (what a shelf is for, "new shelf", the two tabs)
+and one panel that takes the whole remaining height and scrolls on its own.
+
+Three details are load-bearing:
+
+- **It opens on your own, with no cleverness.** Every profile gets an
+  undeletable "Today", so "you have none of your own" is not a state a profiled
+  user can be in, and a default that switched when one list was empty would
+  never fire.
+- **The counts are on the tab labels, and unread is a dot**, because hiding a
+  list hides what it was telling you. That is also why `SubscribeField` takes an
+  `onSubscribed` callback: the shelf just added lands in a list the screen may
+  not be showing, and without it the field clears, says "added", and nothing
+  visibly changes.
+- **`aria-pressed` buttons, not ARIA tabs**, matching the two switches this app
+  already has — the `/cards` strip and the share sheet's piece/shelf toggle.
 
 ### Where the share code is asked for
 
