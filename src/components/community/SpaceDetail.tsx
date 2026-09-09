@@ -48,7 +48,6 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
   const sharedClaims = useCommunityStore((s) => s.sharedClaims);
   const itemSources = useCommunityStore((s) => s.itemSources);
   const republishItem = useCommunityStore((s) => s.republishItem);
-  const withdrawItem = useCommunityStore((s) => s.withdrawItem);
   const deleteItem = useCommunityStore((s) => s.deleteItem);
   const readingLists = useLibraryStore((s) => s.readingLists);
   const boards = useLibraryStore((s) => s.boards);
@@ -286,12 +285,12 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
                   {t(tab === 'plans' ? 'community.noPlansHere' : 'community.noBoardsHere')}
                 </p>
               )}
-              {/* Three actions rather than the pieces' one, because a shared
-                  item is a *snapshot*: Update is what makes an edit to the
-                  source reach readers, and it is offered rather than automatic
-                  — silently changing a plan people are forty days into is worse
-                  than a button. Withdraw drops the shelf's copy and keeps the
-                  plan; Delete is the other half of that pair. */}
+              {/* Two actions. Update is what makes an edit to the source reach
+                  readers — a shared item is a *snapshot*, and updating is
+                  offered rather than automatic, because silently changing a
+                  plan people are forty days into is worse than a button.
+                  Removing takes it off the shelf and leaves the plan itself
+                  alone. */}
               {(tab === 'plans' ? plans : sharedBoards).map((item) => {
                 const stale = staleSources.has(item.id);
                 return (
@@ -320,18 +319,15 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
                         {t('community.updateShared')}
                       </SmallButton>
                     )}
+                    {/* One removal, not two. The list only ever shows what is
+                        currently shared, so a withdraw and a delete both made
+                        the row vanish — two buttons that did the same thing as
+                        far as anyone could see. */}
                     <SmallButton
-                      label={`${t('community.withdraw')} — ${item.title}`}
-                      onClick={() => void withdrawItem(item.id)}
-                    >
-                      {t('community.withdraw')}
-                    </SmallButton>
-                    <SmallButton
-                      danger
-                      label={`${t('community.deleteItem')} — ${item.title}`}
+                      label={`${t('community.removeFromShelf')} — ${item.title}`}
                       onClick={() => void deleteItem(item.id)}
                     >
-                      {t('community.deleteItem')}
+                      {t('community.removeFromShelf')}
                     </SmallButton>
                   </div>
                 );

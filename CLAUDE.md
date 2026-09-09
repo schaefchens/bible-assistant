@@ -423,7 +423,7 @@ costs one tap and `completed` is union-merged.
 are `role="menuitem"`, not buttons; and a control inside `CardEditor`'s `Field`
 inherits the field's `<label>` as its accessible name unless it carries its own
 `aria-label` — which is why the board pills and the shared-item row's
-Update/Withdraw/Delete each name what they act on. Both were found by a spec
+Update/Remove each name what they act on. Both were found by a spec
 failing to find a control, which is the honest way to find them.
 
 **A long-press drag needs `support/gestures.ts`.** `page.dragTo()` presses,
@@ -2093,6 +2093,17 @@ share code looks like an afterthought to the code, when it is the half the
 author actually comes back to check. Deciding about a person also should not
 share a screen with a code you might be about to rotate.
 
+A shared item has **one removal, not the withdraw/delete pair a piece has**.
+That pair is real for a piece, whose text lives only on the device, and the
+shelf shows the difference — a withdrawn piece stays listed as a draft. A shared
+item is a snapshot of something that already lives in the library, and the list
+only ever showed what was *currently* shared: so both buttons made the row
+vanish, they looked identical from the outside, and the withdraw left an
+invisible orphan row behind that nothing would ever show again. "Remove from
+shelf" is `deleteItem`; the source plan or board is untouched, and re-sharing is
+one tap in `AddToShelfSheet`, which mints a fresh item rather than resurrecting
+the old one — to a reader it *is* newly there.
+
 **Delete is outside the scroller**, tucked under it. Inside, it read as the last
 row of whichever tab happened to be showing. Its bottom padding is clearance for
 a floating mic dock, which overlays that corner in four of its five positions.
@@ -2211,8 +2222,8 @@ title and "new space", and that arithmetic is written down beside the class.
   the fallback rather than reusing it.
 - **A shared plan or board is a snapshot with a manual republish** (see above). Deliberate, but
   it does mean an author who fixes a typo has to press Update, and nothing nags them to.
-- Withdrawing a shared item on one device leaves the row marked `shared` on another until an
-  explicit delete syncs — the same wart posts already have, and for the same reason: absent
+- Taking a shared item off a shelf on one device leaves the row marked `shared` on another
+  until the removal syncs — the same wart posts already have, and for the same reason: absent
   from the server cannot mean deleted, or a failed `items.list` would destroy the author's shelf.
 - Progress on a shared plan survives unsubscribing, since the row is keyed by list id and
   nothing deletes it. Accepted: resubscribing restores your place.

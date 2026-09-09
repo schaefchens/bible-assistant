@@ -25,13 +25,13 @@ import type { CommunityState } from './communityStore';
  *
  * What holds this file together is the local-first ownership rule: the writing
  * lives in Dexie and the server holds a copy of what is currently *shared*.
- * Hence two different deletes (`deletePost` removes it everywhere;
- * `unpublishPost` drops only the `shared` claim and leaves the row readable),
- * and hence `publishedAt` being immutable — it is signed, so withdrawing and
- * re-sharing has to keep both the date and the original signature valid. A
- * shared item is the same pair under different names, `deleteItem` and
- * `withdrawItem`, which is why it belongs in this file rather than one of its
- * own: the split between these modules is ownership, not entity.
+ * Hence two different deletes for a *piece* (`deletePost` removes it
+ * everywhere; `unpublishPost` drops only the `shared` claim and leaves the row
+ * readable), and hence `publishedAt` being immutable — it is signed, so
+ * withdrawing and re-sharing has to keep both the date and the original
+ * signature valid. A shared item has only `deleteItem`: see the note there for
+ * why the pair does not carry over. All of it lives in this file because the
+ * split between these modules is ownership, not entity.
  *
  * A factory over `(set, get)` like `librarySync` and `createCommunityFeed`, so
  * every action body below moved verbatim.
@@ -360,21 +360,20 @@ export function createCommunityWriting(set: SetState, get: GetState) {
   },
 
   /**
-   * Take a plan or board out of the room, keeping it on the device.
+   * Take a plan or board off the shelf.
    *
-   * The `unpublishPost` half of the pair: the row survives, so re-sharing it
-   * later reuses the same `publishedAt` and the same id.
+   * **One removal, not two.** A piece has a withdraw *and* a delete because its
+   * text lives only on the device, so "stop sharing it but keep it" is a real
+   * state — and the shelf screen shows it, as a draft. A shared item is a
+   * snapshot of something that already lives in the library, so keeping the
+   * snapshot around unshared buys nothing: the list only ever showed items that
+   * *were* shared, which made a withdraw and a delete look identical and left
+   * an invisible orphan row behind.
+   *
+   * The source plan or board is untouched either way, and re-sharing it is one
+   * tap in `AddToShelfSheet`. It mints a fresh item rather than resurrecting
+   * this one, which is honest: to a reader it *is* newly there.
    */
-  withdrawItem: async (itemId: string) => {
-    const item = get().items.find((i) => i.id === itemId);
-    if (!item) return;
-    await db.sharedItems.update(itemId, { shared: 0, dirty: 0 });
-    set((s) => ({ sharedClaims: { ...s.sharedClaims, [itemId]: false } }));
-    await queued('item.delete', { id: itemId, spaceId: item.spaceId });
-    flush();
-  },
-
-  /** The `deletePost` half: gone from the device as well as the room. */
   deleteItem: async (itemId: string) => {
     const item = get().items.find((i) => i.id === itemId);
     if (!item) return;

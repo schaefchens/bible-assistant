@@ -48,7 +48,7 @@ export function ShareToRoomSheet({
   const shareList = useCommunityStore((s) => s.shareList);
   const shareBoard = useCommunityStore((s) => s.shareBoard);
   const republishItem = useCommunityStore((s) => s.republishItem);
-  const withdrawItem = useCommunityStore((s) => s.withdrawItem);
+  const deleteItem = useCommunityStore((s) => s.deleteItem);
 
   const [busy, setBusy] = useState<string | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
@@ -127,9 +127,9 @@ export function ShareToRoomSheet({
                     <SheetButton
                       subdued
                       disabled={working}
-                      onClick={() => void run(space.id, () => withdrawItem(here.itemId))}
+                      onClick={() => void run(space.id, () => deleteItem(here.itemId))}
                     >
-                      {t('community.withdraw')}
+                      {t('community.removeFromShelf')}
                     </SheetButton>
                   ) : (
                     <SheetButton

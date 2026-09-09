@@ -153,8 +153,7 @@ export type CommunityState = {
   shareBoard: (boardId: string, spaceId: string) => Promise<void>;
   /** Re-snapshot from the live source. Offered, never automatic. */
   republishItem: (itemId: string) => Promise<void>;
-  /** Out of the room, still on the device. */
-  withdrawItem: (itemId: string) => Promise<void>;
+  /** Take a plan or board off the shelf. The source is untouched. */
   deleteItem: (itemId: string) => Promise<void>;
   /** Fork somebody else's plan or board into the user's own library. */
   copySharedList: (listId: string) => Promise<string | null>;

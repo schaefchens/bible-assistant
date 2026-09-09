@@ -796,14 +796,12 @@
     "sharedHere": "Shared",
     "updateShared": "Update",
     "outOfDate": "Changed since you shared it",
-    "withdraw": "Withdraw",
     "noRooms": "You have no shelves yet. Make one first.",
     "openRoom": "Open shelf",
     "roomPieces": "Pieces",
     "shareThisPiece": "This piece",
     "shareWholeRoom": "The whole shelf",
     "shareFailed": "Couldn't share that. Try again once you're back online.",
-    "deleteItem": "Delete",
     "shareCodeIsRoom": "The code opens the shelf; only the link opens this piece.",
     "indexHint": "Make shelves and share your reading plans, cards and boards, and your own thoughts and writing with others.\nOr add a shelf shared with you, using its code, to follow what others put on theirs.",
     "unsubscribeConfirm": "Stop reading “{{name}}”?",
@@ -816,7 +814,8 @@
     "noBoardsToShare": "You have no boards yet.",
     "allShared": "Everything you have is already on this shelf.",
     "noPlansHere": "No reading plans on this shelf yet.",
-    "noBoardsHere": "No boards on this shelf yet."
+    "noBoardsHere": "No boards on this shelf yet.",
+    "removeFromShelf": "Remove from shelf"
   },
   "feedback": {
     "open": "Report a bug or send feedback",

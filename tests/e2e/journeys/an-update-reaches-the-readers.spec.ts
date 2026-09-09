@@ -190,7 +190,7 @@ test('an updated board reaches the reader with its new card', async () => {
   await expect(bob.page.locator('main')).toContainText(CARD_ONE);
 });
 
-test('withdrawing takes it off the reader’s shelf', async () => {
+test('taking it off the shelf takes it off the reader’s too', async () => {
   await alice.page.goto('/spaces');
   await appReady(alice.page);
   await alice.page.getByRole('button', { name: new RegExp(ROOM) }).first().click();
@@ -198,7 +198,7 @@ test('withdrawing takes it off the reader’s shelf', async () => {
   const gone = alice.page.waitForResponse(
     (r) => r.url().includes('action=items.delete') && r.ok(),
   );
-  await alice.page.getByRole('button', { name: `Withdraw — ${BOARD}` }).click();
+  await alice.page.getByRole('button', { name: `Remove from shelf — ${BOARD}` }).click();
   await gone;
 
   // Dropped from the reader's cache, not merely hidden: the room no longer

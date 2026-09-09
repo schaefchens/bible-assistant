@@ -133,8 +133,8 @@ type FeedPost = Post & {
  * the one who has it.
  *
  * `shared` means the same thing it does on a post: the row exists locally, and
- * whether the server has a copy is a separate decision (`withdrawItem` drops
- * the claim without touching the row).
+ * whether the server has a copy is a separate decision. Unlike a post it has
+ * only one removal — see `deleteItem`.
  */
 export type LocalSharedItem = SharedItem & {
   /** The canonical payload string, verbatim — the signature covers these bytes. */

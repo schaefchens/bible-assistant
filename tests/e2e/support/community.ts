@@ -316,7 +316,7 @@ async function pickRoom(page: Page, roomName: string): Promise<void> {
   const synced = page.waitForResponse((r) => r.url().includes('action=items.upsert') && r.ok());
   await row.getByRole('button', { name: 'Share here' }).click();
   await synced;
-  await expect(row.getByRole('button', { name: 'Withdraw' })).toBeVisible();
+  await expect(row.getByRole('button', { name: 'Remove from shelf' })).toBeVisible();
   await page.keyboard.press('Escape');
 }
 

@@ -365,10 +365,9 @@ describe('init never destroys the user’s own writing', () => {
  * Sharing a plan is a **snapshot**, and the op sequence is what makes that
  * true on the wire.
  *
- * Three rows of CLAUDE.md's definition-of-done table meet here: a sync op
- * sequence (a share lost forever), a persisted shape (`publishedAt` is signed),
- * and the two-different-deletes rule that `withdrawItem` and `deleteItem`
- * inherit from posts.
+ * Two rows of CLAUDE.md's definition-of-done table meet here: a sync op
+ * sequence (a share lost forever) and a persisted shape (`publishedAt` is
+ * signed).
  *
  * The op deliberately carries **only the id** — the payload can be ~100KB and
  * the queue is read whole on every flush — so what is asserted is the id and
@@ -449,21 +448,10 @@ describe('sharing a plan into a room', () => {
     expect(rows.map((r) => r.spaceId).sort()).toEqual(['s1', 's2']);
   });
 
-  it('withdrawing keeps the row and drops only the claim', async () => {
-    await useCommunityStore.getState().shareList('L1', 's1');
-    const id = (await db.sharedItems.toArray())[0].id;
-
-    await useCommunityStore.getState().withdrawItem(id);
-
-    const row = await db.sharedItems.get(id);
-    expect(row).toBeDefined();
-    expect(row?.shared).toBe(0);
-    expect(row?.deleted).toBeUndefined();
-    expect(useCommunityStore.getState().sharedClaims[id]).toBe(false);
-    expect(await ops()).toEqual(['item.upsert', 'item.delete']);
-  });
-
-  it('deleting tombstones it, so the delete reaches the other devices', async () => {
+  it('taking it off the shelf tombstones it, so the removal reaches the other devices', async () => {
+    // One removal, not the withdraw/delete pair a *piece* has: the shelf only
+    // ever lists what is currently shared, so both looked identical from the
+    // outside and the withdraw left an invisible orphan row behind.
     await useCommunityStore.getState().shareList('L1', 's1');
     const id = (await db.sharedItems.toArray())[0].id;
 
@@ -472,6 +460,22 @@ describe('sharing a plan into a room', () => {
     expect((await db.sharedItems.get(id))?.deleted).toBe(1);
     expect(useCommunityStore.getState().items).toEqual([]);
     expect(await ops()).toEqual(['item.upsert', 'item.delete']);
+  });
+
+  it('the source list is untouched, and sharing it again is a fresh item', async () => {
+    // The whole reason one removal is enough: what was shared is a snapshot of
+    // something that still lives in the library.
+    await useCommunityStore.getState().shareList('L1', 's1');
+    const first = (await db.sharedItems.toArray())[0].id;
+    await useCommunityStore.getState().deleteItem(first);
+
+    expect(useLibraryStore.getState().readingLists.map((l) => l.id)).toEqual(['L1']);
+
+    await useCommunityStore.getState().shareList('L1', 's1');
+    const live = (await db.sharedItems.toArray()).filter((r) => r.deleted !== 1);
+    expect(live).toHaveLength(1);
+    expect(live[0].id).not.toBe(first);
+    expect(useCommunityStore.getState().items).toHaveLength(1);
   });
 });
 
