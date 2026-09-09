@@ -7,9 +7,8 @@ import { resizeAvatar } from '@/lib/imageResize';
 import { keyFingerprint } from '@/lib/spaceCode';
 import { ROUTES } from '@/lib/appRoutes';
 import { useCommunityStore } from '@/store/communityStore';
-import { useSettingsStore } from '@/store/settingsStore';
-import { COMMUNITY_TERMS_VERSION } from '@/lib/communityTerms';
-import { CommunityTerms, CommunityTermsConsent } from '@/components/community/CommunityTerms';
+import { CommunityTerms } from '@/components/community/CommunityTerms';
+import { CreateProfileForm } from '@/components/community/CreateProfileForm';
 
 /**
  * Settings tile for the community profile.
@@ -30,16 +29,12 @@ export function CommunitySection() {
   const profile = useCommunityStore((s) => s.profile);
   const busy = useCommunityStore((s) => s.busy);
   const memberships = useCommunityStore((s) => s.memberships);
-  const enableCommunity = useCommunityStore((s) => s.enableCommunity);
   const disableCommunity = useCommunityStore((s) => s.disableCommunity);
   const saveProfile = useCommunityStore((s) => s.saveProfile);
   const setAvatar = useCommunityStore((s) => s.setAvatar);
   const blocked = useCommunityStore((s) => s.blocked);
   const unblockAuthor = useCommunityStore((s) => s.unblockAuthor);
-  const acceptTerms = useSettingsStore((s) => s.acceptCommunityTerms);
 
-  const [name, setName] = useState('');
-  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingLeave, setConfirmingLeave] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
@@ -54,18 +49,6 @@ export function CommunitySection() {
 
   const pending = memberships.filter((m) => m.status === 'pending').length;
   const fingerprint = profile?.authorKey ? keyFingerprint(profile.authorKey) : null;
-
-  const onCreate = async () => {
-    const displayName = name.trim();
-    if (!displayName || !agreed || busy) return;
-    setError(null);
-    try {
-      acceptTerms(COMMUNITY_TERMS_VERSION);
-      await enableCommunity(displayName);
-    } catch (e) {
-      setError(extractErrorDetail(e) ?? t('community.errors.failed'));
-    }
-  };
 
   const onPickAvatar = async (file: File | undefined) => {
     if (!file) return;
@@ -93,33 +76,8 @@ export function CommunitySection() {
     }
   };
 
-  if (!profile) {
-    return (
-      <div className="space-y-2">
-        <p className="text-xs text-ink-muted">{t('community.profile.hint')}</p>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={t('community.profile.displayName') as string}
-          maxLength={120}
-          className="w-full bg-surface-raised rounded-xl px-3 py-2 text-ink outline-none focus:ring-2 focus:ring-brand/60"
-        />
-        <CommunityTermsConsent checked={agreed} onChange={setAgreed} />
-        <button
-          type="button"
-          onClick={() => void onCreate()}
-          disabled={busy || !agreed || name.trim() === ''}
-          className="btn-primary w-full disabled:opacity-50"
-        >
-          {t('community.profile.create')}
-        </button>
-        {/* Stated up front, not discovered afterwards: this is the moment an
-            account starts holding shareable data. */}
-        <p className="text-xs text-ink-muted">{t('community.profile.createHint')}</p>
-        {error && <p className="text-xs text-red-400">{error}</p>}
-      </div>
-    );
-  }
+  // The shelves screen offers the same form, so it lives on its own now.
+  if (!profile) return <CreateProfileForm />;
 
   return (
     <div className="space-y-3">

@@ -18,6 +18,7 @@ import type { Post, Space, Subscription } from '@/types/domain';
 import { spaceDisplayName, spaceLabel } from '@/services/community/spaceName';
 import { NewPiecesBar } from '@/components/community/NewPiecesBar';
 import { CommunityTermsGate } from '@/components/community/CommunityTermsGate';
+import { CreateProfileForm } from '@/components/community/CreateProfileForm';
 import { useCommunityTermsAccepted } from '@/lib/communityTerms';
 import { useCommunityRefresh } from '@/hooks/useCommunityRefresh';
 
@@ -81,7 +82,6 @@ export function SpacesPage() {
       hasProfile={profile !== null}
       spaces={spaces}
       subscriptions={subscriptions}
-      onOpenSettings={() => navigate(ROUTES.settings)}
       onNewPost={setDraftPost}
     />
   );
@@ -91,13 +91,11 @@ function SpacesIndex({
   hasProfile,
   spaces,
   subscriptions,
-  onOpenSettings,
   onNewPost,
 }: {
   hasProfile: boolean;
   spaces: Space[];
   subscriptions: Subscription[];
-  onOpenSettings: () => void;
   onNewPost: (draft: Post) => void;
 }) {
   const { t } = useTranslation();
@@ -180,29 +178,24 @@ function SpacesIndex({
           on its own. Stacked, a long list of your own pushed the ones you read
           off the bottom of a phone entirely. */}
       <div className="flex-1 min-h-0 flex flex-col px-4 py-4">
+        {/* What this screen is for, shown whether or not you can use it yet.
+            `whitespace-pre-line`, because the string carries a newline: the two
+            ways in — make a shelf, or add one somebody shared — are two
+            sentences and read as two lines. */}
+        <p className="shrink-0 text-xs leading-relaxed text-ink-muted whitespace-pre-line">
+          {t('community.indexHint')}
+        </p>
+
         {!hasProfile ? (
-          // Without a profile there is nothing to show and nothing to do here,
-          // so point at the one place that fixes it rather than rendering two
-          // empty lists.
-          <div className="space-y-2 pb-28">
-            <p className="text-sm text-ink-muted">{t('community.profile.hint')}</p>
-            <button type="button" onClick={onOpenSettings} className="btn-primary">
-              {t('community.profile.create')}
-            </button>
+          // The opt-in itself, right here. It used to be a button to Settings,
+          // which dropped someone who had already decided onto a screen of
+          // collapsed panes with nothing saying which one to open.
+          <div className="mt-4 shrink-0 pb-28">
+            <CreateProfileForm />
           </div>
         ) : (
           <>
-            {/* What a shelf is *for*, and the way to get one — as a pair,
-                because the sentence is what makes the button worth pressing.
-                Above the list of them, so the screen reads as an explanation,
-                the action it implies, and then what you already have. */}
-            <div className="shrink-0 space-y-3">
-              {/* `whitespace-pre-line`, because the string carries a newline:
-                  the two ways onto this screen — make one, or add one somebody
-                  shared — are two sentences and read as two lines. */}
-              <p className="text-xs leading-relaxed text-ink-muted whitespace-pre-line">
-                {t('community.indexHint')}
-              </p>
+            <div className="mt-3 shrink-0">
               {/* The two ways in, side by side and in the order the sentence
                   above puts them. */}
               <div className="flex items-center gap-2">

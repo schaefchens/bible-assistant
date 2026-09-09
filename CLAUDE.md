@@ -1633,14 +1633,23 @@ about what arrives costs nothing and older invitations are still out there.
 
 ### Where the opt-in is offered
 
-Two places, and both are progressive disclosure: `components/settings/CommunitySection.tsx`
-and a wizard step, `components/onboarding/steps/CommunityStep.tsx`.
+Three places, all progressive disclosure: the shelves screen itself, the Settings tile
+(`components/settings/CommunitySection.tsx`) and a wizard step
+(`components/onboarding/steps/CommunityStep.tsx`).
+
+The form is **one component**, `components/community/CreateProfileForm.tsx` — a name, the
+standards, one button — and the first two render it unchanged. `SubscribePage` keeps a
+version of its own on purpose: its button accepts, creates *and* asks to read a shelf in
+one press, and its copy is about the invitation the user is holding.
 
 `/spaces` is now a **nav tab** (it took the slot Boards vacated), so the feature has a
 way in that isn't Settings or a step of the wizard. It shows whether or not a profile
-exists: without one the index already renders the make-a-profile pointer, and a tab
-that says so is the point — hiding it would keep the feature invisible to exactly the
-people who haven't found it. The index therefore lost its back button (a tab root has
+exists: without one the index renders **the opt-in form itself**, and a tab that says so
+is the point — hiding it would keep the feature invisible to exactly the people who
+haven't found it. It used to be a button to Settings, which dropped someone who had
+already decided onto a screen of collapsed panes with nothing saying which one to open;
+`support/community.ts`'s `makeProfile` now takes the inline path, so every sharing spec
+walks it. The index therefore lost its back button (a tab root has
 no parent); `/spaces/:id` keeps its own, whose fallback is that index. No badge on the
 tab: `useCommunityRefresh` is deliberately not global, so a count there would be
 either stale or bought with app-wide polling.

@@ -53,19 +53,29 @@ export async function freshInstall(browser: Browser): Promise<Install> {
   return { context, page };
 }
 
-/** The community opt-in: a display name plus the content standards. */
+/**
+ * The community opt-in: a display name plus the content standards.
+ *
+ * Taken **from the shelves screen**, which offers the form inline — the path a
+ * real first-time user takes, since that tab is where the feature is visible.
+ * It used to go through Settings, which still works and is still covered by
+ * `share-with-a-reader`'s own copy of this; doing it here instead means the
+ * inline form is exercised by every sharing spec rather than by one.
+ */
 export async function makeProfile(page: Page, name: string): Promise<void> {
-  await page.goto('/');
+  await page.goto('/spaces');
   await appReady(page);
-  await page.getByRole('link', { name: 'Settings' }).click();
-  await page.getByRole('button', { name: 'Community', exact: true }).click();
   await page.getByRole('textbox', { name: 'Display name' }).fill(name);
   // `enableCommunity` refuses without an accepted version of the standards, so
   // the gate is part of the flow rather than a detour.
   await page.getByRole('checkbox', { name: /content standards/ }).check();
   await page.getByRole('button', { name: 'Create a profile' }).click();
-  // Creating a profile turns server sync on — that is what makes sharing work.
-  await expect(page.getByRole('textbox', { name: 'Display name' })).toHaveValue(name);
+  // The form gives way to the shelf list, which is the signal the profile
+  // exists. Creating one also turns server sync on — that is what makes
+  // sharing work at all.
+  await expect(page.getByRole('button', { name: /^Your shelves/ })).toBeVisible({
+    timeout: 30_000,
+  });
 }
 
 export type Room = {

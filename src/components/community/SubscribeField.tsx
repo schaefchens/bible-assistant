@@ -132,11 +132,16 @@ export function SubscribeField({ onSubscribed }: { onSubscribed?: () => void }) 
           its own — `w-max` keeps a short message short and `max-w` wraps a long
           one, and `z-40` is where this app already puts a dropdown over
           content. Nothing above it clips: the head block has no `overflow`, and
-          the scrolling list is a sibling below rather than an ancestor. */}
+          the scrolling list is a sibling below rather than an ancestor.
+
+          Anchored **right**. Left-anchored it started well into the row — the
+          field begins after "new shelf" — and 16rem of message from there ran
+          off the edge of an iPhone SE. The field's right edge is the content's
+          right edge, so from there it can only grow inwards. */}
       {note && (
         <p
           role="status"
-          className={`absolute left-0 top-full z-40 mt-1 w-max max-w-[16rem] rounded-lg border border-surface-raised/70 bg-surface-raised px-2.5 py-1.5 text-[11px] shadow-lg ${
+          className={`absolute right-0 top-full z-40 mt-1 w-max max-w-[16rem] rounded-lg border border-surface-raised/70 bg-surface-raised px-2.5 py-1.5 text-[11px] shadow-lg ${
             error ? 'text-red-400' : 'text-ink-muted'
           }`}
         >

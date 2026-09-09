@@ -805,7 +805,7 @@
     "shareFailed": "Couldn't share that. Try again once you're back online.",
     "deleteItem": "Delete",
     "shareCodeIsRoom": "The code opens the shelf; only the link opens this piece.",
-    "indexHint": "Make shelves and share your reading plans, cards and boards, and your own thoughts and writing with others.\nOr add a shelf shared with you, using its code.",
+    "indexHint": "Make shelves and share your reading plans, cards and boards, and your own thoughts and writing with others.\nOr add a shelf shared with you, using its code, to follow what others put on theirs.",
     "unsubscribeConfirm": "Stop reading “{{name}}”?"
   },
   "feedback": {
