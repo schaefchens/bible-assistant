@@ -2109,13 +2109,29 @@ shrinks, so the title column (`min-w-0 flex-1`) was the only thing that could,
 and on a narrow phone the heading and its subtitle collapsed to nothing. The
 header is now the title alone and the subtitle fits.
 
-Moving it made its own hint a problem worth knowing about. That hint was
-`absolute right-4`, pinned to the header so a message could not shove the
-header's height around mid-typing — and in the body the same trick laid a
-five-line error across the tabs and the first shelf. It is in flow now, inside a
-`flex-1` column so a wrapped error has somewhere to go while the input keeps its
-own narrow width. Growing the head block is harmless here: it is not fixed
-chrome, and the list below simply gets one line less to scroll in.
+Moving it made its own hint a problem worth knowing about, and it took three
+tries. It began as `absolute right-4`, pinned to the header so a message could
+not shove the header's height around mid-typing — in the body that laid an
+unreadable five-line error across the tabs and the first shelf. In flow it was
+legible but shoved the whole screen down on every focus. It is a **popover**
+now: still absolute, so it moves nothing, but with a surface of its own,
+`w-max` so a short message stays short, and `z-40`, which is where this app
+already puts a dropdown over content. Nothing above it clips — the head block
+has no `overflow` and the scrolling list is a sibling, not an ancestor.
+
+The field fills its column (`w-full` in a `flex-1` wrapper). It was pinned to
+7rem while it lived in the header, where anything wider pushed "new shelf" off a
+narrow phone; on its own row there is nothing left to crowd, and a code is 18
+characters — the width is the difference between reading it back and not.
+
+**"Today" is always first in your own list, and tinted.** It is the shelf every
+profile has, it is where a passing thought goes, and it empties itself every 24
+hours — so an order by "recently touched" buried it the moment anything else was
+written, which is exactly when its own pieces are about to expire unread. The
+sort is stable, so the rest keep the order the store gave them, and `Row`'s
+`accent` swaps the background rather than layering a second one: two Tailwind
+background utilities on one element have equal specificity, so which wins is
+stylesheet order, not the order they are written in.
 
 It has **no button**. `parseSpaceCodeInput` already answers "is this a code
 yet?" on every keystroke, so the field submits itself the moment the answer is

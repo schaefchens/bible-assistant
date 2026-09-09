@@ -94,9 +94,10 @@ export function SubscribeField({ onSubscribed }: { onSubscribed?: () => void }) 
   const note = error ?? status ?? (focused ? t('community.addByCodeHint') : null);
 
   return (
-    // `flex-1` so the column, not the input, takes the row's spare width: the
-    // input keeps its own narrow size and a wrapped error gets somewhere to go.
-    <div className="min-w-0 flex-1">
+    // `relative` anchors the popover below to the *field*, wherever the field
+    // is put; `flex-1` gives the column the row's spare width so the input can
+    // stay its own narrow size.
+    <div className="relative min-w-0 flex-1">
       <input
         value={code}
         onChange={(e) => onChange(e.target.value)}
@@ -115,22 +116,27 @@ export function SubscribeField({ onSubscribed }: { onSubscribed?: () => void }) 
         autoCorrect="off"
         maxLength={64}
         disabled={busy}
-        // 7rem is what the placeholder needs at this size — any narrower and
-        // the prompt itself is clipped, which is the one thing the field has to
-        // say. It widens where there is room, and beside "new shelf" there is:
-        // at 375px that row is 32 padding + 8 gap + ~130 button + 112 field,
-        // with the rest to spare.
-        className="w-28 sm:w-40 min-w-0 bg-surface-raised rounded-xl px-2.5 py-1.5 font-mono text-xs sm:text-sm text-ink outline-none focus:ring-2 focus:ring-brand/60 disabled:opacity-60"
+        // Fills its column. It used to be pinned to 7rem — what the
+        // placeholder needs and no more — because in the header it competed
+        // with the screen's title, and a field wide enough to swallow the row
+        // pushed "new shelf" off a narrow phone. On its own row beside that
+        // button there is nothing left to crowd, and a code is 18 characters:
+        // the width is the difference between reading it back and not.
+        className="w-full min-w-0 bg-surface-raised rounded-xl px-2.5 py-1.5 font-mono text-xs sm:text-sm text-ink outline-none focus:ring-2 focus:ring-brand/60 disabled:opacity-60"
       />
-      {/* In flow, and under the field it belongs to. It used to be `absolute
-          right-4`, pinned to the header this field lived in so that a hint
-          could not shove the header's height around mid-typing. Beside "new
-          shelf" that same trick laid a five-line error across the tabs and the
-          first shelf — the head block is not fixed chrome, and growing it just
-          gives the list below one line less to scroll in. */}
+      {/* A popover, and it took three tries to land there. Bare `absolute`
+          text (pinned to the header this field used to live in) laid an
+          unreadable five-line error across the tabs and the first shelf once
+          the field moved into the body; in flow it was legible but shoved the
+          whole screen down on every focus. So: floating, but with a surface of
+          its own — `w-max` keeps a short message short and `max-w` wraps a long
+          one, and `z-40` is where this app already puts a dropdown over
+          content. Nothing above it clips: the head block has no `overflow`, and
+          the scrolling list is a sibling below rather than an ancestor. */}
       {note && (
         <p
-          className={`mt-1 text-[11px] ${
+          role="status"
+          className={`absolute left-0 top-full z-40 mt-1 w-max max-w-[16rem] rounded-lg border border-surface-raised/70 bg-surface-raised px-2.5 py-1.5 text-[11px] shadow-lg ${
             error ? 'text-red-400' : 'text-ink-muted'
           }`}
         >

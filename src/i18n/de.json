@@ -194,7 +194,7 @@
     "readOnly": "Das ist die Tafel von {{author}}.",
     "makeCopy": "Eigene Kopie",
     "makeCopyHint": "Eine Kopie, die du bearbeiten und um eigene Karten ergänzen kannst.",
-    "share": "In ein Regal teilen"
+    "share": "In einem Regal teilen"
   },
   "voice": {
     "overlay": {
@@ -599,7 +599,7 @@
     "makeCopy": "Eigene Kopie",
     "makeCopyHint": "Eine Kopie, die du bearbeiten kannst. Sie startet ungelesen, und spätere Änderungen erreichen sie nicht.",
     "copySuffix": "{{name}} (Kopie)",
-    "share": "In ein Regal teilen"
+    "share": "In einem Regal teilen"
   },
   "community": {
     "title": "Regale",
@@ -790,7 +790,7 @@
     "sharedPlans": "Pläne",
     "sharedBoards": "Tafeln",
     "noSharedItems": "Hier ist noch nichts geteilt.",
-    "shareToRoom": "In ein Regal teilen",
+    "shareToRoom": "In einem Regal teilen",
     "shareToRoomHint": "Wen du als Leser aufgenommen hast, kann es lesen und eine Kopie nehmen.",
     "shareHere": "Hier teilen",
     "sharedHere": "Geteilt",

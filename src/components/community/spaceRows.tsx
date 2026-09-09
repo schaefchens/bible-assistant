@@ -27,6 +27,7 @@ export function Row({
   detail,
   badge,
   warn,
+  accent,
   onOpen,
   onRead,
   trailing,
@@ -36,6 +37,8 @@ export function Row({
   detail: string;
   badge?: string;
   warn?: boolean;
+  /** Set this row apart from the rest of the list — see "Today", below. */
+  accent?: boolean;
   onOpen: () => void;
   onRead?: () => void;
   trailing?: React.ReactNode;
@@ -44,7 +47,11 @@ export function Row({
   return (
     <div
       className={clsx(
-        'flex items-center gap-3 rounded-xl px-3 py-2 bg-surface-raised',
+        'flex items-center gap-3 rounded-xl px-3 py-2',
+        // Conditional rather than layered: two Tailwind background utilities on
+        // one element have equal specificity, so which wins is stylesheet
+        // order, not the order they are written in here.
+        accent ? 'bg-brand/10 ring-1 ring-brand/25' : 'bg-surface-raised',
         warn && 'ring-1 ring-red-500/40',
       )}
     >

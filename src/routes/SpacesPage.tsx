@@ -127,6 +127,20 @@ function SpacesIndex({
     return out;
   }, [posts]);
 
+  /**
+   * Today first, always.
+   *
+   * It is the one shelf every profile has, it is where a passing thought goes,
+   * and it empties itself every 24 hours — so a list ordered by "recently
+   * touched" buried it the moment anything else was written, which is exactly
+   * when its own pieces are about to expire unread. `sort` is stable, so
+   * everything else keeps the order the store gave it.
+   */
+  const ownShelves = useMemo(
+    () => [...spaces].sort((a, b) => Number(b.kind === 'today') - Number(a.kind === 'today')),
+    [spaces],
+  );
+
   /** New pieces across every shelf you read — what the hidden tab would show. */
   const unreadFollowing = useMemo(
     () =>
@@ -191,9 +205,7 @@ function SpacesIndex({
               </p>
               {/* The two ways in, side by side and in the order the sentence
                   above puts them. */}
-              {/* `items-start`, because the field grows downward when it has
-                  something to say and the button should stay put. */}
-              <div className="flex items-start gap-2">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => void create()}
@@ -231,7 +243,7 @@ function SpacesIndex({
               {tab === 'mine' ? (
                 <>
                   {spaces.length === 0 && <Empty>{t('community.empty')}</Empty>}
-                  {spaces.map((space) => {
+                  {ownShelves.map((space) => {
                     const pending = memberships.filter(
                       (m) => m.spaceId === space.id && m.status === 'pending',
                     ).length;
@@ -248,6 +260,7 @@ function SpacesIndex({
                             ? () => void openSpace({ spaceId: space.id })
                             : undefined
                         }
+                        accent={space.kind === 'today'}
                         trailing={<OwnSpaceActions space={space} onNewPost={onNewPost} />}
                       />
                     );
