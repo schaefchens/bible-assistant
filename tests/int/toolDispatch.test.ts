@@ -67,7 +67,7 @@ describe('the tool contract the model is handed', () => {
     // suppressed for them. A tool wrongly in this set goes silent.
     expect([...READ_TOOL_NAMES].sort()).toEqual([
       'continue_from_ribbon', 'play_reading_list', 'random_passage',
-      'read_new', 'read_space', 'read_verses',
+      'read_new', 'read_shelf', 'read_verses',
     ]);
     for (const name of READ_TOOL_NAMES) {
       expect(declared, `${name} is a read tool but is not declared`).toContain(name);

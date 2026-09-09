@@ -1199,20 +1199,22 @@ which for a year plan is minutes of speech.
 
 **The UI calls a space a "shelf" (`Regal` in German); the code calls it a
 space.** A user makes a shelf, puts things on it and shares it — which says what
-the feature is far better than "space" or "room" did. The rename is **i18n
-only**, deliberately: `Space`, `spaceId`, `spaces.upsert`, `space.feed`,
-`ReaderSource`'s `'space'` kind and the `/spaces` and `/rooms` routes are all
-unchanged, and renaming them would be a migration of persisted rows, wire
-actions and on-disk paths for the sake of a word. So: when editing copy the noun
-is *shelf*, when editing code it is *space*. German also changes gender with the
-noun — `der Raum` became `das Regal` — so the articles moved too.
+the feature is far better than "space" or "room" did. The rename stops at the
+code: `Space`, `spaceId`, `spaces.upsert`, `space.feed`, `ReaderSource`'s
+`'space'` kind and the `/spaces` and `/rooms` routes are all unchanged, and
+renaming them would be a migration of persisted rows, wire actions and on-disk
+paths for the sake of a word. So: when editing copy the noun is *shelf*, when
+editing code it is *space*. German also changes gender with the noun — `der
+Raum` became `das Regal` — so the articles moved too.
 
-**The model is told both**, since it sits on the seam: the prompts, the tool
-descriptions and the handlers' error strings all say *shelf*, and each prompt
-block names the code word once — `Regale (im Code "spaces", daher die
-Werkzeugnamen)` — so `read_space` and `list_spaces` still read as the obvious
-tools for it. The tool *names* and the `space` parameter are wire contract and
-did not move.
+**The tool contract is on the copy side of that line**, not the code side:
+`read_shelf`, `add_to_shelf`, `list_shelves`, and a `shelf` parameter. A tool
+name is what the *model* reads and reasons with, and handed `read_space` while
+every string it sees says "Regal" it has to make the connection itself — which
+it did unreliably. Tool names are also the cheapest thing here to rename: they
+are sent fresh with every request and persisted nowhere (`chatStore` is not a
+persist store), unlike anything on the wire or on disk. The **files** stay
+`tools/spaces.ts` and `handlers/spaces.ts`, because those are code.
 
 The functional half of that is `SPACE_FILLER_WORDS` in `spaceNameMatch.ts`:
 "Christophs Regal" has to reduce to `['christophs']` the way "Christophs Raum"
@@ -1815,12 +1817,66 @@ tested against a live model — and it doubles as a kill switch. A stubbed verdi
 deliberately bypasses the cache in both directions, so flipping it changes the
 answer.
 
-### Asking the assistant for a space
+### Asking the assistant for a shelf
 
-`list_spaces`, `write_post`, `read_space` and `read_new` are the space half of the tool
-contract; `read_space` and `read_new` are in `READ_TOOL_NAMES`, so like `read_verses` the
+**A shelf's whole life is callable, and that is a product rule rather than a
+convenience.** The app's selling point is that it can be driven without looking
+at it, so "the user does that part themselves in the app" is not a design
+option — it is the assumption that breaks the promise. Fifteen tools:
+`list_shelves`, `create_shelf`, `update_shelf`, `delete_shelf`, `share_shelf`,
+`decide_reader`, `write_piece`, `publish_piece`, `delete_piece`,
+`add_to_shelf`, `remove_from_shelf`, `read_shelf`, `read_new`,
+`unfollow_shelf`, `copy_from_shelf`.
+
+Two acts are deliberately **not** there, and both are complaints rather than
+housekeeping: **blocking an author** and **reporting content**. They are rare,
+they are about a person, and a misheard word should not be able to cut somebody
+off — they stay in the app, where each takes a deliberate tap.
+
+**Following a shelf has no tool either**, for a different reason: a share code
+is eighteen characters of base32, and neither a speech-to-text transcript nor a
+language model reproduces one reliably. One transposed character is a shelf
+that does not exist. So a code pasted into the **chat** is intercepted in
+`useCommandPipeline` *before* `postChat`, beside the stop-command check, and
+answered by `subscribe` directly — the code the user pasted is the code that is
+used, it costs no model call, and the reply is one of two written sentences
+rather than something the model narrates. `parseSpaceCodeInput` is the test,
+liberal as it is everywhere else (a bare code, either link, or a whole
+forwarded message): nobody types a share code into a Bible chat for another
+reason. `subscribe-errors.spec.ts` pins the negative half — **no `action=chat`
+request left the device** — because asserting only on the answer would pass
+just as well if the model had been asked and had guessed right.
+
+**Almost every handler is a name resolver in front of a store action**, and
+`byName` is the one copy of the resolving: exact, then unique substring, then
+*several is a question rather than a guess*. A miss names what there is, so the
+model's next turn can offer real names. That last part is not politeness — it
+is what stopped the model reaching for `read_verses` when a shelf name failed
+to resolve, and it now applies to plans, boards, pieces and readers too.
+`create_shelf` refuses a duplicate name for the same reason, at the one place a
+name is chosen rather than at the dozen places one is read.
+
+`read_shelf` and `read_new` are in `READ_TOOL_NAMES`, so like `read_verses` the
 reading *is* the reply. Both open the **reader**, not the chat — chat has no representation
 for a post (`ChatMessage` carries a list provenance but not a space's).
+
+**Removing is not destroying, and the tools draw the app's own line.**
+`remove_from_shelf` takes a plan, a board *or* a piece off: a plan and a board
+are snapshots of something that lives in the library, so that is `deleteItem`
+and the source is untouched; a piece lives only on the device, so that is
+`unpublishPost` and the draft survives. `delete_piece` is the destructive one
+and is its own tool, and both it and `delete_shelf` tell the model in as many
+words to confirm in the previous turn. The Today shelf refuses to be renamed or
+deleted — it is created with the profile and every resolver assumes it.
+
+**The prompt used to contradict itself here.** It said, absolutely, "never say
+something has been shared or published — sharing is an act the user performs in
+the app", and two sentences later named two tools that publish. The first was
+meant to scope to `write_piece` (a draft is not visible to anyone) and did not
+say so, and an absolute prohibition is exactly what gpt-4o-mini takes
+literally — so after a successful share it would deny having done it. The
+prohibition is now scoped to drafts, with "otherwise say plainly what you did"
+beside it.
 
 **Opening it takes two halves, because a tool cannot navigate.** `playSpaceInReader` sets the
 reader's source and position and starts the audio, but routing belongs to a component —

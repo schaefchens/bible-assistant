@@ -768,6 +768,9 @@
       "required": "Accept the content standards first."
     },
     "addByCodeAdded": "Added",
+    "codeAdded": "{{shelf}} is on your shelves now.",
+    "codeAsked": "Asked. Once you are let in, {{shelf}} will be on your shelves.",
+    "thatShelf": "The shelf",
     "moderation": {
       "refusedTitle": "Not published",
       "refusedHint": "Edit the piece and publish again. The draft is saved.",

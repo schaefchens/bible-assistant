@@ -423,7 +423,7 @@ describe('sharing a plan into a room', () => {
   });
 
   it('sharing the same plan into the same room again updates it', async () => {
-    // No sheet in front of the assistant's `share_plan`, so this has to hold at
+    // No sheet in front of the assistant's `add_to_shelf`, so this has to hold at
     // the store: otherwise a second ask leaves two items with the same name in
     // one room. Matched on the source, so a renamed plan is still the same plan.
     await useCommunityStore.getState().shareList('L1', 's1');

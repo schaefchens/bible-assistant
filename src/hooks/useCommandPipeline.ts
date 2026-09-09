@@ -11,6 +11,10 @@ import { playbackStatePrompt, systemPrompt } from '@/services/ai/prompts';
 import { dispatchTool } from '@/services/ai/dispatch';
 import { speakAssistantReply } from '@/services/ai/assistantSpeech';
 import { isStopCommand } from '@/services/ai/stopCommand';
+import { communityErrorKey } from '@/lib/communityErrors';
+import { parseSpaceCodeInput } from '@/lib/spaceCode';
+import { spaceLabel } from '@/services/community/spaceName';
+import { useCommunityStore } from '@/store/communityStore';
 import { useChatStore } from '@/store/chatStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { usePlaybackStore } from '@/store/playbackStore';
@@ -20,6 +24,7 @@ import { cancelAutoPlayPrefetch } from '@/lib/autoPlay';
 import { parseJsonSafe } from '@/lib/json';
 import { getAmbientTracks } from '@/services/api/ambient';
 import { parseReference } from '@/services/bible/referenceParser';
+import i18n from '@/i18n';
 import type { ChatMessage, ToolCallSummary } from '@/types/domain';
 
 const MAX_TOOL_LOOPS = 6;
@@ -83,6 +88,66 @@ function newId(): string {
 
 export type SendOpts = { source?: VoiceSource };
 
+/**
+ * A share code pasted into the chat adds that shelf, without the model.
+ *
+ * Being handed a code is one of the commonest reasons to open this app at all,
+ * and until now the only way in was a field on the shelves screen — which is a
+ * screen, i.e. exactly the thing this app claims you should not need. So the
+ * composer takes one too.
+ *
+ * **Before the model, not as a tool**, for a reason that is not about tokens: a
+ * share code is eighteen characters of base32, and neither a speech-to-text
+ * transcript nor a language model reproduces one reliably. One transposed
+ * character is a shelf that does not exist. Intercepting the raw text means the
+ * code the user pasted is the code that is used.
+ *
+ * `parseSpaceCodeInput` is the app's one boundary for "what people actually
+ * paste" — a bare code, either link shape, or the whole forwarded message with
+ * one embedded — and using it here rather than a stricter test is deliberate:
+ * nobody types a share code into a Bible chat for any other reason. The cost is
+ * that a question *about* a code is answered by acting on it, which is
+ * recoverable in one sentence and vanishingly rare.
+ *
+ * It reports its own outcome rather than handing the model a result to narrate,
+ * because there is nothing to reason about and a round trip would be a second
+ * or two of silence for a sentence that is already written.
+ */
+async function followShelfFromCode(text: string): Promise<boolean> {
+  const code = parseSpaceCodeInput(text);
+  if (!code) return false;
+
+  const chat = useChatStore.getState();
+  chat.appendMessage({ id: newId(), role: 'user', text, createdAt: Date.now() });
+  const reply: ChatMessage = { id: newId(), role: 'assistant', text: '', createdAt: Date.now() };
+  chat.appendMessage(reply);
+  chat.setProcessing(true);
+  try {
+    const status = await useCommunityStore.getState().subscribe(code);
+    // The shelf's own name only exists once the row is written, so it is read
+    // back rather than guessed — and a pending one already carries the name
+    // and owner the server answered `space.request` with.
+    const sub = useCommunityStore.getState().subscriptions.find((x) => x.code === code);
+    const label = sub
+      ? spaceLabel(sub.ownerName, { kind: sub.spaceKind ?? 'custom', name: sub.spaceName })
+      : '';
+    useChatStore.getState().updateMessage(reply.id, {
+      text: i18n.t(status === 'accepted' ? 'community.codeAdded' : 'community.codeAsked', {
+        shelf: label || i18n.t('community.thatShelf'),
+      }),
+    });
+  } catch (e) {
+    const key = communityErrorKey(e);
+    useChatStore
+      .getState()
+      .updateMessage(reply.id, { text: i18n.t(`community.errors.${key ?? 'failed'}`) });
+  } finally {
+    useChatStore.getState().setProcessing(false);
+  }
+  void speakAssistantReply(useChatStore.getState().messages.find((m) => m.id === reply.id)?.text ?? '', reply.id);
+  return true;
+}
+
 export function useCommandPipeline() {
   // Only so a tool that reads into the reader can take the user there; see
   // `ToolDispatchResult.opensReader`. Stable in react-router v7, so `send`
@@ -102,6 +167,9 @@ export function useCommandPipeline() {
     }
 
     if (useChatStore.getState().isProcessing) return;
+
+    // A pasted share code is answered here, not by the model — see above.
+    if (await followShelfFromCode(text)) return;
 
     // Abort any straggler controller (defensive — isProcessing should
     // already prevent overlap), then arm a fresh one for this send.

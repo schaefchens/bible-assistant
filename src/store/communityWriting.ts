@@ -85,7 +85,7 @@ async function publishItem(
   existing?: { id: string; publishedAt: number; createdAt: number },
 ): Promise<void> {
   if (!get().profile) return;
-  // The app's language, the same source `write_post` uses. A plan carries one
+  // The app's language, the same source `write_piece` uses. A plan carries one
   // because it is signed and the moderator is told which language to judge in;
   // the passages themselves have their own translation per entry.
   const language = useSettingsStore.getState().locale;
@@ -104,7 +104,7 @@ async function publishItem(
 
   // Sharing the same list into the same room twice is an **update**, not a
   // second copy. `republishItem` passes the row it is refreshing, but
-  // `shareList` cannot — and the assistant's `share_plan` has no sheet in front
+  // `shareList` cannot — and the assistant's `add_to_shelf` has no sheet in front
   // of it to notice, so without this a second ask would leave two items in the
   // room with the same name. Matched on the source rather than the title,
   // because a renamed plan is still the same plan.

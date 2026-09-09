@@ -768,6 +768,9 @@
       "required": "Bitte akzeptiere zuerst die inhaltlichen Regeln."
     },
     "addByCodeAdded": "Hinzugefügt",
+    "codeAdded": "{{shelf}} ist jetzt in deinen Regalen.",
+    "codeAsked": "Angefragt. Sobald du freigeschaltet bist, findest du {{shelf}} in deinen Regalen.",
+    "thatShelf": "Das Regal",
     "moderation": {
       "refusedTitle": "Nicht veröffentlicht",
       "refusedHint": "Bearbeite den Beitrag und veröffentliche erneut. Der Entwurf ist gespeichert.",

@@ -63,7 +63,7 @@ export function byUpdatedDesc(a: { updatedAt: number }, b: { updatedAt: number }
  * You cannot read your own writing as a subscriber. Asking to anyway appends a
  * membership request to your own file — an invitation from yourself, sitting in
  * your own inbox — and then the space is listed twice everywhere a space can be
- * listed: the picker, `/spaces`, and the assistant's `read_space` lookup, where
+ * listed: the picker, `/spaces`, and the assistant's `read_shelf` lookup, where
  * two identical names are also an ambiguity error.
  *
  * Two tests, because the obvious one is not enough. The stored `shareCode`

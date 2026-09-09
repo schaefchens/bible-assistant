@@ -24,6 +24,9 @@ const CODE_FIELD = /Add a shelf by code/;
  * (`run.mjs` resets per-user state once per run, not per spec.)
  */
 const SPACE = 'Eigenes Regal';
+/** Its own name: every spec in the `app` project shares one identity, so a
+ * second shelf made here must not collide with the one above. */
+const CHAT_SPACE = 'Regal aus dem Chat';
 
 async function makeProfile(page: Page, name: string) {
   await page.goto('/');
@@ -81,6 +84,51 @@ test('your own code is refused, and named as your own', async ({ page }) => {
   // listing. A row's button *starts* with the shelf's name; an action's does
   // not.
   await expect(page.getByRole('button', { name: new RegExp(`^${SPACE}`) })).toHaveCount(1);
+});
+
+/**
+ * The chat takes a code too, and answers it **without the model**.
+ *
+ * Being handed a code is one of the commonest reasons to open this app, and
+ * until now the only way in was a screen — which is the one thing an app whose
+ * selling point is "you never have to look at it" should not require. The
+ * intercept sits in front of `postChat` for a reason that is not about tokens:
+ * a share code is eighteen characters of base32, and neither speech-to-text
+ * nor a language model reproduces one reliably.
+ *
+ * So the assertion that matters is the *negative* one — no chat request left
+ * the device. Asserting only on the answer would pass just as well if the
+ * model had been asked, paid for, and had guessed right.
+ */
+test('a share code pasted into the chat is acted on there, not sent to the model', async ({
+  page,
+}) => {
+  await makeProfile(page, 'Christoph');
+
+  const spaceSynced = page.waitForResponse(
+    (r) => r.url().includes('action=spaces.upsert') && r.ok(),
+  );
+  await page.getByRole('button', { name: /New shelf/ }).click();
+  await page.getByRole('textbox', { name: 'Name' }).fill(CHAT_SPACE);
+  const code = (await page.getByText(/^[0-9A-Z]{5}-[0-9A-Z]{5}-[0-9A-Z]{6}$/).innerText()).trim();
+  await spaceSynced;
+
+  const chatCalls: string[] = [];
+  page.on('request', (r) => {
+    if (/action=chat\b/.test(r.url())) chatCalls.push(r.url());
+  });
+
+  await page.goto('/');
+  await appReady(page);
+  await page.getByPlaceholder('What do you want to read?').fill(code);
+  // `exact`: the feedback beetle is "Report a bug or send feedback", which a
+  // substring match also finds.
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+
+  // Their own code, so the answer is the store's refusal — which proves the
+  // paste reached `subscribe` rather than being typed into the void.
+  await expect(page.locator('main')).toContainText(/your own shelf/i, { timeout: 30_000 });
+  expect(chatCalls, 'a pasted code must not cost a model call').toEqual([]);
 });
 
 /**
