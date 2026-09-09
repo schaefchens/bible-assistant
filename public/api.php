@@ -132,6 +132,7 @@ $ACCOUNT_ACTIONS = [
     'profile.set', 'profile.avatar.upload',
     'spaces.upsert', 'spaces.delete', 'spaces.code.set',
     'posts.upsert', 'posts.delete',
+    'items.upsert', 'items.delete',
     'members.decide', 'subscriptions.upsert', 'subscriptions.delete',
 ];
 if (in_array($action, $ACCOUNT_ACTIONS, true)) {
@@ -267,6 +268,15 @@ switch ($action) {
     case 'posts.delete':
         handlePostDelete($ctx);
         break;
+    case 'items.list':
+        handleItemsList($ctx);
+        break;
+    case 'items.upsert':
+        handleItemUpsert($ctx);
+        break;
+    case 'items.delete':
+        handleItemDelete($ctx);
+        break;
     case 'members.list':
         handleMembersList($ctx);
         break;
@@ -290,6 +300,9 @@ switch ($action) {
         break;
     case 'space.feed':
         handleSpaceFeed($ctx);
+        break;
+    case 'space.item':
+        handleSpaceItem($ctx);
         break;
     case 'report.create':
         handleReportCreate($ctx);

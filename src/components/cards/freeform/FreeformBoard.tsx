@@ -21,7 +21,8 @@ type Props = {
   cards: Card[];
   onOpen: (card: Card) => void;
   /** Persist one card's layout. Called ONCE per finished manipulation. */
-  onLayoutCommit: (cardId: string, layout: FreeformCardLayout) => void;
+  /** Absent on a read-only corkboard: nothing may be moved, so nothing commits. */
+  onLayoutCommit?: (cardId: string, layout: FreeformCardLayout) => void;
   /** View mode (false): tap selects + raises transiently, drag pans, nothing
    * persisted. Edit mode (true): drag/resize/rotate, committed. Owned by the
    * parent so the toggle can live in the page header. */
@@ -337,7 +338,7 @@ export function FreeformBoard({ board, cards, onOpen, onLayoutCommit, editMode }
       const live = liveRef.current;
       if (live && g.cardId) {
         const z = nextZ(layoutsByIdRef.current.values());
-        cbRef.current.onLayoutCommit(g.cardId, { ...live, z });
+        cbRef.current.onLayoutCommit?.(g.cardId, { ...live, z });
       }
     };
 

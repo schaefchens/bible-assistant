@@ -55,11 +55,34 @@ function handleReportCreate(array $ctx): void {
     $space = findById(readJsonArrayFile(spacesPath($target['userDir'])), $target['spaceId']);
     if ($space === null) fail(404, 'unknown share code');
 
+    // A report names one thing in the room, and a room holds three kinds. They
+    // are snapshotted into the same fields on purpose: the human queue should
+    // read uniformly, and "what was reported" is a title plus some of its text
+    // whichever kind it was. `targetKind` says which, for anyone acting on it.
     $post = null;
+    $targetKind = 'space';
     if ($postId !== null && $postId !== '') {
         $posts = readJsonArrayFile(spacePostsPath($target['userDir'], $target['spaceId']));
         $post = findById($posts, $postId);
-        if ($post === null) fail(404, 'unknown post');
+        if ($post !== null) {
+            $targetKind = 'post';
+        } else {
+            $items = readJsonArrayFile(spaceItemsPath($target['userDir'], $target['spaceId']));
+            $item = findById($items, $postId);
+            if ($item === null) fail(404, 'unknown post');
+            $targetKind = (string)($item['kind'] ?? 'plan');
+            // The payload is the reported text — deleting the item is the
+            // obvious first move after being reported, so it is copied here.
+            $stored = readJsonObjectFile(itemPayloadPath($target['userDir'], $postId));
+            $payload = is_array($stored) ? (string)($stored['payload'] ?? '') : '';
+            $post = [
+                'id' => $item['id'] ?? '',
+                'title' => $item['title'] ?? '',
+                'body' => $payload === '' ? '' : moderationTextOf($payload),
+                'publishedAt' => $item['publishedAt'] ?? 0,
+                'authorKey' => $item['authorKey'] ?? '',
+            ];
+        }
     }
 
     $ownerProfile = readJsonObjectFile(profilePath($target['userDir']));
@@ -75,6 +98,7 @@ function handleReportCreate(array $ctx): void {
         'shareCode' => $code,
         'spaceId' => $target['spaceId'],
         'spaceName' => safeString($space['name'] ?? '', 200),
+        'targetKind' => $targetKind,
         'postId' => $post === null ? null : safeString($post['id'] ?? '', 64),
         'postTitle' => $post === null ? null : safeString($post['title'] ?? '', 300),
         'postPublishedAt' => $post === null ? null : (int)($post['publishedAt'] ?? 0),

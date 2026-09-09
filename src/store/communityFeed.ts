@@ -1,9 +1,10 @@
 import { db, stripLocal } from '@/db/dexie';
-import { verifyPost } from '@/lib/postSignature';
+import { verifyItem, verifyPost } from '@/lib/postSignature';
 import * as api from '@/services/api/community';
-import type { Post, Subscription } from '@/types/domain';
+import { payloadHash } from '@/services/community/sharedPayload';
+import type { Post, SharedItem, Subscription } from '@/types/domain';
 import { useSettingsStore } from '@/store/settingsStore';
-import { byPublishedDesc, withoutSelf } from './communityRows';
+import { byPublishedDesc, mirrorsFrom, withoutSelf } from './communityRows';
 import type { CommunityState } from './communityStore';
 
 /**
@@ -31,6 +32,59 @@ type SetState = (
   partial: Partial<CommunityState> | ((s: CommunityState) => Partial<CommunityState>),
 ) => void;
 type GetState = () => CommunityState;
+
+/**
+ * How long a room whose payload pass failed is left alone.
+ *
+ * The whole refresh runs on a 15-second timer while *any* subscription is
+ * pending, so without this one unreachable item would be retried four times a
+ * minute for as long as that lasts.
+ */
+const PAYLOAD_RETRY_MS = 60_000;
+const payloadFailedAt = new Map<string, number>();
+
+/**
+ * Fetch the payloads of a room's shared items — the ones that are missing, or
+ * whose content changed.
+ *
+ * `space.feed` carries headers only, so this is what actually makes a shared
+ * plan renderable. It is a no-op after the first pass, which is what makes it
+ * safe to hang off a poll: a header's `payloadHash` is signed, so "has this
+ * changed?" is a string comparison against what is already stored.
+ *
+ * Sequential, and it gives up after two consecutive failures — the rule
+ * `narrationGroup` uses, for the same reason: one item a room cannot serve must
+ * not cost the rest of them, and two in a row is the network being gone rather
+ * than one bad row.
+ */
+async function fetchPayloads(code: string, headers: SharedItem[]): Promise<void> {
+  const failedAt = payloadFailedAt.get(code);
+  if (failedAt !== undefined && Date.now() - failedAt < PAYLOAD_RETRY_MS) return;
+
+  let consecutiveFailures = 0;
+  for (const header of headers) {
+    const cached = await db.feedItems.get(header.id);
+    if (cached?.payload && cached.payloadHash === header.payloadHash) continue;
+    try {
+      const res = await api.getSpaceItem(code, header.id);
+      // The header is signed and commits to this hash, so a payload that does
+      // not match it is a server substitution — refused, not shown with a
+      // caveat, exactly as a bad signature is.
+      if (payloadHash(res.payload) !== header.payloadHash) {
+        consecutiveFailures = 0;
+        continue;
+      }
+      await db.feedItems.update(header.id, { payload: res.payload });
+      consecutiveFailures = 0;
+    } catch {
+      if (++consecutiveFailures >= 2) {
+        payloadFailedAt.set(code, Date.now());
+        return;
+      }
+    }
+  }
+  payloadFailedAt.delete(code);
+}
 
 export function createCommunityFeed(set: SetState, get: GetState) {
   return {
@@ -75,10 +129,13 @@ export function createCommunityFeed(set: SetState, get: GetState) {
      * profile *and* on `syncEnabled`: someone who has turned syncing off has said
      * they want the app off the network.
      *
-     * Every post is verified against the subscription's pinned key before it is
-     * stored. A failure is dropped and counted, never rendered with a caveat, and
-     * a *key* that no longer matches stops the whole space rather than silently
-     * adopting the new one.
+     * Every post and every shared-item header is verified against the
+     * subscription's pinned key before it is stored. A failure is dropped and
+     * counted, never rendered with a caveat, and a *key* that no longer matches
+     * stops the whole space rather than silently adopting the new one.
+     *
+     * Item **payloads** are a second round trip (see `fetchPayloads`), because
+     * the feed is polled and a year-long plan is ~100KB.
      */
     refreshSubscriptions: async () => {
       if (!get().profile || !useSettingsStore.getState().syncEnabled) return;
@@ -124,6 +181,41 @@ export function createCommunityFeed(set: SetState, get: GetState) {
           );
           for (const p of stale) await db.feedPosts.delete(p.id);
 
+          // Shared plans and boards, on the same three rules: verify, refuse a
+          // rollback, drop what the room no longer serves. `items` is optional
+          // on the wire — an api.php older than this client answers without it,
+          // and losing the shelf is a better failure than losing the feed.
+          const acceptedItems: SharedItem[] = [];
+          for (const item of res.items ?? []) {
+            if (!verifyItem(item, sub.pinnedKey)) {
+              refused++;
+              continue;
+            }
+            const cachedItem = await db.feedItems.get(item.id);
+            if (cachedItem && cachedItem.updatedAt > item.updatedAt) {
+              acceptedItems.push(stripLocal(cachedItem));
+              continue;
+            }
+            acceptedItems.push(item);
+            await db.feedItems.put({
+              ...item,
+              code: sub.code,
+              verified: true,
+              fetchedAt,
+              // A changed hash means a republish: drop the stale payload so the
+              // pass below refetches rather than rendering the old plan under
+              // the new header.
+              payload: cachedItem?.payloadHash === item.payloadHash ? cachedItem.payload : undefined,
+            });
+          }
+          const liveItems = new Set(acceptedItems.map((i) => i.id));
+          const staleItems = (await db.feedItems.where('code').equals(sub.code).toArray()).filter(
+            (i) => !liveItems.has(i.id),
+          );
+          for (const i of staleItems) await db.feedItems.delete(i.id);
+
+          await fetchPayloads(sub.code, acceptedItems);
+
           accepted.sort(byPublishedDesc);
           // Every refresh restates what the space is, so a renamed space, a
           // renamed author, or a space that became ephemeral stays current
@@ -139,19 +231,28 @@ export function createCommunityFeed(set: SetState, get: GetState) {
             ...(res.status !== 'blocked' ? { status: res.status } : {}),
           };
           await db.subscriptions.update(sub.code, restated);
+          // Rebuilt from Dexie rather than from `acceptedItems`, because the
+          // payload pass above wrote there and this is the only read that sees
+          // both halves. One derived array per kind — see `mirroredLists`.
+          const subs = get().subscriptions.map((x) =>
+            x.code === sub.code ? { ...x, ...restated } : x,
+          );
+          const mirrors = mirrorsFrom(await db.feedItems.toArray(), subs);
           set((s) => ({
             feed: { ...s.feed, [sub.code]: accepted },
+            feedItems: mirrors.feedItems,
+            mirroredLists: mirrors.mirroredLists,
+            mirroredBoards: mirrors.mirroredBoards,
             feedState: {
               ...s.feedState,
               [sub.code]: { status: res.status, refused, keyChanged: false, fetchedAt },
             },
-            subscriptions: s.subscriptions.map((x) =>
-              x.code === sub.code ? { ...x, ...restated } : x,
-            ),
+            subscriptions: subs,
           }));
         } catch {
           // Offline, revoked, or an api.php that predates this feature. The
-          // cached posts stay readable, which is the point of caching them.
+          // cached posts and plans stay readable, which is the point of
+          // caching them.
         }
       }
     },

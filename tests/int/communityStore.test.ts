@@ -34,6 +34,7 @@ vi.mock('@/services/api/community', () => ({
 vi.mock('@/lib/postSigning', () => ({
   authorKey: vi.fn(() => AUTHOR_KEY),
   signPost: vi.fn(() => ({ signature: 'sig', sigVersion: 1 })),
+  signItem: vi.fn(() => ({ signature: 'sig', authorKey: AUTHOR_KEY, sigVersion: 'ba.item.v1' })),
 }));
 
 const AUTHOR_KEY = 'a'.repeat(64);
@@ -43,6 +44,7 @@ const api = await import('@/services/api/community');
 const { db } = await import('@/db/dexie');
 const { useCommunityStore } = await import('@/store/communityStore');
 const { useSettingsStore } = await import('@/store/settingsStore');
+const { useLibraryStore } = await import('@/store/libraryStore');
 const { mintSpaceCode } = await import('@/lib/spaceCode');
 const requested = vi.mocked(api.requestSpace);
 
@@ -96,13 +98,21 @@ beforeEach(async () => {
     db.syncQueue.clear(), db.spaces.clear(), db.posts.clear(),
     db.subscriptions.clear(), db.memberships.clear(), db.feedPosts.clear(),
     db.seenPosts.clear(), db.preferences.clear(),
+    db.sharedItems.clear(), db.feedItems.clear(),
+    db.readingLists.clear(), db.cards.clear(), db.boards.clear(),
   ]);
   requested.mockReset();
   requested.mockRejectedValue(new Error('the network should not have been reached'));
   useCommunityStore.setState({
     profile: null, spaces: [], posts: [], shared: {}, subscriptions: [],
     memberships: [], feed: {}, seen: {}, blocked: {}, reported: {},
+    items: [], sharedClaims: {}, itemSources: {},
+    feedItems: {}, mirroredLists: [], mirroredBoards: [],
     initialized: false,
+  });
+  useLibraryStore.setState({
+    readingLists: [], cards: [], boards: [], readingProgress: {},
+    cardOrder: [], boardOrder: [], online: false, pendingOps: 0,
   });
   useSettingsStore.setState({
     syncEnabled: true,
@@ -347,5 +357,185 @@ describe('init never destroys the user’s own writing', () => {
     await useCommunityStore.getState().init();
 
     expect((useCommunityStore.getState().feed.c1 ?? []).map((p) => p.id)).toEqual(['ok']);
+  });
+});
+
+
+/**
+ * Sharing a plan is a **snapshot**, and the op sequence is what makes that
+ * true on the wire.
+ *
+ * Three rows of CLAUDE.md's definition-of-done table meet here: a sync op
+ * sequence (a share lost forever), a persisted shape (`publishedAt` is signed),
+ * and the two-different-deletes rule that `withdrawItem` and `deleteItem`
+ * inherit from posts.
+ *
+ * The op deliberately carries **only the id** — the payload can be ~100KB and
+ * the queue is read whole on every flush — so what is asserted is the id and
+ * the row it points at, not a payload sitting in the queue.
+ */
+describe('sharing a plan into a room', () => {
+  const plan = {
+    id: 'L1',
+    name: 'Jona in drei Tagen',
+    days: [{ id: 'd1', entries: [{ id: 'e1', bookId: 32, chapter: 1 }] }],
+    createdAt: 1,
+    updatedAt: 1,
+  };
+
+  const ops = async () => (await db.syncQueue.orderBy('createdAt').toArray()).map((o) => o.op);
+
+  beforeEach(async () => {
+    useCommunityStore.setState({ profile: profile(), spaces: [space('s1')] });
+    useLibraryStore.setState({ readingLists: [plan] });
+  });
+
+  it('queues one upsert and stores the payload beside the header', async () => {
+    await useCommunityStore.getState().shareList('L1', 's1');
+
+    expect(await ops()).toEqual(['item.upsert']);
+    const [op] = await db.syncQueue.toArray();
+    // The id alone: a payload in the queue would be re-read on every flush.
+    expect(Object.keys(op.payload as object)).toEqual(['id']);
+
+    const [row] = await db.sharedItems.toArray();
+    expect(row).toMatchObject({ kind: 'plan', spaceId: 's1', shared: 1, dirty: 1 });
+    expect(row.payload).toContain('Jona in drei Tagen');
+    expect(row.sourceUpdatedAt).toBe(plan.updatedAt);
+    expect(row.publishedAt).toBeGreaterThan(0);
+  });
+
+  it('re-shares under the same id and the same publishedAt', async () => {
+    // Signed, so a withdraw/re-share round trip has to be lossless — exactly
+    // the rule `publishedAt` already carries for a post.
+    await useCommunityStore.getState().shareList('L1', 's1');
+    const first = (await db.sharedItems.toArray())[0];
+
+    useLibraryStore.setState({ readingLists: [{ ...plan, name: 'Jona neu', updatedAt: 2 }] });
+    await useCommunityStore.getState().republishItem(first.id);
+
+    const rows = await db.sharedItems.toArray();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(first.id);
+    expect(rows[0].publishedAt).toBe(first.publishedAt);
+    expect(rows[0].title).toBe('Jona neu');
+    expect(rows[0].sourceUpdatedAt).toBe(2);
+    expect(await ops()).toEqual(['item.upsert', 'item.upsert']);
+  });
+
+  it('sharing the same plan into the same room again updates it', async () => {
+    // No sheet in front of the assistant's `share_plan`, so this has to hold at
+    // the store: otherwise a second ask leaves two items with the same name in
+    // one room. Matched on the source, so a renamed plan is still the same plan.
+    await useCommunityStore.getState().shareList('L1', 's1');
+    const first = (await db.sharedItems.toArray())[0];
+
+    useLibraryStore.setState({ readingLists: [{ ...plan, name: 'Renamed', updatedAt: 3 }] });
+    await useCommunityStore.getState().shareList('L1', 's1');
+
+    const rows = await db.sharedItems.toArray();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(first.id);
+    expect(rows[0].title).toBe('Renamed');
+    expect(rows[0].publishedAt).toBe(first.publishedAt);
+  });
+
+  it('the same plan in two rooms is two items', async () => {
+    useCommunityStore.setState({ spaces: [space('s1'), space('s2')] });
+    await useCommunityStore.getState().shareList('L1', 's1');
+    await useCommunityStore.getState().shareList('L1', 's2');
+    const rows = await db.sharedItems.toArray();
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.spaceId).sort()).toEqual(['s1', 's2']);
+  });
+
+  it('withdrawing keeps the row and drops only the claim', async () => {
+    await useCommunityStore.getState().shareList('L1', 's1');
+    const id = (await db.sharedItems.toArray())[0].id;
+
+    await useCommunityStore.getState().withdrawItem(id);
+
+    const row = await db.sharedItems.get(id);
+    expect(row).toBeDefined();
+    expect(row?.shared).toBe(0);
+    expect(row?.deleted).toBeUndefined();
+    expect(useCommunityStore.getState().sharedClaims[id]).toBe(false);
+    expect(await ops()).toEqual(['item.upsert', 'item.delete']);
+  });
+
+  it('deleting tombstones it, so the delete reaches the other devices', async () => {
+    await useCommunityStore.getState().shareList('L1', 's1');
+    const id = (await db.sharedItems.toArray())[0].id;
+
+    await useCommunityStore.getState().deleteItem(id);
+
+    expect((await db.sharedItems.get(id))?.deleted).toBe(1);
+    expect(useCommunityStore.getState().items).toEqual([]);
+    expect(await ops()).toEqual(['item.upsert', 'item.delete']);
+  });
+});
+
+/**
+ * A copy is a **fork**, and the ids are what make it one.
+ *
+ * `ReadingProgress` is keyed by list id and a tick by entry id, so a copy that
+ * kept the author's ids would share one progress row with the mirror: ticking
+ * the copy would tick the original. A board's placements are keyed by card id,
+ * so a copy that kept those would scramble the corkboard.
+ */
+describe('taking a copy of somebody else\'s plan or board', () => {
+  const plan = {
+    id: 'L1',
+    name: 'Their plan',
+    days: [{ id: 'd1', entries: [{ id: 'e1', bookId: 32, chapter: 1 }] }],
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  const layout = { x: 0.1, y: 0.2, w: 0.3, h: 0.4, rotation: 0, z: 1 };
+  const board = {
+    id: 'B1',
+    name: 'Their board',
+    cardIds: ['c1'],
+    freeform: { c1: layout },
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  const card = { id: 'c1', title: 'John 3:16', references: [], createdAt: 1, updatedAt: 1 };
+  const shared = { code: 'ROOM', itemId: 'I1', author: 'Christoph', authorKey: OTHER_KEY, updatedAt: 1 };
+
+  beforeEach(() => {
+    useCommunityStore.setState({
+      profile: profile(),
+      mirroredLists: [{ list: plan, ...shared }],
+      mirroredBoards: [{ board, cards: [card], ...shared, itemId: 'I2' }],
+    });
+  });
+
+  it('mints fresh ids at every level of a plan', async () => {
+    const id = await useCommunityStore.getState().copySharedList('L1');
+
+    const copy = useLibraryStore.getState().readingLists.find((l) => l.id === id);
+    expect(copy).toBeDefined();
+    expect(copy!.id).not.toBe('L1');
+    expect(copy!.days[0].id).not.toBe('d1');
+    expect(copy!.days[0].entries[0].id).not.toBe('e1');
+    // The mirror is untouched, and the two now have separate progress rows.
+    expect(useCommunityStore.getState().mirroredLists[0].list.id).toBe('L1');
+  });
+
+  it('remaps a board\'s cardIds and freeform together', async () => {
+    const id = await useCommunityStore.getState().copySharedBoard('B1');
+
+    const lib = useLibraryStore.getState();
+    const copy = lib.boards.find((b) => b.id === id);
+    expect(copy).toBeDefined();
+    expect(copy!.cardIds).toHaveLength(1);
+    expect(copy!.cardIds[0]).not.toBe('c1');
+    // Both remapped through the *same* mapping, or the placement lands on
+    // nothing and every card is auto-placed instead.
+    expect(Object.keys(copy!.freeform ?? {})).toEqual(copy!.cardIds);
+    expect(copy!.freeform![copy!.cardIds[0]]).toEqual(layout);
+    // The cards are real rows now, under their new ids.
+    expect(lib.cards.map((c) => c.id)).toEqual(copy!.cardIds);
   });
 });

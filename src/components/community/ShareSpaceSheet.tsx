@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import clsx from 'clsx';
 import { BottomSheet, BottomSheetBody } from '@/components/common/BottomSheet';
+import { ShareIcon } from '@/components/common/icons';
 import { copyText, shareText } from '@/lib/nativeBridge';
 import { formatSpaceCode } from '@/lib/spaceCode';
 import { webInviteUrl } from '@/lib/spaceInvite';
@@ -33,17 +35,30 @@ import { useCommunityStore } from '@/store/communityStore';
 export function ShareSpaceSheet({
   code,
   title,
+  target,
   open,
   onClose,
 }: {
   code: string;
   /** How the space is named back to the sharer — `Christoph / Heute`. */
   title: string;
+  /**
+   * One thing inside the room, if the sharer reached this from a piece.
+   *
+   * With one, the link becomes `/subscribe/<code>?piece=<id>` and the sheet
+   * offers a choice — recommending one piece and recommending the room are
+   * different acts, and which one was meant is not inferable from where the
+   * button was tapped.
+   */
+  target?: { id: string; label: string };
   open: boolean;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState<'code' | 'link' | null>(null);
+  const [wholeRoom, setWholeRoom] = useState(false);
+  const itemId = target && !wholeRoom ? target.id : undefined;
+  const link = webInviteUrl(code, itemId);
 
   const flash = (what: 'code' | 'link') => (ok: boolean) => {
     if (!ok) return;
@@ -56,6 +71,25 @@ export function ShareSpaceSheet({
       <BottomSheetBody>
         <p className="text-sm text-ink-muted mb-4">{title}</p>
 
+        {target && (
+          <div className="flex gap-1 mb-4 rounded-xl bg-surface-raised p-1">
+            {[false, true].map((whole) => (
+              <button
+                key={String(whole)}
+                type="button"
+                onClick={() => setWholeRoom(whole)}
+                aria-pressed={wholeRoom === whole}
+                className={clsx(
+                  'flex-1 rounded-lg px-3 py-1.5 text-xs transition-colors',
+                  wholeRoom === whole ? 'bg-brand text-on-brand' : 'text-ink-muted hover:text-ink',
+                )}
+              >
+                {whole ? t('community.shareWholeRoom') : t('community.shareThisPiece')}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* The code, big enough to read aloud down a phone — which is a real way
             these travel, and the reason the alphabet has no ambiguous letters. */}
         <p className="font-mono text-lg text-brand tracking-wide mb-3">
@@ -67,14 +101,14 @@ export function ShareSpaceSheet({
               heard of the app, because /subscribe explains itself. */}
           <button
             type="button"
-            onClick={() => void shareText(webInviteUrl(code))}
+            onClick={() => void shareText(link)}
             className="btn-primary text-sm"
           >
             {t('community.shareSpace.sendLink')}
           </button>
           <button
             type="button"
-            onClick={() => void copyText(webInviteUrl(code)).then(flash('link'))}
+            onClick={() => void copyText(link).then(flash('link'))}
             className="px-3 py-1.5 rounded-lg bg-surface-raised text-sm text-ink-muted hover:text-ink transition-colors"
           >
             {copied === 'link' ? '✓' : t('community.shareSpace.copyLink')}
@@ -88,7 +122,12 @@ export function ShareSpaceSheet({
           </button>
         </div>
 
-        <p className="text-xs text-ink-muted/80">{t('community.shareSpace.hint')}</p>
+        {/* The bare code can carry no target — it names the room and nothing
+            else — so with a piece selected the sheet says so rather than
+            letting the code look like a shorter version of the link. */}
+        <p className="text-xs text-ink-muted/80">
+          {itemId ? t('community.shareCodeIsRoom') : t('community.shareSpace.hint')}
+        </p>
       </BottomSheetBody>
     </BottomSheet>
   );
@@ -115,9 +154,16 @@ export function ShareSpaceSheet({
  */
 export function ShareSpaceButton({
   spaceId,
+  target,
   className,
 }: {
   spaceId: string | undefined;
+  /**
+   * One piece inside the space, when the button sits on a piece rather than on
+   * the space — the reader's does. The sheet then offers both, defaulting to
+   * the piece, which is what "share" means while you are reading one.
+   */
+  target?: { id: string; label: string };
   className?: string;
 }) {
   const { t } = useTranslation();
@@ -173,6 +219,7 @@ export function ShareSpaceButton({
         <ShareSpaceSheet
           code={shareCode}
           title={title}
+          target={target}
           open={open}
           onClose={() => setOpen(false)}
         />
@@ -181,25 +228,3 @@ export function ShareSpaceButton({
   );
 }
 
-/** The platform-neutral share mark: a node with two branches. Distinct from the
- * download arrow it sits beside in the reader. */
-function ShareIcon() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="18" cy="5" r="2.6" />
-      <circle cx="6" cy="12" r="2.6" />
-      <circle cx="18" cy="19" r="2.6" />
-      <path d="M8.3 10.8l7.4-4.3M8.3 13.2l7.4 4.3" />
-    </svg>
-  );
-}

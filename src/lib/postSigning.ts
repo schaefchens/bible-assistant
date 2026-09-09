@@ -1,7 +1,13 @@
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { getPassphrase } from './passphrase';
-import { deriveSigningKey, signPostWith, type PostSignature, type SigningKeyPair } from './postSignature';
-import type { Post } from '@/types/domain';
+import {
+  deriveSigningKey,
+  signItemWith,
+  signPostWith,
+  type PostSignature,
+  type SigningKeyPair,
+} from './postSignature';
+import type { Post, SharedItem } from '@/types/domain';
 
 /**
  * The app-facing half of post signing: the key for *this* user, derived from
@@ -48,10 +54,23 @@ export function signPost(post: Post): PostSignature | null {
   return pair ? signPostWith(post, pair) : null;
 }
 
+/**
+ * Sign one of the user's own shared items — a reading plan or a board
+ * published into a room. Null when there is no key yet, like {@link signPost}.
+ *
+ * `item` must already carry its final `publishedAt`, `updatedAt` **and
+ * `payloadHash`**: all three are signed, so building the payload afterwards
+ * invalidates the result.
+ */
+export function signItem(item: SharedItem): PostSignature | null {
+  const pair = keyPair();
+  return pair ? signItemWith(item, pair) : null;
+}
+
 /** Called by factoryReset, alongside clearPassphrase(). */
 export function clearSigningKey(): void {
   cached = null;
 }
 
-export { POST_SIG_VERSION, verifyPost } from './postSignature';
+export { ITEM_SIG_VERSION, POST_SIG_VERSION, verifyItem, verifyPost } from './postSignature';
 export type { PostSignature } from './postSignature';

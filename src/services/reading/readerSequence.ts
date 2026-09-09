@@ -1,4 +1,5 @@
 import type { Translation } from '@/services/bible/bibleApi';
+import { resolveListFrom, type ListSnapshot } from '@/services/community/sharedReading';
 import {
   resolveSpaceFrom,
   selectionSegments,
@@ -14,7 +15,6 @@ import {
 } from '@/services/reading/readingSequence';
 import { useCommunityStore } from '@/store/communityStore';
 import { useLibraryStore } from '@/store/libraryStore';
-import type { ReadingList } from '@/types/domain';
 
 /**
  * **The one answer to "what sequence is the reader walking through?"**
@@ -29,11 +29,16 @@ import type { ReadingList } from '@/types/domain';
  *
  * Falls back to the Bible when a source outlives what it points at — a list
  * deleted, or a space unsubscribed, on another device must not leave the tab
- * unable to navigate.
+ * unable to navigate. A shared plan the author has since withdrawn is the same
+ * case, and an ordinary one rather than an anomaly.
  */
 
-/** Everything the branches read. `SpaceSnapshot` plus the reading lists. */
-type ReaderSequenceDeps = SpaceSnapshot & { lists: ReadingList[] };
+/**
+ * Everything the branches read: `SpaceSnapshot` for the space kinds, and
+ * `ListSnapshot` for the list kind — which is the user's own lists *and* the
+ * plans mirrored out of rooms, because a list source may name either.
+ */
+type ReaderSequenceDeps = SpaceSnapshot & ListSnapshot;
 
 
 /**
@@ -47,8 +52,8 @@ export function readerSequenceFrom(
   deps: ReaderSequenceDeps,
 ): ReadingSequence {
   if (source.kind === 'list') {
-    const list = deps.lists.find((l) => l.id === source.listId);
-    if (list) return listSequence(list, translation);
+    const resolved = resolveListFrom(source, deps);
+    if (resolved) return listSequence(resolved.list, translation);
   }
   if (source.kind === 'space') {
     const space = resolveSpaceFrom(source, deps);
@@ -72,9 +77,11 @@ export function readerSequence(
   source: ReaderSource,
   translation: Translation,
 ): ReadingSequence {
-  const { profile, spaces, posts, subscriptions, feed } = useCommunityStore.getState();
+  const { profile, spaces, posts, subscriptions, feed, mirroredLists } =
+    useCommunityStore.getState();
   return readerSequenceFrom(source, translation, {
     lists: useLibraryStore.getState().readingLists,
+    mirroredLists,
     profile,
     spaces,
     posts,

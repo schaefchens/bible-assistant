@@ -1,20 +1,19 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import clsx from 'clsx';
 import { PostEditor } from '@/components/community/PostEditor';
 import { SpaceDetail } from '@/components/community/SpaceDetail';
 import { SubscribeField } from '@/components/community/SubscribeField';
 import { ROUTES } from '@/lib/appRoutes';
-import { spaceSourceKey } from '@/services/reading/readingSequence';
+import {  } from '@/services/reading/readingSequence';
+import { Empty, Row, SectionTitle } from '@/components/community/spaceRows';
+import { SubscriptionMenu } from '@/components/community/SubscriptionMenu';
 import { useCommunityStore } from '@/store/communityStore';
 import { useReaderStore } from '@/store/readerStore';
 import type { Post, Space, Subscription } from '@/types/domain';
 import { spaceDisplayName, spaceLabel } from '@/services/community/spaceName';
 import { NewPiecesBar } from '@/components/community/NewPiecesBar';
 import { CommunityTermsGate } from '@/components/community/CommunityTermsGate';
-import { ReportDialog } from '@/components/community/ReportDialog';
-import { ShareSpaceSheet } from '@/components/community/ShareSpaceSheet';
 import { useCommunityTermsAccepted } from '@/lib/communityTerms';
 import { useCommunityRefresh } from '@/hooks/useCommunityRefresh';
 
@@ -211,7 +210,12 @@ function SpacesIndex({
                     detail={status as string}
                     badge={unread > 0 ? String(unread) : undefined}
                     warn={state?.keyChanged}
-                    onOpen={() => void openSpace({ code: sub.code })}
+                    // These two were the *same* function until a room could
+                    // hold plans and boards; the row now opens the room and the
+                    // ▶ keeps starting the reading, which is what the own-space
+                    // rows above have always meant. A room with no pieces is
+                    // still worth opening — it may hold a plan.
+                    onOpen={() => navigate(`${ROUTES.rooms}/${sub.code}`)}
                     onRead={
                       posts.length > 0 ? () => void openSpace({ code: sub.code }) : undefined
                     }
@@ -233,235 +237,6 @@ function SpacesIndex({
           </>
         )}
       </div>
-    </div>
-  );
-}
-
-/**
- * What a reader can do about somebody else's space: stop reading it, report it,
- * or refuse its author outright.
- *
- * A menu rather than three inline links because two of the three are decisions
- * you should not be able to make by mis-tapping — block asks for a second tap,
- * and report opens a form.
- *
- * Blocking is the strong one: it removes *every* space of that author's, not
- * just this one, which is why the confirmation says so. It is keyed by the
- * pinned signing key, the only stable identity a reader has for an author.
- */
-function SubscriptionMenu({
-  code,
-  authorKey,
-  ownerName,
-  spaceLabel: label,
-}: {
-  code: string;
-  authorKey: string;
-  ownerName: string;
-  spaceLabel: string;
-}) {
-  const { t } = useTranslation();
-  const unsubscribe = useCommunityStore((s) => s.unsubscribe);
-  const blockAuthor = useCommunityStore((s) => s.blockAuthor);
-  const codesOfAuthor = useCommunityStore((s) => s.codesOfAuthor);
-  const setSource = useReaderStore((s) => s.setSource);
-  const source = useReaderStore((s) => s.source);
-  const [open, setOpen] = useState(false);
-  const [confirmBlock, setConfirmBlock] = useState(false);
-  const [reporting, setReporting] = useState(false);
-  const [sharing, setSharing] = useState(false);
-
-  /** Don't leave the reader walking a space that is about to disappear. */
-  const releaseReader = (codes: string[]) => {
-    if (source.kind !== 'space') return;
-    if (codes.some((c) => spaceSourceKey(source) === `c:${c}`)) {
-      void setSource({ kind: 'bible' });
-    }
-  };
-
-  return (
-    <>
-      <div className="relative shrink-0">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setOpen((v) => !v);
-            setConfirmBlock(false);
-          }}
-          aria-label={t('boards.menu') as string}
-          aria-expanded={open}
-          className="text-ink-muted hover:text-ink px-2 leading-none"
-        >
-          ⋮
-        </button>
-        {open && (
-          <>
-            {/* Click-away as a sibling overlay: the row itself is a button, so
-                a document listener would fight its onClick. */}
-            <div
-              className="fixed inset-0 z-30"
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpen(false);
-              }}
-            />
-            <div
-              className="absolute right-0 top-full mt-1 z-40 w-52 py-1 rounded-xl bg-surface-raised border border-surface-raised/70 shadow-lg"
-              role="menu"
-            >
-              {/* First, and the only one here that isn't a complaint: a reader
-                  who likes a space is the likeliest person to recommend it, and
-                  what they pass on is the same code they were given. */}
-              <MenuItem
-                onClick={() => {
-                  setOpen(false);
-                  setSharing(true);
-                }}
-              >
-                {t('community.shareSpace.action')}
-              </MenuItem>
-              <MenuItem
-                onClick={() => {
-                  setOpen(false);
-                  setReporting(true);
-                }}
-              >
-                {t('community.report.reportSpace')}
-              </MenuItem>
-              <MenuItem
-                danger
-                onClick={() => {
-                  if (!confirmBlock) {
-                    setConfirmBlock(true);
-                    return;
-                  }
-                  setOpen(false);
-                  releaseReader(codesOfAuthor(authorKey));
-                  void blockAuthor(authorKey, ownerName);
-                }}
-              >
-                {confirmBlock
-                  ? t('community.blockAuthor.confirm', { name: ownerName })
-                  : t('community.blockAuthor.action')}
-              </MenuItem>
-              {confirmBlock && (
-                <p className="px-3 py-1.5 text-[11px] text-ink-muted">
-                  {t('community.blockAuthor.confirmBody')}
-                </p>
-              )}
-              <MenuItem
-                onClick={() => {
-                  setOpen(false);
-                  releaseReader([code]);
-                  void unsubscribe(code);
-                }}
-              >
-                {t('community.unsubscribe')}
-              </MenuItem>
-            </div>
-          </>
-        )}
-      </div>
-      {reporting && (
-        <ReportDialog code={code} title={label} onClose={() => setReporting(false)} />
-      )}
-      <ShareSpaceSheet
-        code={code}
-        title={label}
-        open={sharing}
-        onClose={() => setSharing(false)}
-      />
-    </>
-  );
-}
-
-function MenuItem({
-  onClick,
-  danger,
-  children,
-}: {
-  onClick: () => void;
-  danger?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      className={clsx(
-        'w-full text-left px-3 py-2 text-sm hover:bg-surface',
-        danger ? 'text-red-400' : 'text-ink',
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <h2 className="text-[11px] uppercase tracking-wider text-ink-muted">{children}</h2>
-  );
-}
-
-function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm text-ink-muted py-2">{children}</p>;
-}
-
-function Row({
-  emoji,
-  title,
-  detail,
-  badge,
-  warn,
-  onOpen,
-  onRead,
-  trailing,
-}: {
-  emoji?: string;
-  title: string;
-  detail: string;
-  badge?: string;
-  warn?: boolean;
-  onOpen: () => void;
-  onRead?: () => void;
-  trailing?: React.ReactNode;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      className={clsx(
-        'flex items-center gap-3 rounded-xl px-3 py-2 bg-surface-raised',
-        warn && 'ring-1 ring-red-500/40',
-      )}
-    >
-      <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left">
-        <span className="flex items-center gap-2">
-          {emoji && <span aria-hidden>{emoji}</span>}
-          <span className="text-ink truncate">{title}</span>
-          {badge && (
-            <span className="text-[10px] rounded-full bg-brand text-on-brand px-1.5 py-0.5">
-              {badge}
-            </span>
-          )}
-        </span>
-        <span className="block text-[11px] text-ink-muted truncate">{detail}</span>
-      </button>
-      {onRead && (
-        <button
-          type="button"
-          onClick={onRead}
-          className="text-[11px] text-brand hover:underline px-1 shrink-0"
-        >
-          {t('community.read')}
-        </button>
-      )}
-      {trailing}
     </div>
   );
 }

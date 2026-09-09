@@ -13,6 +13,7 @@ import {
   type ReaderSource,
   type SegmentRef,
 } from '@/services/reading/readingSequence';
+import { resolveListFrom } from '@/services/community/sharedReading';
 import { resolveSpaceFrom } from '@/services/community/spaceReading';
 import { spaceLabel } from '@/services/community/spaceName';
 import { ROUTES } from '@/lib/appRoutes';
@@ -21,7 +22,7 @@ import { playSegmentInChat } from '@/lib/readingListPlayback';
 import { BottomSheet } from '@/components/common/BottomSheet';
 import { TranslationList } from '@/components/bible/TranslationList';
 import { BookIcon, ListIcon, QuillIcon } from '@/components/common/icons';
-import { LockedSourceRow, PickerBand } from './picker/pickerRows';
+import { ChevronRight, LockedSourceRow, PickerBand } from './picker/pickerRows';
 import { BookColumns, ChapterGrid, TranslationBand } from './picker/ScriptureViews';
 import { ListPassages, ListsView } from './picker/ListViews';
 import { SpacePieces, SpacesView } from './picker/SpaceViews';
@@ -119,8 +120,15 @@ export function BookChapterPicker({
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
+  /**
+   * The plan this sheet is locked into — the user's own, or one mirrored out of
+   * a room. Resolved from a *selected* `mirroredLists` rather than through
+   * `getState()`, mirroring `lockedSpace` below and for the same reason: the
+   * sheet has to re-render when a feed refreshes.
+   */
+  const mirroredLists = useCommunityStore((s) => s.mirroredLists);
   const lockedList =
-    source.kind === 'list' ? (readingLists.find((l) => l.id === source.listId) ?? null) : null;
+    source.kind === 'list' ? resolveListFrom(source, { lists: readingLists, mirroredLists }) : null;
 
   /**
    * The space this sheet is locked into, if any.
@@ -158,7 +166,7 @@ export function BookChapterPicker({
    * "today" without an effect to reset it.
    */
   const [browsePos, setBrowsePos] = useState<{ listId: string; at: number } | null>(null);
-  const browseAt = browsePos && browsePos.listId === lockedList?.id ? browsePos.at : null;
+  const browseAt = browsePos && browsePos.listId === lockedList?.list.id ? browsePos.at : null;
 
   const selectSource = (next: ReaderSource) => {
     void setSource(next);
@@ -203,7 +211,12 @@ export function BookChapterPicker({
           : view === 'spaces'
             ? t('community.title')
             : lockedList
-              ? t('chat.bookPicker.titleList')
+              ? lockedList.mine
+                ? t('chat.bookPicker.titleList')
+                : // Somebody else's plan gets the author in the title, exactly
+                  // as a space does: in the picker you may be locked into your
+                  // own plan or theirs, and the name alone does not say which.
+                  spaceLabel(lockedList.author, { kind: 'custom', name: lockedList.list.name })
               : lockedSpace
                 ? spaceLabel(lockedSpace.author, { kind: 'custom', name: lockedSpace.name })
                 : t('chat.bookPicker.title');
@@ -250,12 +263,26 @@ export function BookChapterPicker({
               locked={!!lockedList}
               label={
                 lockedList
-                  ? `${lockedList.emoji ? `${lockedList.emoji} ` : ''}${lockedList.name || t('lists.untitled')}`
+                  ? `${lockedList.list.emoji ? `${lockedList.list.emoji} ` : ''}${
+                      lockedList.mine
+                        ? lockedList.list.name || t('lists.untitled')
+                        : spaceLabel(lockedList.author, {
+                            kind: 'custom',
+                            name: lockedList.list.name || t('lists.untitled'),
+                          })
+                    }`
                   : (t('chat.bookPicker.readingLists') as string)
               }
               onOpen={() => setView('lists')}
-              onManage={() => goTo(lockedList ? `/lists/${lockedList.id}` : ROUTES.lists)}
-              manageLabel={t('lists.manage') as string}
+              // `/lists/:id` resolves a mirrored plan too, read-only — which is
+              // the honest answer to "show me this plan" and where the copy
+              // button lives. The glyph changes with it: a pencil on something
+              // you cannot edit is a promise the screen does not keep.
+              onManage={() => goTo(lockedList ? `/lists/${lockedList.list.id}` : ROUTES.lists)}
+              manageIcon={lockedList && !lockedList.mine ? <ChevronRight /> : undefined}
+              manageLabel={
+                (lockedList && !lockedList.mine ? t('lists.view') : t('lists.manage')) as string
+              }
               onClear={() => void setSource(BIBLE_SOURCE)}
               clearLabel={t('chat.bookPicker.clearList') as string}
             />
@@ -287,15 +314,18 @@ export function BookChapterPicker({
 
         {view === 'books' && lockedList && (
           <ListPassages
-            list={lockedList}
-            progress={readingProgress[lockedList.id]}
+            list={lockedList.list}
+            // The reader's own progress, whoever wrote the plan: a
+            // `readingProgress` row is keyed by list id and lives in this
+            // user's account, so ticking off somebody else's plan is theirs.
+            progress={readingProgress[lockedList.list.id]}
             translation={translation}
             lang={lang}
             browseAt={browseAt}
-            onBrowse={(at) => setBrowsePos({ listId: lockedList.id, at })}
+            onBrowse={(at) => setBrowsePos({ listId: lockedList.list.id, at })}
             onPick={pickSegment}
             onContinue={continueList}
-            onToggleEntry={(entryId, done) => void setEntryDone(lockedList.id, entryId, done)}
+            onToggleEntry={(entryId, done) => void setEntryDone(lockedList.list.id, entryId, done)}
           />
         )}
 
@@ -322,7 +352,7 @@ export function BookChapterPicker({
           <ListsView
             lists={readingLists}
             progress={readingProgress}
-            onSelect={(listId) => selectSource({ kind: 'list', listId })}
+            onSelect={selectSource}
             onManage={() => goTo(ROUTES.lists)}
           />
         )}

@@ -88,6 +88,9 @@ This file is the orientation map. When changing code, find the relevant subsyste
 | Share codes (mint / fingerprint / normalize) | `src/lib/spaceCode.ts` |
 | A post as reading units (the one chunker) | `src/services/community/postUnits.ts` |
 | Community ⇄ reading seam | `src/services/community/spaceReading.ts` |
+| Which reading list an id names (own, or shared) | `src/services/community/sharedReading.ts` — `resolveListById` |
+| A shared plan or board as bytes | `src/services/community/sharedPayload.ts` (build, signed) + `sharedItems.ts` (parse, fork) |
+| A room somebody else owns | `src/routes/RoomPage.tsx` + `src/components/community/SharedBoardView.tsx` |
 | Which narration path an item takes | `src/services/narration/narrationRequest.ts` |
 | Loading one segment, whatever kind (and walking past a versification gap) | `src/services/reading/segmentLoader.ts` |
 | Reading-list order + expansion | `src/services/reading/readingSequence.ts` |
@@ -173,7 +176,7 @@ message id — it binds audio to the verses `WordHighlighter` highlights.
 | --- | --- | --- |
 | bare uuid (no `:`) | `chatReadingHost` | an assistant message with `verses` |
 | `reader:<translation>:<book>:<chapter>` | `readerReadingHost` | a loaded chapter |
-| `reader:<translation>:l:<listId>:<entryId>:<chapter>` | `readerReadingHost` | one chapter of a reading-list entry |
+| `reader:<translation>:l:<listId>:<entryId>:<chapter>` | `readerReadingHost` | one chapter of a reading-list entry — the author's list id, whether the plan is the user's own or mirrored out of a room |
 
 Ids are built by `segmentId()` and only ever *parsed* for their namespace prefix — the
 reader looks segments up by whole id, so the shapes above are free to change together.
@@ -515,6 +518,9 @@ Before writing a helper, check whether one of these already exists.
 | what a book is called, in this language | `services/bible/bookCatalog.ts` — `bookName` | nine `lang === 'de' ? book.nameDe : book.nameEn`, two of them inside that file |
 | which locale the UI is in | `i18n/locale.ts` — `localeOf`; `hooks/useLocale.ts` for components | fourteen `(i18n.language \|\| 'en').startsWith('de') ? 'de' : 'en'` across 12 files, plus `settingsStore.detectLocale` asking the same of `navigator.language` |
 | "where am I in this list?" | `services/reading/listWindow.ts` | the picker + `readerStore.resumeOf`, disagreeing about a deleted entry |
+| "which reading list is this id?" | `services/community/sharedReading.ts` — `resolveListById` | eight `readingLists.find(...)`, two of which produced wrong audio and no ticks for a shared plan |
+| the bytes a shared plan or board publishes as | `services/community/sharedPayload.ts` | — (a signed format from the start; see below) |
+| the share glyph | `components/common/icons.tsx` — `ShareIcon` | one inline `<svg>` in `ShareSpaceSheet` |
 | denying HTTP to a storage directory | `public/api/bootstrap.php` — `denyHttp` + `PRIVATE_DIRS` | five 12-line `.htaccess` blocks |
 | the picker's "which list/space am I in" band | `components/chat/picker/pickerRows.tsx` — `LockedSourceRow` | two near-identical copies |
 | how a segment loads, and how a gap is walked past | `services/reading/segmentLoader.ts` | half in there, half in `readerStore` |
@@ -1814,6 +1820,184 @@ name is the same noise and the same unbounded list. Its heading is "your spaces"
 your display name: it is the one group you can write in, and nobody thinks of their own writing
 as belonging to their own name.
 
+### A room holds plans and boards too, not only pieces
+
+A room's second content type is `SharedItem` — a **snapshot** of a reading plan,
+or of a board with its cards, signed and published the way a piece is. Cards are
+never shared loose: a board is already "cards grouped to memorize", so it is the
+unit.
+
+It sits beside `Post` rather than absorbing it. A post is wired into
+`postUnits`, the reader, narration and `ba.post.v1`; folding the two together
+would be risk for no gain.
+
+**A snapshot, with an explicit republish.** Editing the source list changes
+nothing for readers until the author presses Update. Three reasons, in order:
+`libraryStore` has no dependency on `communityStore` and auto-republish would
+create one; re-signing, re-moderating and re-downloading for every subscriber on
+every keystroke is absurd; and silently changing a plan people are forty days
+into is worse than a button. It also makes the shared item genuinely independent
+— deleting the source list leaves the shared plan intact, exactly as a piece
+outlives nothing in particular. "Out of date" is a **number comparison**
+(`itemSources[id].sourceUpdatedAt` against the live row), never a rebuilt hash.
+
+#### The header/payload split
+
+`space.feed` carries **headers only**. That is not an optimisation to revisit:
+`useCommunityRefresh` polls it on mount, on every foreground, and **every 15 s
+across all subscriptions while any one of them is pending** — and a
+Bible-in-a-year plan is 1,189 entries, near 100 KB. Twenty of those across ten
+rooms would be megabytes an hour.
+
+The header is nonetheless **self-verifying**, because `payloadHash` is inside
+the signed message *and* carried on the header. So nothing is ever rendered
+unverified, which is the existing rule for posts; the payload is fetched once
+per version through `space.item` and checked against that hash before it is
+stored. A mismatch is a refusal, not a caveat.
+
+On disk: `storage/users/{id}/items/{spaceId}.json` holds headers,
+`storage/users/{id}/payloads/{itemId}.json` holds one payload each. Both under
+`USERS_DIR`, so already HTTP-denied — no `.htaccess` change and no new
+`public/api/*.php` file, which is why `verifyBackend.mjs`'s handler-count floor
+and `deploy.sh`'s allow-list are untouched. **`itemId` goes through `safeUuid`
+before it touches a path**: that is the one place here where a caller-supplied
+string becomes a filename.
+
+`space.item` is the **fourth** cross-account endpoint and the second
+cross-account read. Its whole security content is that the item must be listed
+in *the space the code resolves to* — payload files are keyed by item id alone,
+so without that binding a code for a room you are accepted in would fetch any
+payload in the owner's account.
+
+#### The payload is a format
+
+`services/community/sharedPayload.ts` is the **only** producer, and nothing ever
+re-serializes a parsed payload — the signature covers the bytes, so the string
+received is stored verbatim. Fixed field order, absent means omitted (never
+`null`), array order preserved, and **`freeform`'s keys sorted** because a
+`Record` has none of its own and two devices would otherwise hash the same board
+differently. `tests/unit/sharedPayload.test.ts` pins the exact bytes: property
+tests cannot see a field reorder, since both runs change together.
+
+Parsing is `sharedItems.ts`, which reuses `normalizeReadingList` — already the
+whitelisting coercer for a list from any untrusted source. It restores two
+invariants a payload cannot be trusted to have: `cardIds` names only cards that
+arrived, and `freeform` is keyed only by ids in `cardIds`.
+
+**A copy is a fork, and the ids are what make it one.** `copyPlan`/`copyBoard`
+mint fresh ids at every level. Keeping the author's would make the fork and the
+mirror share one `readingProgress` row — ticking one would tick the other — and
+for a board would leave the corkboard's placements pointing at nothing.
+
+#### `ba.item.v1`
+
+Same discipline as `canonicalPostMessage`, with two differences worth knowing:
+**`kind` is in the message** (unhashed, a two-value enum) so a plan's signature
+cannot be lifted onto a board, and the payload is committed to **by hash**
+rather than carried. Mirrored in `verifyItemSignature` in `public/api/community.php`.
+
+#### A shared plan is read as a plan, not as a special case
+
+`ReaderSource`'s list variant gained `code?`, and the plan **keeps the author's
+`ReadingList.id` verbatim**. That is the premise: `segmentId()` keys on the ref,
+so any design carries the author's id anyway — and once it does, a fifth source
+kind describes a distinction the data does not have. Keeping it means
+`segmentId`, `provenanceOf`, `findListSegment` and **progress** work untouched.
+`ReadingProgress` is keyed by `listId` alone and lives in the *reader's* own
+account, so ticking off somebody else's plan is your own reading of it, synced
+across your devices, **with no server change at all**.
+
+**`sameSource` deliberately does not compare `code`.** A list has one id
+namespace by construction, so the same plan delivered through two rooms is one
+reading. It is also load-bearing: `playSegmentInReader` rebuilds the source from
+a `SegmentRef`, which carries no code, so with the code in identity every play
+would strip it. Do not put `code` on `SegmentRef` — a ref is a copy and copies
+go stale; the resolver is live.
+
+The real work was that **"find the list with this id" existed eight times**, all
+reading `libraryStore`, and two of them are severity-1 for a mirrored plan:
+`readingContinuation.nextInList` returned `undefined`, which `nextReadingAfter`
+reads as "decide some other way" and answers with `canonicalNext` — **wrong
+audio**, a plan followed by the next chapter of the Bible; and
+`readingProgressTracker.noteEntryFinished` returned early, so a subscriber could
+read a whole plan with nothing ticked. `resolveListById` is now the one copy,
+keyed **by id** rather than by source because five call sites hold a bare
+`listId` out of a `ListProvenance`. `ensureOpen`'s `staleList` needs **both**
+`initialized` flags, or a mirrored plan looks deleted during the boot race.
+
+#### A shared board is a screen, not a tab
+
+`/rooms/:code/boards/:itemId`, reusing `BoardCardsView` whole. Putting it in
+`/cards`' tab strip was tried on paper and the code refuses: **`activeBoardId` is
+nulled against the user's own boards in `libraryStore.init` and again in
+`librarySync.pullFromServer`**, so a foreign tab would deselect itself on every
+boot and every sync. Teaching those to read the community store would put a
+dependency into a store that has none, in the direction `onCommunityPulled()`
+exists to prevent. Four smaller costs agreed: a third region in a strip whose
+docblock justifies having two, guards that would be correct only by accident
+(`hasActive` is already false for a foreign board), a dead `/cards/:cardId`
+route for a foreign card, and unbounded growth in a strip that cannot collapse.
+Discoverability is one row in the strip's `⋮`.
+
+Read-only is the **absence** of the three mutating props on `BoardCardsView`,
+not no-op versions of them: the sortable is never armed, remove is not rendered,
+and the corkboard has nothing to commit. `CardStack.onDelete` had to become
+optional because it also fires on a keypress. A card opens as a `FlipCard` in a
+sheet, never `CardEditor` — the read-only version of nine controlled inputs plus
+a save that reconciles every board's `cardIds` is a form with everything
+disabled, a shape nobody has seen in this app.
+
+#### The subscriber's room screen
+
+`/rooms/:code` — not `/spaces/:code`, since `SpacesPage` resolves its param
+against the user's own space *ids*, and distinct params are how `:cardId` and
+`:boardId` are already told apart. It lists Pieces, Plans and Boards, and it is
+also where an invite link naming one thing lands.
+
+**The reassignment cost nothing**: a subscription row's `onOpen` and `onRead`
+were the *same function*. The row now opens the room and the ▶ still starts
+reading, which is what an own-space row has always meant.
+
+Pending, revoked or a changed key renders the header plus the reason and no
+sections — deliberately not a bounce to `/subscribe`, whose job is to *create* a
+request the user already has. `useCommunityRefresh` is mounted here, so the
+screen fills itself in the moment the author accepts.
+
+#### A link to one precise thing
+
+`/subscribe/<code>?piece=<id>` — **one parameter for all three kinds**, since
+their ids are all uuids and all resolve inside the room; a `?plan=` beside a
+`?piece=` would break the day a fourth kind exists. `inviteTarget` also accepts
+`?item=`, the same liberality `parseSpaceCodeInput` has.
+
+Accepted goes straight to the thing; **pending goes to `/rooms/:code?piece=`**,
+which is the honest answer to "nothing to open yet": that screen polls and
+`SubscribePage` does not. No stash — the target stays in the URL, the
+route-is-the-pending-state design one hop further. `stayHere` now rebuilds from
+the live `URLSearchParams`; building it from the code alone silently dropped the
+target, the same class of bug as the wizard's `onDone` eating the invitation.
+
+#### Moderation covers it, and the standards did not change
+
+`items.upsert` runs the same judge in the write path. The server needs the text
+without knowing the schema, so `moderationTextOf` walks the decoded payload and
+collects every string, dropping uuids and single characters — domain-ignorant,
+so a payload shape this build has never seen is still judged, and **server-side**,
+so a modified client cannot skip it.
+
+**No `COMMUNITY_TERMS_VERSION` bump.** `community.terms.intro` already binds
+"what you publish here" generally, and `MODERATION_POLICY` already allows
+"practical notes about reading, memorising or studying Scripture" — which is
+what a plan and a memory board are. The policy gained one *clarifying*
+paragraph (the text may be fragments pulled out of a structured document, and a
+list of book names is a plan rather than spam), which widens no rule and so does
+not trip that file's mirror-and-bump instruction.
+
+`report.create` takes a shared item as its target too, snapshotting its title
+and its extracted text — deleting the thing is the obvious first move after
+being reported. Blocking needs no change: it is keyed by the author's signing
+key and deletes their subscriptions, so their shelf goes with them.
+
 ### Where the share code is asked for
 
 The code field is **in the Rooms header, left of "new space"**. It used to sit at
@@ -1849,6 +2033,15 @@ title and "new space", and that arithmetic is written down beside the class.
   the interstitial stops being reached on that platform.
 - No QR code yet. Sharing a code or a link covers it; scanning would need a camera plugin plus
   iOS/Android permissions.
+- **A shared plan or board is a snapshot with a manual republish** (see above). Deliberate, but
+  it does mean an author who fixes a typo has to press Update, and nothing nags them to.
+- Withdrawing a shared item on one device leaves the row marked `shared` on another until an
+  explicit delete syncs — the same wart posts already have, and for the same reason: absent
+  from the server cannot mean deleted, or a failed `items.list` would destroy the author's shelf.
+- Progress on a shared plan survives unsubscribing, since the row is keyed by list id and
+  nothing deletes it. Accepted: resubscribing restores your place.
+- Shared boards are not tabs in `/cards` (see above for why the code refuses); they are reached
+  from the room, with a pointer in the strip's `⋮`.
 - Moderation now covers the four things Apple guideline 1.2 and the Play UGC policy ask for
   (see "Moderation" above), with two gaps left on purpose: a **reader's block does not remove
   that person as a subscriber of the user's own spaces** — `Membership` is keyed by uuid and
@@ -2256,9 +2449,9 @@ construction, which is why the docblock no longer carries a hand-written copy (b
 | `api/audio.php` | `tts`, `tts.speak`, forced alignment, `transcribe` |
 | `api/bible.php` | Zefania XML → verses |
 | `api/account.php` | the caller's own key, `account.delete`, `recording.upload`, `ambient.list` |
-| `api/community.php` | what a space is on disk: paths, sanitizers, share codes, signatures |
+| `api/community.php` | what a space is on disk: paths, sanitizers, share codes, signatures, the moderation text pulled out of a payload |
 | `api/spaces.php` | the owner's own community endpoints |
-| `api/sharing.php` | the three endpoints that cross accounts |
+| `api/sharing.php` | the four endpoints that cross accounts |
 | `api/moderation.php` | the content standards (`MODERATION_POLICY`) and the judge |
 | `api/reports.php` | `report.create` |
 | `api/feedback.php` | `feedback.create` |
@@ -2303,9 +2496,11 @@ Three things about that split are load-bearing:
 
 Actions: `chat`, `tts`, `tts.speak`, `bible.chapter`, `transcribe`, `auth.openaiKey.{status,set,clear}`, `cards.{list,upsert,delete,order.get,order.set}`, `boards.{list,upsert,delete,order.get,order.set}`, `readingLists.{list,upsert,delete}`, `readingProgress.{list,set}`, `recording.upload`, `account.delete`, `ambient.list`, and the community actions:
 `profile.{get,set,delete}`, `profile.avatar.upload`, `spaces.{list,upsert,delete}`,
-`spaces.code.set`, `posts.{list,upsert,delete}`, `members.{list,decide}`,
+`spaces.code.set`, `posts.{list,upsert,delete}`, `items.{list,upsert,delete}`,
+`members.{list,decide}`,
 `subscriptions.{list,upsert,delete}`, `moderation.check`, and the three that cross
-accounts — `space.request`, `space.feed` and `report.create` (see "Community spaces").
+accounts — `space.request`, `space.feed`, `space.item` and `report.create` (see
+"Community spaces").
 Plus `feedback.create` (see "In-app feedback").
 
 `feedback.create` is the odd one out: it is neither a community action nor an account

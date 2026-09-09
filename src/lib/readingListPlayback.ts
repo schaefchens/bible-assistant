@@ -13,6 +13,7 @@ import {
 import { useLibraryStore } from '@/store/libraryStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { resolveList } from '@/services/community/sharedReading';
 
 /**
  * Playing a reading list, and recording how far through it the user got.
@@ -26,12 +27,13 @@ import { useSettingsStore } from '@/store/settingsStore';
 
 /** Where the list resumes: the entry last started, else its first segment. */
 function resumeSegment(listId: string): SegmentRef | null {
-  const lib = useLibraryStore.getState();
-  const list = lib.readingLists.find((l) => l.id === listId);
+  const list = resolveList(listId)?.list;
   if (!list) return null;
   const segments = expandList(list, useSettingsStore.getState().translation);
   if (segments.length === 0) return null;
-  const currentEntryId = lib.readingProgress[listId]?.currentEntryId;
+  // The reader's *own* progress, whoever wrote the plan: a `readingProgress`
+  // row is keyed by list id and lives in this user's account.
+  const currentEntryId = useLibraryStore.getState().readingProgress[listId]?.currentEntryId;
   if (!currentEntryId) return segments[0];
   return segments.find((s) => s.entryId === currentEntryId) ?? segments[0];
 }

@@ -2,14 +2,22 @@ import { db } from '@/db/dexie';
 import { authorKey } from '@/lib/postSigning';
 import { mintSpaceCode } from '@/lib/spaceCode';
 import * as api from '@/services/api/community';
-import { nowId } from '@/store/libraryStore';
-import type { Post, Space } from '@/types/domain';
-import { byPublishedDesc, byUpdatedDesc } from './communityRows';
+import { useLibraryStore, nowId } from '@/store/libraryStore';
+import {
+  buildBoardPayload,
+  buildPlanPayload,
+  payloadBytes,
+  payloadHash,
+} from '@/services/community/sharedPayload';
+import type { Board, Card, Post, SharedItem, SharedItemKind, Space } from '@/types/domain';
+import { byPublishedDesc, byUpdatedDesc, sourceIdOfPayload } from './communityRows';
+import { useSettingsStore } from '@/store/settingsStore';
 import { flush, queued } from './communityOps';
 import type { CommunityState } from './communityStore';
 
 /**
- * The user's **own** writing: their spaces, and the pieces in them.
+ * The user's **own** writing: their spaces, the pieces in them, and the plans
+ * and boards they have shared there.
  *
  * The mirror of `communityFeed`, which owns everything that is somebody
  * else's. These rows have exactly one writer, so unlike the feed they play by
@@ -20,7 +28,10 @@ import type { CommunityState } from './communityStore';
  * Hence two different deletes (`deletePost` removes it everywhere;
  * `unpublishPost` drops only the `shared` claim and leaves the row readable),
  * and hence `publishedAt` being immutable — it is signed, so withdrawing and
- * re-sharing has to keep both the date and the original signature valid.
+ * re-sharing has to keep both the date and the original signature valid. A
+ * shared item is the same pair under different names, `deleteItem` and
+ * `withdrawItem`, which is why it belongs in this file rather than one of its
+ * own: the split between these modules is ownership, not entity.
  *
  * A factory over `(set, get)` like `librarySync` and `createCommunityFeed`, so
  * every action body below moved verbatim.
@@ -39,6 +50,102 @@ async function signed(post: Post): Promise<Post> {
   return sig ? { ...post, ...sig } : post;
 }
 
+
+/**
+ * The cards a board actually holds, in its own order.
+ *
+ * `board.cardIds` is resolved against the live cards rather than trusted:
+ * deleting a card does not rewrite the boards holding it, so the stored ids
+ * overcount. `buildBoardPayload` drops the danglers again, but resolving here
+ * is what decides *which* cards travel.
+ */
+function boardCardsOf(board: Board, cards: Card[]): Card[] {
+  const byId = new Map(cards.map((c) => [c.id, c]));
+  return board.cardIds.map((id) => byId.get(id)).filter((c): c is Card => c !== undefined);
+}
+
+/**
+ * Build, sign and queue one shared item — the body `shareList`, `shareBoard`
+ * and `republishItem` all share.
+ *
+ * Moderation is asked first, exactly as `publishPost` does and for the same
+ * reason: publishing rides the sync queue, where a 422 would otherwise surface
+ * as an item that silently never shares. The server judges it again in the
+ * write path, which is the check that actually counts.
+ */
+async function publishItem(
+  set: SetState,
+  get: GetState,
+  kind: SharedItemKind,
+  spaceId: string,
+  title: string,
+  payload: string,
+  sourceUpdatedAt: number,
+  sourceId: string,
+  existing?: { id: string; publishedAt: number; createdAt: number },
+): Promise<void> {
+  if (!get().profile) return;
+  // The app's language, the same source `write_post` uses. A plan carries one
+  // because it is signed and the moderator is told which language to judge in;
+  // the passages themselves have their own translation per entry.
+  const language = useSettingsStore.getState().locale;
+
+  try {
+    const verdict = await api.checkModeration({ title, body: payload, language });
+    if (!verdict.ok) {
+      const err = new Error('content_refused');
+      (err as Error & { reason?: string }).reason = verdict.reason;
+      throw err;
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message === 'content_refused') throw e;
+    // Offline, 5xx, no key — publish anyway; the server has the final say.
+  }
+
+  // Sharing the same list into the same room twice is an **update**, not a
+  // second copy. `republishItem` passes the row it is refreshing, but
+  // `shareList` cannot — and the assistant's `share_plan` has no sheet in front
+  // of it to notice, so without this a second ask would leave two items in the
+  // room with the same name. Matched on the source rather than the title,
+  // because a renamed plan is still the same plan.
+  const already =
+    existing ??
+    (await db.sharedItems.toArray()).find(
+      (row) =>
+        row.deleted !== 1 &&
+        row.spaceId === spaceId &&
+        row.kind === kind &&
+        sourceIdOfPayload(row.kind, row.payload) === sourceId,
+    );
+
+  const now = Date.now();
+  const base: SharedItem = {
+    id: already?.id ?? nowId(),
+    spaceId,
+    kind,
+    title: title.trim().slice(0, 200) || 'Untitled',
+    language,
+    payloadHash: payloadHash(payload),
+    payloadBytes: payloadBytes(payload),
+    // Immutable across a withdraw/re-share round trip, like a post's.
+    publishedAt: already?.publishedAt || now,
+    createdAt: already?.createdAt ?? now,
+    updatedAt: now,
+  };
+  const { signItem } = await import('@/lib/postSigning');
+  const sig = signItem(base);
+  if (!sig) throw new Error('cannot sign: passphrase onboarding has not completed');
+  const item: SharedItem = { ...base, ...sig };
+
+  await db.sharedItems.put({ ...item, payload, sourceUpdatedAt, dirty: 1, shared: 1 });
+  set((s) => ({
+    items: [item, ...s.items.filter((i) => i.id !== item.id)].sort(byPublishedDesc),
+    sharedClaims: { ...s.sharedClaims, [item.id]: true },
+    itemSources: { ...s.itemSources, [item.id]: { sourceId, sourceUpdatedAt } },
+  }));
+  await queued('item.upsert', { id: item.id });
+  flush();
+}
 
 // Every parameter below is annotated. Inside `create<CommunityState>` these
 // would be inferred from the state type; from a factory they are not, and an
@@ -193,6 +300,87 @@ export function createCommunityWriting(set: SetState, get: GetState) {
     await db.posts.update(id, { shared: 0, dirty: 0 });
     set((s) => ({ shared: { ...s.shared, [id]: false } }));
     await queued('post.delete', { id, spaceId: post.spaceId });
+    flush();
+  },
+
+  /**
+   * Publish a reading plan into one of the user's rooms.
+   *
+   * A **snapshot**, not a live link. The payload is built now, hashed, signed
+   * and stored; editing the source afterwards changes nothing for subscribers
+   * until `republishItem`. That is deliberate — see the note on `republishItem`
+   * — and it has a second consequence worth knowing: the shared item outlives
+   * the list it came from, exactly as a piece outlives nothing in particular.
+   */
+  shareList: async (listId: string, spaceId: string) => {
+    const list = useLibraryStore.getState().readingLists.find((l) => l.id === listId);
+    if (!list) return;
+    await publishItem(set, get, 'plan', spaceId, list.name, buildPlanPayload(list), list.updatedAt, listId);
+  },
+
+  /** Publish a board, cards and all. */
+  shareBoard: async (boardId: string, spaceId: string) => {
+    const lib = useLibraryStore.getState();
+    const board = lib.boards.find((b) => b.id === boardId);
+    if (!board) return;
+    const cards = boardCardsOf(board, lib.cards);
+    await publishItem(
+      set, get, 'board', spaceId, board.name, buildBoardPayload(board, cards), board.updatedAt, boardId,
+    );
+  },
+
+  /**
+   * Re-snapshot a shared item from its live source.
+   *
+   * **Offered, never automatic**, and the reason is the same family as
+   * `publishedAt` being immutable: re-signing and re-moderating on every
+   * keystroke would be wrong, and silently changing a plan that people are
+   * forty days into is worse than a button. It also keeps `libraryStore` free
+   * of any dependency on this store — the source is read here, on demand.
+   *
+   * A device that pulled the header but never had the payload cannot do this:
+   * the source list or board is not on it either. It simply no-ops.
+   */
+  republishItem: async (itemId: string) => {
+    const row = await db.sharedItems.get(itemId);
+    if (!row || row.deleted === 1) return;
+    const lib = useLibraryStore.getState();
+    if (row.kind === 'plan') {
+      const list = lib.readingLists.find((l) => l.id === sourceIdOfPayload(row.kind, row.payload));
+      if (!list) return;
+      await publishItem(set, get, 'plan', row.spaceId, list.name, buildPlanPayload(list), list.updatedAt, list.id, row);
+      return;
+    }
+    const board = lib.boards.find((b) => b.id === sourceIdOfPayload(row.kind, row.payload));
+    if (!board) return;
+    await publishItem(
+      set, get, 'board', row.spaceId, board.name,
+      buildBoardPayload(board, boardCardsOf(board, lib.cards)), board.updatedAt, board.id, row,
+    );
+  },
+
+  /**
+   * Take a plan or board out of the room, keeping it on the device.
+   *
+   * The `unpublishPost` half of the pair: the row survives, so re-sharing it
+   * later reuses the same `publishedAt` and the same id.
+   */
+  withdrawItem: async (itemId: string) => {
+    const item = get().items.find((i) => i.id === itemId);
+    if (!item) return;
+    await db.sharedItems.update(itemId, { shared: 0, dirty: 0 });
+    set((s) => ({ sharedClaims: { ...s.sharedClaims, [itemId]: false } }));
+    await queued('item.delete', { id: itemId, spaceId: item.spaceId });
+    flush();
+  },
+
+  /** The `deletePost` half: gone from the device as well as the room. */
+  deleteItem: async (itemId: string) => {
+    const item = get().items.find((i) => i.id === itemId);
+    if (!item) return;
+    await db.sharedItems.update(itemId, { deleted: 1, dirty: 1 });
+    set((s) => ({ items: s.items.filter((i) => i.id !== itemId) }));
+    await queued('item.delete', { id: itemId, spaceId: item.spaceId });
     flush();
   },
 

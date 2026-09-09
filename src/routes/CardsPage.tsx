@@ -9,6 +9,8 @@ import { BoardViewToggle } from '@/components/cards/BoardViewToggle';
 import { CardEditor } from '@/components/cards/CardEditor';
 import { CenteredEmpty } from '@/components/cards/CenteredEmpty';
 import { LibraryTabs } from '@/components/cards/LibraryTabs';
+import { ShareToRoomSheet } from '@/components/community/ShareToRoomSheet';
+import { useCommunityStore } from '@/store/communityStore';
 import type { BoardValues } from '@/components/cards/BoardEditor';
 import {
   reorderCardInBoard,
@@ -113,6 +115,14 @@ export function CardsPage() {
   // between a pull and this render) reads as All cards instead of as a blank
   // screen — which is also where deleteBoard and pullFromServer already land.
   const selection = activeBoard?.id ?? null;
+
+  // The community half of this screen is one menu row and one sheet. A shared
+  // board is deliberately *not* a tab here — `activeBoardId` is nulled against
+  // the user's own boards on every boot and every sync, so a foreign tab would
+  // deselect itself constantly. It lives on the room's screen instead.
+  const hasCommunityProfile = useCommunityStore((s) => s.profile !== null);
+  const mirroredBoards = useCommunityStore((s) => s.mirroredBoards);
+  const [sharingBoard, setSharingBoard] = useState(false);
 
   const boardCards: Card[] = useMemo(() => {
     if (!activeBoard) return [];
@@ -308,6 +318,9 @@ export function CardsPage() {
         onDelete={removeBoard}
         onReorder={reorderBoards}
         onRequestAddCards={() => setAddPickerOpen(true)}
+        onShareBoard={hasCommunityProfile ? () => setSharingBoard(true) : undefined}
+        sharedBoardCount={mirroredBoards.length}
+        onOpenSharedBoards={() => navigate(ROUTES.spaces)}
         showEditToggle={viewMode === 'freeform' && boardHasCards}
         editMode={freeformEdit}
         onToggleEditMode={() => setFreeformEdit((v) => !v)}
@@ -357,6 +370,16 @@ export function CardsPage() {
       )}
 
       {boardHasCards && <BoardViewToggle mode={viewMode} onChange={setViewMode} />}
+
+      {activeBoard && hasCommunityProfile && (
+        <ShareToRoomSheet
+          kind="board"
+          sourceId={activeBoard.id}
+          sourceUpdatedAt={activeBoard.updatedAt}
+          open={sharingBoard}
+          onClose={() => setSharingBoard(false)}
+        />
+      )}
 
       {addPickerOpen && activeBoard && (
         <AddCardsModal

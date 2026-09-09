@@ -89,6 +89,15 @@ A piece is REFUSED when it is:
 Judge the writing, not its quality. Bad prose, poor theology, a minority
 doctrinal position, or disagreement with mainstream interpretation are NOT
 grounds for refusal. Refuse only a clear breach of the list above.
+
+What you are given is not always an essay. A room may also hold a reading plan
+or a memorisation board, and for those the text is the human-written parts
+pulled out of a structured document: a plan's name, its day titles and its
+per-passage notes; a board's name and its cards' titles and notes. Expect
+fragments, passage references and bare book names, in any order and with no
+connecting prose. That shape is NORMAL and is never on its own grounds for
+refusal — in particular a list of book or chapter names is a reading plan, not
+spam and not off-theme. Judge only the human-written words that are there.
 TXT;
 
 /**

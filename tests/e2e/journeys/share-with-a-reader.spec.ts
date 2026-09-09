@@ -17,7 +17,12 @@ import { completeOnboarding, quietTheHarness } from '../support/onboard';
  *
  * Two browser contexts, two silently-minted mnemonics, one real PHP backend.
  * Everything crosses the wire: `profile.set`, `spaces.upsert`, `posts.upsert`
- * with a real signature, `space.request`, `members.decide`, `space.feed`.
+ * with a real signature, `space.request`, `members.decide`, `space.feed`,
+ * `items.upsert` and `space.item`.
+ *
+ * A room holds plans as well as pieces, so the journey covers both rather than
+ * splitting: it is one capability — "share something, someone else reads it" —
+ * and the second identity is the expensive part, not the second item.
  * Moderation runs for real too — `MODERATION_POLICY` on `gpt-4o` — which is
  * why the piece below is plainly on-theme.
  */
@@ -25,6 +30,7 @@ import { completeOnboarding, quietTheHarness } from '../support/onboard';
 const AUTHOR = 'Christoph';
 const SPACE = 'Gedanken';
 const TITLE = 'Ein Morgen am Fluss';
+const PLAN = 'Jona in zwei Tagen';
 const BODY = [
   'Am Morgen sass ich am Fluss und dachte an das Wort des Herrn.',
   '',
@@ -166,9 +172,15 @@ test('a piece is published, shared by code, accepted, and read by someone else',
       .toContain('1 piece');
     await expect(bob.locator('main')).not.toContainText('Waiting for approval');
 
+    // Tapping the room opens the *room*, not the reader: a room holds plans and
+    // boards too, so it needs a screen. The ▶ beside it still starts reading,
+    // which is what the row's two controls used to do identically.
+    await bob.getByRole('button', { name: new RegExp(`${AUTHOR}.*${SPACE}`) }).first().click();
+    await expect(bob.locator('main')).toContainText(TITLE);
+
     // Open it. A post can only be read in the reader — chat has no
     // representation for one.
-    await bob.getByRole('button', { name: new RegExp(`${AUTHOR}.*${SPACE}`) }).first().click();
+    await bob.getByRole('button', { name: new RegExp(TITLE) }).first().click();
 
     // A post that fails verification is **refused, not rendered with a
     // caveat** — so seeing the body at all is the signature checking out
@@ -183,6 +195,53 @@ test('a piece is published, shared by code, accepted, and read by someone else',
       'data-segment-id',
       /^reader:sp:[0-9a-f-]+:[0-9a-f-]+$/,
     );
+
+    // ── Alice shares a reading plan into the same room ─────────────────────
+    // A plan is the second thing a room can hold, and the one with the most
+    // machinery behind it: it is signed like a piece, but its payload travels
+    // separately and its progress is the *reader's* own.
+    await page.goto('/lists');
+    await appReady(page);
+    await page.getByRole('button', { name: '+ New list' }).click();
+    await page.getByRole('textbox', { name: 'Name' }).fill(PLAN);
+    await page.getByRole('button', { name: '+ Add passage' }).click();
+    await page.getByRole('textbox', { name: /Genesis 1-3/ }).fill('Jonah 1\nJonah 2');
+    await page.getByRole('button', { name: 'Add passage', exact: true }).click();
+    await page.getByRole('button', { name: 'Done' }).click();
+
+    // Header, beside Play — sharing is not a structural edit.
+    const itemSynced = page.waitForResponse(
+      (r) => r.url().includes('action=items.upsert') && r.ok(),
+    );
+    await page.getByRole('button', { name: 'Share to a room' }).click();
+    await page.getByRole('button', { name: 'Share here' }).first().click();
+    // Real moderation again, on the text pulled out of the payload.
+    await itemSynced;
+
+    // ── Bob picks the plan up ──────────────────────────────────────────────
+    await expect
+      .poll(
+        async () => {
+          await bob.goto(`/rooms/${code.replace(/-/g, '')}`);
+          await appReady(bob);
+          return bob.locator('main').innerText();
+        },
+        { timeout: 90_000, intervals: [1000, 2000, 3000, 5000, 5000] },
+      )
+      .toContain(PLAN);
+
+    // Read-only, and offering a fork rather than an edit. Seeing the passages
+    // at all means the header verified against the pinned key *and* the
+    // separately-fetched payload matched the hash that signature commits to.
+    await bob.getByRole('button', { name: new RegExp(PLAN) }).first().click();
+    await expect(bob.locator('main')).toContainText('Jonah 1');
+    await expect(bob.getByRole('button', { name: 'Make my copy' })).toBeVisible();
+    await expect(bob.getByRole('button', { name: 'Edit' })).toHaveCount(0);
+
+    // Ticking somebody else's plan records the reader's own progress: the row
+    // is keyed by the author's list id but lives in Bob's account.
+    await bob.getByRole('button', { name: 'Mark as read' }).first().click();
+    await expect(bob.locator('main')).toContainText('1 of 2 read');
   } finally {
     await bobContext.close();
   }

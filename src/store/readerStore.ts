@@ -22,6 +22,7 @@ import {
 } from '@/services/reading/readingSequence';
 import type { VerseSummary } from '@/types/domain';
 import { useCommunityStore } from './communityStore';
+import { resolveList, resolveListFrom } from '@/services/community/sharedReading';
 import { useLibraryStore } from './libraryStore';
 import { useSettingsStore } from './settingsStore';
 import { useLastReadingStore } from './lastReadingStore';
@@ -117,7 +118,7 @@ function pruneCache(
  */
 function resolveAgainstList(ref: SegmentRef): SegmentRef {
   if (!ref.listId || !ref.entryId) return ref;
-  const list = useLibraryStore.getState().readingLists.find((l) => l.id === ref.listId);
+  const list = resolveList(ref.listId)?.list;
   if (!list) return ref;
   return (
     findListSegment(
@@ -240,10 +241,18 @@ export const useReaderStore = create<ReaderState>()(
           const library = useLibraryStore.getState();
           const community = useCommunityStore.getState();
           const source = get().source;
+          // Both `initialized` flags, not just the library's: a plan can live
+          // in either store, so a mirrored one looks deleted while
+          // communityStore is still filling from Dexie — the very race the
+          // `staleSpace` comment below describes.
           const staleList =
             library.initialized &&
+            community.initialized &&
             source.kind === 'list' &&
-            !library.readingLists.some((l) => l.id === source.listId);
+            resolveListFrom(source, {
+              lists: library.readingLists,
+              mirroredLists: community.mirroredLists,
+            }) === null;
           // Same reasoning for a space, and the same boot race: communityStore
           // fills from Dexie asynchronously, and an empty store during boot is
           // indistinguishable from an unsubscribed space.

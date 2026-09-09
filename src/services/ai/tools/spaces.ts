@@ -13,9 +13,52 @@ export type SpaceToolArgs = {
   write_post: { text: string; title?: string; space?: string; language?: 'en' | 'de' };
   read_space: { space: string };
   read_new: { scope?: 'unseen' | 'today' };
+  share_plan: { list: string; space?: string };
+  share_board: { board: string; space?: string };
 };
 
+const SHARE_DESCRIPTION =
+  'A snapshot is published, not a live link: later edits reach readers only when the user ' +
+  'shares it again. Anyone the user has accepted into that space can read it and take their ' +
+  'own copy. Omit `space` only if the user has exactly one; otherwise ask which.';
+
 export const SPACE_TOOLS: ChatToolDefinition[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'share_plan',
+      description:
+        "Publish one of the user's reading plans into one of their own writing spaces, so the " +
+        'people who read that space can follow it too. ' +
+        SHARE_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          list: { type: 'string', description: 'The reading list, by name.' },
+          space: { type: 'string', description: 'One of the user\'s own spaces, by name.' },
+        },
+        required: ['list'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'share_board',
+      description:
+        "Publish one of the user's boards, with its cards, into one of their own writing " +
+        'spaces. ' +
+        SHARE_DESCRIPTION,
+      parameters: {
+        type: 'object',
+        properties: {
+          board: { type: 'string', description: 'The board, by name.' },
+          space: { type: 'string', description: 'One of the user\'s own spaces, by name.' },
+        },
+        required: ['board'],
+      },
+    },
+  },
   {
     type: 'function',
     function: {

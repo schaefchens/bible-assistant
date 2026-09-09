@@ -7,6 +7,7 @@ import type {
   Profile,
   ReadingList,
   ReadingProgress,
+  SharedItem,
   Space,
   Subscription,
 } from '@/types/domain';
@@ -126,6 +127,48 @@ type FeedPost = Post & {
   fetchedAt: number;
 };
 
+/**
+ * One of the user's **own** shared items — a plan or a board published into a
+ * room. The full record, header and payload together, because the author is
+ * the one who has it.
+ *
+ * `shared` means the same thing it does on a post: the row exists locally, and
+ * whether the server has a copy is a separate decision (`withdrawItem` drops
+ * the claim without touching the row).
+ */
+export type LocalSharedItem = SharedItem & {
+  /** The canonical payload string, verbatim — the signature covers these bytes. */
+  payload: string;
+  /**
+   * The source list's or board's `updatedAt` at the moment of the snapshot.
+   *
+   * Local only, and never sent: it exists so "the shared copy is out of date"
+   * is a number comparison rather than rebuilding and hashing a year-long
+   * plan's payload on every render of the room screen.
+   */
+  sourceUpdatedAt?: number;
+  dirty?: 0 | 1;
+  deleted?: 0 | 1;
+  shared?: 0 | 1;
+};
+
+/**
+ * One shared item from a room someone else owns. Outside the sync machinery
+ * for exactly the reasons {@link FeedPost} is.
+ *
+ * `payload` is absent until it has been fetched: `space.feed` carries headers
+ * only, because it is polled on every foreground and a year-long plan is ~100KB.
+ * The header verifies on its own (it commits to `payloadHash`), and the payload
+ * is checked against that hash before it is stored — so an item with no payload
+ * yet is known-genuine but not yet renderable.
+ */
+export type FeedItem = SharedItem & {
+  code: string;
+  verified: boolean;
+  fetchedAt: number;
+  payload?: string;
+};
+
 /** Local-only "I have seen this post" marker, driving the unread dot. */
 type SeenPost = { id: string; seenAt: number };
 
@@ -148,6 +191,8 @@ export type SyncOp = {
     | 'spaceCode.set'
     | 'post.upsert'
     | 'post.delete'
+    | 'item.upsert'
+    | 'item.delete'
     | 'subscription.upsert'
     | 'subscription.delete'
     | 'membership.decide';
@@ -206,6 +251,8 @@ class BibleAssistantDb extends Dexie {
   subscriptions!: Table<LocalSubscription, string>;
   memberships!: Table<LocalMembership, [string, string]>;
   feedPosts!: Table<FeedPost, string>;
+  sharedItems!: Table<LocalSharedItem, string>;
+  feedItems!: Table<FeedItem, string>;
   seenPosts!: Table<SeenPost, string>;
 
   constructor() {
@@ -315,6 +362,28 @@ class BibleAssistantDb extends Dexie {
       subscriptions: '&code, updatedAt, dirty',
       memberships: '[userId+spaceId], spaceId, status, dirty',
       feedPosts: 'id, code, publishedAt',
+      seenPosts: '&id',
+    });
+
+    // A room holds plans and boards as well as pieces. Two tables, mirroring
+    // the two a post already has: the author's own copy, and the read-only
+    // cache of everybody else's.
+    this.version(11).stores({
+      cards: 'id, title, updatedAt, dirty',
+      boards: 'id, name, updatedAt, dirty',
+      syncQueue: '++id, op, createdAt',
+      preferences: '&key',
+      mediaCache: '&url, lastUsedAt, pinned',
+      narration: '&key',
+      readingLists: 'id, name, updatedAt, dirty',
+      readingProgress: '&listId, updatedAt, dirty',
+      spaces: 'id, updatedAt, dirty',
+      posts: 'id, spaceId, publishedAt, updatedAt, dirty, shared',
+      subscriptions: '&code, updatedAt, dirty',
+      memberships: '[userId+spaceId], spaceId, status, dirty',
+      feedPosts: 'id, code, publishedAt',
+      sharedItems: 'id, spaceId, updatedAt, dirty, shared',
+      feedItems: 'id, code, publishedAt',
       seenPosts: '&id',
     });
   }

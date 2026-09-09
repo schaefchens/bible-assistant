@@ -2,9 +2,9 @@ import { getChapter, type Translation } from '@/services/bible/bibleApi';
 import { toVerseSummaries } from '@/services/bible/verseSummaries';
 import { nextChapterRef } from '@/services/bible/chapterNavigation';
 import { expandList } from '@/services/reading/readingSequence';
-import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { Locale, VerseRange, VerseSummary } from '@/types/domain';
+import { resolveList } from '@/services/community/sharedReading';
 import {
   isListProvenance,
   readingHosts,
@@ -182,9 +182,12 @@ async function nextInList(
   provenance: ListProvenance,
   verses: VerseSummary[],
 ): Promise<NextReading | null | undefined> {
-  const list = useLibraryStore
-    .getState()
-    .readingLists.find((l) => l.id === provenance.listId);
+  // Resolved across the user's own lists *and* the plans mirrored out of
+  // rooms. `undefined` here means "decide some other way", which
+  // `nextReadingAfter` reads as canonical order — so a shared plan resolved
+  // against `libraryStore` alone would be followed by the next chapter of the
+  // Bible rather than its own next entry, with nothing on screen saying so.
+  const list = resolveList(provenance.listId)?.list;
   if (!list) return undefined;
 
   const last = verses[verses.length - 1];

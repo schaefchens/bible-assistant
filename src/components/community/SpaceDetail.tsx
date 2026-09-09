@@ -7,7 +7,9 @@ import { copyText, shareText } from '@/lib/nativeBridge';
 import { formatSpaceCode } from '@/lib/spaceCode';
 import { webInviteUrl } from '@/lib/spaceInvite';
 import { useGoBack } from '@/hooks/useGoBack';
+import { BoardIcon, ListIcon } from '@/components/common/icons';
 import { useCommunityStore } from '@/store/communityStore';
+import { useLibraryStore } from '@/store/libraryStore';
 import { useReaderStore } from '@/store/readerStore';
 import type { Post, Space } from '@/types/domain';
 import { spaceDisplayName } from '@/services/community/spaceName';
@@ -39,6 +41,14 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
   const deleteSpace = useCommunityStore((s) => s.deleteSpace);
   const shareSpace = useCommunityStore((s) => s.shareSpace);
   const decideMember = useCommunityStore((s) => s.decideMember);
+  const items = useCommunityStore((s) => s.items);
+  const sharedClaims = useCommunityStore((s) => s.sharedClaims);
+  const itemSources = useCommunityStore((s) => s.itemSources);
+  const republishItem = useCommunityStore((s) => s.republishItem);
+  const withdrawItem = useCommunityStore((s) => s.withdrawItem);
+  const deleteItem = useCommunityStore((s) => s.deleteItem);
+  const readingLists = useLibraryStore((s) => s.readingLists);
+  const boards = useLibraryStore((s) => s.boards);
   const setSource = useReaderStore((s) => s.setSource);
 
   const [confirmingRotate, setConfirmingRotate] = useState(false);
@@ -57,6 +67,35 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
         .sort((a, b) => (b.publishedAt || Infinity) - (a.publishedAt || Infinity)),
     [posts, space.id],
   );
+  const roomItems = useMemo(
+    () => items.filter((i) => i.spaceId === space.id && sharedClaims[i.id] === true),
+    [items, sharedClaims, space.id],
+  );
+
+  /**
+   * Which shared items no longer match the list or board they came from.
+   *
+   * A number comparison, not a rebuilt payload hash: `itemSources` records the
+   * source's `updatedAt` at snapshot time, so this stays cheap even for a
+   * year-long plan. Memoized on the sources rather than computed per row
+   * because a room can hold twenty of them.
+   */
+  const staleSources = useMemo(() => {
+    const stale = new Set<string>();
+    for (const item of roomItems) {
+      const src = itemSources[item.id];
+      if (!src) continue;
+      const live =
+        item.kind === 'plan'
+          ? readingLists.find((l) => l.id === src.sourceId)
+          : boards.find((b) => b.id === src.sourceId);
+      // A source that is gone cannot be out of date — the shared item outlives
+      // it deliberately, the way a piece outlives nothing in particular.
+      if (live && live.updatedAt !== src.sourceUpdatedAt) stale.add(item.id);
+    }
+    return stale;
+  }, [roomItems, itemSources, readingLists, boards]);
+
   const members = memberships.filter((m) => m.spaceId === space.id);
   const pending = members.filter((m) => m.status === 'pending');
   const readers = members.filter((m) => m.status === 'accepted');
@@ -271,6 +310,54 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
               </span>
             </button>
           ))}
+        </section>
+
+        {/* Plans and boards, beside the pieces. Three actions rather than the
+            pieces' one, because a shared item is a *snapshot*: Update is what
+            makes an edit to the source reach readers, and it is offered rather
+            than automatic — silently changing a plan people are forty days into
+            is worse than a button. Withdraw drops the room's copy and keeps the
+            plan; Delete is the other half of the pair. */}
+        <section className="space-y-2">
+          <SectionTitle>{t('community.sharedItems')}</SectionTitle>
+          {roomItems.length === 0 && (
+            <p className="text-sm text-ink-muted">{t('community.noSharedItems')}</p>
+          )}
+          {roomItems.map((item) => {
+            const src = itemSources[item.id];
+            const stale = src ? staleSources.has(item.id) : false;
+            return (
+              <div
+                key={item.id}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-raised"
+              >
+                {item.kind === 'plan' ? (
+                  <ListIcon size={15} className="shrink-0 text-brand" />
+                ) : (
+                  <BoardIcon size={15} className="shrink-0 text-brand" />
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-ink">{item.title}</span>
+                  {stale && (
+                    <span className="block text-[10px] uppercase tracking-wider text-ink-muted">
+                      {t('community.outOfDate')}
+                    </span>
+                  )}
+                </span>
+                {stale && (
+                  <SmallButton onClick={() => void republishItem(item.id)}>
+                    {t('community.updateShared')}
+                  </SmallButton>
+                )}
+                <SmallButton onClick={() => void withdrawItem(item.id)}>
+                  {t('community.withdraw')}
+                </SmallButton>
+                <SmallButton danger onClick={() => void deleteItem(item.id)}>
+                  {t('community.deleteItem')}
+                </SmallButton>
+              </div>
+            );
+          })}
         </section>
 
         {!isToday && (

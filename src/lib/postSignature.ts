@@ -2,7 +2,7 @@ import { ed25519 } from '@noble/curves/ed25519.js';
 import { sha256, sha512 } from '@noble/hashes/sha2.js';
 import { bytesToHex, concatBytes, hexToBytes, utf8ToBytes } from '@noble/hashes/utils.js';
 import { mnemonicToSeedSync } from '@scure/bip39';
-import type { Post } from '@/types/domain';
+import type { Post, SharedItem } from '@/types/domain';
 
 /**
  * Signing a post proves the author wrote it, to a reader whose only other
@@ -138,6 +138,80 @@ export function verifyPost(post: Post, pinnedKeyHex: string): boolean {
   } catch {
     // Malformed hex or a bad point encoding — indistinguishable from a forgery
     // as far as the reader is concerned.
+    return false;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Shared items — a reading plan or a board, published into a room
+ * ------------------------------------------------------------------ */
+
+/** Canonicalization version for a {@link SharedItem}. Additive, like the post one. */
+export const ITEM_SIG_VERSION = 'ba.item.v1';
+
+/**
+ * The exact bytes a shared item's signature covers.
+ *
+ * Same discipline as {@link canonicalPostMessage} — version tag first, the
+ * author's own public key second, every free-text field replaced by its
+ * sha256, everything left unhashed a constrained charset — with two
+ * differences worth stating:
+ *
+ * - **`kind` is in the message**, unhashed because it is a two-value enum.
+ *   Without it a plan's signature could be lifted onto a board: every other
+ *   field can be equal between the two, so the message would not distinguish
+ *   them and a reader would parse a plan's payload as a board's.
+ * - **The payload is committed to by hash, not carried.** That is what makes a
+ *   header verifiable on its own — the feed ships headers only, and the
+ *   payload is checked against `payloadHash` when it is later fetched. The
+ *   hash is over the payload *string*, so nothing may re-serialize a parsed
+ *   payload; `services/community/sharedPayload.ts` is the only producer.
+ */
+export function canonicalItemMessage(item: SharedItem, authorKeyHex: string): Uint8Array {
+  return utf8ToBytes(
+    [
+      ITEM_SIG_VERSION,
+      authorKeyHex.toLowerCase(),
+      item.spaceId,
+      item.id,
+      item.kind,
+      String(item.publishedAt),
+      String(item.updatedAt),
+      item.language,
+      bytesToHex(sha256(utf8ToBytes(item.title))),
+      item.payloadHash.toLowerCase(),
+    ].join('\n'),
+  );
+}
+
+/** Sign `item` with an already-derived key. `postSigning.ts` wraps this. */
+export function signItemWith(item: SharedItem, pair: SigningKeyPair): PostSignature {
+  const publicKeyHex = bytesToHex(pair.publicKey);
+  return {
+    signature: bytesToHex(ed25519.sign(canonicalItemMessage(item, publicKeyHex), pair.secretKey)),
+    authorKey: publicKeyHex,
+    sigVersion: ITEM_SIG_VERSION,
+  };
+}
+
+/**
+ * Verify a shared item's header against the key pinned for its space.
+ *
+ * Everything on {@link verifyPost} applies. The one addition: verifying here
+ * proves the *header*, including `payloadHash`. The payload itself is trusted
+ * only once its sha256 matches that hash — see `communityFeed`, which refuses
+ * a mismatch rather than rendering it with a caveat.
+ */
+export function verifyItem(item: SharedItem, pinnedKeyHex: string): boolean {
+  if (!item.signature || !item.authorKey || item.sigVersion !== ITEM_SIG_VERSION) return false;
+  if (item.authorKey.toLowerCase() !== pinnedKeyHex.toLowerCase()) return false;
+  try {
+    return ed25519.verify(
+      hexToBytes(item.signature),
+      canonicalItemMessage(item, pinnedKeyHex),
+      hexToBytes(pinnedKeyHex),
+    );
+  } catch {
     return false;
   }
 }

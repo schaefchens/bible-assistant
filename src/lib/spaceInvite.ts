@@ -40,17 +40,43 @@ export const APP_SCHEME = 'de.schaefchens.apps.bibleassistant';
 /** The route both link shapes land on. */
 export const SUBSCRIBE_PATH = '/subscribe';
 
+/**
+ * The name of the "open this one thing" parameter.
+ *
+ * **One parameter for all three kinds** — a piece, a plan, a board. Their ids
+ * are all uuids and all resolve inside the room, so the recipient works out
+ * which it is; a `?plan=` beside a `?piece=` would be two things to keep in
+ * step and would break the day a fourth kind exists.
+ */
+export const ITEM_PARAM = 'piece';
+
+function withTarget(base: string, itemId?: string): string {
+  return itemId ? `${base}?${ITEM_PARAM}=${encodeURIComponent(itemId)}` : base;
+}
+
 /** The https link — works everywhere, and is the graceful fallback for anyone
  * without the app installed. */
-export function webInviteUrl(code: string): string {
-  return publicAppUrl(`${SUBSCRIBE_PATH}/${formatSpaceCode(code)}`);
+export function webInviteUrl(code: string, itemId?: string): string {
+  return publicAppUrl(withTarget(`${SUBSCRIBE_PATH}/${formatSpaceCode(code)}`, itemId));
+}
+
+/**
+ * Which piece, plan or board an invitation points at, if any.
+ *
+ * Liberal about the parameter's name at this one boundary — the same habit
+ * `parseSpaceCodeInput` already has — because links live a long time in
+ * messages and being generous about what arrives costs three lines.
+ */
+export function inviteTarget(search: string): string | null {
+  const params = new URLSearchParams(search);
+  return params.get(ITEM_PARAM) ?? params.get('item') ?? null;
 }
 
 /** The link that opens the installed app. Fired from the interstitial, never
  * shared directly — a messenger will not linkify it, and it is a dead end for
  * anyone who does not have the app. */
-export function appInviteUrl(code: string): string {
-  return `${APP_SCHEME}://subscribe/${formatSpaceCode(code)}`;
+export function appInviteUrl(code: string, itemId?: string): string {
+  return withTarget(`${APP_SCHEME}://subscribe/${formatSpaceCode(code)}`, itemId);
 }
 
 /**

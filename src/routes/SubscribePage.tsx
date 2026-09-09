@@ -7,6 +7,8 @@ import { copyText } from '@/lib/nativeBridge';
 import { formatSpaceCode, keyFingerprint, parseSpaceCodeInput } from '@/lib/spaceCode';
 import {
   appInviteUrl,
+  inviteTarget,
+  ITEM_PARAM,
   needsAppHandOff,
   STAY_ON_WEB_PARAM,
   stayingOnWeb,
@@ -75,10 +77,17 @@ export function SubscribePage() {
   // where the link was trying to get to, and on a desktop there is no app.
   const location = useLocation();
   const handOff = needsAppHandOff() && !stayingOnWeb(location.search);
-  const stayHere = () =>
-    navigate(`${ROUTES.subscribe}/${raw ?? ''}?${STAY_ON_WEB_PARAM}=1`, {
-      replace: true,
-    });
+  /** The piece, plan or board this link points at, if it names one. */
+  const target = inviteTarget(location.search);
+  const stayHere = () => {
+    // Built from the URL that is already here rather than from scratch: this
+    // used to rebuild it from `raw` alone, which would silently drop the
+    // target — the same class of bug as the wizard's `onDone` eating the
+    // invitation outright.
+    const params = new URLSearchParams(location.search);
+    params.set(STAY_ON_WEB_PARAM, '1');
+    navigate(`${ROUTES.subscribe}/${raw ?? ''}?${params.toString()}`, { replace: true });
+  };
 
   const [peek, setPeek] = useState<SpacePeekResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -186,7 +195,7 @@ export function SubscribePage() {
             // A plain assignment, from a real tap: if nothing handles the
             // scheme the page simply stays put, which is the whole reason this
             // is a button.
-            window.location.href = appInviteUrl(code);
+            window.location.href = appInviteUrl(code, target ?? undefined);
           }}
         >
           {t('community.invite.openApp')}
@@ -306,6 +315,17 @@ export function SubscribePage() {
 
   if (asked || existing?.status === 'accepted') {
     const accepted = existing?.status === 'accepted';
+    // Where "done" goes. With a target the room is the honest destination
+    // either way: accepted, it lists the thing and opens it in one tap;
+    // pending, it renders the waiting state, mounts `useCommunityRefresh` —
+    // which polls every 15s while anything is pending — and fills itself in
+    // the moment the author accepts. `SubscribePage` does not poll, so keeping
+    // the user here would be a dead end. No stash: the target stays in the URL,
+    // which is the route-is-the-pending-state design one hop further on.
+    const done = () =>
+      navigate(
+        target ? `${ROUTES.rooms}/${code}?${ITEM_PARAM}=${encodeURIComponent(target)}` : ROUTES.spaces,
+      );
     return (
       <Sheet
         title={accepted ? t('community.invite.alreadyIn') : t('community.pending')}
@@ -314,7 +334,7 @@ export function SubscribePage() {
         <p className="text-sm text-ink-muted">
           {accepted ? t('community.invite.alreadyInHint') : t('community.invite.askedHint')}
         </p>
-        <Action onClick={() => navigate(ROUTES.spaces)}>{t('community.title')}</Action>
+        <Action onClick={done}>{t(target ? 'community.openRoom' : 'community.title')}</Action>
       </Sheet>
     );
   }

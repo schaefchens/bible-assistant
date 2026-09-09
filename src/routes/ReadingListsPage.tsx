@@ -4,6 +4,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ROUTES } from '@/lib/appRoutes';
 import { useGoBack } from '@/hooks/useGoBack';
 import { ReadingListDetail } from '@/components/reading/ReadingListDetail';
+import { resolveListById } from '@/services/community/sharedReading';
+import { useCommunityStore } from '@/store/communityStore';
 import { ProgressBar } from '@/components/reading/ProgressBar';
 import { useLibraryStore } from '@/store/libraryStore';
 import {
@@ -31,6 +33,17 @@ export function ReadingListsPage() {
   /** Ids created in this session, so the detail view opens straight into edit
    * mode for a list that is still blank. */
   const [freshIds, setFreshIds] = useState<string[]>([]);
+  const mirroredLists = useCommunityStore((s) => s.mirroredLists);
+  const copySharedList = useCommunityStore((s) => s.copySharedList);
+
+  /** Fork a shared plan and open the copy, which is the thing the user wanted. */
+  const copyShared = useCallback(
+    async (listId: string) => {
+      const id = await copySharedList(listId);
+      if (id) navigate(`/lists/${id}`, { replace: true });
+    },
+    [copySharedList, navigate],
+  );
 
   // Not a nav tab, so without this the index is a dead end: you arrive from the
   // picker on Chat or Read and nothing returns you there.
@@ -43,12 +56,27 @@ export function ReadingListsPage() {
     navigate(`/lists/${list.id}`);
   }, [navigate, upsert]);
 
-  const open = routeId ? lists.find((l) => l.id === routeId) : undefined;
+  // Resolved across both, so `/lists/:id` is the honest answer to "show me
+  // this plan" whether it is the user's or one shared into a room they follow.
+  // The picker's manage button leads here for either.
+  const open = routeId ? resolveListById(routeId, { lists, mirroredLists }) : null;
   if (routeId) {
-    // A list deleted on another device (or a stale link) shouldn't strand the
-    // user on a blank screen.
+    // A list deleted on another device, a plan the author withdrew, or a stale
+    // link — none of them should strand the user on a blank screen.
     if (!open) return <MissingList />;
-    return <ReadingListDetail list={open} startEditing={freshIds.includes(open.id)} />;
+    if (!open.mine) {
+      return (
+        <ReadingListDetail
+          list={open.list}
+          shared={{
+            author: open.author,
+            code: open.code ?? '',
+            onCopy: () => void copyShared(open.list.id),
+          }}
+        />
+      );
+    }
+    return <ReadingListDetail list={open.list} startEditing={freshIds.includes(open.list.id)} />;
   }
 
   return (

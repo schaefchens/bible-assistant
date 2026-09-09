@@ -29,6 +29,8 @@ import {
 import {
   handleListSpaces,
   handleReadNew,
+  handleShareBoard,
+  handleSharePlan,
   handleReadSpace,
   handleWritePost,
 } from './handlers/spaces';
@@ -98,6 +100,8 @@ const TOOL_REGISTRY: { [N in ToolName]: ToolHandler<N> } = {
   write_post: (args) => handleWritePost(args),
   read_space: (args) => handleReadSpace(args),
   read_new: (args) => handleReadNew(args),
+  share_plan: (args) => handleSharePlan(args),
+  share_board: (args) => handleShareBoard(args),
   set_language: (args) => handleSetLanguage(args),
   set_translation: (args) => handleSetTranslation(args),
   set_voice: (args) => handleSetVoice(args),

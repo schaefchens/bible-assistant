@@ -5,6 +5,7 @@ import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { ChatPage } from '@/routes/ChatPage';
 import { ReadPage } from '@/routes/ReadPage';
 import { ReadingListsPage } from '@/routes/ReadingListsPage';
+import { RoomPage } from '@/routes/RoomPage';
 import { SpacesPage } from '@/routes/SpacesPage';
 import { SubscribePage } from '@/routes/SubscribePage';
 import { CardsPage } from '@/routes/CardsPage';
@@ -37,6 +38,11 @@ export default function App() {
             <Route path="lists/:id" element={<ReadingListsPage />} />
             <Route path="spaces" element={<SpacesPage />} />
             <Route path="spaces/:id" element={<SpacesPage />} />
+            {/* A room somebody else owns, by share code — the reader's side of
+                `/spaces/:id`. Nested so a shared board is reached through the
+                room that grants access to it. */}
+            <Route path="rooms/:code" element={<RoomPage />} />
+            <Route path="rooms/:code/boards/:itemId" element={<RoomPage />} />
             <Route path="subscribe/:code" element={<SubscribePage />} />
             <Route path="cards" element={<CardsPage />} />
             <Route path="cards/:cardId" element={<CardsPage />} />

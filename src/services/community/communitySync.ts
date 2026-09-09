@@ -1,7 +1,7 @@
 import { db, PROFILE_PREF_KEY, stripLocal, type LocalProfile, type SyncOp } from '@/db/dexie';
 import * as api from '@/services/api/community';
 import { ApiError } from '@/services/api/client';
-import type { Membership, Post, Space, Subscription } from '@/types/domain';
+import type { Membership, Post, SharedItem, Space, Subscription } from '@/types/domain';
 
 /**
  * The community half of the sync engine.
@@ -14,7 +14,7 @@ import type { Membership, Post, Space, Subscription } from '@/types/domain';
  *
  * Reading *other people's* spaces is not here at all: that is
  * `refreshSubscriptions()` in the store, which writes only to the `feedPosts`
- * cache and never to the queue.
+ * and `feedItems` caches and never to the queue.
  */
 
 const COMMUNITY_OPS = [
@@ -25,6 +25,8 @@ const COMMUNITY_OPS = [
   'spaceCode.set',
   'post.upsert',
   'post.delete',
+  'item.upsert',
+  'item.delete',
   'subscription.upsert',
   'subscription.delete',
   'membership.decide',
@@ -45,7 +47,7 @@ export function isCommunityOp(op: SyncOp['op']): op is CommunityOp {
  * made between enqueue and flush must stay dirty, or it would never be sent.
  */
 async function settleIfUnchanged(
-  table: 'spaces' | 'posts',
+  table: 'spaces' | 'posts' | 'sharedItems',
   id: string,
   updatedAt: number,
 ): Promise<void> {
@@ -108,6 +110,38 @@ export async function flushCommunityOp(op: CommunityOp, payload: unknown): Promi
       await api.deletePost(id, spaceId);
       break;
     }
+    case 'item.upsert': {
+      // The payload is not in the op. It can be ~100KB, and the queue is a
+      // Dexie table that is read whole on every flush and on every
+      // `refreshPendingOps` — so the op carries the id and the payload is read
+      // back from the row it belongs to. That also means a republish queued
+      // twice sends the *current* payload once rather than a stale one twice.
+      const { id } = payload as { id: string };
+      const row = await db.sharedItems.get(id);
+      // Withdrawn or deleted between enqueue and flush: the matching
+      // `item.delete` is already behind this one in the queue.
+      if (!row || row.deleted === 1 || row.shared !== 1) break;
+      const item = stripLocal(row) as SharedItem & { payload?: string; sourceUpdatedAt?: number };
+      delete item.payload;
+      delete item.sourceUpdatedAt;
+      try {
+        await api.upsertItem(item, row.payload);
+      } catch (e) {
+        // Exactly the post rule: a refused share must not keep claiming to be
+        // shared once its op has been dropped as a permanent 4xx.
+        if (e instanceof ApiError && e.message === 'content_refused') {
+          await db.sharedItems.update(id, { shared: 0, dirty: 0 });
+        }
+        throw e;
+      }
+      await settleIfUnchanged('sharedItems', id, row.updatedAt);
+      break;
+    }
+    case 'item.delete': {
+      const { id, spaceId } = payload as { id: string; spaceId: string };
+      await api.deleteItem(id, spaceId);
+      break;
+    }
     case 'subscription.upsert': {
       const sub = payload as Subscription;
       await api.upsertSubscription(sub);
@@ -146,6 +180,8 @@ type PulledCommunity = {
   profile: LocalProfile | null;
   spaces: Space[];
   posts: Post[];
+  /** Headers only — a payload lives in the row it was published from. */
+  items: SharedItem[];
   subscriptions: Subscription[];
   members: Membership[];
 };
@@ -160,11 +196,13 @@ type PulledCommunity = {
  *
  * The merge rules match the rest of the store — a local row blocks a remote one
  * only while it has a genuinely pending op — with **one asymmetry that matters**:
- * posts absent from the server are never deleted locally. The server holds only
- * what is currently *shared*, so a draft, or a post withdrawn by leaving the
- * community, legitimately has no remote counterpart. Treating "missing" as
- * "deleted" here would quietly destroy the user's own writing, which is the one
- * outcome this feature must never produce.
+ * posts and shared items absent from the server are never deleted locally. The
+ * server holds only what is currently *shared*, so a draft, or a piece
+ * withdrawn by leaving the community, legitimately has no remote counterpart.
+ * Treating "missing" as "deleted" here would quietly destroy the user's own
+ * writing, which is the one outcome this feature must never produce. The cost
+ * is the known wart it always was: a withdrawal on one device leaves the row
+ * marked shared on another until an explicit delete syncs.
  */
 export async function pullCommunity(): Promise<PulledCommunity> {
   const [profileResp, spacesResp, subsResp, membersResp] = await Promise.all([
@@ -180,6 +218,10 @@ export async function pullCommunity(): Promise<PulledCommunity> {
     remoteSpaces.map((s) => api.listPosts(s.id).catch(() => ({ posts: [] as Post[] }))),
   );
   const remotePosts = postLists.flatMap((r) => r.posts ?? []);
+  const itemLists = await Promise.all(
+    remoteSpaces.map((s) => api.listItems(s.id).catch(() => ({ items: [] as SharedItem[] }))),
+  );
+  const remoteItems = itemLists.flatMap((r) => r.items ?? []);
 
   const queued = await db.syncQueue.toArray();
   const pending = (op: CommunityOp, idOf: (payload: unknown) => string | undefined) => {
@@ -193,13 +235,14 @@ export async function pullCommunity(): Promise<PulledCommunity> {
   };
   const pendingSpaces = pending('space.upsert', (p) => (p as Space | null)?.id);
   const pendingPosts = pending('post.upsert', (p) => (p as Post | null)?.id);
+  const pendingItems = pending('item.upsert', (p) => (p as { id?: string } | null)?.id);
   const pendingSubs = pending('subscription.upsert', (p) => (p as Subscription | null)?.code);
   const profileBlocked = queued.some((q) => q.op === 'profile.set' || q.op === 'profile.delete');
   const membersBlocked = queued.some((q) => q.op === 'membership.decide');
 
   await db.transaction(
     'rw',
-    [db.preferences, db.spaces, db.posts, db.subscriptions, db.memberships],
+    [db.preferences, db.spaces, db.posts, db.sharedItems, db.subscriptions, db.memberships],
     async () => {
       const localProfile = (await db.preferences.get(PROFILE_PREF_KEY))?.value as
         | LocalProfile
@@ -233,6 +276,25 @@ export async function pullCommunity(): Promise<PulledCommunity> {
         }
       }
 
+      for (const item of remoteItems) {
+        const local = await db.sharedItems.get(item.id);
+        const blocked = local?.dirty === 1 && pendingItems.has(item.id);
+        if (local && (blocked || item.updatedAt <= local.updatedAt)) continue;
+        // The payload is not in the header, and the *author's* device is the
+        // only one that has it — so a device that has never seen this item
+        // keeps the header with an empty payload rather than inventing one.
+        // Republishing from there is refused (see `republishItem`), which is
+        // honest: the source list is not on this device either.
+        await db.sharedItems.put({
+          ...item,
+          payload: local?.payload ?? '',
+          sourceUpdatedAt: local?.sourceUpdatedAt,
+          dirty: 0,
+          deleted: 0,
+          shared: 1,
+        });
+      }
+
       for (const sub of subsResp.subscriptions ?? []) {
         const local = await db.subscriptions.get(sub.code);
         const blocked = local?.dirty === 1 && pendingSubs.has(sub.code);
@@ -258,6 +320,7 @@ export async function pullCommunity(): Promise<PulledCommunity> {
     profile: profileResp.profile ? { ...profileResp.profile, dirty: 0 } : null,
     spaces: remoteSpaces,
     posts: remotePosts,
+    items: remoteItems,
     subscriptions: subsResp.subscriptions ?? [],
     members: membersResp.members ?? [],
   };
@@ -303,6 +366,15 @@ export async function seedCommunityQueue(
     if (row.dirty !== 1 || row.shared !== 1) continue;
     if (row.deleted === 1) await enqueue('post.delete', { id: row.id, spaceId: row.spaceId });
     else await enqueue('post.upsert', stripLocal(row));
+  }
+
+  // Shared items follow the post rule exactly: only a row claiming `shared`
+  // belongs on the server. The op carries the id alone — the payload is read
+  // from the row at flush time, so a 100KB plan never sits in the queue.
+  for (const row of await db.sharedItems.toArray()) {
+    if (row.dirty !== 1 || row.shared !== 1) continue;
+    if (row.deleted === 1) await enqueue('item.delete', { id: row.id, spaceId: row.spaceId });
+    else await enqueue('item.upsert', { id: row.id });
   }
 
   for (const row of await db.subscriptions.toArray()) {

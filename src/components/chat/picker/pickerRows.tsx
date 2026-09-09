@@ -63,6 +63,7 @@ export function LockedSourceRow({
   locked,
   onOpen,
   onManage,
+  manageIcon,
   manageLabel,
   onClear,
   clearLabel,
@@ -73,6 +74,12 @@ export function LockedSourceRow({
   locked: boolean;
   onOpen: () => void;
   onManage: () => void;
+  /**
+   * Defaults to a pencil, which is right whenever the manage target can be
+   * edited. Somebody else's shared plan cannot, and a pencil on it is a promise
+   * the screen does not keep — that row passes a chevron instead.
+   */
+  manageIcon?: React.ReactNode;
   manageLabel: string;
   onClear: () => void;
   clearLabel: string;
@@ -102,7 +109,7 @@ export function LockedSourceRow({
         title={manageLabel}
         className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-ink-muted hover:text-brand hover:bg-brand/10 transition-colors"
       >
-        <PencilIcon />
+        {manageIcon ?? <PencilIcon />}
       </button>
 
       {locked && (

@@ -49,6 +49,22 @@ function subscriptionsPath(string $userDir): string { return $userDir . '/subscr
 function spacePostsPath(string $userDir, string $spaceId): string {
     return $userDir . '/posts/' . $spaceId . '.json';
 }
+/** A room's shared items — plans and boards. Headers only; see itemPayloadPath. */
+function spaceItemsPath(string $userDir, string $spaceId): string {
+    return $userDir . '/items/' . $spaceId . '.json';
+}
+/**
+ * One shared item's payload, in a file of its own.
+ *
+ * Kept out of the header file because space.feed is polled on every foreground
+ * — and every 15s while a subscription is pending — so a room's worth of plans
+ * riding along would be megabytes an hour. Callers must pass an id that has
+ * been through `safeUuid`: this is the one place in the community code where a
+ * caller-supplied string becomes a filename.
+ */
+function itemPayloadPath(string $userDir, string $itemId): string {
+    return $userDir . '/payloads/' . $itemId . '.json';
+}
 
 function sanitizeProfile(array $p): array {
     $key = safeString($p['authorKey'] ?? '', 128);
@@ -108,6 +124,101 @@ function sanitizePost(array $po): array {
         'authorKey' => $key === null ? null : strtolower($key),
         'sigVersion' => optString($po['sigVersion'] ?? null, 32),
     ];
+}
+
+/**
+ * Whitelist one shared item **header**.
+ *
+ * Same standing as sanitizePost: every field here is covered by the client's
+ * signature, so getting it wrong makes an honest plan fail verification on the
+ * reader's device rather than merely letting something odd through.
+ *
+ * The payload is deliberately not part of this. It is an opaque JSON string as
+ * far as PHP is concerned — validated for size and well-formedness, never
+ * reshaped — which is what keeps the plan and board schemas from existing a
+ * second time here, in a language that would have to be kept in agreement with
+ * TypeScript by hand.
+ */
+function sanitizeSharedItem(array $it): array {
+    $kind = ($it['kind'] ?? '') === 'board' ? 'board' : 'plan';
+    $lang = ($it['language'] ?? '') === 'de' ? 'de' : 'en';
+    $sig = optString($it['signature'] ?? null, 256);
+    $key = optString($it['authorKey'] ?? null, 128);
+    $hash = strtolower(safeString($it['payloadHash'] ?? '', 128));
+    if ($sig !== null && !preg_match('/^[0-9a-f]{128}$/i', $sig)) fail(400, 'invalid signature');
+    if ($key !== null && !preg_match('/^[0-9a-f]{64}$/i', $key)) fail(400, 'invalid authorKey');
+    if (!preg_match('/^[0-9a-f]{64}$/', $hash)) fail(400, 'invalid payloadHash');
+    return [
+        'id' => safeUuid($it['id'] ?? '', 'item id'),
+        'spaceId' => safeUuid($it['spaceId'] ?? '', 'space id'),
+        'kind' => $kind,
+        'title' => safeString($it['title'] ?? '', 200),
+        'language' => $lang,
+        'payloadHash' => $hash,
+        'payloadBytes' => safeInt($it['payloadBytes'] ?? 0),
+        'publishedAt' => safeInt($it['publishedAt'] ?? 0),
+        'createdAt' => safeInt($it['createdAt'] ?? 0),
+        'updatedAt' => safeInt($it['updatedAt'] ?? 0),
+        'signature' => $sig === null ? null : strtolower($sig),
+        'authorKey' => $key === null ? null : strtolower($key),
+        'sigVersion' => optString($it['sigVersion'] ?? null, 32),
+    ];
+}
+
+/** The shared-item twin of verifyPostSignature; everything said there applies. */
+function verifyItemSignature(array $item): bool {
+    if (!$item['signature'] || !$item['authorKey'] || $item['sigVersion'] !== 'ba.item.v1') return false;
+    if (!function_exists('sodium_crypto_sign_verify_detached')) return true;
+    $message = implode("\n", [
+        'ba.item.v1',
+        strtolower((string)$item['authorKey']),
+        (string)$item['spaceId'],
+        (string)$item['id'],
+        (string)$item['kind'],
+        (string)(int)$item['publishedAt'],
+        (string)(int)$item['updatedAt'],
+        (string)$item['language'],
+        hash('sha256', (string)$item['title']),
+        strtolower((string)$item['payloadHash']),
+    ]);
+    try {
+        return sodium_crypto_sign_verify_detached(
+            hex2bin((string)$item['signature']),
+            $message,
+            hex2bin((string)$item['authorKey']),
+        );
+    } catch (\Throwable) {
+        return false;
+    }
+}
+
+/**
+ * Every human-written string inside a payload, for the moderator to judge.
+ *
+ * A plan's day titles and entry labels, and a board's card titles and notes,
+ * are free text going to other people, so they have to go through the same
+ * judge a piece does. That check has to run **here** — a check the client
+ * performs is a check a modified client skips — which means the server needs
+ * the text without knowing the schema.
+ *
+ * So: walk the decoded JSON and collect every string. Domain-ignorant by
+ * design, so a payload shape this build has never seen is still judged.
+ * Single characters and uuids are dropped as noise; nothing else is
+ * interpreted. The result is capped, because MODERATION_POLICY plus a whole
+ * year-plan would be a large prompt for no extra signal.
+ */
+function moderationTextOf(string $payload): string {
+    $decoded = json_decode($payload, true);
+    $out = [];
+    $walk = function (mixed $node) use (&$walk, &$out): void {
+        if (is_string($node)) {
+            if (mb_strlen($node) > 1 && !preg_match('/^[0-9a-fA-F-]{36}$/', $node)) $out[] = $node;
+            return;
+        }
+        if (is_array($node)) foreach ($node as $child) $walk($child);
+    };
+    $walk($decoded);
+    return mb_substr(implode("\n", $out), 0, 12000);
 }
 
 function sanitizeSubscription(array $su): array {

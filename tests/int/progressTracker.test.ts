@@ -54,6 +54,7 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
 beforeEach(async () => {
   await Promise.all([db.readingProgress.clear(), db.syncQueue.clear()]);
   useLibraryStore.setState({ readingLists: [], readingProgress: {}, online: false, pendingOps: 0 });
+  useCommunityStore.setState({ mirroredLists: [] });
   useSettingsStore.setState({ translation: 'KJV', syncEnabled: false });
 });
 
@@ -71,6 +72,49 @@ describe('no provenance means nothing to record', () => {
     noteEntryFinished({ listId: 'gone', entryId: 'e1' });
     await settle();
     expect(useLibraryStore.getState().readingProgress.gone).toBeUndefined();
+  });
+});
+
+/**
+ * Reading somebody else's plan has to count, and count as *yours*.
+ *
+ * `noteEntryFinished` resolved its list against `libraryStore` alone, so a plan
+ * mirrored out of a room missed and returned early: a subscriber could read the
+ * whole thing with the progress bar and the Continue button sitting at zero.
+ *
+ * The tick lands on an ordinary `readingProgress` row keyed by the **author's**
+ * list id, in this user's own account — which is what makes it sync across
+ * their devices with no server change at all.
+ */
+describe("somebody else's plan is ticked, on the reader's own row", () => {
+  beforeEach(() => {
+    useLibraryStore.setState({ readingLists: [] });
+    useCommunityStore.setState({
+      mirroredLists: [
+        {
+          list: simple,
+          code: 'ROOMCODE',
+          itemId: 'I1',
+          author: 'Christoph',
+          authorKey: 'ab'.repeat(32),
+          updatedAt: 0,
+        },
+      ],
+    });
+  });
+
+  it('ticks a passage of a mirrored plan', async () => {
+    noteEntryFinished({ listId: 'L1', entryId: 'e1' });
+    await settle();
+    expect(completed()).toEqual(['e1']);
+  });
+
+  it('keys the row by the author\'s list id, so it is the same row either way', async () => {
+    noteEntryStarted({ listId: 'L1', entryId: 'e2' });
+    await settle();
+    expect(useLibraryStore.getState().readingProgress.L1?.currentEntryId).toBe('e2');
+    // Stored, not just in the store — this row syncs like any other.
+    expect((await db.readingProgress.get('L1'))?.currentEntryId).toBe('e2');
   });
 });
 

@@ -29,9 +29,18 @@ export function BoardCardsView({
   cards: Card[];
   editMode: boolean;
   onOpen: (card: Card) => void;
-  onReorder: (fromId: string, toId: string) => void;
-  onRemove: (card: Card) => void;
-  onLayoutCommit: (cardId: string, layout: FreeformCardLayout) => void;
+  /**
+   * The three mutating paths, all optional together.
+   *
+   * A shared board omits them, which is what makes it read-only *by
+   * construction* rather than by a set of guards somebody has to keep right:
+   * the sortable is not armed, the remove control is not rendered, and the
+   * corkboard has nothing to commit. Passing no-ops instead would leave every
+   * gesture live and only the outcome missing.
+   */
+  onReorder?: (fromId: string, toId: string) => void;
+  onRemove?: (card: Card) => void;
+  onLayoutCommit?: (cardId: string, layout: FreeformCardLayout) => void;
 }) {
   const { t } = useTranslation();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -63,7 +72,9 @@ export function BoardCardsView({
         key={board.id}
         board={board}
         cards={cards}
-        editMode={editMode}
+        // Arranging is a mutation, so a board with nowhere to commit to is
+        // never in edit mode however the caller was rendered.
+        editMode={editMode && onLayoutCommit !== undefined}
         onOpen={onOpen}
         onLayoutCommit={onLayoutCommit}
       />

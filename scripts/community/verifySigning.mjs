@@ -15,9 +15,17 @@ import { wordlist } from '@scure/bip39/wordlists/english.js';
 import {
   canonicalPostMessage,
   deriveSigningKey,
+  signItemWith,
   signPostWith,
+  verifyItem,
   verifyPost,
 } from '../../src/lib/postSignature.ts';
+import {
+  buildBoardPayload,
+  buildPlanPayload,
+  payloadBytes,
+  payloadHash,
+} from '../../src/services/community/sharedPayload.ts';
 import { postParagraphs, postToUnits } from '../../src/services/community/postUnits.ts';
 import {
   codeCarriesFingerprint,
@@ -295,6 +303,135 @@ check('rendered text and spoken text are the same string', () => {
     assert.equal(u.text.trim(), u.text);
     assert.doesNotMatch(u.text, /\n/);
   }
+});
+
+console.log('shared items');
+
+const plan = {
+  id: 'e3b0c442-0000-4000-8000-0000000000b1',
+  name: 'Jona in drei Tagen',
+  description: 'Ein kurzer Plan.',
+  days: [
+    {
+      id: 'e3b0c442-0000-4000-8000-0000000000d1',
+      title: 'Tag 1',
+      entries: [{ id: 'e3b0c442-0000-4000-8000-0000000000e1', bookId: 32, chapter: 1, label: 'Morgens' }],
+    },
+  ],
+  createdAt: 1_700_000_000_000,
+  updatedAt: 1_700_000_000_000,
+};
+
+const planPayload = buildPlanPayload(plan);
+const itemBase = {
+  id: 'e3b0c442-0000-4000-8000-0000000000c1',
+  spaceId: post.spaceId,
+  kind: 'plan',
+  title: plan.name,
+  language: 'de',
+  payloadHash: payloadHash(planPayload),
+  payloadBytes: payloadBytes(planPayload),
+  publishedAt: 1_700_000_000_000,
+  createdAt: 1_700_000_000_000,
+  updatedAt: 1_700_000_000_000,
+};
+const signedItem = { ...itemBase, ...signItemWith(itemBase, pair) };
+
+check('a genuine shared item verifies against the pinned key', () => {
+  assert.equal(verifyItem(signedItem, keyHex), true);
+});
+
+check('the payload is a stable function of the plan', () => {
+  // The hash is signed, so this is a format: if two runs of the same build
+  // disagree, every signature already published stops verifying.
+  assert.equal(buildPlanPayload(plan), planPayload);
+  assert.equal(buildPlanPayload(structuredClone(plan)), planPayload);
+});
+
+check('an absent optional is omitted, never null', () => {
+  const bare = { ...plan, description: undefined, emoji: '', days: [{ ...plan.days[0], title: undefined }] };
+  const out = buildPlanPayload(bare);
+  assert.equal(out.includes('null'), false);
+  assert.equal(out.includes('"description"'), false);
+  assert.equal(out.includes('"title"'), false);
+});
+
+check("a board's freeform keys are sorted, so insertion order cannot change the hash", () => {
+  // `freeform` is a Record keyed by card id. Two devices holding the same board
+  // would otherwise produce two payloads and therefore two hashes.
+  const now = 1_700_000_000_000;
+  const layout = { x: 0.1, y: 0.2, w: 0.3, h: 0.4, rotation: 2, z: 1 };
+  const cards = ['a', 'b', 'c'].map((id) => ({ id, title: id, references: [], createdAt: now, updatedAt: now }));
+  const board = { id: 'bd', name: 'Merkverse', cardIds: ['a', 'b', 'c'], createdAt: now, updatedAt: now };
+  const one = buildBoardPayload({ ...board, freeform: { c: layout, a: layout, b: layout } }, cards);
+  const two = buildBoardPayload({ ...board, freeform: { a: layout, b: layout, c: layout } }, cards);
+  assert.equal(one, two);
+});
+
+check('a board ships only the cards it actually names', () => {
+  // A deleted card leaves its id behind in every board that held it, so
+  // shipping the dangling id would make the recipient's count disagree with
+  // what they can see — and `freeform` would place a card that is not there.
+  const now = 1_700_000_000_000;
+  const cards = [{ id: 'a', title: 'A', references: [], createdAt: now, updatedAt: now }];
+  const layout = { x: 0, y: 0, w: 1, h: 1, rotation: 0, z: 0 };
+  const out = JSON.parse(
+    buildBoardPayload(
+      { id: 'bd', name: 'B', cardIds: ['a', 'gone'], freeform: { a: layout, gone: layout }, createdAt: now, updatedAt: now },
+      cards,
+    ),
+  );
+  assert.deepEqual(out.board.cardIds, ['a']);
+  assert.deepEqual(Object.keys(out.board.freeform), ['a']);
+  assert.equal(out.cards.length, 1);
+});
+
+check('a data: background is dropped rather than shipped', () => {
+  const now = 1_700_000_000_000;
+  const big = `data:image/png;base64,${'A'.repeat(400)}`;
+  const out = JSON.parse(buildBoardPayload({ id: 'bd', name: 'B', cardIds: [], background: big, createdAt: now, updatedAt: now }, []));
+  assert.equal('background' in out.board, false);
+  const https = JSON.parse(buildBoardPayload({ id: 'bd', name: 'B', cardIds: [], background: 'https://example.test/x.png', createdAt: now, updatedAt: now }, []));
+  assert.equal(https.board.background, 'https://example.test/x.png');
+});
+
+check('tampering with any signed field is caught', () => {
+  for (const [field, value] of [
+    ['title', 'Etwas anderes'],
+    ['payloadHash', payloadHash(`${planPayload} `)],
+    ['publishedAt', signedItem.publishedAt + 1],
+    ['updatedAt', signedItem.updatedAt + 1],
+    ['spaceId', 'e3b0c442-0000-4000-8000-0000000000ff'],
+    ['id', 'e3b0c442-0000-4000-8000-0000000000fe'],
+    ['language', 'en'],
+  ]) {
+    assert.equal(verifyItem({ ...signedItem, [field]: value }, keyHex), false, `tampered ${field} accepted`);
+  }
+});
+
+check("a plan's signature cannot be lifted onto a board", () => {
+  // `kind` is in the message for exactly this: every other field can be equal
+  // between the two, and a reader would parse a plan's payload as a board's.
+  assert.equal(verifyItem({ ...signedItem, kind: 'board' }, keyHex), false);
+});
+
+check('an item signed by another key is refused, however valid its own signature', () => {
+  const other = deriveSigningKey(generateMnemonic(wordlist, 128));
+  const lifted = { ...itemBase, ...signItemWith(itemBase, other) };
+  assert.equal(verifyItem(lifted, keyHex), false);
+  assert.equal(verifyItem(lifted, bytesToHex(other.publicKey)), true);
+});
+
+check('an unsigned or wrongly-versioned item is refused', () => {
+  assert.equal(verifyItem(itemBase, keyHex), false);
+  assert.equal(verifyItem({ ...signedItem, sigVersion: 'ba.post.v1' }, keyHex), false);
+  assert.equal(verifyItem({ ...signedItem, sigVersion: 'ba.item.v2' }, keyHex), false);
+});
+
+check('payloadBytes counts UTF-8, which is what the server caps', () => {
+  const withUmlauts = buildPlanPayload({ ...plan, name: 'Über Jona' });
+  assert.equal(payloadBytes(withUmlauts), new TextEncoder().encode(withUmlauts).length);
+  assert.ok(payloadBytes(withUmlauts) > withUmlauts.length, 'a multi-byte character costs more than one');
 });
 
 console.log(`\n${checks} checks passed`);

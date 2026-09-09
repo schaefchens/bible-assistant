@@ -11,14 +11,25 @@ import {
   segmentId,
   type SegmentRef,
 } from '@/services/reading/readingSequence';
+import { resolveListById } from '@/services/community/sharedReading';
 import { readerSequenceFrom } from '@/services/reading/readerSequence';
 import { isFlatList } from '@/services/reading/readingEntries';
-import type { ReadingList } from '@/types/domain';
+import type { MirroredList, ReadingList } from '@/types/domain';
 
 const GENESIS = 1;
 const JONAH = 32;
 const JOHN = 43;
 const REVELATION = 66;
+
+/** One plan as it arrives from a room. */
+const mirror = (l: ReadingList, code: string): MirroredList => ({
+  list: l,
+  code,
+  itemId: 'I1',
+  author: 'Christoph',
+  authorKey: 'ab'.repeat(32),
+  updatedAt: 0,
+});
 
 const list = (over: Partial<ReadingList> = {}): ReadingList => ({
   id: 'L1',
@@ -302,7 +313,15 @@ describe('sameSource', () => {
  * source can outlive what it points at when another device deletes it.
  */
 describe('readerSequenceFrom', () => {
-  const empty = { lists: [], profile: null, spaces: [], posts: [], subscriptions: [], feed: {} };
+  const empty = {
+    lists: [],
+    mirroredLists: [],
+    profile: null,
+    spaces: [],
+    posts: [],
+    subscriptions: [],
+    feed: {},
+  };
   const plan = list({ days: [{ id: 'd1', entries: [{ id: 'e1', bookId: JONAH, chapter: 1 }] }] });
 
   it('walks a list when the list is there', () => {
@@ -315,6 +334,18 @@ describe('readerSequenceFrom', () => {
     const seq = readerSequenceFrom({ kind: 'list', listId: 'gone' }, 'KJV', empty);
     expect(seq.all()).toBeNull();
     expect(seq.first()).toEqual({ translation: 'KJV', bookId: GENESIS, chapter: 1 });
+  });
+
+  it('walks a plan mirrored out of a room, exactly as it walks an own one', () => {
+    // The premise of the whole feature: a mirror carries the author's list id,
+    // so `listSequence` — and therefore `segmentId`, provenance and progress —
+    // cannot tell the two apart.
+    const seq = readerSequenceFrom({ kind: 'list', listId: 'L1', code: 'ROOM' }, 'KJV', {
+      ...empty,
+      mirroredLists: [mirror(plan, 'ROOM')],
+    });
+    expect(seq.all()).toHaveLength(1);
+    expect(seq.all()?.[0]).toMatchObject({ listId: 'L1', entryId: 'e1' });
   });
 
   it('falls back to the Bible when a space cannot be resolved', () => {
@@ -333,5 +364,51 @@ describe('readerSequenceFrom', () => {
     expect(readerSequenceFrom(BIBLE_SOURCE, 'LUT', empty).first()).toEqual({
       translation: 'LUT', bookId: GENESIS, chapter: 1,
     });
+  });
+});
+
+
+/**
+ * The lookup that replaced eight copies of `readingLists.find(...)`.
+ *
+ * Two of those copies produce wrong audio and lost progress when they miss —
+ * see the module docblock — so what it resolves, and which copy it picks, are
+ * worth pinning rather than inferring from the reader's behaviour.
+ */
+describe('resolveListById', () => {
+  const plan = list({ days: [{ id: 'd1', entries: [{ id: 'e1', bookId: JONAH, chapter: 1 }] }] });
+
+  it('prefers the user\'s own list over a mirror of the same id', () => {
+    // An author who also subscribes to a room holding their own plan must get
+    // the copy they can edit, not a read-only mirror of it.
+    const own = { ...plan, name: 'Mine' };
+    const resolved = resolveListById('L1', {
+      lists: [own],
+      mirroredLists: [mirror({ ...plan, name: 'Theirs' }, 'ROOM')],
+    });
+    expect(resolved).toMatchObject({ mine: true, list: { name: 'Mine' } });
+    expect(resolved?.code).toBeUndefined();
+  });
+
+  it('resolves a mirror, carrying the room and the author', () => {
+    const resolved = resolveListById('L1', { lists: [], mirroredLists: [mirror(plan, 'ROOM')] });
+    expect(resolved).toMatchObject({ mine: false, code: 'ROOM', author: 'Christoph', itemId: 'I1' });
+  });
+
+  it('treats the code as a hint, not a filter', () => {
+    // The same plan shared into two rooms is one reading. A source naming a
+    // room picks that room's copy; a source naming a room the plan has since
+    // left still resolves, rather than the plan vanishing mid-read.
+    const state = {
+      lists: [],
+      mirroredLists: [mirror(plan, 'ONE'), mirror(plan, 'TWO')],
+    };
+    expect(resolveListById('L1', state, 'TWO')?.code).toBe('TWO');
+    expect(resolveListById('L1', state, 'GONE')?.code).toBe('ONE');
+    expect(resolveListById('L1', state)?.code).toBe('ONE');
+  });
+
+  it('answers null for an id neither side has', () => {
+    expect(resolveListById('gone', { lists: [], mirroredLists: [] })).toBeNull();
   });
 });

@@ -9,6 +9,8 @@ import { playReadingList, playSegmentInReader } from '@/lib/readingListPlayback'
 import { BIBLE_SOURCE, expandList } from '@/services/reading/readingSequence';
 import { useGoBack } from '@/hooks/useGoBack';
 import { ROUTES } from '@/lib/appRoutes';
+import { ShareToRoomSheet } from '@/components/community/ShareToRoomSheet';
+import { useCommunityStore } from '@/store/communityStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -28,7 +30,7 @@ import {
   withEntryRemoved,
 } from '@/lib/readingListOperations';
 import type { ReadingEntry, ReadingList } from '@/types/domain';
-import { PlayIcon } from '@/components/common/icons';
+import { PlayIcon, ShareIcon } from '@/components/common/icons';
 import { ChevronIcon } from '@/components/common/icons';
 import { useLocale } from '@/hooks/useLocale';
 
@@ -43,6 +45,16 @@ type Props = {
   /** Opens in edit mode — used right after "New list", where the name is blank
    * and there is nothing to look at yet. */
   startEditing?: boolean;
+  /**
+   * Somebody else's plan, mirrored out of a room.
+   *
+   * A prop rather than a second screen because the read-only version is almost
+   * entirely *this* screen with the edit toggle gone: every structural control
+   * already lives inside `{editing && …}`, and everything that must keep
+   * working — the ticks, the pager, the progress bar, tapping a passage, Play —
+   * is outside it. What it adds is a byline and a way to take a copy.
+   */
+  shared?: { author: string; code: string; onCopy: () => void };
 };
 
 /**
@@ -53,7 +65,7 @@ type Props = {
  * "edit layout", and for the same reason: the controls that rearrange things
  * are in the way of the controls that use them.
  */
-export function ReadingListDetail({ list, startEditing = false }: Props) {
+export function ReadingListDetail({ list, startEditing = false, shared }: Props) {
   const { t } = useTranslation();
   const locale = useLocale();
   const navigate = useNavigate();
@@ -68,8 +80,14 @@ export function ReadingListDetail({ list, startEditing = false }: Props) {
   // Back to wherever this was opened from — the index, or the picker on Chat or
   // Read when the sheet's edit button jumped straight here.
   const goBack = useGoBack(ROUTES.lists);
-  const [editing, setEditing] = useState(startEditing);
+  // A shared plan is never editable; the toggle that would flip this is not
+  // rendered, and the prop cannot become true behind its back.
+  const [editing, setEditing] = useState(shared ? false : startEditing);
   const [addingTo, setAddingTo] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
+  // Owner-only, profile-only: sharing somebody else's plan onward would be
+  // republishing their writing under your own name.
+  const canShare = useCommunityStore((s) => s.profile !== null) && !shared;
 
   const stats = useMemo(() => progressStats(list, progress), [list, progress]);
   const allEntries = useMemo(() => listEntries(list), [list]);
@@ -135,11 +153,13 @@ export function ReadingListDetail({ list, startEditing = false }: Props) {
       if (!segment) return;
       void useReaderStore
         .getState()
-        .setSource({ kind: 'list', listId: list.id })
+        // The room comes along, so the reader's header can name the author and
+        // the sequence prefers that room's copy of the plan.
+        .setSource({ kind: 'list', listId: list.id, ...(shared ? { code: shared.code } : {}) })
         .then(() => goTo(segment));
       navigate('/read');
     },
-    [goTo, list, navigate, translation],
+    [goTo, list, navigate, shared, translation],
   );
 
   /** Read the list aloud from where it left off. The reader follows along, so
@@ -178,23 +198,52 @@ export function ReadingListDetail({ list, startEditing = false }: Props) {
               : t('lists.start')}
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => {
-            setEditing((v) => !v);
-            setAddingTo(null);
-          }}
-          aria-pressed={editing}
-          className={clsx(
-            'h-8 px-3 rounded-lg text-sm transition-colors',
-            editing ? 'bg-brand/20 text-brand' : 'text-ink-muted hover:text-ink',
-          )}
-        >
-          {editing ? t('lists.done') : t('lists.edit')}
-        </button>
+        {/* Beside Play rather than in the edit footer next to Delete: sharing
+            is not a structural edit, and the edit toggle would hide it. */}
+        {canShare && allEntries.length > 0 && !editing && (
+          <button
+            type="button"
+            onClick={() => setSharing(true)}
+            aria-label={t('lists.share') as string}
+            title={t('lists.share') as string}
+            className="h-8 w-8 shrink-0 rounded-lg flex items-center justify-center text-ink-muted hover:text-brand hover:bg-brand/10 transition-colors"
+          >
+            <ShareIcon />
+          </button>
+        )}
+        {shared ? (
+          <button
+            type="button"
+            onClick={shared.onCopy}
+            className="h-8 px-3 shrink-0 rounded-lg border border-brand/40 text-brand text-sm hover:bg-brand/10 transition-colors"
+          >
+            {t('lists.makeCopy')}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setEditing((v) => !v);
+              setAddingTo(null);
+            }}
+            aria-pressed={editing}
+            className={clsx(
+              'h-8 px-3 rounded-lg text-sm transition-colors',
+              editing ? 'bg-brand/20 text-brand' : 'text-ink-muted hover:text-ink',
+            )}
+          >
+            {editing ? t('lists.done') : t('lists.edit')}
+          </button>
+        )}
       </header>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 pb-28">
+        {shared && (
+          <p className="mb-4 rounded-xl bg-surface-raised/40 px-3 py-2 text-[12px] text-ink-muted">
+            {t('lists.readOnly', { author: shared.author })}
+          </p>
+        )}
+
         {editing && (
           <div className="space-y-2 mb-5">
             <DraftInput
@@ -358,6 +407,16 @@ export function ReadingListDetail({ list, startEditing = false }: Props) {
           </div>
         )}
       </div>
+
+      {canShare && (
+        <ShareToRoomSheet
+          kind="plan"
+          sourceId={list.id}
+          sourceUpdatedAt={list.updatedAt}
+          open={sharing}
+          onClose={() => setSharing(false)}
+        />
+      )}
     </div>
   );
 }

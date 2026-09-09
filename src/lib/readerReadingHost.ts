@@ -9,8 +9,8 @@ import {
   segmentId,
   type SegmentRef,
 } from '@/services/reading/readingSequence';
-import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { resolveList } from '@/services/community/sharedReading';
 import {
   isListProvenance,
   isSpaceProvenance,
@@ -115,9 +115,7 @@ export const readerReadingHost: ReadingHost = {
     let ref: SegmentRef | undefined;
     const provenance = opts.provenance;
     if (first && provenance && isListProvenance(provenance)) {
-      const list = useLibraryStore
-        .getState()
-        .readingLists.find((l) => l.id === provenance.listId);
+      const list = resolveList(provenance.listId)?.list;
       ref =
         (list &&
           findListSegment(

@@ -3,6 +3,7 @@ import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { isListProvenance, isSpaceProvenance, type ReadingProvenance } from './readingHosts';
 import { useCommunityStore } from '@/store/communityStore';
+import { resolveList } from '@/services/community/sharedReading';
 
 /**
  * Recording progress through a reading list.
@@ -63,7 +64,9 @@ export function noteEntryFinished(
   }
   if (!isListProvenance(provenance)) return;
   const lib = useLibraryStore.getState();
-  const list = lib.readingLists.find((l) => l.id === provenance.listId);
+  // Across both, or a subscriber reads a whole shared plan and nothing is ever
+  // ticked while the progress bar and Continue sit at zero.
+  const list = resolveList(provenance.listId)?.list;
   if (!list) return;
   if (chapter !== undefined) {
     const own = expandList(list, useSettingsStore.getState().translation).filter(

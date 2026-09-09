@@ -27,17 +27,19 @@ export function useReaderSequence(): ReadingSequence {
   const posts = useCommunityStore((s) => s.posts);
   const subscriptions = useCommunityStore((s) => s.subscriptions);
   const feed = useCommunityStore((s) => s.feed);
+  const mirroredLists = useCommunityStore((s) => s.mirroredLists);
 
   return useMemo(
     () =>
       readerSequenceFrom(source, translation, {
         lists,
+        mirroredLists,
         profile,
         spaces,
         posts,
         subscriptions,
         feed,
       }),
-    [source, translation, lists, profile, spaces, posts, subscriptions, feed],
+    [source, translation, lists, mirroredLists, profile, spaces, posts, subscriptions, feed],
   );
 }

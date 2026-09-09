@@ -94,6 +94,21 @@ const MAX_FEED_POSTS = 50;
 const MAX_AVATAR_BYTES = 512 * 1024;
 
 /**
+ * Caps on shared items — a reading plan or a board published into a room.
+ *
+ * The payload ceiling is much higher than MAX_POST_BYTES because a Bible-in-a-
+ * year plan is 1,189 entries, each carrying a uuid, which lands near 100KB. It
+ * is affordable only because a payload lives in its **own** file and never
+ * appears in a feed response: space.feed serves headers, which are a few
+ * hundred bytes each, and space.item fetches one payload on demand. So the
+ * worst-case whole-file rewrite here is one items/{spaceId}.json of
+ * MAX_ITEMS_PER_SPACE headers, not of payloads.
+ */
+const MAX_ITEM_PAYLOAD_BYTES = 160000;
+const MAX_ITEMS_PER_SPACE = 20;
+const MAX_FEED_ITEMS = 20;
+
+/**
  * URL prefix under which the SPA + this api.php are served.
  * Production: '' — the app sits at the root of its own subdomain. Resolution order:
  *   1) define('BASE_PATH', ...) in secrets.php

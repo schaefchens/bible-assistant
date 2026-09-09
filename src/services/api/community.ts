@@ -5,6 +5,7 @@ import type {
   Post,
   Profile,
   ReportReason,
+  SharedItem,
   Space,
   Subscription,
 } from '@/types/domain';
@@ -13,10 +14,11 @@ import type {
  * HTTP for community spaces.
  *
  * A dedicated module rather than inline `apiPostJson` calls (the convention
- * `libraryStore` uses for cards) because there are seventeen actions and two
- * of them — `space.request` and `space.feed` — read across accounts and return
- * a *projection* rather than a stored record. Giving those their own named
- * response types is what keeps the difference visible at the call site.
+ * `libraryStore` uses for cards) because there are twenty-one actions and
+ * three of them — `space.request`, `space.feed` and `space.item` — read across
+ * accounts and return a *projection* rather than a stored record. Giving those
+ * their own named response types is what keeps the difference visible at the
+ * call site.
  */
 
 type PublicProfile = {
@@ -48,6 +50,16 @@ type SpaceRequestResponse = {
 type SpaceFeedResponse = SpaceRequestResponse & {
   /** Empty unless `status === 'accepted'`. Signatures arrive intact. */
   posts: Post[];
+  /**
+   * Shared plans and boards, **headers only** — a payload is fetched once per
+   * version through {@link getSpaceItem}, because this response is polled on
+   * every foreground.
+   *
+   * Optional on the wire: an api.php older than this client answers without it,
+   * and losing the shelf is a better failure than losing the feed. Every reader
+   * must default it.
+   */
+  items?: SharedItem[];
 };
 
 /* ---- the user's own data ---- */
@@ -106,6 +118,25 @@ export function upsertPost(post: Post): Promise<{ posts: Post[] }> {
 
 export function deletePost(id: string, spaceId: string): Promise<{ posts: Post[] }> {
   return apiPostJson<{ posts: Post[] }>('posts.delete', { id, spaceId });
+}
+
+export function listItems(spaceId: string): Promise<{ items: SharedItem[] }> {
+  return apiPostJson<{ items: SharedItem[] }>('items.list', { spaceId });
+}
+
+/**
+ * Publish a plan or a board into one of the caller's own rooms.
+ *
+ * Header and payload go together because this is the author's own upload, not
+ * a poll — the split exists to keep *reads* small. The server checks that
+ * `sha256(payload)` matches the header's `payloadHash` before storing either.
+ */
+export function upsertItem(item: SharedItem, payload: string): Promise<{ items: SharedItem[] }> {
+  return apiPostJson<{ items: SharedItem[] }>('items.upsert', { item, payload });
+}
+
+export function deleteItem(id: string, spaceId: string): Promise<{ items: SharedItem[] }> {
+  return apiPostJson<{ items: SharedItem[] }>('items.delete', { id, spaceId });
 }
 
 export function listMembers(): Promise<{ members: Membership[] }> {
@@ -172,6 +203,21 @@ export function requestSpace(code: string): Promise<SpaceRequestResponse> {
  */
 export function getSpaceFeed(code: string): Promise<SpaceFeedResponse> {
   return apiPostJson<SpaceFeedResponse>('space.feed', { code });
+}
+
+/**
+ * Fetch one shared item's payload from a subscribed room.
+ *
+ * Separate from the feed because of size: a Bible-in-a-year plan is ~100KB and
+ * the feed is polled constantly. Trust it no further than the feed — the header
+ * commits to `payloadHash`, so the caller must check the payload against it
+ * before storing.
+ */
+export function getSpaceItem(
+  code: string,
+  itemId: string,
+): Promise<{ item: SharedItem; payload: string }> {
+  return apiPostJson<{ item: SharedItem; payload: string }>('space.item', { code, itemId });
 }
 
 /**

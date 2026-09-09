@@ -40,6 +40,8 @@ function handleProfileDelete(array $ctx): void {
         }
     }
     deleteTree($ctx['userDir'] . '/posts');
+    deleteTree($ctx['userDir'] . '/items');
+    deleteTree($ctx['userDir'] . '/payloads');
     foreach ([profilePath($ctx['userDir']), spacesPath($ctx['userDir']), membersPath($ctx['userDir'])] as $f) {
         if (file_exists($f)) @unlink($f);
     }
@@ -92,9 +94,19 @@ function handleSpaceDelete(array $ctx): void {
     ));
     writeJsonFile($path, $spaces);
 
-    // The posts and the subscriber list have no meaning without the space.
+    // The posts, the shared items and the subscriber list have no meaning
+    // without the space. An item's payload lives in a file of its own, so
+    // dropping the header file alone would orphan it.
     $postsFile = spacePostsPath($ctx['userDir'], $id);
     if (file_exists($postsFile)) @unlink($postsFile);
+    $itemsFile = spaceItemsPath($ctx['userDir'], $id);
+    foreach (readJsonArrayFile($itemsFile) as $item) {
+        $itemId = is_array($item) ? (string)($item['id'] ?? '') : '';
+        if (preg_match('/^[0-9a-fA-F-]{36}$/', $itemId)) {
+            @unlink(itemPayloadPath($ctx['userDir'], $itemId));
+        }
+    }
+    if (file_exists($itemsFile)) @unlink($itemsFile);
     $members = array_values(array_filter(
         readJsonArrayFile(membersPath($ctx['userDir'])),
         fn($m) => is_array($m) && ($m['spaceId'] ?? null) !== $id,
@@ -226,6 +238,92 @@ function handlePostDelete(array $ctx): void {
     ));
     writeJsonFile($path, $posts);
     respond(200, ['posts' => $posts]);
+}
+
+/* ------------------------------------------------------------------ *
+ * Shared items — a reading plan or a board published into a room
+ *
+ * Deliberately the same shape as the three post handlers above, because they
+ * are the same job on a second collection. The one structural difference is
+ * that an item is two files: the header, which is listed and fed, and the
+ * payload, which is fetched on demand by space.item.
+ * ------------------------------------------------------------------ */
+
+function handleItemsList(array $ctx): void {
+    $body = readJsonBody();
+    $spaceId = safeUuid($body['spaceId'] ?? '', 'space id');
+    $space = findById(readJsonArrayFile(spacesPath($ctx['userDir'])), $spaceId);
+    $path = spaceItemsPath($ctx['userDir'], $spaceId);
+    $items = readJsonArrayFile($path);
+
+    $pruned = pruneExpired($items, is_array($space) ? ($space['ephemeralHours'] ?? null) : null);
+    if (count($pruned) !== count($items)) writeJsonFile($path, $pruned);
+
+    respond(200, ['items' => $pruned]);
+}
+
+function handleItemUpsert(array $ctx): void {
+    $body = readJsonBody();
+    if (!is_array($body['item'] ?? null)) fail(400, 'item required');
+    if (!is_string($body['payload'] ?? null)) fail(400, 'payload required');
+
+    $item = sanitizeSharedItem($body['item']);
+    $payload = $body['payload'];
+
+    if (strlen($payload) > MAX_ITEM_PAYLOAD_BYTES) fail(400, 'payload too large');
+    if (json_decode($payload, true) === null) fail(400, 'payload is not JSON');
+    // The hash is what the signature commits to, so a payload that does not
+    // match it could never be accepted by a reader anyway — and storing the
+    // pair would give the server a way to serve one that verifies as another.
+    if (!hash_equals($item['payloadHash'], hash('sha256', $payload))) {
+        fail(400, 'payload does not match payloadHash');
+    }
+    // No draft state: the source list or board is the draft.
+    if ($item['publishedAt'] <= 0) fail(400, 'cannot share a draft');
+    if (!verifyItemSignature($item)) fail(400, 'item signature does not verify');
+
+    $space = findById(readJsonArrayFile(spacesPath($ctx['userDir'])), $item['spaceId']);
+    if ($space === null) fail(404, 'unknown space');
+
+    // The un-bypassable half of the moderation check, exactly as for a post.
+    $verdict = moderatePiece($item['title'], moderationTextOf($payload), $item['language']);
+    if (!$verdict['ok']) fail(422, 'content_refused', ['reason' => $verdict['reason']]);
+
+    $path = spaceItemsPath($ctx['userDir'], $item['spaceId']);
+    $items = pruneExpired(readJsonArrayFile($path), $space['ephemeralHours'] ?? null);
+
+    $found = false;
+    foreach ($items as $i => $existing) {
+        if (is_array($existing) && ($existing['id'] ?? null) === $item['id']) {
+            $items[$i] = $item;
+            $found = true;
+            break;
+        }
+    }
+    if (!$found) {
+        if (count($items) >= MAX_ITEMS_PER_SPACE) fail(409, 'too many shared items in this space');
+        $items[] = $item;
+    }
+
+    // Payload first: a header naming a payload that is not there yet reads to a
+    // subscriber as a broken item, while a payload nobody references is inert.
+    writeJsonFile(itemPayloadPath($ctx['userDir'], $item['id']), ['payload' => $payload]);
+    writeJsonFile($path, $items);
+    respond(200, ['items' => $items]);
+}
+
+function handleItemDelete(array $ctx): void {
+    $body = readJsonBody();
+    $id = safeUuid($body['id'] ?? '', 'item id');
+    $spaceId = safeUuid($body['spaceId'] ?? '', 'space id');
+    $path = spaceItemsPath($ctx['userDir'], $spaceId);
+    $items = array_values(array_filter(
+        readJsonArrayFile($path),
+        fn($it) => is_array($it) && ($it['id'] ?? null) !== $id,
+    ));
+    writeJsonFile($path, $items);
+    @unlink(itemPayloadPath($ctx['userDir'], $id));
+    respond(200, ['items' => $items]);
 }
 
 function handleMembersList(array $ctx): void {

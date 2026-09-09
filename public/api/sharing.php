@@ -129,12 +129,18 @@ function handleSpaceRequest(array $ctx): void {
 }
 
 /**
- * Read a space's posts. The one cross-user *read*.
+ * Read a space's posts and the headers of its shared items. A cross-user *read*.
  *
  * Answers only for an accepted member, and answers with projections rather
  * than the stored records. Each post keeps its signature intact so the
  * subscriber's client can verify it against the key it pinned — this endpoint
  * is not trusted, and is not asking to be.
+ *
+ * **Item payloads are not here, on purpose.** This is polled on every
+ * foreground, and every 15s while a subscription is pending, so shipping a
+ * year-long plan's ~100KB with it would cost megabytes an hour. A header
+ * commits to `payloadHash` and so verifies on its own; `space.item` fetches one
+ * payload, once per version.
  */
 function handleSpaceFeed(array $ctx): void {
     $body = readJsonBody();
@@ -161,6 +167,7 @@ function handleSpaceFeed(array $ctx): void {
             'space' => publicSpaceOf($space),
             'owner' => publicProfileOf($target['userDir']),
             'posts' => [],
+            'items' => [],
         ]);
     }
 
@@ -171,10 +178,66 @@ function handleSpaceFeed(array $ctx): void {
 
     usort($pruned, fn($a, $b) => (int)($b['publishedAt'] ?? 0) <=> (int)($a['publishedAt'] ?? 0));
 
+    $itemsPath = spaceItemsPath($target['userDir'], $target['spaceId']);
+    $items = readJsonArrayFile($itemsPath);
+    $prunedItems = pruneExpired($items, $space['ephemeralHours'] ?? null);
+    if (count($prunedItems) !== count($items)) writeJsonFile($itemsPath, $prunedItems);
+
+    usort($prunedItems, fn($a, $b) => (int)($b['publishedAt'] ?? 0) <=> (int)($a['publishedAt'] ?? 0));
+
     respond(200, [
         'status' => 'accepted',
         'space' => publicSpaceOf($space),
         'owner' => publicProfileOf($target['userDir']),
         'posts' => array_slice($pruned, 0, MAX_FEED_POSTS),
+        'items' => array_slice($prunedItems, 0, MAX_FEED_ITEMS),
     ]);
+}
+
+/**
+ * Read one shared item's payload. The second cross-user read.
+ *
+ * Separate from the feed because of size, not because of access: the same
+ * accepted-member gate applies, and the same "not a 403" reasoning would too,
+ * except that there is nothing partial to answer with — a caller who may not
+ * read the room may not read its plan either.
+ *
+ * **The item must be listed in the space the code resolves to.** That binding
+ * is the whole security content of this endpoint: without it, a code for a room
+ * the caller *is* accepted in would fetch any payload in the owner's account,
+ * including one from a room they were never let into. Payload files are keyed
+ * by item id alone, so the header file is what says which room an id belongs to.
+ */
+function handleSpaceItem(array $ctx): void {
+    $body = readJsonBody();
+    $code = normalizeShareCode($body['code'] ?? '');
+    $itemId = safeUuid($body['itemId'] ?? '', 'item id');
+    $target = resolveShareCode($code);
+
+    $space = findById(readJsonArrayFile(spacesPath($target['userDir'])), $target['spaceId']);
+    if ($space === null) fail(404, 'unknown share code');
+    requireOwnerPublished($target['userDir']);
+
+    $status = 'pending';
+    foreach (readJsonArrayFile(membersPath($target['userDir'])) as $m) {
+        if (!is_array($m)) continue;
+        if (($m['userId'] ?? null) === $ctx['userId'] && ($m['spaceId'] ?? null) === $target['spaceId']) {
+            $status = (string)($m['status'] ?? 'pending');
+            break;
+        }
+    }
+    if ($status !== 'accepted') fail(403, 'not a member of this space');
+
+    $items = pruneExpired(
+        readJsonArrayFile(spaceItemsPath($target['userDir'], $target['spaceId'])),
+        $space['ephemeralHours'] ?? null,
+    );
+    $item = findById($items, $itemId);
+    if ($item === null) fail(404, 'unknown item');
+
+    $stored = readJsonObjectFile(itemPayloadPath($target['userDir'], $itemId));
+    $payload = is_array($stored) ? ($stored['payload'] ?? null) : null;
+    if (!is_string($payload)) fail(404, 'unknown item');
+
+    respond(200, ['item' => $item, 'payload' => $payload]);
 }

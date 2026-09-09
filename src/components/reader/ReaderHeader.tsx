@@ -10,6 +10,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useReaderStore } from '@/store/readerStore';
 import { NarrationDownloadButton } from './NarrationDownloadButton';
 import { spaceLabel } from '@/services/community/spaceName';
+import { resolveListFrom } from '@/services/community/sharedReading';
 import { useLocale } from '@/hooks/useLocale';
 
 type Props = {
@@ -53,9 +54,20 @@ export function ReaderHeader({ onOpenTranslations, onOpenAppearance }: Props) {
   const goTo = useReaderStore((s) => s.goTo);
   const setSource = useReaderStore((s) => s.setSource);
   const source = useReaderStore((s) => s.source);
-  const listName = useLibraryStore((s) =>
+  // Own lists and mirrored plans both. A mirror is named the way a space is,
+  // `@Christoph / Jona in drei Tagen`, for the same reason given below: in the
+  // reader you may be in your own plan or somebody else's, and the title alone
+  // does not say which. Selected as a **string**, never as the resolved object,
+  // or the header re-renders on every feed refresh.
+  const ownListName = useLibraryStore((s) =>
     source.kind === 'list' ? s.readingLists.find((l) => l.id === source.listId)?.name : undefined,
   );
+  const mirroredListName = useCommunityStore((s) => {
+    if (source.kind !== 'list' || ownListName) return undefined;
+    const found = resolveListFrom(source, { lists: [], mirroredLists: s.mirroredLists });
+    return found ? spaceLabel(found.author, { kind: 'custom', name: found.list.name }) : undefined;
+  });
+  const listName = ownListName ?? mirroredListName;
   // The kicker above the title names whatever the reader is walking through, so
   // a space belongs there for the same reason a reading list does — and it names
   // the author too (`@Christoph / Heute`), because in the reader you may be in

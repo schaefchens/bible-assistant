@@ -26,7 +26,21 @@ import { isFlatList } from './readingEntries';
  */
 export type ReaderSource =
   | { kind: 'bible' }
-  | { kind: 'list'; listId: string }
+  /**
+   * A reading list — the user's own, or one mirrored out of a room.
+   *
+   * `listId` is **the author's `ReadingList.id`, verbatim**, in both cases, and
+   * that is load-bearing rather than convenient: `segmentId`, `provenanceOf`,
+   * `findListSegment` and the union-merged `readingProgress` row all key on it,
+   * so a shared plan gets continuation, resume and the reader's own ticks with
+   * no second code path anywhere.
+   *
+   * `code` names the room it came from, for display and for preferring that
+   * room's copy. It is deliberately **not** part of identity — see
+   * `sameSource`. Contrast `{kind:'space'}`, which needs `spaceSourceKey`
+   * because a space really does have two id namespaces.
+   */
+  | { kind: 'list'; listId: string; code?: string }
   | { kind: 'space'; spaceId?: string; code?: string }
   /**
    * A reading drawn from *several* spaces — "everything new", or "today from
@@ -52,6 +66,13 @@ export function spaceSourceKey(source: Extract<ReaderSource, { kind: 'space' }>)
 
 export function sameSource(a: ReaderSource, b: ReaderSource): boolean {
   if (a.kind !== b.kind) return false;
+  // `code` is deliberately not compared. A list has one id namespace by
+  // construction — the author minted it and a mirror carries it verbatim — so
+  // the same plan delivered through two rooms is the same reading, and
+  // treating the code as identity would clear the reader's window to re-resolve
+  // to what it already had. It also matters concretely: `playSegmentInReader`
+  // rebuilds the source from a `SegmentRef`, which carries no code, so with the
+  // code in identity every play would strip it.
   if (a.kind === 'list' && b.kind === 'list') return a.listId === b.listId;
   if (a.kind === 'space' && b.kind === 'space') return spaceSourceKey(a) === spaceSourceKey(b);
   if (a.kind === 'selection' && b.kind === 'selection') {

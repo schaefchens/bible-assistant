@@ -31,7 +31,12 @@ import { CardBack } from './CardBack';
 type Props = {
   cards: Card[];
   onEdit: (card: Card) => void;
-  onDelete: (card: Card) => void;
+  /**
+   * Optional, so a read-only stack genuinely has no delete path rather than a
+   * no-op one — this is also fired by a keypress, not only by a control that
+   * could be hidden.
+   */
+  onDelete?: (card: Card) => void;
   onReorder?: (fromId: string, toId: string) => void;
   raisedId?: string | null;
   onRaisedIdChange?: (id: string | null) => void;
@@ -170,7 +175,7 @@ export function CardStack({
         return;
       }
 
-      if (e.key === 'Backspace' || e.key === 'Delete') {
+      if (onDelete && (e.key === 'Backspace' || e.key === 'Delete')) {
         e.preventDefault();
         onDelete(activeCard);
         return;

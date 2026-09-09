@@ -139,7 +139,8 @@
     "textSizeSmaller": "Kleinerer Text",
     "textSizeLarger": "Größerer Text",
     "flip": "Umdrehen",
-    "front": "Vorderseite"
+    "front": "Vorderseite",
+    "untitled": "Karte ohne Titel"
   },
   "boards": {
     "title": "Tafeln",
@@ -186,7 +187,14 @@
       "pile": "Stoß",
       "freeform": "Pinnwand",
       "switchTo": "Ansicht wechseln"
-    }
+    },
+    "shared": "Geteilte Tafeln",
+    "sharedCount_one": "{{count}} geteilte Tafel",
+    "sharedCount_other": "{{count}} geteilte Tafeln",
+    "readOnly": "Das ist die Tafel von {{author}}.",
+    "makeCopy": "Eigene Kopie",
+    "makeCopyHint": "Eine Kopie, die du bearbeiten und um eigene Karten ergänzen kannst.",
+    "share": "In einen Raum teilen"
   },
   "voice": {
     "overlay": {
@@ -582,7 +590,16 @@
     "passagesRange": "Stellen {{from}}–{{to}} von {{total}}",
     "page": "Seite {{page}} von {{total}}",
     "previousPage": "Vorherige Seite",
-    "nextPage": "Nächste Seite"
+    "nextPage": "Nächste Seite",
+    "view": "Plan ansehen",
+    "sharedCount_one": "{{count}} geteilter Plan",
+    "sharedCount_other": "{{count}} geteilte Pläne",
+    "sharedBy": "Geteilt von {{author}}",
+    "readOnly": "Das ist der Plan von {{author}}. Du kannst ihn lesen und abhaken — dein Fortschritt gehört dir.",
+    "makeCopy": "Eigene Kopie",
+    "makeCopyHint": "Eine Kopie, die du bearbeiten kannst. Sie startet ungelesen, und spätere Änderungen erreichen sie nicht.",
+    "copySuffix": "{{name}} (Kopie)",
+    "share": "In einen Raum teilen"
   },
   "community": {
     "title": "Räume",
@@ -768,7 +785,26 @@
     "spacesCount_one": "{{count}} Raum",
     "spacesCount_other": "{{count}} Räume",
     "yourSpaces": "Deine Räume",
-    "newNeedsSubscriptions": "Noch nichts — du liest noch keinen Raum von anderen."
+    "newNeedsSubscriptions": "Noch nichts — du liest noch keinen Raum von anderen.",
+    "sharedItems": "Pläne und Tafeln",
+    "sharedPlans": "Pläne",
+    "sharedBoards": "Tafeln",
+    "noSharedItems": "Hier ist noch nichts geteilt.",
+    "shareToRoom": "In einen Raum teilen",
+    "shareToRoomHint": "Wen du in den Raum aufgenommen hast, kann es lesen und eine Kopie nehmen.",
+    "shareHere": "Hier teilen",
+    "sharedHere": "Geteilt",
+    "updateShared": "Aktualisieren",
+    "outOfDate": "Seit dem Teilen geändert",
+    "withdraw": "Zurückziehen",
+    "noRooms": "Du hast noch keinen Raum. Erstelle zuerst einen.",
+    "openRoom": "Raum öffnen",
+    "roomPieces": "Stücke",
+    "shareThisPiece": "Dieses Stück",
+    "shareWholeRoom": "Der ganze Raum",
+    "shareFailed": "Konnte nicht geteilt werden. Versuche es erneut, sobald du online bist.",
+    "deleteItem": "Löschen",
+    "shareCodeIsRoom": "Der Code öffnet den Raum; nur der Link öffnet dieses Stück."
   },
   "feedback": {
     "open": "Fehler melden oder Rückmeldung senden",

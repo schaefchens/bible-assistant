@@ -1,6 +1,14 @@
 import { create } from 'zustand';
 import { createCommunityFeed } from './communityFeed';
-import { byPublishedDesc, byUpdatedDesc, isOwnCode, withoutSelf } from './communityRows';
+import {
+  byPublishedDesc,
+  byUpdatedDesc,
+  isOwnCode,
+  itemHeader,
+  mirrorsFrom,
+  sourceIdOfPayload,
+  withoutSelf,
+} from './communityRows';
 // Re-exported: `/subscribe/:code` has always asked the store this, and the
 // store is still the natural place to ask it from. It *answers* from
 // `communityRows` now, because `communitySubscriptions` needs it too and a
@@ -30,7 +38,10 @@ import type {
   Membership,
   Post,
   Profile,
+  MirroredBoard,
+  MirroredList,
   ReportReason,
+  SharedItem,
   Space,
   Subscription,
 } from '@/types/domain';
@@ -47,8 +58,9 @@ import type {
  *
  * The one thing that talks to the network from here is
  * {@link refreshSubscriptions}, which reads *other people's* spaces into the
- * `feedPosts` cache. That is not sync: nothing about it is ever pushed, and
- * remote rows carry no `dirty` flag because they have no local writer.
+ * `feedPosts` and `feedItems` caches. That is not sync: nothing about it is
+ * ever pushed, and remote rows carry no `dirty` flag because they have no
+ * local writer.
  */
 
 const TODAY_WINDOW_HOURS = 24;
@@ -70,11 +82,43 @@ export type CommunityState = {
   posts: Post[];
   /** Which of those currently have a copy on the server. */
   shared: Record<string, boolean>;
+  /**
+   * The plans and boards the user has published into their own rooms.
+   * Headers only — the payload stays in Dexie, where a year-long plan's ~100KB
+   * is not re-read on every render.
+   */
+  items: SharedItem[];
+  /** Which of those currently have a copy on the server — `shared`, for items. */
+  sharedClaims: Record<string, boolean>;
+  /**
+   * What each shared item was snapshotted from, and when.
+   *
+   * The source id is inside the payload and the timestamp is a local-only
+   * column, so this is the cheap answer to "is the shared copy out of date?" —
+   * a number comparison against the live list or board, rather than rebuilding
+   * and hashing a payload on every render of the room screen.
+   */
+  itemSources: Record<string, { sourceId: string; sourceUpdatedAt: number }>;
   subscriptions: Subscription[];
   /** Subscribers of the user's spaces. */
   memberships: Membership[];
   /** Cached posts of subscribed spaces, keyed by share code. */
   feed: Record<string, Post[]>;
+  /** Cached item headers of subscribed rooms, keyed by share code. */
+  feedItems: Record<string, SharedItem[]>;
+  /**
+   * Other people's plans and boards, parsed and ready to render.
+   *
+   * Derived from `feedItems` plus the payloads in Dexie, and rebuilt wherever
+   * either is written — **one array per kind**, deliberately. Exposing the
+   * headers and payloads raw would take `useReaderSequence`'s memo from eight
+   * dependencies to eleven and make every consumer do the join itself.
+   *
+   * An item whose payload has not been fetched yet is simply absent here: its
+   * header is known-genuine but there is nothing to show.
+   */
+  mirroredLists: MirroredList[];
+  mirroredBoards: MirroredBoard[];
   feedState: Record<string, FeedState>;
   seen: Record<string, number>;
   /**
@@ -103,6 +147,18 @@ export type CommunityState = {
   publishPost: (id: string) => Promise<void>;
   unpublishPost: (id: string) => Promise<void>;
   deletePost: (id: string) => Promise<void>;
+
+  /** Publish a plan or a board into one of the user's own rooms. */
+  shareList: (listId: string, spaceId: string) => Promise<void>;
+  shareBoard: (boardId: string, spaceId: string) => Promise<void>;
+  /** Re-snapshot from the live source. Offered, never automatic. */
+  republishItem: (itemId: string) => Promise<void>;
+  /** Out of the room, still on the device. */
+  withdrawItem: (itemId: string) => Promise<void>;
+  deleteItem: (itemId: string) => Promise<void>;
+  /** Fork somebody else's plan or board into the user's own library. */
+  copySharedList: (listId: string) => Promise<string | null>;
+  copySharedBoard: (boardId: string) => Promise<string | null>;
 
   subscribe: (rawCode: string) => Promise<api.MembershipStatus>;
   unsubscribe: (code: string) => Promise<void>;
@@ -144,9 +200,15 @@ export const useCommunityStore = create<CommunityState>((set, get) => {
   spaces: [],
   posts: [],
   shared: {},
+  items: [],
+  sharedClaims: {},
+  itemSources: {},
   subscriptions: [],
   memberships: [],
   feed: {},
+  feedItems: {},
+  mirroredLists: [],
+  mirroredBoards: [],
   feedState: {},
   seen: {},
   blocked: {},
@@ -159,9 +221,11 @@ export const useCommunityStore = create<CommunityState>((set, get) => {
       profileRow,
       spaceRows,
       postRows,
+      itemRows,
       subRows,
       memberRows,
       feedRows,
+      feedItemRows,
       seenRows,
       blockedRow,
       reportedRow,
@@ -169,9 +233,11 @@ export const useCommunityStore = create<CommunityState>((set, get) => {
       db.preferences.get(PROFILE_PREF_KEY),
       db.spaces.toArray(),
       db.posts.toArray(),
+      db.sharedItems.toArray(),
       db.subscriptions.toArray(),
       db.memberships.toArray(),
       db.feedPosts.toArray(),
+      db.feedItems.toArray(),
       db.seenPosts.toArray(),
       db.preferences.get(BLOCKED_PREF_KEY),
       db.preferences.get(REPORTED_PREF_KEY),
@@ -179,6 +245,7 @@ export const useCommunityStore = create<CommunityState>((set, get) => {
     const blocked = (blockedRow?.value as Record<string, BlockedAuthor> | undefined) ?? {};
 
     const livePosts = postRows.filter((p) => p.deleted !== 1);
+    const liveItems = itemRows.filter((i) => i.deleted !== 1);
     const feed: Record<string, Post[]> = {};
     for (const row of feedRows) {
       // A cached post that failed verification should never have been stored,
@@ -209,14 +276,31 @@ export const useCommunityStore = create<CommunityState>((set, get) => {
       if (unwanted(row)) void get().unsubscribe(row.code);
     }
 
+    // Rebuilt from Dexie rather than kept, for the reason `mirrorsFrom`
+    // records: three shapes that must agree about which items made the cut.
+    const mirrors = mirrorsFrom(feedItemRows, liveSubs);
+
     set({
       profile,
       spaces: liveSpaces.sort(byUpdatedDesc),
       posts: livePosts.map(stripLocal).sort(byPublishedDesc),
       shared: Object.fromEntries(livePosts.map((p) => [p.id, p.shared === 1])),
+      items: liveItems.map(itemHeader).sort(byPublishedDesc),
+      sharedClaims: Object.fromEntries(liveItems.map((i) => [i.id, i.shared === 1])),
+      itemSources: Object.fromEntries(
+        liveItems.flatMap((i) => {
+          const sourceId = sourceIdOfPayload(i.kind, i.payload);
+          return sourceId === null || i.sourceUpdatedAt === undefined
+            ? []
+            : [[i.id, { sourceId, sourceUpdatedAt: i.sourceUpdatedAt }] as const];
+        }),
+      ),
       subscriptions: liveSubs,
       memberships: withoutSelf(memberRows),
       feed,
+      feedItems: mirrors.feedItems,
+      mirroredLists: mirrors.mirroredLists,
+      mirroredBoards: mirrors.mirroredBoards,
       seen: Object.fromEntries(seenRows.map((r) => [r.id, r.seenAt])),
       blocked,
       reported: (reportedRow?.value as Record<string, number> | undefined) ?? {},
@@ -313,6 +397,7 @@ export const useCommunityStore = create<CommunityState>((set, get) => {
       await db.memberships.clear();
       // Somebody else's writing, and it goes stale the moment access ends.
       await db.feedPosts.clear();
+      await db.feedItems.clear();
       // Subscriptions are kept, marked revoked: re-joining restores them.
       for (const sub of get().subscriptions) {
         await db.subscriptions.update(sub.code, { status: 'revoked', dirty: 0 });
@@ -324,6 +409,9 @@ export const useCommunityStore = create<CommunityState>((set, get) => {
         shared: {},
         memberships: [],
         feed: {},
+        feedItems: {},
+        mirroredLists: [],
+        mirroredBoards: [],
         feedState: {},
         subscriptions: s.subscriptions.map((sub) => ({ ...sub, status: 'revoked' as const })),
       }));

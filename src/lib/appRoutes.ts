@@ -10,6 +10,8 @@ export const ROUTES = {
   read: '/read',
   lists: '/lists',
   spaces: '/spaces',
+  /** A room somebody else owns, addressed by its share code. See RoomPage. */
+  rooms: '/rooms',
   subscribe: '/subscribe',
   cards: '/cards',
   settings: '/settings',

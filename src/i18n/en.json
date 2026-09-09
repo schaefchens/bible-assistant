@@ -139,7 +139,8 @@
     "textSizeSmaller": "Smaller text",
     "textSizeLarger": "Larger text",
     "flip": "Flip",
-    "front": "Front"
+    "front": "Front",
+    "untitled": "Untitled card"
   },
   "boards": {
     "title": "Boards",
@@ -186,7 +187,14 @@
       "pile": "Pile",
       "freeform": "Corkboard",
       "switchTo": "Switch view"
-    }
+    },
+    "shared": "Shared boards",
+    "sharedCount_one": "{{count}} shared board",
+    "sharedCount_other": "{{count}} shared boards",
+    "readOnly": "This is {{author}}'s board.",
+    "makeCopy": "Make my copy",
+    "makeCopyHint": "A copy you can edit, with cards of your own.",
+    "share": "Share to a room"
   },
   "voice": {
     "overlay": {
@@ -582,7 +590,16 @@
     "passagesRange": "Passages {{from}}–{{to}} of {{total}}",
     "page": "Page {{page}} of {{total}}",
     "previousPage": "Previous page",
-    "nextPage": "Next page"
+    "nextPage": "Next page",
+    "view": "View plan",
+    "sharedCount_one": "{{count}} shared plan",
+    "sharedCount_other": "{{count}} shared plans",
+    "sharedBy": "Shared by {{author}}",
+    "readOnly": "This is {{author}}'s plan. You can read it and tick it off — your progress is your own.",
+    "makeCopy": "Make my copy",
+    "makeCopyHint": "A copy you can edit. It starts unread, and later changes by the author will not reach it.",
+    "copySuffix": "{{name}} (copy)",
+    "share": "Share to a room"
   },
   "community": {
     "title": "Spaces",
@@ -768,7 +785,26 @@
     "spacesCount_one": "{{count}} space",
     "spacesCount_other": "{{count}} spaces",
     "yourSpaces": "Your spaces",
-    "newNeedsSubscriptions": "Nothing yet — you are not reading anyone’s space."
+    "newNeedsSubscriptions": "Nothing yet — you are not reading anyone’s space.",
+    "sharedItems": "Plans and boards",
+    "sharedPlans": "Plans",
+    "sharedBoards": "Boards",
+    "noSharedItems": "Nothing shared here yet.",
+    "shareToRoom": "Share to a room",
+    "shareToRoomHint": "Anyone you have accepted into the room can read it, and take a copy.",
+    "shareHere": "Share here",
+    "sharedHere": "Shared",
+    "updateShared": "Update",
+    "outOfDate": "Changed since you shared it",
+    "withdraw": "Withdraw",
+    "noRooms": "You have no rooms yet. Make one first.",
+    "openRoom": "Open room",
+    "roomPieces": "Pieces",
+    "shareThisPiece": "This piece",
+    "shareWholeRoom": "The whole room",
+    "shareFailed": "Couldn't share that. Try again once you're back online.",
+    "deleteItem": "Delete",
+    "shareCodeIsRoom": "The code opens the room; only the link opens this piece."
   },
   "feedback": {
     "open": "Report a bug or send feedback",

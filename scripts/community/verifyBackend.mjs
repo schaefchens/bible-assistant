@@ -34,8 +34,14 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { generateMnemonic, mnemonicToSeedSync } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english.js';
-import { deriveSigningKey, signPostWith } from '../../src/lib/postSignature.ts';
+import { deriveSigningKey, signItemWith, signPostWith } from '../../src/lib/postSignature.ts';
 import { mintSpaceCode } from '../../src/lib/spaceCode.ts';
+import {
+  buildBoardPayload,
+  buildPlanPayload,
+  payloadBytes,
+  payloadHash,
+} from '../../src/services/community/sharedPayload.ts';
 
 const bytesToHex = (b) => Buffer.from(b).toString('hex');
 const PORT = 8749 + (process.pid % 200);
@@ -91,6 +97,15 @@ async function call(user, action, body) {
   return { status: res.status, body: await res.json().catch(() => null) };
 }
 
+/** Every report in the human queue. */
+function readReports() {
+  const dir = join(root, 'storage', 'reports');
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => JSON.parse(readFileSync(join(dir, f), 'utf8')));
+}
+
 /** Everything this identity has ever sent as feedback, newest first. */
 function readFeedback(user) {
   const dir = join(root, 'storage', 'feedback', user.userId);
@@ -115,6 +130,40 @@ function makePost(space, user, over = {}) {
     ...over,
   };
   return { ...base, ...signPostWith(base, user.pair) };
+}
+
+/** A shared plan: the header, signed, plus the payload it commits to. */
+function makePlanItem(space, user, over = {}) {
+  const now = Date.now();
+  const payload =
+    over.payload ??
+    buildPlanPayload({
+      id: randomUUID(),
+      name: 'Jona in drei Tagen',
+      days: [
+        {
+          id: randomUUID(),
+          title: 'Tag 1',
+          entries: [{ id: randomUUID(), bookId: 32, chapter: 1, label: 'Morgens' }],
+        },
+      ],
+      createdAt: now,
+      updatedAt: now,
+    });
+  const base = {
+    id: randomUUID(),
+    spaceId: space.id,
+    kind: 'plan',
+    title: 'Jona in drei Tagen',
+    language: 'de',
+    payloadHash: payloadHash(payload),
+    payloadBytes: payloadBytes(payload),
+    publishedAt: now,
+    createdAt: now,
+    updatedAt: now,
+    ...over.item,
+  };
+  return { item: { ...base, ...signItemWith(base, user.pair) }, payload };
 }
 
 /** Writes the docroot's secrets.php. `MODERATION_STUB` is the seam that lets
@@ -445,6 +494,108 @@ try {
     assert.equal(r.body.posts.some((p) => p.id === old.id), true);
   });
 
+  console.log('shared items');
+
+  // Its own room and its own subscription, so this section does not depend on
+  // the state the access-control checks leave behind (they end by rotating a
+  // code, which revokes everyone).
+  const shelf = { id: randomUUID(), name: 'Pläne', kind: 'custom', approval: 'auto', createdAt: Date.now(), updatedAt: Date.now() };
+  const shelfCode = mintSpaceCode(alice.authorKey);
+  const vault = { id: randomUUID(), name: 'Privat', kind: 'custom', approval: 'manual', createdAt: Date.now(), updatedAt: Date.now() };
+  const vaultCode = mintSpaceCode(alice.authorKey);
+  await call(alice, 'spaces.upsert', { space: shelf });
+  await call(alice, 'spaces.code.set', { spaceId: shelf.id, code: shelfCode });
+  await call(alice, 'spaces.upsert', { space: vault });
+  await call(alice, 'spaces.code.set', { spaceId: vault.id, code: vaultCode });
+  await call(bob, 'space.request', { code: shelfCode });
+
+  const shared = makePlanItem(shelf, alice);
+
+  await check('a room holds plans as well as pieces', async () => {
+    const r = await call(alice, 'items.upsert', shared);
+    assert.equal(r.status, 200);
+    const list = await call(alice, 'items.list', { spaceId: shelf.id });
+    assert.equal(list.body.items.length, 1);
+    assert.equal(list.body.items[0].kind, 'plan');
+    assert.equal(list.body.items[0].payloadHash, shared.item.payloadHash);
+  });
+
+  await check('the feed carries item headers and never their payloads', async () => {
+    // The whole reason the payload is a separate fetch: this response is polled
+    // on every foreground, and every 15s while a subscription is pending.
+    const feed = await call(bob, 'space.feed', { code: shelfCode });
+    assert.equal(feed.body.status, 'accepted');
+    assert.equal(feed.body.items.length, 1);
+    assert.equal(feed.body.items[0].id, shared.item.id);
+    assert.equal('payload' in feed.body.items[0], false);
+    assert.equal(JSON.stringify(feed.body).includes('Jona in drei Tagen'), true); // the title only
+    assert.equal(JSON.stringify(feed.body).includes('"bookId"'), false);
+  });
+
+  await check('a member fetches the payload, and it matches the signed hash', async () => {
+    const r = await call(bob, 'space.item', { code: shelfCode, itemId: shared.item.id });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.payload, shared.payload);
+    assert.equal(payloadHash(r.body.payload), r.body.item.payloadHash);
+  });
+
+  await check('a payload that does not match its hash is refused', async () => {
+    const forged = makePlanItem(shelf, alice);
+    const r = await call(alice, 'items.upsert', { item: forged.item, payload: forged.payload + ' ' });
+    assert.equal(r.status, 400);
+    assert.equal(r.body.error, 'payload does not match payloadHash');
+  });
+
+  await check('a header whose signature does not cover it is refused', async () => {
+    // Retitling after signing is the cheapest tamper, and `kind` is in the
+    // message so a plan's signature cannot be lifted onto a board.
+    const genuine = makePlanItem(shelf, alice);
+    const retitled = { item: { ...genuine.item, title: 'Etwas anderes' }, payload: genuine.payload };
+    assert.equal((await call(alice, 'items.upsert', retitled)).status, 400);
+    const relabelled = { item: { ...genuine.item, kind: 'board' }, payload: genuine.payload };
+    assert.equal((await call(alice, 'items.upsert', relabelled)).status, 400);
+    const undated = { item: { ...genuine.item, publishedAt: 0 }, payload: genuine.payload };
+    assert.equal((await call(alice, 'items.upsert', undated)).status, 400);
+  });
+
+  await check('a payload is refused to someone the owner has not accepted', async () => {
+    assert.equal((await call(carol, 'space.item', { code: shelfCode, itemId: shared.item.id })).status, 403);
+  });
+
+  await check('a code cannot reach an item from a different room', async () => {
+    // The whole security content of space.item: payload files are keyed by item
+    // id alone, so the room's header file is what says which id belongs to it.
+    // Without the binding, a code for a room you *are* in would fetch anything
+    // in the owner's account.
+    const hidden = makePlanItem(vault, alice, { item: { title: 'Nur für mich' } });
+    assert.equal((await call(alice, 'items.upsert', hidden)).status, 200);
+    const r = await call(bob, 'space.item', { code: shelfCode, itemId: hidden.item.id });
+    assert.equal(r.status, 404);
+    assert.equal(r.body.error, 'unknown item');
+  });
+
+  await check('withdrawing an item takes its payload with it', async () => {
+    const doomed = makePlanItem(shelf, alice);
+    await call(alice, 'items.upsert', doomed);
+    const file = join(root, 'storage', 'users', alice.userId, 'payloads', `${doomed.item.id}.json`);
+    assert.equal(existsSync(file), true);
+    await call(alice, 'items.delete', { id: doomed.item.id, spaceId: shelf.id });
+    assert.equal(existsSync(file), false);
+    const list = await call(alice, 'items.list', { spaceId: shelf.id });
+    assert.equal(list.body.items.some((i) => i.id === doomed.item.id), false);
+  });
+
+  await check('deleting the room takes its items and payloads with it', async () => {
+    const scrap = { id: randomUUID(), name: 'Kurz', kind: 'custom', approval: 'manual', createdAt: Date.now(), updatedAt: Date.now() };
+    await call(alice, 'spaces.upsert', { space: scrap });
+    const item = makePlanItem(scrap, alice);
+    await call(alice, 'items.upsert', item);
+    const file = join(root, 'storage', 'users', alice.userId, 'payloads', `${item.item.id}.json`);
+    assert.equal(existsSync(file), true);
+    await call(alice, 'spaces.delete', { id: scrap.id });
+    assert.equal(existsSync(file), false);
+  });
+
   console.log('automated moderation');
 
   const stub = (verdict, reason = '') =>
@@ -486,6 +637,37 @@ try {
     assert.equal((await call(alice, 'posts.upsert', { post: p })).status, 200);
     const listed = await call(alice, 'posts.list', { spaceId: blog.id });
     assert.equal(listed.body.posts.some((x) => x.id === p.id), true);
+  });
+
+  await check('a shared board is judged on the text inside its payload', async () => {
+    // The board's own name is innocuous; the offending words are a card's, deep
+    // in the payload. `moderationTextOf` is what puts them in front of the judge
+    // — without it a plan or a board would be an unmoderated channel for prose.
+    stub('refuse', 'Werbung auf einer Karte.');
+    const now = Date.now();
+    const board = { id: randomUUID(), name: 'Merkverse', cardIds: ['c1'], createdAt: now, updatedAt: now };
+    const cards = [{ id: 'c1', title: 'Kauf jetzt Krypto', references: [], notes: 'Werbung.', createdAt: now, updatedAt: now }];
+    const payload = buildBoardPayload(board, cards);
+    assert.equal(payload.includes('Kauf jetzt Krypto'), true, 'the card text is in the payload');
+
+    const base = {
+      id: randomUUID(), spaceId: shelf.id, kind: 'board', title: 'Merkverse', language: 'de',
+      payloadHash: payloadHash(payload), payloadBytes: payloadBytes(payload),
+      publishedAt: now, createdAt: now, updatedAt: now,
+    };
+    const item = { ...base, ...signItemWith(base, alice.pair) };
+    const up = await call(alice, 'items.upsert', { item, payload });
+    assert.equal(up.status, 422);
+    assert.equal(up.body.error, 'content_refused');
+
+    // And nothing was written — neither the header nor an orphan payload.
+    const listed = await call(alice, 'items.list', { spaceId: shelf.id });
+    assert.equal(listed.body.items.some((i) => i.id === item.id), false);
+    assert.equal(existsSync(join(root, 'storage', 'users', alice.userId, 'payloads', `${item.id}.json`)), false);
+
+    stub('allow');
+    const ok = await call(alice, 'items.upsert', { item, payload });
+    assert.equal(ok.status, 200, 'the same board publishes once the judge allows it');
   });
 
   await check('the moderation check needs a profile of its own', async () => {
@@ -570,6 +752,24 @@ try {
     assert.equal(r.status, 200);
     const files = readdirSync(join(root, 'storage', 'reports')).filter((f) => f.endsWith('.json'));
     assert.equal(files.length, 3);
+  });
+
+  await check('a shared plan can be reported, and its text is snapshotted', async () => {
+    // A room holds three kinds and any of them can be reported. Without the
+    // items fallback this 404s, which would leave a plan or a board as the one
+    // thing in a room nobody could complain about.
+    const r = await call(bob, 'report.create', {
+      code: shelfCode,
+      postId: shared.item.id,
+      reason: 'offtopic',
+      note: 'not a Bible plan',
+    });
+    assert.equal(r.status, 200);
+    const filed = readReports().find((x) => x.postId === shared.item.id);
+    assert.ok(filed, 'the report was filed');
+    assert.equal(filed.targetKind, 'plan');
+    assert.equal(filed.postTitle, 'Jona in drei Tagen');
+    assert.match(filed.postExcerpt, /Morgens/, 'the human-written text came along');
   });
 
   await check('a reason outside the content standards is refused', async () => {

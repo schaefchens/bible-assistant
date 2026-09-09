@@ -211,6 +211,35 @@ export const QuillIcon = ({ size = 16, className }: IconProps) => (
   </Glyph>
 );
 
+/**
+ * A corkboard, for a board. A list icon already means a reading list and a
+ * quill means a space, so the three kinds a room can hold are distinguishable
+ * at a glance.
+ */
+export const BoardIcon = ({ size = 18, className }: IconProps) => (
+  <Glyph size={size} className={className}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <rect x="6" y="7" width="5.5" height="4.5" rx="1" />
+    <rect x="13.5" y="7" width="4.5" height="9" rx="1" />
+    <rect x="6" y="14" width="5.5" height="2.5" rx="1" />
+  </Glyph>
+);
+
+/**
+ * The platform-neutral share mark: a node with two branches. Deliberately
+ * distinct from the download arrow it sits beside in the reader — the two
+ * controls are next to each other on a piece, and an arrow for both would read
+ * as one feature.
+ */
+export const ShareIcon = ({ size = 15, className }: IconProps) => (
+  <Glyph size={size} stroke={1.8} className={className}>
+    <circle cx="18" cy="5" r="2.6" />
+    <circle cx="6" cy="12" r="2.6" />
+    <circle cx="18" cy="19" r="2.6" />
+    <path d="M8.3 10.8l7.4-4.3M8.3 13.2l7.4 4.3" />
+  </Glyph>
+);
+
 /** A ribbon-style bookmark, for "report this piece". */
 export const FlagIcon = ({ size = 14, className }: IconProps) => (
   <Glyph size={size} stroke={1.8} className={className}>

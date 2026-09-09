@@ -66,8 +66,12 @@ export function ReadPage() {
   // A space-sourced reader has the same boot race as a list-sourced one: its
   // posts arrive from Dexie asynchronously, and opening before they land looks
   // exactly like an unsubscribed space.
+  // A list waits on **both**: a plan can be the user's own or one mirrored out
+  // of a room, and which store holds it is not knowable before either has
+  // filled. A selection has the same race as a space and is folded in here.
   const waitingForSource =
-    (source.kind === 'list' && !libraryReady) || (source.kind === 'space' && !communityReady);
+    (source.kind === 'list' && (!libraryReady || !communityReady)) ||
+    ((source.kind === 'space' || source.kind === 'selection') && !communityReady);
   useEffect(() => {
     if (waitingForSource) return;
     void ensureOpen();

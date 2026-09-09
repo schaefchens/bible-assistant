@@ -241,6 +241,17 @@ export type Board = {
 };
 
 /**
+ * A board together with the cards it holds.
+ *
+ * The app normally keeps the two apart — `Board.cardIds` are resolved against
+ * the live `cards` table, which is why a deleted card leaves a stale id behind.
+ * A *shared* board has no such table to resolve against, so it travels as this
+ * pair, and the pair is self-consistent by construction: `cardIds` names only
+ * cards that are present. See `services/community/sharedPayload.ts`.
+ */
+export type BoardCardsBundle = { board: Board; cards: Card[] };
+
+/**
  * One passage in a reading list: a whole book, one chapter, a span of
  * chapters, or verse ranges inside a chapter.
  *
@@ -411,6 +422,83 @@ export type Post = {
   authorKey?: string;
   /** Canonicalization version, e.g. `'ba.post.v1'`. */
   sigVersion?: string;
+};
+
+/**
+ * What a room holds besides pieces: a reading plan, or a board with its cards.
+ *
+ * A **snapshot**, signed and published like a `Post` — not a live link to the
+ * source. Deleting the list a plan was made from leaves the shared plan intact,
+ * exactly as a piece is independent of anything, and an edit to the source
+ * reaches subscribers only when the author says so (see `republishItem`).
+ *
+ * It sits beside `Post` rather than absorbing it: a post is wired into
+ * `postUnits`, the reader, narration and signature `ba.post.v1`, and folding
+ * the two together would be risk for no gain.
+ *
+ * **This is the header only; the payload travels separately.** `space.feed` is
+ * polled on every foreground — and every 15s while any subscription is pending
+ * — so shipping a year-long plan's ~100KB of entries with it would cost
+ * megabytes an hour. `payloadHash` is inside the signed message *and* carried
+ * here, which is what lets a header verify on its own: nothing is ever rendered
+ * unverified, and the payload is checked against this hash when it arrives.
+ */
+export type SharedItemKind = 'plan' | 'board';
+
+export type SharedItem = {
+  id: string;
+  spaceId: string;
+  kind: SharedItemKind;
+  /** The plan's or board's name at snapshot time, so a room lists without payloads. */
+  title: string;
+  language: Locale;
+  /** Hex sha256 of the payload string. Covered by the signature. */
+  payloadHash: string;
+  payloadBytes: number;
+  /**
+   * Always > 0. Unlike a post there is no draft state — the source list or
+   * board *is* the draft — but it stays immutable once set for the same
+   * reason: it is signed, so withdrawing and re-sharing has to be lossless.
+   */
+  publishedAt: number;
+  createdAt: number;
+  updatedAt: number;
+  /** Ed25519 signature over `canonicalItemMessage()`, hex. */
+  signature?: string;
+  /** The signer's public key, hex — pinned per space by the subscriber. */
+  authorKey?: string;
+  /** Canonicalization version, e.g. `'ba.item.v1'`. */
+  sigVersion?: string;
+};
+
+/**
+ * Somebody else's plan or board, parsed and ready to render.
+ *
+ * Held as **one derived array per kind** in `communityStore`, rebuilt wherever
+ * the feed cache is written, rather than exposing raw items plus payloads:
+ * `useReaderSequence`'s memo would otherwise grow three dependencies and every
+ * consumer would have to join them itself.
+ *
+ * `list.id` is **the author's `ReadingList.id`, verbatim** — see `ReaderSource`.
+ */
+export type MirroredList = {
+  list: ReadingList;
+  /** The room it came from. */
+  code: string;
+  itemId: string;
+  author: string;
+  /** The author's pinned signing key — the identity grouping and blocking use. */
+  authorKey: string;
+  updatedAt: number;
+};
+
+/** The board's cards are its own, shipped with it — never in `libraryStore.cards`. */
+export type MirroredBoard = BoardCardsBundle & {
+  code: string;
+  itemId: string;
+  author: string;
+  authorKey: string;
+  updatedAt: number;
 };
 
 /** A space I follow. Keyed by its share code, which is how it is addressed. */

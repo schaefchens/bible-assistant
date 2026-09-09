@@ -3,6 +3,7 @@ import { todayPosts, unseenPosts } from '@/services/community/spaceReading';
 import { spaceDisplayName } from '@/services/community/spaceName';
 import { resolveSpaceByName } from '@/services/community/spaceNameMatch';
 import { useCommunityStore } from '@/store/communityStore';
+import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import i18n from '@/i18n';
 import type { ToolArgs } from '../tools';
@@ -35,12 +36,22 @@ export function handleListSpaces(): ToolDispatchResult {
         pieces: state.posts.filter((p) => p.spaceId === sp.id && p.publishedAt > 0).length,
         drafts: state.posts.filter((p) => p.spaceId === sp.id && p.publishedAt === 0).length,
         shared: sp.shareCode !== undefined,
+        // What else the room holds, so the model can answer "what have I
+        // shared with them?" without a second call.
+        plans: state.items.filter(
+          (i) => i.spaceId === sp.id && i.kind === 'plan' && state.sharedClaims[i.id],
+        ).length,
+        boards: state.items.filter(
+          (i) => i.spaceId === sp.id && i.kind === 'board' && state.sharedClaims[i.id],
+        ).length,
       })),
       following: state.subscriptions.map((sub) => ({
         name: spaceDisplayName({ kind: sub.spaceKind ?? 'custom', name: sub.spaceName }),
         author: sub.ownerName,
         status: sub.status,
         pieces: (state.feed[sub.code] ?? []).length,
+        plans: state.mirroredLists.filter((m) => m.code === sub.code).length,
+        boards: state.mirroredBoards.filter((m) => m.code === sub.code).length,
       })),
     },
   };
@@ -163,4 +174,108 @@ export async function handleReadNew(args: ToolArgs['read_new']): Promise<ToolDis
     opensReader: true,
     data: { reading: label, pieces: chosen.length, alreadyRead: true },
   };
+}
+
+
+/**
+ * Resolve one of the user's **own** spaces by name, for the share tools.
+ *
+ * Deliberately narrower than `resolveSpaceByName`, which also matches the
+ * spaces the user follows: you cannot publish into somebody else's room, so
+ * offering their names as candidates would only produce a confident wrong
+ * answer. With exactly one space the name is optional — there is nothing to
+ * disambiguate.
+ */
+function ownSpaceByName(name: string | undefined): { ok: true; id: string } | { ok: false; error: string } {
+  const state = useCommunityStore.getState();
+  if (!state.profile) return { ok: false, error: 'the user has not created a community profile yet' };
+  const spaces = state.spaces;
+  if (spaces.length === 0) return { ok: false, error: 'the user has no spaces to share into yet' };
+  if (!name) {
+    if (spaces.length === 1) return { ok: true, id: spaces[0].id };
+    return {
+      ok: false,
+      error: `ask which space: ${spaces.map((s) => spaceDisplayName(s)).join(', ')}`,
+    };
+  }
+  const wanted = name.trim().toLowerCase();
+  const hit =
+    spaces.find((s) => spaceDisplayName(s).toLowerCase() === wanted) ??
+    spaces.find((s) => spaceDisplayName(s).toLowerCase().includes(wanted));
+  if (!hit) {
+    return {
+      ok: false,
+      error: `no space of the user's called "${name}". They have: ${spaces
+        .map((s) => spaceDisplayName(s))
+        .join(', ')}`,
+    };
+  }
+  return { ok: true, id: hit.id };
+}
+
+/** Publish one of the user's reading plans into one of their own spaces. */
+export async function handleSharePlan(
+  args: ToolArgs['share_plan'],
+): Promise<ToolDispatchResult> {
+  const space = ownSpaceByName(args.space);
+  if (!space.ok) return { ok: false, error: space.error };
+
+  const wanted = args.list.trim().toLowerCase();
+  const lists = useLibraryStore.getState().readingLists;
+  const list =
+    lists.find((l) => l.name.toLowerCase() === wanted) ??
+    lists.find((l) => l.name.toLowerCase().includes(wanted));
+  if (!list) {
+    return {
+      ok: false,
+      error: `no reading list called "${args.list}". They have: ${
+        lists.map((l) => l.name).join(', ') || 'none'
+      }`,
+    };
+  }
+
+  try {
+    await useCommunityStore.getState().shareList(list.id, space.id);
+  } catch (e) {
+    return { ok: false, error: refusalOf(e) };
+  }
+  return { ok: true, data: { shared: list.name, snapshot: true } };
+}
+
+/** Publish one of the user's boards, cards and all. */
+export async function handleShareBoard(
+  args: ToolArgs['share_board'],
+): Promise<ToolDispatchResult> {
+  const space = ownSpaceByName(args.space);
+  if (!space.ok) return { ok: false, error: space.error };
+
+  const wanted = args.board.trim().toLowerCase();
+  const boards = useLibraryStore.getState().boards;
+  const board =
+    boards.find((b) => b.name.toLowerCase() === wanted) ??
+    boards.find((b) => b.name.toLowerCase().includes(wanted));
+  if (!board) {
+    return {
+      ok: false,
+      error: `no board called "${args.board}". They have: ${
+        boards.map((b) => b.name).join(', ') || 'none'
+      }`,
+    };
+  }
+
+  try {
+    await useCommunityStore.getState().shareBoard(board.id, space.id);
+  } catch (e) {
+    return { ok: false, error: refusalOf(e) };
+  }
+  return { ok: true, data: { shared: board.name, cards: board.cardIds.length, snapshot: true } };
+}
+
+/** The moderator's refusal is the one failure worth reporting in the reply. */
+function refusalOf(e: unknown): string {
+  if (e instanceof Error && e.message === 'content_refused') {
+    const reason = (e as Error & { reason?: string }).reason;
+    return reason?.trim() || 'the content standards refused it';
+  }
+  return 'could not share it — the user may be offline';
 }

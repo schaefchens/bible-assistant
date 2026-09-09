@@ -27,6 +27,7 @@ const { nextReadingAfter, continuationKey, isWholeChapterReading } = await impor
   '@/lib/readingContinuation'
 );
 const { useLibraryStore } = await import('@/store/libraryStore');
+const { useCommunityStore } = await import('@/store/communityStore');
 const { useSettingsStore } = await import('@/store/settingsStore');
 
 const fetchChapter = vi.mocked(getChapter);
@@ -96,6 +97,7 @@ beforeEach(() => {
   });
 
   useLibraryStore.setState({ readingLists: [] });
+  useCommunityStore.setState({ mirroredLists: [] });
   useSettingsStore.setState({ translation: 'KJV' });
 });
 
@@ -302,6 +304,82 @@ describe('a list is a playlist', () => {
  * Genesis.** Post units carry `bookId: 0`, so a post group reaching
  * `canonicalNext()` asks the Bible what follows chapter 0 of book 0.
  */
+/**
+ * The severity-1 case for shared plans.
+ *
+ * `nextInList` used to resolve `provenance.listId` against `libraryStore` alone.
+ * A plan mirrored out of a room is in neither of that store's arrays, so the
+ * lookup missed, `nextInList` returned `undefined`, and `nextReadingAfter` reads
+ * that as "decide some other way" — falling through to `canonicalNext`. A
+ * subscriber reading Jonah 1 as day one of somebody's plan would then have been
+ * read **Jonah 2 of the Bible** rather than the plan's second entry, or worse,
+ * walked off the end of the plan into Genesis with nothing on screen changing.
+ */
+describe("somebody else's plan is a playlist too", () => {
+  const plan = list({
+    days: [{ id: 'd1', entries: [
+      { id: 'e1', bookId: JONAH, chapter: 1 },
+      { id: 'e2', bookId: JOHN, chapter: 3 },
+    ] }],
+  });
+
+  beforeEach(() => {
+    // In the *community* store, never the library's — that is the whole point.
+    useLibraryStore.setState({ readingLists: [] });
+    useCommunityStore.setState({
+      mirroredLists: [
+        {
+          list: plan,
+          code: 'ROOMCODE',
+          itemId: 'I1',
+          author: 'Christoph',
+          authorKey: 'ab'.repeat(32),
+          updatedAt: 0,
+        },
+      ],
+    });
+  });
+
+  it('continues with the plan\'s next entry, not the next chapter of the Bible', async () => {
+    has(JONAH, 1, 17);
+    has(JONAH, 2, 10);
+    has(JOHN, 3, 36);
+    register('test:g', {
+      verses: wholeChapter(JONAH, 1, 17),
+      wholeChapter: true,
+      provenance: { listId: 'L1', entryId: 'e1' },
+    });
+    const next = await nextReadingAfter('test:g');
+    expect(next).toMatchObject({ bookId: JOHN, chapter: 3 });
+    expect(next?.provenance).toEqual({ listId: 'L1', entryId: 'e2' });
+  });
+
+  it('stops at the end rather than rolling into the next book', async () => {
+    has(JOHN, 3, 36);
+    has(JOHN, 4, 54);
+    register('test:g', {
+      verses: wholeChapter(JOHN, 3, 36),
+      wholeChapter: true,
+      provenance: { listId: 'L1', entryId: 'e2' },
+    });
+    expect(await nextReadingAfter('test:g')).toBeNull();
+  });
+
+  it('falls back to canonical order once the author withdraws it', async () => {
+    // Not an error: a withdrawn plan is an ordinary state, and the reader must
+    // still be able to carry on rather than stopping dead mid-chapter.
+    useCommunityStore.setState({ mirroredLists: [] });
+    has(JONAH, 1, 17);
+    has(JONAH, 2, 10);
+    register('test:g', {
+      verses: wholeChapter(JONAH, 1, 17),
+      wholeChapter: true,
+      provenance: { listId: 'L1', entryId: 'e1' },
+    });
+    expect(await nextReadingAfter('test:g')).toMatchObject({ bookId: JONAH, chapter: 2 });
+  });
+});
+
 describe('a post group never falls through to the Bible', () => {
   const postUnit = (): VerseSummary => ({
     translation: 'KJV',

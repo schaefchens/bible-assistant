@@ -2,6 +2,8 @@ import { BLOCKED_PREF_KEY, db, REPORTED_PREF_KEY } from '@/db/dexie';
 import { codeMatchesKey, parseSpaceCodeInput } from '@/lib/spaceCode';
 import { communityTermsAccepted } from '@/lib/communityTerms';
 import * as api from '@/services/api/community';
+import { copyBoard, copyPlan } from '@/services/community/sharedItems';
+import { useLibraryStore } from '@/store/libraryStore';
 import type { BlockedAuthor, ReportReason, Subscription } from '@/types/domain';
 import { flush, queued } from './communityOps';
 import { isOwnCode } from './communityRows';
@@ -13,7 +15,9 @@ import type { CommunityState } from './communityStore';
  * Subscribing, blocking and reporting are one concern seen from three angles —
  * every one of them is a decision a *reader* makes about somebody else's
  * writing — which is why `blockAuthor` deletes subscriptions and
- * `reportContent` sits beside it rather than with the writing.
+ * `reportContent` sits beside it rather than with the writing. Taking a copy
+ * of somebody's plan or board is the fourth angle, and belongs here for the
+ * same reason: nothing about it touches the user's own rooms.
  *
  * Two rules in here are the ones worth not breaking. A block is keyed by the
  * author's **signing key**, never by space or share code: that key comes from
@@ -114,12 +118,24 @@ export function createCommunitySubscriptions(set: SetState, get: GetState) {
   unsubscribe: async (code: string) => {
     await db.subscriptions.update(code, { deleted: 1, dirty: 1 });
     await db.feedPosts.where('code').equals(code).delete();
+    await db.feedItems.where('code').equals(code).delete();
     set((s) => {
       const feed = { ...s.feed };
+      const feedItems = { ...s.feedItems };
       const feedState = { ...s.feedState };
       delete feed[code];
+      delete feedItems[code];
       delete feedState[code];
-      return { subscriptions: s.subscriptions.filter((x) => x.code !== code), feed, feedState };
+      return {
+        subscriptions: s.subscriptions.filter((x) => x.code !== code),
+        feed,
+        feedItems,
+        feedState,
+        // The mirrors are derived, so they are filtered rather than rebuilt:
+        // the rows they came from are gone from Dexie a line above.
+        mirroredLists: s.mirroredLists.filter((m) => m.code !== code),
+        mirroredBoards: s.mirroredBoards.filter((m) => m.code !== code),
+      };
     });
     await queued('subscription.delete', { code });
     flush();
@@ -174,6 +190,40 @@ export function createCommunitySubscriptions(set: SetState, get: GetState) {
    * itself is idempotent per reporter and target on the server for the same
    * reason.
    */
+  /**
+   * Fork somebody else's shared plan into the user's own library.
+   *
+   * The live mirror is read-only and stays that way — this is the escape
+   * hatch, and it is a genuine fork: new ids at every level, no link back, and
+   * the author's later edits never reach it.
+   *
+   * **Progress does not come with it**, which follows from the ids rather than
+   * being a separate decision. `ReadingProgress` is keyed by list id and a tick
+   * by entry id, so a copy that kept the author's ids would share one progress
+   * row with the mirror and ticking one would tick the other.
+   */
+  copySharedList: async (listId: string) => {
+    const mirror = get().mirroredLists.find((m) => m.list.id === listId);
+    if (!mirror) return null;
+    const copy = copyPlan(mirror.list, mirror.list.name);
+    await useLibraryStore.getState().upsertReadingList(copy);
+    return copy.id;
+  },
+
+  /** The same for a board — see `copyBoard` on why `cardIds` and `freeform`
+   * both have to be remapped. */
+  copySharedBoard: async (boardId: string) => {
+    const mirror = get().mirroredBoards.find((m) => m.board.id === boardId);
+    if (!mirror) return null;
+    const copy = copyBoard(mirror, mirror.board.name);
+    const lib = useLibraryStore.getState();
+    // Cards first: a board naming ids that are not in the table yet renders as
+    // an empty board for however long the writes take.
+    for (const card of copy.cards) await lib.upsertCard(card);
+    await lib.upsertBoard(copy.board);
+    return copy.board.id;
+  },
+
   reportContent: async ({
     code,
     postId,

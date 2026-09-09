@@ -1,9 +1,13 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
-import type { ReadingList, ReadingProgress } from '@/types/domain';
+import type { MirroredList, ReadingList, ReadingProgress } from '@/types/domain';
 import type { Translation } from '@/services/bible/bibleApi';
-import { formatSegment, type SegmentRef } from '@/services/reading/readingSequence';
+import {
+  formatSegment,
+  type ReaderSource,
+  type SegmentRef,
+} from '@/services/reading/readingSequence';
 import { listChapterCount, passageDetail } from '@/services/reading/readingEntries';
 import { progressStats } from '@/services/reading/readingProgress';
 import { listWindow } from '@/services/reading/listWindow';
@@ -12,13 +16,15 @@ import { ProgressBar } from '@/components/reading/ProgressBar';
 import { NarrationDownloadButton } from '@/components/reader/NarrationDownloadButton';
 import { NarrationGroupButton } from '@/components/reader/NarrationGroupButton';
 import { subjectsForSegments } from '@/lib/narrationGroup';
+import { useCommunityStore } from '@/store/communityStore';
 import {
+  AuthorGroup,
   CheckMark,
-  ChevronRight,
   PagerButton,
   PickerBody,
   PickerEmpty,
   PlayGlyph,
+  SourceRow,
 } from './pickerRows';
 
 /**
@@ -31,7 +37,20 @@ import {
  * you left off.
  */
 
-/** Pick a list to read through. */
+/**
+ * Pick a plan to read through: the user's own first, then the ones shared into
+ * rooms they follow.
+ *
+ * Grouped by author below the rule, with the same furniture the spaces view
+ * uses — and grouped on the **pinned signing key**, never on the display name,
+ * for the reason `groupSubscriptionsByAuthor` records: a name is neither unique
+ * nor claimed, and merging two people called Christoph is the one mistake a
+ * feature about knowing whose writing you are reading must not make.
+ *
+ * The mirrored plans are read from the store here rather than handed down by
+ * the shell, matching how the spaces views do it: a feed refresh then
+ * re-renders this list and not the whole sheet.
+ */
 export function ListsView({
   lists,
   progress,
@@ -40,39 +59,53 @@ export function ListsView({
 }: {
   lists: ReadingList[];
   progress: Record<string, ReadingProgress>;
-  onSelect: (listId: string) => void;
+  /** A source rather than an id, so a shared plan can name the room it is in. */
+  onSelect: (source: ReaderSource) => void;
   onManage: () => void;
 }) {
   const { t } = useTranslation();
+  const mirroredLists = useCommunityStore((s) => s.mirroredLists);
+  const authorGroups = useMemo(() => groupMirroredByAuthor(mirroredLists), [mirroredLists]);
+
   return (
     <PickerBody>
-      {lists.length === 0 ? (
+      {lists.length === 0 && mirroredLists.length === 0 ? (
         <PickerEmpty>{t('lists.empty')}</PickerEmpty>
       ) : (
         <ul className="py-2 space-y-1">
-          {lists.map((list) => {
-            const stats = progressStats(list, progress[list.id]);
-            return (
-              <li key={list.id}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(list.id)}
-                  className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-brand/10 active:bg-brand/15 transition-colors"
-                >
-                  <span className="flex-1 min-w-0">
-                    <span className="block font-serif text-ink text-sm truncate">
-                      {list.emoji ? `${list.emoji} ` : ''}
-                      {list.name || t('lists.untitled')}
-                    </span>
-                    <span className="block text-[11px] text-ink-muted mt-0.5">
-                      {t('lists.progress', { done: stats.done, total: stats.total })}
-                    </span>
-                  </span>
-                  <ChevronRight />
-                </button>
-              </li>
-            );
-          })}
+          {lists.map((list) => (
+            <li key={list.id}>
+              <ListSourceRow
+                list={list}
+                progress={progress[list.id]}
+                onSelect={() => onSelect({ kind: 'list', listId: list.id })}
+              />
+            </li>
+          ))}
+
+          {lists.length > 0 && authorGroups.length > 0 && (
+            <li aria-hidden className="pt-1 pb-1">
+              <span className="block border-t border-surface-raised/60" />
+            </li>
+          )}
+
+          {authorGroups.map((group) => (
+            <AuthorGroup
+              key={group.authorKey}
+              ownerName={group.author}
+              detail={t('lists.sharedCount', { count: group.plans.length }) as string}
+            >
+              {group.plans.map((m) => (
+                <li key={`${m.code}:${m.list.id}`}>
+                  <ListSourceRow
+                    list={m.list}
+                    progress={progress[m.list.id]}
+                    onSelect={() => onSelect({ kind: 'list', listId: m.list.id, code: m.code })}
+                  />
+                </li>
+              ))}
+            </AuthorGroup>
+          ))}
         </ul>
       )}
       <button
@@ -84,6 +117,55 @@ export function ListsView({
       </button>
     </PickerBody>
   );
+}
+
+/**
+ * One plan, own or shared. `SourceRow` rather than a shape of its own, because
+ * the two kinds sit in one list and two row shapes there read as two features.
+ *
+ * The progress is always the *reader's*: a `readingProgress` row is keyed by
+ * list id and lives in this user's account, so ticking off somebody else's plan
+ * records your own reading of it.
+ */
+function ListSourceRow({
+  list,
+  progress,
+  onSelect,
+}: {
+  list: ReadingList;
+  progress: ReadingProgress | undefined;
+  onSelect: () => void;
+}) {
+  const { t } = useTranslation();
+  const stats = progressStats(list, progress);
+  return (
+    <SourceRow
+      label={list.name || (t('lists.untitled') as string)}
+      emoji={list.emoji}
+      detail={t('lists.progress', { done: stats.done, total: stats.total }) as string}
+      onSelect={onSelect}
+    />
+  );
+}
+
+/**
+ * The mirrored plans of one author, collapsed behind their name.
+ *
+ * Presentation, so it stays out of the store — but *how* to group is a
+ * correctness question, hence the signing key. Order is first-appearance, the
+ * same rule `groupSubscriptionsByAuthor` uses, so the list does not reshuffle
+ * as rooms refresh.
+ */
+function groupMirroredByAuthor(
+  mirrors: MirroredList[],
+): { authorKey: string; author: string; plans: MirroredList[] }[] {
+  const groups = new Map<string, { authorKey: string; author: string; plans: MirroredList[] }>();
+  for (const m of mirrors) {
+    const group = groups.get(m.authorKey);
+    if (group) group.plans.push(m);
+    else groups.set(m.authorKey, { authorKey: m.authorKey, author: m.author, plans: [m] });
+  }
+  return [...groups.values()];
 }
 
 /**

@@ -65,6 +65,9 @@ export function LibraryTabs({
   onDelete,
   onReorder,
   onRequestAddCards,
+  onShareBoard,
+  sharedBoardCount,
+  onOpenSharedBoards,
   showEditToggle = false,
   editMode = false,
   onToggleEditMode,
@@ -90,6 +93,20 @@ export function LibraryTabs({
   onDelete: () => Promise<void>;
   onReorder: (fromId: string, toId: string) => Promise<void>;
   onRequestAddCards: () => void;
+  /**
+   * Share the active board into one of the user's rooms. Absent when there is
+   * no community profile, which is what hides the menu row entirely rather
+   * than offering something that cannot work.
+   */
+  onShareBoard?: () => void;
+  /**
+   * Open the boards other people have shared. A pointer, not a tab: a foreign
+   * board cannot live in this strip — `activeBoardId` is nulled against the
+   * user's own boards on every boot and every sync — so it lives on the room's
+   * screen, and this is how it stays findable from where boards are.
+   */
+  sharedBoardCount?: number;
+  onOpenSharedBoards?: () => void;
   /** Show the corkboard arrange/view toggle (only meaningful in freeform view). */
   showEditToggle?: boolean;
   editMode?: boolean;
@@ -323,6 +340,27 @@ export function LibraryTabs({
           >
             + {t('boards.addCards')}
           </MenuItem>
+          {onShareBoard && (
+            <MenuItem
+              disabled={!hasActive}
+              onClick={() => {
+                setMenu(null);
+                onShareBoard();
+              }}
+            >
+              ↗ {t('boards.share')}
+            </MenuItem>
+          )}
+          {onOpenSharedBoards && (sharedBoardCount ?? 0) > 0 && (
+            <MenuItem
+              onClick={() => {
+                setMenu(null);
+                onOpenSharedBoards();
+              }}
+            >
+              {t('boards.sharedCount', { count: sharedBoardCount })}
+            </MenuItem>
+          )}
           <MenuItem
             disabled={!hasActive}
             danger
