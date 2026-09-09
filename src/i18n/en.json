@@ -678,6 +678,7 @@
       "action": "Report",
       "reportPost": "Report this piece",
       "reportSpace": "Report this shelf",
+      "reportBoard": "Report this board",
       "title": "Report to the moderators",
       "reasonLabel": "What's wrong with it?",
       "noteLabel": "Anything to add? (optional)",

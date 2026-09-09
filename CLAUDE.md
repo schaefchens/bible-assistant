@@ -374,6 +374,18 @@ the ticker on its own in every stop path the tests covered. The case that separa
 anything added here — a green test that agrees with the code for the wrong reason is worse
 than a red one.
 
+**One unit test is a static scan rather than a function call**, and it earns
+the exception: `tests/unit/i18nKeys.test.ts` walks every literal `t('…')` in
+`src/` and asserts the key exists, names a *string* rather than a group of
+them, and exists in both languages. A shared board's Report button shipped
+rendering the words `community.report` because that key is a group and asking
+for a group hands back the key's own name instead of throwing — invisible to
+`tsc`, to lint, and to every E2E spec that did not happen to assert on that one
+button. Per-button assertions would be one bug caught and six hundred call
+sites left open; this is the lowest layer that can see the whole class. It
+covers literals only — a handful of sites build the key, and chasing those
+needs evaluation or a convention nobody would keep.
+
 Three E2E projects, and the split is not cosmetic. `app` is the journeys.
 `mobile` carries an Android user agent for the one flow that branches on it (an
 invitation's app hand-off) — giving the main project a mobile UA would change

@@ -65,12 +65,19 @@ export function SharedBoardView({
         <p className="flex-1 min-w-0 truncate text-[12px] text-ink-muted">
           {t('boards.readOnly', { author: mirror.author })}
         </p>
+        {/* `community.report` is a *group* of strings, so the bare key rendered
+            its own name — the leaf is `action`. The accessible name is the
+            longer sibling, the way `SegmentBlock` names the piece it reports:
+            "Melden" alone is fine to read beside the byline and says nothing at
+            all out of context. */}
         <button
           type="button"
           onClick={() => setReporting(true)}
+          aria-label={t('community.report.reportBoard') as string}
+          title={t('community.report.reportBoard') as string}
           className="h-8 shrink-0 rounded-lg px-2 text-xs text-ink-muted transition-colors hover:text-ink"
         >
-          {t('community.report')}
+          {t('community.report.action')}
         </button>
         <button
           type="button"

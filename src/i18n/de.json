@@ -678,6 +678,7 @@
       "action": "Melden",
       "reportPost": "Diesen Beitrag melden",
       "reportSpace": "Dieses Regal melden",
+      "reportBoard": "Diese Tafel melden",
       "title": "An die Moderation melden",
       "reasonLabel": "Was ist das Problem?",
       "noteLabel": "Noch etwas dazu? (optional)",
