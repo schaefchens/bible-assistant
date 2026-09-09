@@ -115,10 +115,14 @@ export async function makeRoom(page: Page, name: string): Promise<Room> {
   await field.press('Enter');
   await named;
 
+  // The code and who may read it are behind the header's share button now —
+  // a shelf's screen is about what is on it.
+  await page.getByRole('button', { name: 'Share this shelf' }).click();
   const formatted = (
     await page.getByText(/^[0-9A-Z]{5}-[0-9A-Z]{5}-[0-9A-Z]{6}$/).innerText()
   ).trim();
   expect(formatted).toMatch(/^[0-9A-Z]{5}-[0-9A-Z]{5}-[0-9A-Z]{6}$/);
+  await page.keyboard.press('Escape');
   return { formatted, code: formatted.replace(/-/g, '') };
 }
 
@@ -161,6 +165,8 @@ export async function acceptReader(page: Page, roomName: string, reader: string)
   await appReady(page);
   await page.getByRole('link', { name: 'Shelves' }).click();
   await page.getByRole('button', { name: new RegExp(roomName) }).first().click();
+  // Requests and readers have a sheet of their own, separate from the code.
+  await page.getByRole('button', { name: /^Readers/ }).click();
   const accept = page.getByRole('button', { name: /Accept|Allow/ }).first();
   await expect(accept, 'the request should appear in the owner’s room').toBeVisible({
     timeout: 30_000,
@@ -168,7 +174,8 @@ export async function acceptReader(page: Page, roomName: string, reader: string)
   const decided = page.waitForResponse((r) => r.url().includes('action=members.decide') && r.ok());
   await accept.click();
   await decided;
-  await expect(page.locator('main')).toContainText(reader);
+  await expect(page.getByRole('dialog').filter({ hasText: 'Readers' })).toContainText(reader);
+  await page.keyboard.press('Escape');
 }
 
 /**
@@ -320,9 +327,18 @@ async function pickRoom(page: Page, roomName: string): Promise<void> {
  * is the whole of "the author's change reaches the readers" on the owner's
  * side — and the button only exists once the source has actually drifted.
  */
-export async function updateSharedItem(page: Page, roomName: string, title: string): Promise<void> {
+export async function updateSharedItem(
+  page: Page,
+  roomName: string,
+  title: string,
+  kind: 'plan' | 'board' = 'plan',
+): Promise<void> {
   await page.getByRole('link', { name: 'Shelves' }).click();
   await page.getByRole('button', { name: new RegExp(roomName) }).first().click();
+  // Plans and boards each have their own tab on a shelf now.
+  await page.getByRole('button', {
+    name: kind === 'plan' ? /^Reading plans/ : /^Cards & boards/,
+  }).click();
   const update = page.getByRole('button', { name: `Update — ${title}` });
   await expect(update, `"${title}" should be marked as changed`).toBeVisible({ timeout: 15_000 });
   const synced = page.waitForResponse((r) => r.url().includes('action=items.upsert') && r.ok());

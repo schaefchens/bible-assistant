@@ -240,6 +240,16 @@ export const ShareIcon = ({ size = 15, className }: IconProps) => (
   </Glyph>
 );
 
+/** Two figures, for the people who read a shelf. */
+export const ReadersIcon = ({ size = 16, className }: IconProps) => (
+  <Glyph size={size} stroke={1.8} className={className}>
+    <circle cx="9" cy="8" r="3.2" />
+    <path d="M3.5 19.5a5.5 5.5 0 0 1 11 0" />
+    <path d="M16 5.6a3.2 3.2 0 0 1 0 6.2" />
+    <path d="M17.5 14.6a5.5 5.5 0 0 1 3 4.9" />
+  </Glyph>
+);
+
 /**
  * A broken chain link, for letting go of somebody else's shelf.
  *

@@ -2067,6 +2067,39 @@ and its extracted text — deleting the thing is the obvious first move after
 being reported. Blocking needs no change: it is keyed by the author's signing
 key and deletes their subscriptions, so their shelf goes with them.
 
+### A shelf's own screen: three tabs and two sheets
+
+`SpaceDetail` was one long scroll of six sections — the code, the approval mode,
+the name, the requests, the readers, then finally what was actually on the
+shelf. You came to it to put something on the shelf and had to scroll past its
+settings to reach them.
+
+Now the body is **what is on the shelf**, behind three tabs: Pieces, Reading
+plans, Cards & boards. Each tab carries its own way to add to it, at the top of
+the panel — "+ New piece" writes one, the other two open `AddToShelfSheet`,
+which lists the plans or boards you have that are **not already here**. That
+sheet is the inverse of `ShareToRoomSheet` (which starts from the plan and picks
+a shelf); both exist because both journeys are real and neither reads as the
+other backwards.
+
+The settings went to **two** sheets, not one, off two header buttons:
+
+- **share** — the code, and whether holding it is enough (`approval`);
+- **readers** — who has asked, and who already reads it, with the pending count
+  as a badge on the button.
+
+One sheet was the first attempt and it read wrong: a list of people under a
+share code looks like an afterthought to the code, when it is the half the
+author actually comes back to check. Deciding about a person also should not
+share a screen with a code you might be about to rotate.
+
+**Delete is outside the scroller**, tucked under it. Inside, it read as the last
+row of whichever tab happened to be showing. Its bottom padding is clearance for
+a floating mic dock, which overlays that corner in four of its five positions.
+
+The name and description stay in the body above the tabs — they are neither
+sharing nor readers, and moving them was not asked for.
+
 ### The index is two tabs, not two sections
 
 Your own shelves and the ones you read used to stack in one scroller. Stacked,

@@ -7,11 +7,14 @@ import { copyText, shareText } from '@/lib/nativeBridge';
 import { formatSpaceCode } from '@/lib/spaceCode';
 import { webInviteUrl } from '@/lib/spaceInvite';
 import { useGoBack } from '@/hooks/useGoBack';
-import { BoardIcon, ListIcon } from '@/components/common/icons';
+import { BottomSheet, BottomSheetBody } from '@/components/common/BottomSheet';
+import { BoardIcon, ListIcon, ReadersIcon, ShareIcon } from '@/components/common/icons';
+import { SegmentedTabs } from '@/components/common/SegmentedTabs';
+import { AddToShelfSheet } from './AddToShelfSheet';
 import { useCommunityStore } from '@/store/communityStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useReaderStore } from '@/store/readerStore';
-import type { Post, Space } from '@/types/domain';
+import type { Post, SharedItemKind, Space } from '@/types/domain';
 import { spaceDisplayName } from '@/services/community/spaceName';
 import { useLocale } from '@/hooks/useLocale';
 
@@ -53,6 +56,12 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
 
   const [confirmingRotate, setConfirmingRotate] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [sharingOpen, setSharingOpen] = useState(false);
+  const [readersOpen, setReadersOpen] = useState(false);
+  /** Which of the shelf's three kinds of content is showing. */
+  const [tab, setTab] = useState<'pieces' | 'plans' | 'boards'>('pieces');
+  /** Non-null while the "put something on this shelf" picker is open. */
+  const [adding, setAdding] = useState<SharedItemKind | null>(null);
 
   useEffect(() => {
     if (!confirmingRotate) return;
@@ -71,6 +80,9 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
     () => items.filter((i) => i.spaceId === space.id && sharedClaims[i.id] === true),
     [items, sharedClaims, space.id],
   );
+  /** Split by kind, because each has its own tab and its own way to add one. */
+  const plans = useMemo(() => roomItems.filter((i) => i.kind === 'plan'), [roomItems]);
+  const sharedBoards = useMemo(() => roomItems.filter((i) => i.kind === 'board'), [roomItems]);
 
   /**
    * Which shared items no longer match the list or board they came from.
@@ -148,85 +160,53 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
             {t('community.read')}
           </button>
         )}
-        <button type="button" onClick={newPost} className="btn-primary text-sm">
-          + {t('community.newPost')}
+        {/* Two subjects, two buttons: *how* it is shared (the code, and
+            whether asking is enough) and *who* reads it. They were one sheet
+            first, and a list of people under a share code read as an
+            afterthought to it rather than the thing the author actually comes
+            back to check. The pending count rides here because that is what
+            they are waiting on. */}
+        <button
+          type="button"
+          onClick={() => setReadersOpen(true)}
+          aria-label={
+            pending.length > 0
+              ? `${t('community.readers')} — ${t('community.requests', { count: pending.length })}`
+              : (t('community.readers') as string)
+          }
+          title={t('community.readers') as string}
+          className="relative h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-ink-muted hover:text-brand active:scale-95 transition-all"
+        >
+          <ReadersIcon />
+          {pending.length > 0 && (
+            <span
+              aria-hidden
+              className="absolute -top-0.5 -right-0.5 min-w-[14px] rounded-full bg-brand px-1 text-[9px] leading-[14px] text-on-brand"
+            >
+              {pending.length}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => setSharingOpen(true)}
+          aria-label={t('community.shareSpace.action') as string}
+          title={t('community.shareSpace.action') as string}
+          className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-ink-muted hover:text-brand active:scale-95 transition-all"
+        >
+          <ShareIcon />
         </button>
       </header>
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 pb-28 space-y-6">
-        {isToday && <p className="text-xs text-brand-muted">{t('community.todayHint')}</p>}
-
-        <section className="space-y-2">
-          <SectionTitle>{t('community.share')}</SectionTitle>
-          {space.shareCode ? (
-            <>
-              <p className="font-mono text-base text-brand tracking-wide">
-                {formatSpaceCode(space.shareCode)}
-              </p>
-              <div className="flex gap-2 flex-wrap">
-                <SmallButton
-                  onClick={() => {
-                    void copyText(formatSpaceCode(space.shareCode!)).then((ok) => {
-                      if (ok) {
-                        setCopied(true);
-                        window.setTimeout(() => setCopied(false), 1500);
-                      }
-                    });
-                  }}
-                >
-                  {copied ? '✓' : t('community.shareCopy')}
-                </SmallButton>
-                <SmallButton onClick={() => void onShare()}>
-                  {t('community.shareSend')}
-                </SmallButton>
-                <SmallButton
-                  danger={confirmingRotate}
-                  onClick={() => {
-                    if (!confirmingRotate) {
-                      setConfirmingRotate(true);
-                      return;
-                    }
-                    setConfirmingRotate(false);
-                    void shareSpace(space.id, true);
-                  }}
-                >
-                  {confirmingRotate
-                    ? t('community.shareRotateConfirm')
-                    : t('community.shareRotate')}
-                </SmallButton>
-              </div>
-            </>
-          ) : (
-            <SmallButton onClick={() => void onShare()}>
-              {t('community.shareCreate')}
-            </SmallButton>
-          )}
-          <p className="text-xs text-ink-muted">{t('community.shareHint')}</p>
-        </section>
-
-        <section className="space-y-2">
-          <SectionTitle>{t('community.approval')}</SectionTitle>
-          {/* Two radio-ish rows rather than a checkbox: "auto" and "manual" are
-              not the presence and absence of a thing, they are two policies. */}
-          {(['manual', 'auto'] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => void saveSpace({ ...space, approval: mode })}
-              className={clsx(
-                'w-full text-left px-3 py-2 rounded-xl text-sm transition-colors',
-                space.approval === mode
-                  ? 'bg-brand/15 text-ink ring-1 ring-brand/40'
-                  : 'bg-surface-raised text-ink-muted',
-              )}
-            >
-              {t(mode === 'auto' ? 'community.approvalAuto' : 'community.approvalManual')}
-            </button>
-          ))}
-        </section>
+      {/* A column, like the shelves index: the tabs stay put and the list
+          below them scrolls. */}
+      <div className="flex-1 min-h-0 flex flex-col px-4 py-4">
+        {isToday && (
+          <p className="shrink-0 text-xs text-brand-muted">{t('community.todayHint')}</p>
+        )}
 
         {!isToday && (
-          <section className="space-y-2">
+          <div className="shrink-0 space-y-2">
             <Field label={t('community.spaceName')}>
               <Draft
                 value={space.name}
@@ -242,148 +222,299 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
                 multiline
               />
             </Field>
-          </section>
+          </div>
         )}
 
-        {pending.length > 0 && (
-          <section className="space-y-2">
-            <SectionTitle>{t('community.requests', { count: pending.length })}</SectionTitle>
-            {pending.map((m) => (
-              <div
-                key={m.userId}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-raised"
-              >
-                <Avatar name={m.displayName} url={m.avatarUrl} />
-                <span className="flex-1 min-w-0 truncate text-sm text-ink">{m.displayName}</span>
-                <SmallButton onClick={() => void decideMember(m.userId, space.id, 'accepted')}>
-                  {t('community.accept')}
-                </SmallButton>
-                <SmallButton danger onClick={() => void decideMember(m.userId, space.id, 'blocked')}>
-                  {t('community.block')}
-                </SmallButton>
-              </div>
-            ))}
-          </section>
-        )}
+        <SegmentedTabs
+          className="mt-4 mb-3 shrink-0"
+          active={tab}
+          onSelect={setTab}
+          segments={[
+            { key: 'pieces', label: t('community.tabPieces'), count: mine.length },
+            { key: 'plans', label: t('community.tabPlans'), count: plans.length },
+            { key: 'boards', label: t('community.tabBoards'), count: sharedBoards.length },
+          ]}
+        />
 
-        <section className="space-y-2">
-          <SectionTitle>{t('community.readers')}</SectionTitle>
-          {readers.length === 0 && (
-            <p className="text-sm text-ink-muted">{t('community.noReaders')}</p>
-          )}
-          {readers.map((m) => (
-            <div
-              key={m.userId}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-raised"
-            >
-              <Avatar name={m.displayName} url={m.avatarUrl} />
-              <span className="flex-1 min-w-0 truncate text-sm text-ink">{m.displayName}</span>
-              <SmallButton danger onClick={() => void decideMember(m.userId, space.id, 'blocked')}>
-                {t('community.block')}
-              </SmallButton>
-            </div>
-          ))}
-        </section>
-
-        <section className="space-y-2">
-          <SectionTitle>{t('community.pieces', { count: mine.length })}</SectionTitle>
-          {mine.length === 0 && <p className="text-sm text-ink-muted">{t('community.empty')}</p>}
-          {mine.map((post) => (
-            <button
-              key={post.id}
-              type="button"
-              onClick={() => onEditPost(post)}
-              className="w-full text-left px-3 py-2 rounded-xl bg-surface-raised"
-            >
-              <span className="flex items-center gap-2">
-                <span className="text-ink truncate flex-1 min-w-0">
-                  {post.title || t('community.untitledPost')}
-                </span>
-                <span
-                  className={clsx(
-                    'text-[10px] uppercase tracking-wider',
-                    shared[post.id] ? 'text-brand' : 'text-ink-muted',
-                  )}
+        <div className="flex-1 min-h-0 space-y-2 overflow-y-auto pb-2">
+          {tab === 'pieces' && (
+            <>
+              {/* The way to add to *this* tab, at the top of it — the same
+                  place the other two put theirs. */}
+              <button type="button" onClick={newPost} className="btn-primary text-sm">
+                + {t('community.newPost')}
+              </button>
+              {mine.length === 0 && (
+                <p className="text-sm text-ink-muted">{t('community.empty')}</p>
+              )}
+              {mine.map((post) => (
+                <button
+                  key={post.id}
+                  type="button"
+                  onClick={() => onEditPost(post)}
+                  className="w-full text-left px-3 py-2 rounded-xl bg-surface-raised"
                 >
-                  {t(shared[post.id] ? 'community.published' : 'community.draft')}
-                </span>
-              </span>
-            </button>
-          ))}
-        </section>
-
-        {/* Plans and boards, beside the pieces. Three actions rather than the
-            pieces' one, because a shared item is a *snapshot*: Update is what
-            makes an edit to the source reach readers, and it is offered rather
-            than automatic — silently changing a plan people are forty days into
-            is worse than a button. Withdraw drops the room's copy and keeps the
-            plan; Delete is the other half of the pair. */}
-        <section className="space-y-2">
-          <SectionTitle>{t('community.sharedItems')}</SectionTitle>
-          {roomItems.length === 0 && (
-            <p className="text-sm text-ink-muted">{t('community.noSharedItems')}</p>
-          )}
-          {roomItems.map((item) => {
-            const src = itemSources[item.id];
-            const stale = src ? staleSources.has(item.id) : false;
-            return (
-              <div
-                key={item.id}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-raised"
-              >
-                {item.kind === 'plan' ? (
-                  <ListIcon size={15} className="shrink-0 text-brand" />
-                ) : (
-                  <BoardIcon size={15} className="shrink-0 text-brand" />
-                )}
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-ink">{item.title}</span>
-                  {stale && (
-                    <span className="block text-[10px] uppercase tracking-wider text-ink-muted">
-                      {t('community.outOfDate')}
+                  <span className="flex items-center gap-2">
+                    <span className="text-ink truncate flex-1 min-w-0">
+                      {post.title || t('community.untitledPost')}
                     </span>
-                  )}
-                </span>
-                {stale && (
-                  <SmallButton
-                    label={`${t('community.updateShared')} — ${item.title}`}
-                    onClick={() => void republishItem(item.id)}
-                  >
-                    {t('community.updateShared')}
-                  </SmallButton>
-                )}
-                <SmallButton
-                  label={`${t('community.withdraw')} — ${item.title}`}
-                  onClick={() => void withdrawItem(item.id)}
-                >
-                  {t('community.withdraw')}
-                </SmallButton>
-                <SmallButton
-                  danger
-                  label={`${t('community.deleteItem')} — ${item.title}`}
-                  onClick={() => void deleteItem(item.id)}
-                >
-                  {t('community.deleteItem')}
-                </SmallButton>
-              </div>
-            );
-          })}
-        </section>
+                    <span
+                      className={clsx(
+                        'text-[10px] uppercase tracking-wider',
+                        shared[post.id] ? 'text-brand' : 'text-ink-muted',
+                      )}
+                    >
+                      {t(shared[post.id] ? 'community.published' : 'community.draft')}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </>
+          )}
 
+          {tab !== 'pieces' && (
+            <>
+              <button
+                type="button"
+                onClick={() => setAdding(tab === 'plans' ? 'plan' : 'board')}
+                className="btn-primary text-sm"
+              >
+                {t(tab === 'plans' ? 'community.addPlan' : 'community.addBoard')}
+              </button>
+              {(tab === 'plans' ? plans : sharedBoards).length === 0 && (
+                <p className="text-sm text-ink-muted">
+                  {t(tab === 'plans' ? 'community.noPlansHere' : 'community.noBoardsHere')}
+                </p>
+              )}
+              {/* Three actions rather than the pieces' one, because a shared
+                  item is a *snapshot*: Update is what makes an edit to the
+                  source reach readers, and it is offered rather than automatic
+                  — silently changing a plan people are forty days into is worse
+                  than a button. Withdraw drops the shelf's copy and keeps the
+                  plan; Delete is the other half of that pair. */}
+              {(tab === 'plans' ? plans : sharedBoards).map((item) => {
+                const stale = staleSources.has(item.id);
+                return (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-raised"
+                  >
+                    {item.kind === 'plan' ? (
+                      <ListIcon size={15} className="shrink-0 text-brand" />
+                    ) : (
+                      <BoardIcon size={15} className="shrink-0 text-brand" />
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-ink">{item.title}</span>
+                      {stale && (
+                        <span className="block text-[10px] uppercase tracking-wider text-ink-muted">
+                          {t('community.outOfDate')}
+                        </span>
+                      )}
+                    </span>
+                    {stale && (
+                      <SmallButton
+                        label={`${t('community.updateShared')} — ${item.title}`}
+                        onClick={() => void republishItem(item.id)}
+                      >
+                        {t('community.updateShared')}
+                      </SmallButton>
+                    )}
+                    <SmallButton
+                      label={`${t('community.withdraw')} — ${item.title}`}
+                      onClick={() => void withdrawItem(item.id)}
+                    >
+                      {t('community.withdraw')}
+                    </SmallButton>
+                    <SmallButton
+                      danger
+                      label={`${t('community.deleteItem')} — ${item.title}`}
+                      onClick={() => void deleteItem(item.id)}
+                    >
+                      {t('community.deleteItem')}
+                    </SmallButton>
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+        </div>
+
+        {/* Outside the scroller and tucked under it: inside, it read as the
+            last row of whichever tab happened to be showing. The bottom
+            padding is clearance for a floating mic dock, which overlays this
+            corner in four of its five positions. */}
         {!isToday && (
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm(t('community.deleteSpaceConfirm', { name: title }))) {
-                void deleteSpace(space.id).then(goBack);
-              }
-            }}
-            className="w-full px-3 py-2 rounded-xl bg-surface-raised text-sm text-red-400"
-          >
-            {t('community.deleteSpace')}
-          </button>
+          <div className="shrink-0 pt-3 pb-20">
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(t('community.deleteSpaceConfirm', { name: title }))) {
+                  void deleteSpace(space.id).then(goBack);
+                }
+              }}
+              className="w-full rounded-xl py-2 text-center text-xs text-red-400/80 hover:text-red-400 transition-colors"
+            >
+              {t('community.deleteSpace')}
+            </button>
+          </div>
         )}
       </div>
+
+      {adding && (
+        <AddToShelfSheet
+          kind={adding}
+          spaceId={space.id}
+          open
+          onClose={() => setAdding(null)}
+        />
+      )}
+
+      {/* Everything about *getting read*: the code, who may ask, who already
+          may. One subject, one sheet. */}
+      <BottomSheet
+        open={sharingOpen}
+        onClose={() => setSharingOpen(false)}
+        title={t('community.shareSpace.action') as string}
+      >
+        <BottomSheetBody>
+          <div className="space-y-6 pb-4">
+            <section className="space-y-2">
+              <SectionTitle>{t('community.share')}</SectionTitle>
+              {space.shareCode ? (
+                <>
+                  <p className="font-mono text-base text-brand tracking-wide">
+                    {formatSpaceCode(space.shareCode)}
+                  </p>
+                  <div className="flex gap-2 flex-wrap">
+                    <SmallButton
+                      onClick={() => {
+                        void copyText(formatSpaceCode(space.shareCode!)).then((ok) => {
+                          if (ok) {
+                            setCopied(true);
+                            window.setTimeout(() => setCopied(false), 1500);
+                          }
+                        });
+                      }}
+                    >
+                      {copied ? '✓' : t('community.shareCopy')}
+                    </SmallButton>
+                    <SmallButton onClick={() => void onShare()}>
+                      {t('community.shareSend')}
+                    </SmallButton>
+                    <SmallButton
+                      danger={confirmingRotate}
+                      onClick={() => {
+                        if (!confirmingRotate) {
+                          setConfirmingRotate(true);
+                          return;
+                        }
+                        setConfirmingRotate(false);
+                        void shareSpace(space.id, true);
+                      }}
+                    >
+                      {confirmingRotate
+                        ? t('community.shareRotateConfirm')
+                        : t('community.shareRotate')}
+                    </SmallButton>
+                  </div>
+                </>
+              ) : (
+                <SmallButton onClick={() => void onShare()}>
+                  {t('community.shareCreate')}
+                </SmallButton>
+              )}
+              <p className="text-xs text-ink-muted">{t('community.shareHint')}</p>
+            </section>
+
+            <section className="space-y-2">
+              <SectionTitle>{t('community.approval')}</SectionTitle>
+              {/* Two radio-ish rows rather than a checkbox: "auto" and "manual"
+                  are not the presence and absence of a thing, they are two
+                  policies. */}
+              {(['manual', 'auto'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => void saveSpace({ ...space, approval: mode })}
+                  className={clsx(
+                    'w-full text-left px-3 py-2 rounded-xl text-sm transition-colors',
+                    space.approval === mode
+                      ? 'bg-brand/15 text-ink ring-1 ring-brand/40'
+                      : 'bg-surface text-ink-muted',
+                  )}
+                >
+                  {t(mode === 'auto' ? 'community.approvalAuto' : 'community.approvalManual')}
+                </button>
+              ))}
+            </section>
+
+          </div>
+        </BottomSheetBody>
+      </BottomSheet>
+
+      {/* Who reads this shelf, and who has asked to. Its own sheet because it
+          is the half the author comes back to, and because deciding about a
+          person should not share a screen with a code you might be about to
+          rotate. */}
+      <BottomSheet
+        open={readersOpen}
+        onClose={() => setReadersOpen(false)}
+        title={t('community.readers') as string}
+      >
+        <BottomSheetBody>
+          <div className="space-y-6 pb-4">
+            {pending.length > 0 && (
+              <section className="space-y-2">
+                <SectionTitle>{t('community.requests', { count: pending.length })}</SectionTitle>
+                {pending.map((m) => (
+                  <div
+                    key={m.userId}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface"
+                  >
+                    <Avatar name={m.displayName} url={m.avatarUrl} />
+                    <span className="flex-1 min-w-0 truncate text-sm text-ink">
+                      {m.displayName}
+                    </span>
+                    <SmallButton onClick={() => void decideMember(m.userId, space.id, 'accepted')}>
+                      {t('community.accept')}
+                    </SmallButton>
+                    <SmallButton
+                      danger
+                      onClick={() => void decideMember(m.userId, space.id, 'blocked')}
+                    >
+                      {t('community.block')}
+                    </SmallButton>
+                  </div>
+                ))}
+              </section>
+            )}
+
+            <section className="space-y-2">
+              <SectionTitle>{t('community.readers')}</SectionTitle>
+              {readers.length === 0 && (
+                <p className="text-sm text-ink-muted">{t('community.noReaders')}</p>
+              )}
+              {readers.map((m) => (
+                <div
+                  key={m.userId}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface"
+                >
+                  <Avatar name={m.displayName} url={m.avatarUrl} />
+                  <span className="flex-1 min-w-0 truncate text-sm text-ink">{m.displayName}</span>
+                  <SmallButton
+                    danger
+                    onClick={() => void decideMember(m.userId, space.id, 'blocked')}
+                  >
+                    {t('community.block')}
+                  </SmallButton>
+                </div>
+              ))}
+            </section>
+          </div>
+        </BottomSheetBody>
+      </BottomSheet>
     </div>
   );
 }

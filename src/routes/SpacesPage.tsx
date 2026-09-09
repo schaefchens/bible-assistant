@@ -17,6 +17,7 @@ import { useReaderStore } from '@/store/readerStore';
 import type { Post, Space, Subscription } from '@/types/domain';
 import { spaceDisplayName, spaceLabel } from '@/services/community/spaceName';
 import { NewPiecesBar } from '@/components/community/NewPiecesBar';
+import { SegmentedTabs } from '@/components/common/SegmentedTabs';
 import { CommunityTermsGate } from '@/components/community/CommunityTermsGate';
 import { CreateProfileForm } from '@/components/community/CreateProfileForm';
 import { useCommunityTermsAccepted } from '@/lib/communityTerms';
@@ -210,27 +211,23 @@ function SpacesIndex({
               </div>
             </div>
 
-            {/* `aria-pressed` buttons rather than ARIA tabs, matching the two
-                switches this app already has — the /cards strip and the share
-                sheet's piece/shelf toggle. The counts are on the labels because
-                with one list hidden they are the only thing that says whether
-                there is anything behind it, and the dot is there for the same
-                reason: new pieces used to be visible without a tap. */}
-            <div className="mt-5 mb-3 shrink-0 flex gap-1 rounded-xl bg-surface-raised p-1">
-              <IndexTab
-                label={t('community.mine')}
-                count={spaces.length}
-                active={tab === 'mine'}
-                onClick={() => setTab('mine')}
-              />
-              <IndexTab
-                label={t('community.following')}
-                count={subscriptions.length}
-                unread={unreadFollowing}
-                active={tab === 'following'}
-                onClick={() => setTab('following')}
-              />
-            </div>
+            <SegmentedTabs
+              className="mt-5 mb-3 shrink-0"
+              active={tab}
+              onSelect={setTab}
+              segments={[
+                { key: 'mine', label: t('community.mine'), count: spaces.length },
+                {
+                  key: 'following',
+                  label: t('community.following'),
+                  count: subscriptions.length,
+                  dot:
+                    unreadFollowing > 0
+                      ? (t('community.unread', { count: unreadFollowing }) as string)
+                      : undefined,
+                },
+              ]}
+            />
 
             <div className="flex-1 min-h-0 space-y-2 overflow-y-auto pb-28">
               {tab === 'mine' ? (
@@ -461,49 +458,6 @@ function FollowedSpaceActions({ sub, title }: { sub: Subscription; title: string
 const ROW_ACTION =
   'h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-ink-muted ' +
   'hover:text-brand active:scale-95 transition-all disabled:opacity-40';
-
-/**
- * One of the index's two lists, as a switch.
- *
- * The unread dot carries an accessible name rather than being decoration only:
- * a dot is the whole signal that the other list has something new in it, and a
- * screen reader would otherwise hear the two tabs as identical but for a count.
- */
-function IndexTab({
-  label,
-  count,
-  unread = 0,
-  active,
-  onClick,
-}: {
-  label: string;
-  count: number;
-  unread?: number;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={clsx(
-        'flex-1 min-w-0 flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-colors',
-        active ? 'bg-brand text-on-brand' : 'text-ink-muted hover:text-ink',
-      )}
-    >
-      <span className="truncate">{label}</span>
-      <span className="shrink-0 opacity-60">{count}</span>
-      {unread > 0 && (
-        <span
-          aria-label={t('community.unread', { count: unread }) as string}
-          className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', active ? 'bg-on-brand' : 'bg-brand')}
-        />
-      )}
-    </button>
-  );
-}
 
 function MissingSpace({ onBack }: { onBack: () => void }) {
   const { t } = useTranslation();

@@ -182,7 +182,7 @@ test('an updated board reaches the reader with its new card', async () => {
   await alice.page.getByRole('button', { name: BOARD, exact: true }).click();
   await alice.page.getByRole('button', { name: 'Save' }).click();
 
-  await updateSharedItem(alice.page, ROOM, BOARD);
+  await updateSharedItem(alice.page, ROOM, BOARD, 'board');
 
   await roomEventually(bob.page, room, '2 cards');
   await bob.page.getByRole('button', { name: new RegExp(BOARD) }).first().click();
@@ -194,6 +194,7 @@ test('withdrawing takes it off the reader’s shelf', async () => {
   await alice.page.goto('/spaces');
   await appReady(alice.page);
   await alice.page.getByRole('button', { name: new RegExp(ROOM) }).first().click();
+  await alice.page.getByRole('button', { name: /^Cards & boards/ }).click();
   const gone = alice.page.waitForResponse(
     (r) => r.url().includes('action=items.delete') && r.ok(),
   );

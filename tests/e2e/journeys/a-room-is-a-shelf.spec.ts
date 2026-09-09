@@ -184,8 +184,12 @@ test('the room lists all three, and the author’s own screen agrees', async () 
   await expect(shelf).toContainText(PLAN);
   await expect(shelf).toContainText(BOARD);
 
+  // The author's own screen keeps each kind behind its own tab, so this walks
+  // them rather than reading one page.
   await ownRoom(alice.page);
+  await alice.page.getByRole('button', { name: /^Reading plans/ }).click();
   await expect(alice.page.locator('main')).toContainText(PLAN);
+  await alice.page.getByRole('button', { name: /^Cards & boards/ }).click();
   await expect(alice.page.locator('main')).toContainText(BOARD);
 });
 

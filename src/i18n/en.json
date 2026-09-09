@@ -806,7 +806,17 @@
     "deleteItem": "Delete",
     "shareCodeIsRoom": "The code opens the shelf; only the link opens this piece.",
     "indexHint": "Make shelves and share your reading plans, cards and boards, and your own thoughts and writing with others.\nOr add a shelf shared with you, using its code, to follow what others put on theirs.",
-    "unsubscribeConfirm": "Stop reading “{{name}}”?"
+    "unsubscribeConfirm": "Stop reading “{{name}}”?",
+    "tabPieces": "Pieces",
+    "tabPlans": "Reading plans",
+    "tabBoards": "Cards & boards",
+    "addPlan": "+ Share a reading plan",
+    "addBoard": "+ Share a board",
+    "noPlansToShare": "You have no reading plans yet.",
+    "noBoardsToShare": "You have no boards yet.",
+    "allShared": "Everything you have is already on this shelf.",
+    "noPlansHere": "No reading plans on this shelf yet.",
+    "noBoardsHere": "No boards on this shelf yet."
   },
   "feedback": {
     "open": "Report a bug or send feedback",

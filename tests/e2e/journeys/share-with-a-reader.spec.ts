@@ -105,10 +105,14 @@ test('a piece is published, shared by code, accepted, and read by someone else',
   await page.getByRole('textbox', { name: 'Name' }).fill(SPACE);
   await spaceSynced;
 
-  // The share code is minted with the space. It is an *address*, not a key:
-  // holding it buys the ability to ask, and the accept below is the gate.
+  // The share code is minted with the shelf. It is an *address*, not a key:
+  // holding it buys the ability to ask, and the accept below is the gate. It
+  // lives behind the header's share button — a shelf's screen is about what is
+  // on it, not about how it is passed around.
+  await page.getByRole('button', { name: 'Share this shelf' }).click();
   const code = (await page.getByText(/^[0-9A-Z]{5}-[0-9A-Z]{5}-[0-9A-Z]{6}$/).innerText()).trim();
   expect(code).toMatch(/^[0-9A-Z]{5}-[0-9A-Z]{5}-[0-9A-Z]{6}$/);
+  await page.keyboard.press('Escape');
 
   await page.getByRole('button', { name: /New piece/ }).click();
   await page.getByRole('textbox', { name: 'Title' }).fill(TITLE);
@@ -139,6 +143,8 @@ test('a piece is published, shared by code, accepted, and read by someone else',
     await page.reload();
     await page.getByRole('link', { name: 'Shelves' }).click();
     await page.getByRole('button', { name: new RegExp(SPACE) }).first().click();
+    // Requests and readers have their own sheet, separate from the code.
+    await page.getByRole('button', { name: /^Readers/ }).click();
     const accept = page.getByRole('button', { name: /Accept|Allow/ }).first();
     await expect(accept, 'the request should appear in the owner’s space').toBeVisible({
       timeout: 30_000,
@@ -150,7 +156,8 @@ test('a piece is published, shared by code, accepted, and read by someone else',
     );
     await accept.click();
     await decided;
-    await expect(page.locator('main')).toContainText('Leser');
+    await expect(page.getByRole('dialog').filter({ hasText: 'Readers' })).toContainText('Leser');
+    await page.keyboard.press('Escape');
 
     // ── Bob reads it, verified ─────────────────────────────────────────────
     // Updates between two people are **polled, not pushed**: 15s while a
