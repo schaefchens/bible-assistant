@@ -1168,6 +1168,19 @@ which for a year plan is minutes of speech.
 
 ## Community spaces
 
+**The UI calls a space a "shelf" (`Regal` in German); the code calls it a
+space.** A user makes a shelf, puts things on it and shares it — which says what
+the feature is far better than "space" or "room" did. The rename is **i18n
+only**, deliberately: `Space`, `spaceId`, `spaces.upsert`, `space.feed`,
+`ReaderSource`'s `'space'` kind and the `/spaces` and `/rooms` routes are all
+unchanged, and renaming them would be a migration of persisted rows, wire
+actions and on-disk paths for the sake of a word. So: when editing copy the noun
+is *shelf*, when editing code it is *space*. German also changes gender with the
+noun — `der Raum` became `das Regal` — so the articles moved too.
+
+The one place the two still disagree is `services/ai/prompts.ts`, which teaches
+the model the word "space" / "Raum" — see "Known limitations".
+
 A **space** is one person's collection of their own writing; a **post** is one piece in it.
 Sharing is invite-only by a share code — there is no public listing, no discovery, no follower
 counts. `Profile`, `Space`, `Post`, `Subscription` (a space I follow) and `Membership`
@@ -2025,7 +2038,7 @@ key and deletes their subscriptions, so their shelf goes with them.
 
 ### Where the share code is asked for
 
-The code field is **in the Rooms header, left of "new space"**. It used to sit at
+The code field is **in the Shelves header, left of "new shelf"**. It used to sit at
 the bottom of the list of spaces you already read, which is exactly where nobody
 looks for the way in — and being handed a code is the commonest reason to open
 that screen at all.
@@ -2058,6 +2071,12 @@ title and "new space", and that arithmetic is written down beside the class.
   the interstitial stops being reached on that platform.
 - No QR code yet. Sharing a code or a link covers it; scanning would need a camera plugin plus
   iOS/Android permissions.
+- **The assistant still says "space" / "Raum".** The UI noun is now *shelf* / *Regal*, but
+  `services/ai/prompts.ts` is code rather than i18n and was left alone. That is not merely
+  cosmetic: the prompt is also what teaches the model which words map to `read_space` and
+  `list_spaces`, so a user who learns "Regal" from the UI and asks for it by that name may
+  not be understood. Fixing it is one word in each of the two prompt blocks — the **tool
+  names stay exactly as they are**.
 - **A shared plan or board is a snapshot with a manual republish** (see above). Deliberate, but
   it does mean an author who fixes a typo has to press Update, and nothing nags them to.
 - Withdrawing a shared item on one device leaves the row marked `shared` on another until an

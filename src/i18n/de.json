@@ -14,7 +14,7 @@
     "chat": "Chat",
     "read": "Lesen",
     "cards": "Karten",
-    "spaces": "Räume",
+    "spaces": "Regale",
     "settings": "Einstellungen"
   },
   "chat": {
@@ -194,7 +194,7 @@
     "readOnly": "Das ist die Tafel von {{author}}.",
     "makeCopy": "Eigene Kopie",
     "makeCopyHint": "Eine Kopie, die du bearbeiten und um eigene Karten ergänzen kannst.",
-    "share": "In einen Raum teilen"
+    "share": "In ein Regal teilen"
   },
   "voice": {
     "overlay": {
@@ -422,7 +422,7 @@
       "community": {
         "title": "Teile, was du schreibst",
         "subtitle": "Optional. Es wird nichts eingerichtet, solange du nicht willst.",
-        "body": "Du kannst eigene Räume für deine Texte anlegen — Gedanken, Notizen, kurze Beiträge — und sie hier lesen, vorgelesen wie ein Kapitel. Einen Raum teilst du über einen Code mit Menschen, die du auswählst; du entscheidest, wer hereinkommt. Es gibt kein öffentliches Verzeichnis und nichts ist auffindbar.",
+        "body": "Du kannst eigene Regale für deine Texte anlegen — Gedanken, Notizen, kurze Beiträge — und sie hier lesen, vorgelesen wie ein Kapitel. Ein Regal teilst du über einen Code mit Menschen, die du auswählst; du entscheidest, wer es lesen darf. Es gibt kein öffentliches Verzeichnis und nichts ist auffindbar.",
         "setUp": "Profil einrichten",
         "later": "Das geht jederzeit in den Einstellungen.",
         "nameLabel": "Was sollen andere sehen?",
@@ -432,9 +432,9 @@
         "create": "Profil erstellen",
         "working": "Wird eingerichtet…",
         "on": "Profil erstellt",
-        "onHint": "Dein Raum „Heute“ ist bereit. Schreib etwas, wann du magst — Beiträge dort verschwinden nach 24 Stunden.",
+        "onHint": "Dein Regal „Heute“ ist bereit. Schreib etwas, wann du magst — Beiträge dort verschwinden nach 24 Stunden.",
         "failed": "Das hat nicht funktioniert. Bitte noch einmal versuchen.",
-        "invitePending": "Du hast eine Einladung zu einem Raum geöffnet. Mit einem Profil kannst du anfragen."
+        "invitePending": "Du hast eine Einladung zu einem Regal geöffnet. Mit einem Profil kannst du anfragen."
       }
     }
   },
@@ -541,7 +541,7 @@
       "sampleText": "Der HERR ist mein Hirte, mir wird nichts mangeln."
     },
     "playPost": "Diesen Beitrag vorlesen",
-    "endOfSpace": "Du hast das Ende dieses Raums erreicht.",
+    "endOfSpace": "Du hast das Ende dieses Regals erreicht.",
     "startOfSpace": "Neuester Beitrag",
     "endOfSelection": "Das war alles.",
     "startOfSelection": "Erster Beitrag"
@@ -599,21 +599,21 @@
     "makeCopy": "Eigene Kopie",
     "makeCopyHint": "Eine Kopie, die du bearbeiten kannst. Sie startet ungelesen, und spätere Änderungen erreichen sie nicht.",
     "copySuffix": "{{name}} (Kopie)",
-    "share": "In einen Raum teilen"
+    "share": "In ein Regal teilen"
   },
   "community": {
-    "title": "Räume",
+    "title": "Regale",
     "subtitle": "Deine eigenen Texte und die Menschen, die du liest",
-    "mine": "Deine Räume",
+    "mine": "Deine Regale",
     "following": "Du liest",
-    "newSpace": "Neuer Raum",
+    "newSpace": "Neues Regal",
     "newPost": "Neuer Beitrag",
-    "untitledSpace": "Unbenannter Raum",
+    "untitledSpace": "Unbenanntes Regal",
     "untitledPost": "Ohne Titel",
     "todayName": "Heute",
     "todayHint": "Beiträge hier verschwinden nach 24 Stunden.",
     "empty": "Noch nichts geschrieben.",
-    "emptyFollowing": "Du liest noch keinen Raum.",
+    "emptyFollowing": "Du liest noch kein Regal.",
     "draft": "Entwurf",
     "published": "Veröffentlicht",
     "unread_one": "{{count}} neuer Beitrag",
@@ -627,7 +627,7 @@
     "unpublishHint": "Entfernt den Beitrag vom Server. Auf diesem Gerät bleibt er.",
     "deletePost": "Löschen",
     "deletePostConfirm": "„{{title}}“ löschen? Damit ist er auch auf diesem Gerät weg.",
-    "deleteSpace": "Raum löschen",
+    "deleteSpace": "Regal löschen",
     "deleteSpaceConfirm": "„{{name}}“ mit allen Beiträgen löschen?",
     "narrate": "Audio vorbereiten",
     "narrateHint": "Erzeugt die Sprachausgabe einmal — danach startet sie für dich und alle Leser sofort.",
@@ -646,7 +646,7 @@
     "shareSend": "Teilen…",
     "shareRotate": "Code ersetzen",
     "shareRotateConfirm": "Code ersetzen? Der alte gilt nicht mehr und deine bisherigen Leser werden entfernt.",
-    "shareHint": "Teile diesen Code mit allen, die diesen Raum lesen sollen.",
+    "shareHint": "Teile diesen Code mit allen, die dieses Regal lesen sollen.",
     "requests": "Möchten lesen",
     "requests_one": "{{count}} Person möchte lesen",
     "requests_other": "{{count}} Personen möchten lesen",
@@ -655,17 +655,17 @@
     "blockAuthor": {
       "action": "Autor blockieren",
       "confirm": "{{name}} blockieren?",
-      "confirmBody": "Alle Räume dieser Person werden aus deiner App entfernt, und keine ihrer Einladungen lässt sich mehr hinzufügen. Sie erfährt nichts davon.",
+      "confirmBody": "Alle Regale dieser Person werden aus deiner App entfernt, und keine ihrer Einladungen lässt sich mehr hinzufügen. Sie erfährt nichts davon.",
       "confirmAction": "Blockieren",
       "blocked": "Blockiert",
       "none": "Keine blockierten Autoren.",
       "title": "Blockierte Autoren",
       "unblock": "Freigeben",
-      "sectionHint": "Ihre Räume sind von diesem Gerät verschwunden. Eine Freigabe holt sie nicht zurück — dafür bräuchtest du eine neue Einladung."
+      "sectionHint": "Ihre Regale sind von diesem Gerät verschwunden. Eine Freigabe holt sie nicht zurück — dafür bräuchtest du eine neue Einladung."
     },
     "readers": "Leser",
-    "noReaders": "Diesen Raum liest noch niemand.",
-    "addByCode": "Raum per Code hinzufügen",
+    "noReaders": "Dieses Regal liest noch niemand.",
+    "addByCode": "Regal per Code hinzufügen",
     "addByCodePlaceholder": "Code einfügen",
     "addByCodeAction": "Hinzufügen",
     "pending": "Warte auf Freigabe",
@@ -679,7 +679,7 @@
     "report": {
       "action": "Melden",
       "reportPost": "Diesen Beitrag melden",
-      "reportSpace": "Diesen Raum melden",
+      "reportSpace": "Dieses Regal melden",
       "title": "An die Moderation melden",
       "reasonLabel": "Was ist das Problem?",
       "noteLabel": "Noch etwas dazu? (optional)",
@@ -700,14 +700,14 @@
     },
     "errors": {
       "invalid_code": "Das sieht nicht nach einem Freigabecode aus.",
-      "unknown_code": "Zu diesem Code gibt es keinen Raum. Vielleicht wurde er inzwischen ersetzt — bitte einen neuen erfragen.",
+      "unknown_code": "Zu diesem Code gibt es kein Regal. Vielleicht wurde er inzwischen ersetzt — bitte einen neuen erfragen.",
       "key_mismatch": "Der Code passt nicht zur angegebenen Person. Bitte noch einmal senden lassen.",
       "profile_required": "Erstelle zuerst dein Profil.",
       "failed": "Das hat nicht funktioniert. Bitte noch einmal versuchen.",
-      "space_not_ready": "Dieser Raum kann noch nicht geteilt werden — die Autorin oder der Autor muss das Profil noch fertig einrichten.",
+      "space_not_ready": "Dieses Regal kann noch nicht geteilt werden — die Autorin oder der Autor muss das Profil noch fertig einrichten.",
       "terms_required": "Bitte akzeptiere zuerst die inhaltlichen Regeln.",
       "author_blocked": "Du hast diesen Autor blockiert. Gib ihn zuerst in den Einstellungen frei.",
-      "own_space": "Das ist dein eigener Raum — du liest darin ohnehin schon alles."
+      "own_space": "Das ist dein eigenes Regal — du liest darin ohnehin schon alles."
     },
     "profile": {
       "title": "Dein Profil",
@@ -741,26 +741,26 @@
       "continueHere": "Im Browser weiterlesen",
       "copyCode": "Code kopieren",
       "confirmBody": "Mit der Anfrage weiß die Autorin oder der Autor, dass du lesen möchtest. Die Entscheidung liegt bei ihnen.",
-      "needProfile": "Um in einem Raum zu lesen, brauchst du einen Namen, mit dem du anfragst — dein Profil.",
+      "needProfile": "Um in einem Regal zu lesen, brauchst du einen Namen, mit dem du anfragst — dein Profil.",
       "createAndAsk": "Profil erstellen und Zugang anfragen",
       "fingerprint": "Fingerprint: {{fingerprint}}",
       "ask": "Um Zugang bitten",
       "asking": "Frage an…",
       "askedHint": "Die Anfrage ist raus. Sobald du zugelassen wirst, siehst du die Beiträge.",
-      "alreadyIn": "Diesen Raum liest du schon",
-      "alreadyInHint": "Er steht in deiner Liste.",
-      "ownSpaceTitle": "Dein Raum"
+      "alreadyIn": "Dieses Regal liest du schon",
+      "alreadyInHint": "Es steht in deiner Liste.",
+      "ownSpaceTitle": "Dein Regal"
     },
     "terms": {
       "title": "Inhaltliche Regeln",
-      "intro": "Räume sind für christliche, biblisch ausgerichtete Texte. Wenn du fortfährst, hältst du dich daran:",
+      "intro": "Regale sind für christliche, biblisch ausgerichtete Texte. Wenn du fortfährst, hältst du dich daran:",
       "rule1": "Bibeltexte, Betrachtungen, Gebete und Lehre auf biblischer Grundlage.",
       "rule2": "Keine weltlichen, politischen oder kommerziellen Inhalte.",
       "rule3": "Keine sexuellen Inhalte oder Nacktheit, keine Partnersuche oder Anmache.",
       "rule4": "Kein Hass, keine Belästigung, keine Beschimpfungen.",
       "rule5": "Nichts Themenfremdes — was nicht zur biblischen Ausrichtung passt, gehört woanders hin.",
-      "moderation": "Moderatoren dürfen Inhalte, Räume oder Konten jederzeit und nach eigenem Ermessen löschen, ohne Vorankündigung.",
-      "tools": "Du kannst alles melden, was gegen diese Regeln verstößt, und Autoren blockieren — dann verschwinden alle ihre Räume aus deiner App.",
+      "moderation": "Moderatoren dürfen Inhalte, Regale oder Konten jederzeit und nach eigenem Ermessen löschen, ohne Vorankündigung.",
+      "tools": "Du kannst alles melden, was gegen diese Regeln verstößt, und Autoren blockieren — dann verschwinden alle ihre Regale aus deiner App.",
       "accept": "Ich habe die inhaltlichen Regeln gelesen und akzeptiere sie",
       "acceptAction": "Akzeptieren und weiter",
       "view": "Inhaltliche Regeln",
@@ -772,39 +772,39 @@
     "moderation": {
       "refusedTitle": "Nicht veröffentlicht",
       "refusedHint": "Bearbeite den Beitrag und veröffentliche erneut. Der Entwurf ist gespeichert.",
-      "refusedGeneric": "Dieser Beitrag passt nicht zu den inhaltlichen Regeln für Räume."
+      "refusedGeneric": "Dieser Beitrag passt nicht zu den inhaltlichen Regeln für Regale."
     },
     "shareSpace": {
-      "action": "Diesen Raum teilen",
-      "title": "Diesen Raum teilen",
+      "action": "Dieses Regal teilen",
+      "title": "Dieses Regal teilen",
       "sendLink": "Link teilen",
       "copyLink": "Link kopieren",
       "copyCode": "Code kopieren",
-      "hint": "Wem du das schickst, der kann die Autorin oder den Autor um Zutritt bitten. Wer hineindarf, entscheidet die Autorin oder der Autor."
+      "hint": "Wem du das schickst, der kann die Autorin oder den Autor um Zugang bitten. Wer hineindarf, entscheidet die Autorin oder der Autor."
     },
-    "spacesCount_one": "{{count}} Raum",
-    "spacesCount_other": "{{count}} Räume",
-    "yourSpaces": "Deine Räume",
-    "newNeedsSubscriptions": "Noch nichts — du liest noch keinen Raum von anderen.",
+    "spacesCount_one": "{{count}} Regal",
+    "spacesCount_other": "{{count}} Regale",
+    "yourSpaces": "Deine Regale",
+    "newNeedsSubscriptions": "Noch nichts — du liest noch kein Regal von anderen.",
     "sharedItems": "Pläne und Tafeln",
     "sharedPlans": "Pläne",
     "sharedBoards": "Tafeln",
     "noSharedItems": "Hier ist noch nichts geteilt.",
-    "shareToRoom": "In einen Raum teilen",
-    "shareToRoomHint": "Wen du in den Raum aufgenommen hast, kann es lesen und eine Kopie nehmen.",
+    "shareToRoom": "In ein Regal teilen",
+    "shareToRoomHint": "Wen du als Leser aufgenommen hast, kann es lesen und eine Kopie nehmen.",
     "shareHere": "Hier teilen",
     "sharedHere": "Geteilt",
     "updateShared": "Aktualisieren",
     "outOfDate": "Seit dem Teilen geändert",
     "withdraw": "Zurückziehen",
-    "noRooms": "Du hast noch keinen Raum. Erstelle zuerst einen.",
-    "openRoom": "Raum öffnen",
+    "noRooms": "Du hast noch kein Regal. Erstelle zuerst eins.",
+    "openRoom": "Regal öffnen",
     "roomPieces": "Stücke",
     "shareThisPiece": "Dieses Stück",
-    "shareWholeRoom": "Der ganze Raum",
+    "shareWholeRoom": "Das ganze Regal",
     "shareFailed": "Konnte nicht geteilt werden. Versuche es erneut, sobald du online bist.",
     "deleteItem": "Löschen",
-    "shareCodeIsRoom": "Der Code öffnet den Raum; nur der Link öffnet dieses Stück."
+    "shareCodeIsRoom": "Der Code öffnet das Regal; nur der Link öffnet dieses Stück."
   },
   "feedback": {
     "open": "Fehler melden oder Rückmeldung senden",

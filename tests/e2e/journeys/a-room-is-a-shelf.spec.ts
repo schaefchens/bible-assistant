@@ -80,7 +80,7 @@ test.afterAll(async () => {
 });
 
 test('a piece reaches the room, and reads in the reader', async () => {
-  await alice.page.getByRole('link', { name: 'Spaces' }).click();
+  await alice.page.getByRole('link', { name: 'Shelves' }).click();
   await alice.page.getByRole('button', { name: new RegExp(ROOM) }).first().click();
   await publishPiece(alice.page, PIECE, PIECE_BODY);
 

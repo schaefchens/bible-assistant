@@ -85,11 +85,11 @@ export type Room = {
  * is either flaky or slow.
  */
 export async function makeRoom(page: Page, name: string): Promise<Room> {
-  await page.getByRole('link', { name: 'Spaces' }).click();
-  await page.getByRole('button', { name: /New space/ }).click();
+  await page.getByRole('link', { name: 'Shelves' }).click();
+  await page.getByRole('button', { name: /New shelf/ }).click();
 
   // The name field is a `Draft`: it commits on **blur**, and Enter blurs it.
-  // Filling it and moving on leaves the room called "New space" — which the
+  // Filling it and moving on leaves the shelf called "New shelf" — which the
   // owner never notices, because their own screen shows the draft they typed,
   // while every reader sees the default. Waiting on a `spaces.upsert` whose
   // body actually carries the name is the only gate that catches that; waiting
@@ -121,8 +121,8 @@ export async function makeRoom(page: Page, name: string): Promise<Room> {
  * paste lands. There is no button.
  */
 export async function askToJoin(page: Page, room: Room, roomName: string): Promise<void> {
-  await page.getByRole('link', { name: 'Spaces' }).click();
-  await page.getByRole('textbox', { name: /Add a space by code/ }).fill(room.formatted);
+  await page.getByRole('link', { name: 'Shelves' }).click();
+  await page.getByRole('textbox', { name: /Add a shelf by code/ }).fill(room.formatted);
   await expect(page.locator('main')).toContainText(roomName, { timeout: 30_000 });
 }
 
@@ -136,7 +136,7 @@ export async function askToJoin(page: Page, room: Room, roomName: string): Promi
 export async function acceptReader(page: Page, roomName: string, reader: string): Promise<void> {
   await page.reload();
   await appReady(page);
-  await page.getByRole('link', { name: 'Spaces' }).click();
+  await page.getByRole('link', { name: 'Shelves' }).click();
   await page.getByRole('button', { name: new RegExp(roomName) }).first().click();
   const accept = page.getByRole('button', { name: /Accept|Allow/ }).first();
   await expect(accept, 'the request should appear in the owner’s room').toBeVisible({
@@ -249,7 +249,7 @@ export async function makeBoard(
  * judged and stored it.
  */
 export async function shareIntoRoom(page: Page, roomName: string): Promise<void> {
-  await page.getByRole('button', { name: 'Share to a room' }).click();
+  await page.getByRole('button', { name: 'Share to a shelf' }).click();
   await pickRoom(page, roomName);
 }
 
@@ -269,7 +269,7 @@ export async function shareBoardIntoRoom(
   await page.getByRole('button', { name: new RegExp(`^${board}`) }).click();
   await page.getByRole('button', { name: 'Menu' }).click();
   // A `menuitem`, not a button — the strip's ⋮ is a real menu.
-  await page.getByRole('menuitem', { name: 'Share to a room' }).click();
+  await page.getByRole('menuitem', { name: 'Share to a shelf' }).click();
   await pickRoom(page, roomName);
 }
 
@@ -293,7 +293,7 @@ async function pickRoom(page: Page, roomName: string): Promise<void> {
  * side — and the button only exists once the source has actually drifted.
  */
 export async function updateSharedItem(page: Page, roomName: string, title: string): Promise<void> {
-  await page.getByRole('link', { name: 'Spaces' }).click();
+  await page.getByRole('link', { name: 'Shelves' }).click();
   await page.getByRole('button', { name: new RegExp(roomName) }).first().click();
   const update = page.getByRole('button', { name: `Update — ${title}` });
   await expect(update, `"${title}" should be marked as changed`).toBeVisible({ timeout: 15_000 });

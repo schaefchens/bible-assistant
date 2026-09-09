@@ -14,7 +14,7 @@
     "chat": "Chat",
     "read": "Read",
     "cards": "Cards",
-    "spaces": "Spaces",
+    "spaces": "Shelves",
     "settings": "Settings"
   },
   "chat": {
@@ -194,7 +194,7 @@
     "readOnly": "This is {{author}}'s board.",
     "makeCopy": "Make my copy",
     "makeCopyHint": "A copy you can edit, with cards of your own.",
-    "share": "Share to a room"
+    "share": "Share to a shelf"
   },
   "voice": {
     "overlay": {
@@ -422,7 +422,7 @@
       "community": {
         "title": "Share what you write",
         "subtitle": "Optional. Nothing is set up unless you ask.",
-        "body": "You can keep spaces of your own writing — reflections, notes, short pieces — and read them here, narrated like a chapter. Share a space with people you choose by giving them a code, and you decide who gets in. There is no public listing and nothing is discoverable.",
+        "body": "You can keep shelves of your own writing — reflections, notes, short pieces — and read them here, narrated like a chapter. Share a shelf with people you choose by giving them a code, and you decide who gets in. There is no public listing and nothing is discoverable.",
         "setUp": "Set up a profile",
         "later": "You can do this any time in Settings.",
         "nameLabel": "What should people see?",
@@ -432,9 +432,9 @@
         "create": "Create profile",
         "working": "Setting up…",
         "on": "Profile created",
-        "onHint": "Your “Today” space is ready. Write something whenever you like — pieces there disappear after 24 hours.",
+        "onHint": "Your “Today” shelf is ready. Write something whenever you like — pieces there disappear after 24 hours.",
         "failed": "That did not work. Try again.",
-        "invitePending": "You opened an invitation to read someone’s space. A profile is what lets you ask."
+        "invitePending": "You opened an invitation to read someone’s shelf. A profile is what lets you ask."
       }
     }
   },
@@ -541,7 +541,7 @@
       "sampleText": "The LORD is my shepherd; I shall not want."
     },
     "playPost": "Read this piece aloud",
-    "endOfSpace": "You have reached the end of this space.",
+    "endOfSpace": "You have reached the end of this shelf.",
     "startOfSpace": "Newest piece",
     "endOfSelection": "That's everything.",
     "startOfSelection": "First piece"
@@ -599,21 +599,21 @@
     "makeCopy": "Make my copy",
     "makeCopyHint": "A copy you can edit. It starts unread, and later changes by the author will not reach it.",
     "copySuffix": "{{name}} (copy)",
-    "share": "Share to a room"
+    "share": "Share to a shelf"
   },
   "community": {
-    "title": "Spaces",
+    "title": "Shelves",
     "subtitle": "Your own writing, and the people you read",
-    "mine": "Your spaces",
+    "mine": "Your shelves",
     "following": "You are reading",
-    "newSpace": "New space",
+    "newSpace": "New shelf",
     "newPost": "New piece",
-    "untitledSpace": "Untitled space",
+    "untitledSpace": "Untitled shelf",
     "untitledPost": "Untitled",
     "todayName": "Today",
     "todayHint": "Pieces here disappear after 24 hours.",
     "empty": "Nothing written yet.",
-    "emptyFollowing": "You are not reading anyone's space yet.",
+    "emptyFollowing": "You are not reading anyone's shelf yet.",
     "draft": "Draft",
     "published": "Published",
     "unread_one": "{{count}} new piece",
@@ -627,7 +627,7 @@
     "unpublishHint": "Removes it from the server. The piece stays on this device.",
     "deletePost": "Delete",
     "deletePostConfirm": "Delete “{{title}}”? This removes it from this device too.",
-    "deleteSpace": "Delete space",
+    "deleteSpace": "Delete shelf",
     "deleteSpaceConfirm": "Delete “{{name}}” and everything in it?",
     "narrate": "Prepare audio",
     "narrateHint": "Generates the narration once, so it plays instantly for you and for anyone reading this.",
@@ -646,7 +646,7 @@
     "shareSend": "Share…",
     "shareRotate": "Replace code",
     "shareRotateConfirm": "Replace the code? The old one stops working and your current readers are cleared.",
-    "shareHint": "Share this code with anyone you want to read this space.",
+    "shareHint": "Share this code with anyone you want to read this shelf.",
     "requests": "Want to read",
     "requests_one": "{{count}} person wants to read",
     "requests_other": "{{count}} people want to read",
@@ -655,18 +655,18 @@
     "blockAuthor": {
       "action": "Block author",
       "confirm": "Block {{name}}?",
-      "confirmBody": "Every space of theirs is removed from your app and no invitation of theirs can be added again. They are not told.",
+      "confirmBody": "Every shelf of theirs is removed from your app and no invitation of theirs can be added again. They are not told.",
       "confirmAction": "Block",
       "blocked": "Blocked",
       "none": "No blocked authors.",
       "title": "Blocked authors",
       "unblock": "Unblock",
-      "sectionHint": "Their spaces are gone from this device. Unblocking doesn't bring them back — you would need a fresh invitation."
+      "sectionHint": "Their shelves are gone from this device. Unblocking doesn't bring them back — you would need a fresh invitation."
     },
     "readers": "Readers",
-    "noReaders": "Nobody is reading this space yet.",
-    "addByCode": "Add a space by code",
-    "addByCodePlaceholder": "paste room code",
+    "noReaders": "Nobody is reading this shelf yet.",
+    "addByCode": "Add a shelf by code",
+    "addByCodePlaceholder": "paste shelf code",
     "addByCodeAction": "Add",
     "pending": "Waiting for approval",
     "revoked": "No longer shared with you",
@@ -679,7 +679,7 @@
     "report": {
       "action": "Report",
       "reportPost": "Report this piece",
-      "reportSpace": "Report this space",
+      "reportSpace": "Report this shelf",
       "title": "Report to the moderators",
       "reasonLabel": "What's wrong with it?",
       "noteLabel": "Anything to add? (optional)",
@@ -700,14 +700,14 @@
     },
     "errors": {
       "invalid_code": "That does not look like a share code.",
-      "unknown_code": "No space answers to that code. It may have been replaced since it was sent — ask for a fresh one.",
+      "unknown_code": "No shelf answers to that code. It may have been replaced since it was sent — ask for a fresh one.",
       "key_mismatch": "That code does not match the author it claims. Ask them to send it again.",
       "profile_required": "Create your profile first.",
       "failed": "That did not work. Try again.",
-      "space_not_ready": "That space isn't ready to be shared yet — its author needs to finish setting up their profile.",
+      "space_not_ready": "That shelf isn't ready to be shared yet — its author needs to finish setting up their profile.",
       "terms_required": "Accept the content standards first.",
       "author_blocked": "You have blocked this author. Unblock them in Settings first.",
-      "own_space": "This is your own space — you are already reading everything in it."
+      "own_space": "This is your own shelf — you are already reading everything on it."
     },
     "profile": {
       "title": "Your profile",
@@ -741,26 +741,26 @@
       "continueHere": "Continue in the browser",
       "copyCode": "Copy the code",
       "confirmBody": "Asking to read lets the author know you would like access. They decide.",
-      "needProfile": "Reading someone's space needs a name to ask with — that's your profile.",
+      "needProfile": "Reading someone's shelf needs a name to ask with — that's your profile.",
       "createAndAsk": "Create profile and ask to read",
       "fingerprint": "Author's fingerprint: {{fingerprint}}",
       "ask": "Ask to read",
       "asking": "Asking…",
       "askedHint": "The author has been asked. You will see the pieces once they let you in.",
-      "alreadyIn": "You already read this space",
-      "alreadyInHint": "It is in your list of spaces.",
-      "ownSpaceTitle": "Your space"
+      "alreadyIn": "You already read this shelf",
+      "alreadyInHint": "It is in your list of shelves.",
+      "ownSpaceTitle": "Your shelf"
     },
     "terms": {
       "title": "Content standards",
-      "intro": "Spaces are for Christian, Bible-centred writing. By continuing you agree to keep what you publish here within that:",
+      "intro": "Shelves are for Christian, Bible-centred writing. By continuing you agree to keep what you publish here within that:",
       "rule1": "Scripture, reflection, prayer and teaching rooted in the Bible.",
       "rule2": "No worldly, political or commercial content.",
       "rule3": "No sexual content or nudity, and no dating or romantic solicitation.",
       "rule4": "No hate, harassment or abuse of anyone.",
       "rule5": "Nothing off-theme — anything that doesn't fit the Bible focus belongs elsewhere.",
-      "moderation": "Moderators may remove any content, space or account at their own discretion, without notice.",
-      "tools": "You can report anything that breaks these rules, and block an author — which removes all of their spaces from your app.",
+      "moderation": "Moderators may remove any content, shelf or account at their own discretion, without notice.",
+      "tools": "You can report anything that breaks these rules, and block an author — which removes all of their shelves from your app.",
       "accept": "I have read and accept the content standards",
       "acceptAction": "Accept and continue",
       "view": "Content standards",
@@ -772,39 +772,39 @@
     "moderation": {
       "refusedTitle": "Not published",
       "refusedHint": "Edit the piece and publish again. The draft is saved.",
-      "refusedGeneric": "This piece doesn't fit the content standards for spaces."
+      "refusedGeneric": "This piece doesn't fit the content standards for shelves."
     },
     "shareSpace": {
-      "action": "Share this space",
-      "title": "Share this space",
+      "action": "Share this shelf",
+      "title": "Share this shelf",
       "sendLink": "Share link",
       "copyLink": "Copy link",
       "copyCode": "Copy code",
-      "hint": "Whoever you send this to can ask the author to read the space. The author decides who gets in."
+      "hint": "Whoever you send this to can ask the author to read this shelf. The author decides who gets in."
     },
-    "spacesCount_one": "{{count}} space",
-    "spacesCount_other": "{{count}} spaces",
-    "yourSpaces": "Your spaces",
-    "newNeedsSubscriptions": "Nothing yet — you are not reading anyone’s space.",
+    "spacesCount_one": "{{count}} shelf",
+    "spacesCount_other": "{{count}} shelves",
+    "yourSpaces": "Your shelves",
+    "newNeedsSubscriptions": "Nothing yet — you are not reading anyone’s shelf.",
     "sharedItems": "Plans and boards",
     "sharedPlans": "Plans",
     "sharedBoards": "Boards",
     "noSharedItems": "Nothing shared here yet.",
-    "shareToRoom": "Share to a room",
-    "shareToRoomHint": "Anyone you have accepted into the room can read it, and take a copy.",
+    "shareToRoom": "Share to a shelf",
+    "shareToRoomHint": "Anyone you have accepted as a reader can read it, and take a copy.",
     "shareHere": "Share here",
     "sharedHere": "Shared",
     "updateShared": "Update",
     "outOfDate": "Changed since you shared it",
     "withdraw": "Withdraw",
-    "noRooms": "You have no rooms yet. Make one first.",
-    "openRoom": "Open room",
+    "noRooms": "You have no shelves yet. Make one first.",
+    "openRoom": "Open shelf",
     "roomPieces": "Pieces",
     "shareThisPiece": "This piece",
-    "shareWholeRoom": "The whole room",
+    "shareWholeRoom": "The whole shelf",
     "shareFailed": "Couldn't share that. Try again once you're back online.",
     "deleteItem": "Delete",
-    "shareCodeIsRoom": "The code opens the room; only the link opens this piece."
+    "shareCodeIsRoom": "The code opens the shelf; only the link opens this piece."
   },
   "feedback": {
     "open": "Report a bug or send feedback",

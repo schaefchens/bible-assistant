@@ -145,18 +145,14 @@ test('pressing Update sends the new version, and the reader picks it up', async 
   // a rebuilt hash — and Update is what re-snapshots, re-signs and re-publishes.
   await updateSharedItem(alice.page, ROOM, PLAN);
 
-  await expect
-    .poll(
-      async () => {
-        await bob.page.goto(`/rooms/${room.code}`);
-        await appReady(bob.page);
-        await bob.page.getByRole('button', { name: new RegExp(PLAN) }).first().click();
-        return bob.page.locator('main').innerText();
-      },
-      { timeout: 90_000, intervals: [500, 1000, 2000, 3000, 5000, 5000, 5000] },
-    )
-    .toContain('Jonah 3');
+  // Wait on the *room*, which is a settled screen, and open the plan once
+  // afterwards. Clicking inside the poll and reading `innerText` straight after
+  // is a race — `click()` does not wait for the navigation it causes — and it
+  // fails by returning the room's text forever rather than by saying so.
+  await roomEventually(bob.page, room, '3 chapters');
 
+  await bob.page.getByRole('button', { name: new RegExp(PLAN) }).first().click();
+  await expect(bob.page.locator('main')).toContainText('Jonah 3');
   // The header's hash changed, so the stale payload had to be dropped and
   // fetched again rather than rendered under the new header.
   await expect(bob.page.locator('main')).toContainText('Jonah 1');
@@ -171,17 +167,10 @@ test('the reader’s own progress survives the update', async () => {
 
   await updateSharedItemViaRename(PLAN);
 
-  await expect
-    .poll(
-      async () => {
-        await bob.page.goto(`/rooms/${room.code}`);
-        await appReady(bob.page);
-        await bob.page.getByRole('button', { name: new RegExp(PLAN) }).first().click();
-        return bob.page.locator('main').innerText();
-      },
-      { timeout: 90_000, intervals: [500, 1000, 2000, 3000, 5000] },
-    )
-    .toContain('1 of 3 read');
+  // The renamed plan arriving is the signal that the update landed; the tick
+  // still being counted beside it is the claim.
+  await roomEventually(bob.page, room, 'überarbeitet');
+  await expect(bob.page.locator('main')).toContainText('1 of 3 read');
 });
 
 test('an updated board reaches the reader with its new card', async () => {
@@ -195,17 +184,9 @@ test('an updated board reaches the reader with its new card', async () => {
 
   await updateSharedItem(alice.page, ROOM, BOARD);
 
-  await expect
-    .poll(
-      async () => {
-        await bob.page.goto(`/rooms/${room.code}`);
-        await appReady(bob.page);
-        await bob.page.getByRole('button', { name: new RegExp(BOARD) }).first().click();
-        return bob.page.locator('main').innerText();
-      },
-      { timeout: 90_000, intervals: [500, 1000, 2000, 3000, 5000, 5000] },
-    )
-    .toContain(CARD_TWO);
+  await roomEventually(bob.page, room, '2 cards');
+  await bob.page.getByRole('button', { name: new RegExp(BOARD) }).first().click();
+  await expect(bob.page.locator('main')).toContainText(CARD_TWO);
   await expect(bob.page.locator('main')).toContainText(CARD_ONE);
 });
 

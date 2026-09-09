@@ -92,7 +92,7 @@ test('a piece is published, shared by code, accepted, and read by someone else',
 }) => {
   // ── Alice writes and publishes ───────────────────────────────────────────
   await makeProfile(page, AUTHOR);
-  await page.getByRole('link', { name: 'Spaces' }).click();
+  await page.getByRole('link', { name: 'Shelves' }).click();
   // The space has to reach the server before its code means anything: a
   // `space.request` for a code the server has never seen is a 404, and
   // `shouldDropSyncOp` treats a 404 as permanent. Waiting on the actual
@@ -101,7 +101,7 @@ test('a piece is published, shared by code, accepted, and read by someone else',
   const spaceSynced = page.waitForResponse(
     (r) => r.url().includes('action=spaces.upsert') && r.ok(),
   );
-  await page.getByRole('button', { name: /New space/ }).click();
+  await page.getByRole('button', { name: /New shelf/ }).click();
   await page.getByRole('textbox', { name: 'Name' }).fill(SPACE);
   await spaceSynced;
 
@@ -123,12 +123,12 @@ test('a piece is published, shared by code, accepted, and read by someone else',
   const { context: bobContext, page: bob } = await secondInstall(context.browser()!);
   try {
     await makeProfile(bob, 'Leser');
-    await bob.getByRole('link', { name: 'Spaces' }).click();
+    await bob.getByRole('link', { name: 'Shelves' }).click();
 
     // The code field is in the header, left of "new space", and submits itself
     // the moment `parseSpaceCodeInput` says the input is a code — which is the
     // moment a paste lands. No button.
-    await bob.getByRole('textbox', { name: /Add a space by code/ }).fill(code);
+    await bob.getByRole('textbox', { name: /Add a shelf by code/ }).fill(code);
     await expect(bob.locator('main')).toContainText(SPACE, { timeout: 30_000 });
 
     // Holding the code is not access: the author has not decided yet.
@@ -136,7 +136,7 @@ test('a piece is published, shared by code, accepted, and read by someone else',
 
     // ── Alice accepts ──────────────────────────────────────────────────────
     await page.reload();
-    await page.getByRole('link', { name: 'Spaces' }).click();
+    await page.getByRole('link', { name: 'Shelves' }).click();
     await page.getByRole('button', { name: new RegExp(SPACE) }).first().click();
     const accept = page.getByRole('button', { name: /Accept|Allow/ }).first();
     await expect(accept, 'the request should appear in the owner’s space').toBeVisible({
@@ -164,7 +164,7 @@ test('a piece is published, shared by code, accepted, and read by someone else',
         async () => {
           await bob.reload();
           await appReady(bob);
-          await bob.getByRole('link', { name: 'Spaces' }).click();
+          await bob.getByRole('link', { name: 'Shelves' }).click();
           return bob.locator('main').innerText();
         },
         { timeout: 90_000, intervals: [1000, 2000, 3000, 5000, 5000, 5000] },
@@ -213,7 +213,7 @@ test('a piece is published, shared by code, accepted, and read by someone else',
     const itemSynced = page.waitForResponse(
       (r) => r.url().includes('action=items.upsert') && r.ok(),
     );
-    await page.getByRole('button', { name: 'Share to a room' }).click();
+    await page.getByRole('button', { name: 'Share to a shelf' }).click();
     await page.getByRole('button', { name: 'Share here' }).first().click();
     // Real moderation again, on the text pulled out of the payload.
     await itemSynced;

@@ -14,7 +14,7 @@ import { appReady } from '../support/app';
  * mistyped it, whether it was replaced, or whether it is their own.
  */
 
-const CODE_FIELD = /Add a space by code/;
+const CODE_FIELD = /Add a shelf by code/;
 
 /**
  * Every spec in the `app` project starts from the *same* saved profile, so they
@@ -34,7 +34,7 @@ async function makeProfile(page: Page, name: string) {
   await page.getByRole('checkbox', { name: /content standards/ }).check();
   await page.getByRole('button', { name: 'Create a profile' }).click();
   await expect(page.getByRole('textbox', { name: 'Display name' })).toHaveValue(name);
-  await page.getByRole('link', { name: 'Spaces' }).click();
+  await page.getByRole('link', { name: 'Shelves' }).click();
 }
 
 test('a well-formed code nobody answers to says so, and says why', async ({ page }) => {
@@ -46,7 +46,7 @@ test('a well-formed code nobody answers to says so, and says why', async ({ page
 
   // Not just "that failed": the message names replacement as the likely cause,
   // because rotating a code is the one share action that invalidates old ones.
-  await expect(page.locator('main')).toContainText(/No space answers to that code/, {
+  await expect(page.locator('main')).toContainText(/No shelf answers to that code/, {
     timeout: 30_000,
   });
 });
@@ -64,7 +64,7 @@ test('your own code is refused, and named as your own', async ({ page }) => {
   const spaceSynced = page.waitForResponse(
     (r) => r.url().includes('action=spaces.upsert') && r.ok(),
   );
-  await page.getByRole('button', { name: /New space/ }).click();
+  await page.getByRole('button', { name: /New shelf/ }).click();
   await page.getByRole('textbox', { name: 'Name' }).fill(SPACE);
   const code = (await page.getByText(/^[0-9A-Z]{5}-[0-9A-Z]{5}-[0-9A-Z]{6}$/).innerText()).trim();
   await spaceSynced;
@@ -72,7 +72,7 @@ test('your own code is refused, and named as your own', async ({ page }) => {
   await page.getByRole('button', { name: 'Back' }).click();
   await page.getByRole('textbox', { name: CODE_FIELD }).fill(code);
 
-  await expect(page.locator('main')).toContainText(/your own space/i, { timeout: 30_000 });
+  await expect(page.locator('main')).toContainText(/your own shelf/i, { timeout: 30_000 });
   // And it is still listed once, not twice — which is what allowing it did:
   // the space appeared both as one of yours and as one you follow.
   await expect(page.getByRole('button', { name: new RegExp(SPACE) })).toHaveCount(1);
