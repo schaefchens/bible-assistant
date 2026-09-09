@@ -240,6 +240,22 @@ export const ShareIcon = ({ size = 15, className }: IconProps) => (
   </Glyph>
 );
 
+/**
+ * One figure, for a thing that is somebody else's.
+ *
+ * The mark on a shared board's tab in `/cards`. A tab strip of your own boards
+ * plus other people's needs to say which is which at a glance, and the name
+ * alone cannot — two people may both have a board called "Merkverse". It is
+ * deliberately a *person* rather than the share mark: `ShareIcon` means "pass
+ * this on", which is the opposite direction.
+ */
+export const GuestIcon = ({ size = 13, className }: IconProps) => (
+  <Glyph size={size} stroke={1.9} className={className}>
+    <circle cx="12" cy="8" r="3.4" />
+    <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
+  </Glyph>
+);
+
 /** Two figures, for the people who read a shelf. */
 export const ReadersIcon = ({ size = 16, className }: IconProps) => (
   <Glyph size={size} stroke={1.8} className={className}>

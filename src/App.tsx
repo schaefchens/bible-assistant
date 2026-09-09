@@ -42,9 +42,11 @@ export default function App() {
                 `/spaces/:id`. Nested so a shared board is reached through the
                 room that grants access to it. */}
             <Route path="rooms/:code" element={<RoomPage />} />
-            <Route path="rooms/:code/boards/:itemId" element={<RoomPage />} />
             <Route path="subscribe/:code" element={<SubscribePage />} />
             <Route path="cards" element={<CardsPage />} />
+            {/* Before `cards/:cardId` only for readability — the two never
+                collide, since a shared board's path has a segment more. */}
+            <Route path="cards/shared/:sharedItemId" element={<CardsPage />} />
             <Route path="cards/:cardId" element={<CardsPage />} />
             {/* Boards folded into /cards (one tab strip, All cards leftmost).
                 The aliases stay because a deep link outlives the nav tab it

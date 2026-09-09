@@ -8,7 +8,8 @@ import { BoardCardsView } from '@/components/cards/BoardCardsView';
 import { BoardViewToggle } from '@/components/cards/BoardViewToggle';
 import { CardEditor } from '@/components/cards/CardEditor';
 import { CenteredEmpty } from '@/components/cards/CenteredEmpty';
-import { LibraryTabs } from '@/components/cards/LibraryTabs';
+import { LibraryTabs, type TabSelection } from '@/components/cards/LibraryTabs';
+import { SharedBoardView } from '@/components/community/SharedBoardView';
 import { ShareToRoomSheet } from '@/components/community/ShareToRoomSheet';
 import { useCommunityStore } from '@/store/communityStore';
 import type { BoardValues } from '@/components/cards/BoardEditor';
@@ -39,20 +40,42 @@ function normalizeBackground(v?: string): string | undefined {
  * board without going through a modal. Here the leftmost tab is All cards and
  * the rest are the boards, so "which of my cards" is one selector.
  *
- * The selected tab **is** `libraryStore.activeBoardId`, whose `null` — already
- * a real, persisted state (absence of the preference row) — now means All
- * cards. Nothing in the store changed for that; what had to go is the effect
- * that force-selected `boards[0]` whenever the id was null, since that is what
- * made All cards unreachable while any board existed.
+ * The selected tab is a {@link TabSelection}, and **which half of it is stored
+ * where is the load-bearing part**. An own selection is
+ * `libraryStore.activeBoardId`, whose `null` — already a real, persisted state
+ * (absence of the preference row) — means All cards; what had to go for that is
+ * the effect that force-selected `boards[0]` whenever the id was null, since
+ * that is what made All cards unreachable while any board existed.
+ *
+ * A **shared** board's selection lives in the route (`/cards/shared/:itemId`)
+ * and never touches `activeBoardId`. That is what makes shared boards tabs at
+ * all: `libraryStore.init` and `librarySync.pullFromServer` both null
+ * `activeBoardId` against the user's own boards, so an id from the community
+ * store put there would deselect itself on every boot and every sync — and
+ * teaching those two to consult the community store would push a dependency
+ * into a store that has none, in the direction `onCommunityPulled()` exists to
+ * prevent. Keeping it out of the store costs nothing and buys a persistence
+ * story that is arguably better: the route is shareable and survives a reload.
+ *
+ * Everything a board action touches is therefore gated on `active.kind ===
+ * 'own'`, never on "is a board selected". The mutations *would* no-op on a
+ * shared board anyway, because it is not in `boards` and every closure below
+ * bails on that — but correct by accident is the thing this file is trying not
+ * to be.
  */
 export function CardsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  // Two shapes reach this component: /cards/:cardId opens the editor, and
-  // /boards/:boardId is the old Boards route, kept because a deep link
-  // outlives the nav tab it came from. Distinct param names is what tells
-  // them apart.
-  const { cardId, boardId } = useParams<{ cardId?: string; boardId?: string }>();
+  // Three shapes reach this component: /cards/:cardId opens the editor,
+  // /cards/shared/:sharedItemId shows somebody else's board, and
+  // /boards/:boardId is the old Boards route, kept because a deep link outlives
+  // the nav tab it came from. Distinct param names is what tells them apart —
+  // the same trick that already separates :cardId from :boardId.
+  const { cardId, boardId, sharedItemId } = useParams<{
+    cardId?: string;
+    boardId?: string;
+    sharedItemId?: string;
+  }>();
 
   const cards = useLibraryStore((s) => s.cards);
   const cardOrder = useLibraryStore((s) => s.cardOrder);
@@ -67,6 +90,11 @@ export function CardsPage() {
   const setCardLayout = useLibraryStore((s) => s.setCardLayout);
   const deleteBoard = useLibraryStore((s) => s.deleteBoard);
   const reorderBoards = useLibraryStore((s) => s.reorderBoards);
+
+  const hasCommunityProfile = useCommunityStore((s) => s.profile !== null);
+  const mirroredBoards = useCommunityStore((s) => s.mirroredBoards);
+  const communityReady = useCommunityStore((s) => s.initialized);
+  const [sharingBoard, setSharingBoard] = useState(false);
 
   const [draftCard, setDraftCard] = useState<Card | null>(null);
   const [raisedId, setRaisedId] = useState<string | null>(null);
@@ -106,23 +134,51 @@ export function CardsPage() {
     navigate(ROUTES.cards, { replace: true });
   }, [boardId, initialized, boards, navigate, setActiveBoardId]);
 
+  const sharedBoard = useMemo(
+    () => (sharedItemId ? mirroredBoards.find((m) => m.itemId === sharedItemId) : undefined),
+    [mirroredBoards, sharedItemId],
+  );
+
+  // A shared board can go away under the reader — withdrawn by its author, or
+  // the whole room unsubscribed — and a stale link is the same state. Wait for
+  // **both** stores, though: bouncing during the boot race is the bug
+  // `readerStore.ensureOpen`'s `staleList` already had to learn.
+  useEffect(() => {
+    if (!sharedItemId || sharedBoard) return;
+    if (!initialized || !communityReady) return;
+    navigate(ROUTES.cards, { replace: true });
+  }, [sharedItemId, sharedBoard, initialized, communityReady, navigate]);
+
   const activeBoard: Board | undefined = useMemo(
     () => boards.find((b) => b.id === activeBoardId),
     [boards, activeBoardId],
   );
-  // Derived from the board that actually exists, not from the raw id: a
+  // Derived from what actually exists, not from the raw id or param: a
   // persisted id whose board has since been deleted (on another device,
   // between a pull and this render) reads as All cards instead of as a blank
   // screen — which is also where deleteBoard and pullFromServer already land.
-  const selection = activeBoard?.id ?? null;
+  const active: TabSelection = sharedBoard
+    ? { kind: 'shared', itemId: sharedBoard.itemId }
+    : activeBoard
+      ? { kind: 'own', id: activeBoard.id }
+      : { kind: 'all' };
+  /** The board on screen, own or somebody else's — for presentation only
+   * (background, view mode). Never for a write; those take `activeBoard`. */
+  const shownBoard: Board | undefined = sharedBoard?.board ?? activeBoard;
 
-  // The community half of this screen is one menu row and one sheet. A shared
-  // board is deliberately *not* a tab here — `activeBoardId` is nulled against
-  // the user's own boards on every boot and every sync, so a foreign tab would
-  // deselect itself constantly. It lives on the room's screen instead.
-  const hasCommunityProfile = useCommunityStore((s) => s.profile !== null);
-  const mirroredBoards = useCommunityStore((s) => s.mirroredBoards);
-  const [sharingBoard, setSharingBoard] = useState(false);
+  const selectTab = useCallback(
+    async (id: string | null) => {
+      // Leaving a shared tab means leaving its route, or the selection below
+      // would be overruled by the param on the very next render.
+      if (sharedItemId) navigate(ROUTES.cards, { replace: true });
+      await setActiveBoardId(id);
+    },
+    [sharedItemId, navigate, setActiveBoardId],
+  );
+  const selectShared = useCallback(
+    (itemId: string) => navigate(`${ROUTES.cards}/shared/${itemId}`),
+    [navigate],
+  );
 
   const boardCards: Card[] = useMemo(() => {
     if (!activeBoard) return [];
@@ -182,10 +238,12 @@ export function CardsPage() {
   // can live in the header. Resets to view mode when the selection changes —
   // adjusted during render, not in an effect (set-state-in-effect is an error
   // here, and an effect would paint the stale mode for a frame first).
-  const [freeformEditFor, setFreeformEditFor] = useState<string | null>(selection);
+  const selectionKey =
+    active.kind === 'all' ? 'all' : `${active.kind}:${'id' in active ? active.id : active.itemId}`;
+  const [freeformEditFor, setFreeformEditFor] = useState<string>(selectionKey);
   const [freeformEdit, setFreeformEdit] = useState(false);
-  if (freeformEditFor !== selection) {
-    setFreeformEditFor(selection);
+  if (freeformEditFor !== selectionKey) {
+    setFreeformEditFor(selectionKey);
     setFreeformEdit(false);
   }
 
@@ -288,14 +346,19 @@ export function CardsPage() {
   };
 
   const boardHasCards = Boolean(activeBoard) && boardCards.length > 0;
+  // A shared board is shown in its **author's** view mode and offers no
+  // toggle: switching writes `board.viewMode`, and a mirror has nowhere to
+  // write. So the page backdrop asks the shown board, and everything that
+  // changes one asks `activeBoard`.
+  const shownViewMode: BoardViewMode = shownBoard?.viewMode ?? 'grid';
   // Board background image. The corkboard paints it on its own A4 sheet
   // (FreeformBoard), so the page-level backdrop is only for the other views.
   // Full-brightness image (matching the corkboard sheet); the tab strip is
   // opaque instead of darkening the whole image, and cards are opaque. A
   // failed/empty image just falls back to the normal app background.
-  const boardBg = activeBoard?.background?.trim();
+  const boardBg = shownBoard?.background?.trim();
   const pageStyle =
-    boardBg && viewMode !== 'freeform'
+    boardBg && shownViewMode !== 'freeform'
       ? {
           backgroundImage: cssUrl(boardBg),
           backgroundSize: 'cover',
@@ -308,10 +371,12 @@ export function CardsPage() {
     <div className="flex-1 overflow-y-auto pb-3 flex flex-col" style={pageStyle}>
       <LibraryTabs
         boards={boards}
-        selection={selection}
+        sharedBoards={mirroredBoards}
+        active={active}
         cardCount={cards.length}
         boardCounts={boardCounts}
-        onSelect={setActiveBoardId}
+        onSelect={selectTab}
+        onSelectShared={selectShared}
         onNewCard={newCard}
         onCreate={createBoard}
         onEdit={editBoard}
@@ -319,8 +384,6 @@ export function CardsPage() {
         onReorder={reorderBoards}
         onRequestAddCards={() => setAddPickerOpen(true)}
         onShareBoard={hasCommunityProfile ? () => setSharingBoard(true) : undefined}
-        sharedBoardCount={mirroredBoards.length}
-        onOpenSharedBoards={() => navigate(ROUTES.spaces)}
         showEditToggle={viewMode === 'freeform' && boardHasCards}
         editMode={freeformEdit}
         onToggleEditMode={() => setFreeformEdit((v) => !v)}
@@ -330,7 +393,17 @@ export function CardsPage() {
         flashBoardId={tabDrop.flashBoardId}
       />
 
-      {activeBoard ? (
+      {sharedBoard ? (
+        <SharedBoardView
+          mirror={sharedBoard}
+          // A fork is an own board from the moment it exists, so it opens as
+          // its own tab — set first, then leave the shared route, or the new
+          // tab flashes past All cards on the way.
+          onCopied={(id) =>
+            void setActiveBoardId(id).then(() => navigate(ROUTES.cards, { replace: true }))
+          }
+        />
+      ) : activeBoard ? (
         boardCards.length === 0 ? (
           <CenteredEmpty
             text={t('boards.emptyBoard')}

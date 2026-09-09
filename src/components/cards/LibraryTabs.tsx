@@ -14,7 +14,7 @@ import {
 } from '@dnd-kit/sortable';
 import { restrictToHorizontalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import { BoardEditor, type BoardValues } from './BoardEditor';
-import { AllCardsTab, MenuItem, SortableTab } from './libraryTabParts';
+import { AllCardsTab, MenuItem, SharedTab, SortableTab } from './libraryTabParts';
 import { LIBRARY_TABS_ATTR } from '@/lib/boardTabDrop';
 import type { CardDragState } from '@/hooks/useCardTabDrop';
 import {
@@ -22,9 +22,24 @@ import {
   LONG_PRESS_MS,
   MOVE_TOLERANCE_PX,
 } from '@/lib/gestureConstants';
-import type { Board, BoardOrientation, CardColor } from '@/types/domain';
+import type { Board, BoardOrientation, CardColor, MirroredBoard } from '@/types/domain';
 
 type MenuMode = null | 'root' | 'new' | 'rename';
+
+/**
+ * Which of the three kinds of tab is showing.
+ *
+ * A union rather than "a board id, or `null` for All cards", because the strip
+ * now holds a third kind and the difference is not cosmetic: the board actions
+ * apply to an **own** board and to nothing else. Written as one nullable id,
+ * every one of those actions would be gated on "is this id in `boards`?" — true
+ * for the wrong reason on a shared tab, which is exactly the accidental
+ * correctness this shape exists to avoid.
+ */
+export type TabSelection =
+  | { kind: 'all' }
+  | { kind: 'own'; id: string }
+  | { kind: 'shared'; itemId: string };
 
 /**
  * The file-folder tab strip across the top of the library screen: "All cards"
@@ -32,12 +47,16 @@ type MenuMode = null | 'root' | 'new' | 'rename';
  * menu (new / rename / add-cards / delete, plus the inline BoardEditor). Every
  * mutation is delegated to props.
  *
- * `selection === null` is the All-cards tab, mirroring `activeBoardId === null`
- * in the store. That tab is a **sibling** of the scrolling board strip rather
- * than an item in it, which is what keeps it on screen however many boards
- * there are, out of `boardOrder`'s sortable, and clear of the long-press-to-
- * rename gesture — three guards that would otherwise have to be written and
- * then kept right.
+ * Three kinds of tab, and {@link TabSelection} says which is showing: All
+ * cards, one of the user's own boards, and — trailing, after a rule — a board
+ * somebody else shares with them. `{ kind: 'all' }` mirrors
+ * `activeBoardId === null` in the store; a shared tab is **not** in that store
+ * field at all, which is what lets it exist (see `CardsPage`).
+ *
+ * All cards is a **sibling** of the scrolling strip rather than an item in it,
+ * which is what keeps it on screen however many boards there are, out of
+ * `boardOrder`'s sortable, and clear of the long-press-to-rename gesture —
+ * three guards that would otherwise have to be written and then kept right.
  *
  * It is `sticky` because switching board after scrolling shouldn't mean
  * scrolling back up first — and because a card can be carried onto a tab to
@@ -55,7 +74,8 @@ type MenuMode = null | 'root' | 'new' | 'rename';
  */
 export function LibraryTabs({
   boards,
-  selection,
+  sharedBoards,
+  active,
   cardCount,
   boardCounts,
   onSelect,
@@ -65,9 +85,8 @@ export function LibraryTabs({
   onDelete,
   onReorder,
   onRequestAddCards,
+  onSelectShared,
   onShareBoard,
-  sharedBoardCount,
-  onOpenSharedBoards,
   showEditToggle = false,
   editMode = false,
   onToggleEditMode,
@@ -77,8 +96,10 @@ export function LibraryTabs({
   flashBoardId = null,
 }: {
   boards: Board[];
-  /** The selected tab: a board id, or `null` for All cards. */
-  selection: string | null;
+  /** Boards other people share with the user, in their own trailing region. */
+  sharedBoards: MirroredBoard[];
+  /** Which tab is showing — see {@link TabSelection}. */
+  active: TabSelection;
   /** Live cards in total — the All-cards tab's count. */
   cardCount: number;
   /** Live cards per board id. Not `board.cardIds.length`: deleting a card
@@ -87,6 +108,10 @@ export function LibraryTabs({
   /** Awaited on the long-press path, so the rename editor that opens right
    * after sees the long-pressed board as the active one. */
   onSelect: (id: string | null) => Promise<void>;
+  /** Show somebody else's board. Separate from `onSelect` because it is a
+   * different kind of state: an own selection is persisted in the library, a
+   * shared one lives in the route. */
+  onSelectShared: (itemId: string) => void;
   onNewCard: () => void;
   onCreate: (values: BoardValues) => Promise<void>;
   onEdit: (values: BoardValues) => Promise<void>;
@@ -99,14 +124,6 @@ export function LibraryTabs({
    * than offering something that cannot work.
    */
   onShareBoard?: () => void;
-  /**
-   * Open the boards other people have shared. A pointer, not a tab: a foreign
-   * board cannot live in this strip — `activeBoardId` is nulled against the
-   * user's own boards on every boot and every sync — so it lives on the room's
-   * screen, and this is how it stays findable from where boards are.
-   */
-  sharedBoardCount?: number;
-  onOpenSharedBoards?: () => void;
   /** Show the corkboard arrange/view toggle (only meaningful in freeform view). */
   showEditToggle?: boolean;
   editMode?: boolean;
@@ -185,12 +202,19 @@ export function LibraryTabs({
     };
   }, [menu]);
 
-  const activeBoard = boards.find((b) => b.id === selection);
+  // The user's *own* active board, and nothing else — every board action below
+  // is gated on this rather than on "a tab is selected", which is what keeps a
+  // shared tab from being disabled merely by accident.
+  const activeBoard = active.kind === 'own' ? boards.find((b) => b.id === active.id) : undefined;
   const hasActive = Boolean(activeBoard);
+  const activeShared =
+    active.kind === 'shared' ? sharedBoards.find((m) => m.itemId === active.itemId) : undefined;
   // Tint the baseline rail to the active board's color so the active tab
   // visually merges into it (file-folder seam disappears). All cards has no
-  // color, so it lands on the brand rail the cards screen always had.
-  const railBorder = railBorderClass(activeBoard?.color);
+  // color, so it lands on the brand rail the cards screen always had. A shared
+  // board keeps its author's colour: it is that board's identity, and the guest
+  // mark is what says whose it is.
+  const railBorder = railBorderClass((activeBoard ?? activeShared?.board)?.color);
 
   return (
     // Opaque unconditionally: it has to hide the content sliding under it, and
@@ -206,7 +230,7 @@ export function LibraryTabs({
             label={t('cards.allCards')}
             count={cardCount}
             countLabel={t('boards.cardCount', { count: cardCount })}
-            isActive={selection === null}
+            isActive={active.kind === 'all'}
             onSelect={() => void onSelect(null)}
           />
         </div>
@@ -244,7 +268,7 @@ export function LibraryTabs({
                   board={b}
                   count={boardCounts.get(b.id) ?? 0}
                   countLabel={t('boards.cardCount', { count: boardCounts.get(b.id) ?? 0 })}
-                  isActive={b.id === selection}
+                  isActive={active.kind === 'own' && b.id === active.id}
                   onSelect={() => void onSelect(b.id)}
                   cardDrag={cardDrag}
                   flashing={flashBoardId === b.id}
@@ -252,22 +276,51 @@ export function LibraryTabs({
               ))}
             </SortableContext>
           </DndContext>
+          {/* A button among the tabs, drawn as one — not a blank tab.
+              It used to carry the tabs' own `-mb-[2px] rounded-t-xl border-b-0`,
+              which merges a tab into the rail; on a fill that is only 70%
+              opaque the rail then showed straight through its bottom edge, so
+              it read as cutting the line rather than sitting on it. Fully
+              rounded, fully bordered, and `mb-0.5` clear of the rail — which is
+              also what "add a board" *is*, an action rather than a selector,
+              the same shape as "+ New card" in the cluster on the right. */}
           <button
             type="button"
             onClick={() => setMenu('new')}
             aria-label={t('boards.new') as string}
             title={t('boards.new') as string}
-            className="shrink-0 -mb-[2px] px-3 py-2 text-base leading-none rounded-t-xl border border-b-0 border-surface-raised/70 bg-surface-sunken/70 text-ink-muted hover:text-brand hover:bg-surface-raised/70 transition-colors"
+            className="shrink-0 mb-0.5 px-3 py-2 text-base leading-none rounded-xl border border-surface-raised/70 bg-surface-sunken/70 text-ink-muted hover:text-brand hover:bg-surface-raised/70 transition-colors"
           >
             +
           </button>
+          {/* The third region: other people's boards, after a rule and outside
+              the `SortableContext` — `boardOrder` is the user's own ids and is
+              synced, so a foreign tab has no place in it. They come last so a
+              long list of them can never push your own off the strip; "All
+              cards" is pinned outside this scroller and cannot move at all. */}
+          {sharedBoards.length > 0 && (
+            <span
+              aria-hidden="true"
+              className="shrink-0 self-stretch w-px my-2 mx-1 bg-surface-raised/70"
+            />
+          )}
+          {sharedBoards.map((m) => (
+            <SharedTab
+              key={m.itemId}
+              mirror={m}
+              ownerLabel={t('boards.sharedBy', { author: m.author })}
+              countLabel={t('boards.cardCount', { count: m.cards.length })}
+              isActive={active.kind === 'shared' && m.itemId === active.itemId}
+              onSelect={() => onSelectShared(m.itemId)}
+            />
+          ))}
         </div>
         <div className="shrink-0 flex items-center px-2 gap-1">
           {/* Two `+` affordances share this strip: the one among the tabs adds
               a tab (a board), this one adds a card — so this one is labelled.
               On a board the ⋮ menu carries it instead, since a card created
               there would still be a card outside every board. */}
-          {selection === null && (
+          {active.kind === 'all' && (
             <button
               type="button"
               onClick={onNewCard}
@@ -328,49 +381,48 @@ export function LibraryTabs({
             + {t('cards.new')}
           </MenuItem>
           <MenuItem onClick={() => setMenu('new')}>+ {t('boards.new')}</MenuItem>
-          <MenuItem disabled={!hasActive} onClick={() => setMenu('rename')}>
-            ✎ {t('boards.rename') as string}
-          </MenuItem>
-          <MenuItem
-            disabled={!hasActive}
-            onClick={() => {
-              setMenu(null);
-              onRequestAddCards();
-            }}
-          >
-            + {t('boards.addCards')}
-          </MenuItem>
-          {onShareBoard && (
-            <MenuItem
-              disabled={!hasActive}
-              onClick={() => {
-                setMenu(null);
-                onShareBoard();
-              }}
-            >
-              ↗ {t('boards.share')}
-            </MenuItem>
+          {/* Board actions are **hidden** on a shared tab and merely *disabled*
+              on All cards, and the difference is meant: on All cards they would
+              apply the moment you picked a board, so greying them says "pick
+              one"; on somebody else's board they can never apply, and a greyed
+              Delete beside their name suggests otherwise. */}
+          {active.kind !== 'shared' && (
+            <>
+              <MenuItem disabled={!hasActive} onClick={() => setMenu('rename')}>
+                ✎ {t('boards.rename') as string}
+              </MenuItem>
+              <MenuItem
+                disabled={!hasActive}
+                onClick={() => {
+                  setMenu(null);
+                  onRequestAddCards();
+                }}
+              >
+                + {t('boards.addCards')}
+              </MenuItem>
+              {onShareBoard && (
+                <MenuItem
+                  disabled={!hasActive}
+                  onClick={() => {
+                    setMenu(null);
+                    onShareBoard();
+                  }}
+                >
+                  ↗ {t('boards.share')}
+                </MenuItem>
+              )}
+              <MenuItem
+                disabled={!hasActive}
+                danger
+                onClick={async () => {
+                  setMenu(null);
+                  await onDelete();
+                }}
+              >
+                ✕ {t('boards.delete')}
+              </MenuItem>
+            </>
           )}
-          {onOpenSharedBoards && (sharedBoardCount ?? 0) > 0 && (
-            <MenuItem
-              onClick={() => {
-                setMenu(null);
-                onOpenSharedBoards();
-              }}
-            >
-              {t('boards.sharedCount', { count: sharedBoardCount })}
-            </MenuItem>
-          )}
-          <MenuItem
-            disabled={!hasActive}
-            danger
-            onClick={async () => {
-              setMenu(null);
-              await onDelete();
-            }}
-          >
-            ✕ {t('boards.delete')}
-          </MenuItem>
         </div>
       )}
 

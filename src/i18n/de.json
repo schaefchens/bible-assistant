@@ -188,10 +188,8 @@
       "freeform": "Pinnwand",
       "switchTo": "Ansicht wechseln"
     },
-    "shared": "Geteilte Tafeln",
-    "sharedCount_one": "{{count}} geteilte Tafel",
-    "sharedCount_other": "{{count}} geteilte Tafeln",
     "readOnly": "Das ist die Tafel von {{author}}.",
+    "sharedBy": "geteilt von {{author}}",
     "makeCopy": "Eigene Kopie",
     "makeCopyHint": "Eine Kopie, die du bearbeiten und um eigene Karten ergänzen kannst.",
     "share": "In einem Regal teilen"

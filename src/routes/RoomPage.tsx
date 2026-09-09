@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { CommunityTermsGate } from '@/components/community/CommunityTermsGate';
-import { SharedBoardView } from '@/components/community/SharedBoardView';
 import { Empty, Row, SectionTitle } from '@/components/community/spaceRows';
 import { ChevronIcon } from '@/components/common/icons';
 import { useCommunityRefresh } from '@/hooks/useCommunityRefresh';
@@ -38,7 +37,6 @@ import { useReaderStore } from '@/store/readerStore';
  */
 export function RoomPage() {
   const { code = '' } = useParams<{ code: string }>();
-  const { itemId } = useParams<{ itemId?: string }>();
   const { t } = useTranslation();
   const lang = useLocale();
   const navigate = useNavigate();
@@ -84,7 +82,7 @@ export function RoomPage() {
 
     openedTarget.current = target;
     navigate(`${ROUTES.rooms}/${code}`, { replace: true });
-    if (board) navigate(`${ROUTES.rooms}/${code}/boards/${board.itemId}`);
+    if (board) navigate(`${ROUTES.cards}/shared/${board.itemId}`);
     else if (plan) void setSource({ kind: 'list', listId: plan.list.id, code }).then(() => navigate(ROUTES.read));
     else void setSource({ kind: 'space', code }).then(() => navigate(ROUTES.read));
   }, [target, code, mirroredBoards, mirroredLists, posts, navigate, setSource]);
@@ -98,15 +96,6 @@ export function RoomPage() {
     kind: subscription.spaceKind ?? 'custom',
     name: subscription.spaceName,
   });
-
-  // One board, full screen. Nested under the room rather than under /cards,
-  // because the room is what grants access: a withdrawn board 404s by
-  // construction rather than by a check somebody has to remember to write.
-  if (itemId) {
-    const board = boards.find((b) => b.itemId === itemId);
-    if (!board) return <MissingRoom onBack={goBack} />;
-    return <SharedBoardView mirror={board} onBack={() => navigate(`${ROUTES.rooms}/${code}`)} />;
-  }
 
   const openPieces = async () => {
     await setSource({ kind: 'space', code });
@@ -201,7 +190,10 @@ export function RoomPage() {
                     emoji={m.board.emoji}
                     title={m.board.name || (t('boards.title') as string)}
                     detail={t('boards.cardCount', { count: m.cards.length }) as string}
-                    onOpen={() => navigate(`${ROUTES.rooms}/${code}/boards/${m.itemId}`)}
+                    // Into the card library's tab strip, not a screen of its
+                    // own: a board belongs where boards are, and one renderer
+                    // beats two that have to be kept saying the same thing.
+                    onOpen={() => navigate(`${ROUTES.cards}/shared/${m.itemId}`)}
                   />
                 ))}
               </section>

@@ -1,15 +1,16 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { boardTabClasses } from './cardColors';
+import { GuestIcon } from '@/components/common/icons';
 import { BOARD_TAB_ATTR } from '@/lib/boardTabDrop';
 import type { CardDragState } from '@/hooks/useCardTabDrop';
-import type { Board } from '@/types/domain';
+import type { Board, MirroredBoard } from '@/types/domain';
 
 /**
  * The tabs themselves, and the menu row shape — the pieces `LibraryTabs`
  * arranges.
  *
- * All three exports are driven entirely by their props. `SortableTab` calls
+ * All four exports are driven entirely by their props. `SortableTab` calls
  * `useSortable`, which reads dnd-kit's context: that crosses a module boundary
  * for free, so it still needs the `DndContext` and `SortableContext` the screen
  * puts around it, and nothing else.
@@ -160,6 +161,68 @@ export function SortableTab({
       <span className="truncate">{board.name}</span>
       <TabCount n={count} badge={targeted ? (cardDrag?.already ? '✓' : '+') : null} />
     </div>
+  );
+}
+
+/**
+ * Somebody else's board, as a tab.
+ *
+ * Three things separate it from `SortableTab`, and each is a rule rather than
+ * a style choice:
+ *
+ * - **It carries the guest mark**, and the mark is in the accessible name as
+ *   well as on screen. Two people may both have a board called "Merkverse", so
+ *   the name alone cannot say whose this is — and a strip that reads
+ *   identically to a screen reader whichever tab you are on is a strip that
+ *   says nothing.
+ * - **No `BOARD_TAB_ATTR`.** That attribute *is* the drop target
+ *   (`boardTabDrop` hit-tests the element under the finger), so leaving it off
+ *   is the whole of "you cannot drag your card onto somebody else's board" —
+ *   no guard to write and none to forget.
+ * - **Not sortable.** It lives outside the `SortableContext`, so `boardOrder`
+ *   stays a list of the user's own board ids, which is what syncs.
+ *
+ * The count is `mirror.cards.length` and is **exact**: a shared board ships
+ * its cards, so the "stored ids overcount" rule `boardCounts` works around
+ * cannot apply here.
+ */
+export function SharedTab({
+  mirror,
+  ownerLabel,
+  countLabel,
+  isActive,
+  onSelect,
+}: {
+  mirror: MirroredBoard;
+  /** "Christoph's board" — the whose, spelled out for the accessible name. */
+  ownerLabel: string;
+  countLabel: string;
+  isActive: boolean;
+  onSelect: () => void;
+}) {
+  const tabCls = boardTabClasses(mirror.board.color);
+  const name = mirror.board.name;
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={isActive}
+      aria-label={`${name} · ${ownerLabel} · ${countLabel}`}
+      className={[
+        TAB_CLASSES,
+        'cursor-pointer',
+        isActive ? tabCls.active : tabCls.inactive,
+      ].join(' ')}
+    >
+      <GuestIcon className="shrink-0 opacity-70" />
+      {mirror.board.emoji && (
+        <span aria-hidden="true" className="shrink-0 text-base leading-none">
+          {mirror.board.emoji}
+        </span>
+      )}
+      <span className="truncate">{name}</span>
+      <TabCount n={mirror.cards.length} />
+    </button>
   );
 }
 

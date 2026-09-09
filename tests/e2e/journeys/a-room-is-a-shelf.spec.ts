@@ -24,8 +24,8 @@ import {
  * end — the signature, the pinned key, the reader. This one is about the room
  * being a **shelf**: a plan and a board are shared over machinery a piece never
  * touches (a payload fetched separately from its header, a hash the signature
- * commits to, a read-only screen, a fork), and none of that is exercised
- * anywhere else at this level.
+ * commits to, a read-only tab in the reader's own card library, a fork), and
+ * none of that is exercised anywhere else at this level.
  *
  * Serial and sharing one setup, because two genuinely separate installs are the
  * expensive part and the steps are a sequence rather than independent facts:
@@ -151,30 +151,60 @@ test('a shared plan plays as a plan, and the picker locks into it', async () => 
   await expect(bob.page.getByRole('dialog').filter({ hasText: PLAN })).toBeVisible();
 });
 
-test('a board reaches the room, read-only, and can be forked', async () => {
+test('a board reaches the room, and lands in the card library as a guest tab', async () => {
   await makeBoard(alice.page, BOARD, { title: CARD, verses: 'Galatians 5:22' });
   await shareBoardIntoRoom(alice.page, BOARD, ROOM);
 
   await roomEventually(bob.page, room, BOARD);
   await bob.page.getByRole('button', { name: new RegExp(BOARD) }).first().click();
 
-  // Its own screen under the room, not a tab in /cards — `activeBoardId` is
-  // nulled against the user's own boards on every boot and every sync.
-  await expect(bob.page).toHaveURL(/\/rooms\/[0-9A-Z]+\/boards\/[0-9a-f-]+$/);
+  // Into `/cards`, not a screen of its own off the room. A foreign board could
+  // not be a tab while its id had to live in `activeBoardId`, which is nulled
+  // against the user's own boards on every boot and every sync; it is the
+  // *route* that holds the selection now, so both null-outs stay true.
+  await expect(bob.page).toHaveURL(/\/cards\/shared\/[0-9a-f-]+$/);
   await expect(bob.page.getByRole('button', { name: CARD })).toBeVisible();
+
+  // The tab says whose it is, and says it in the accessible name — two people
+  // may both have a board called Merkverse, so the name alone cannot.
+  const guestTab = bob.page.getByRole('button', {
+    name: new RegExp(`^${BOARD} · shared by ${AUTHOR}`),
+  });
+  await expect(guestTab).toBeVisible();
+  // No `data-board-tab`, which is the whole of "you cannot drag your own card
+  // onto somebody else's board" — the drop hit-tests that attribute, so its
+  // absence is the rule rather than a guard implementing it.
+  await expect(guestTab).not.toHaveAttribute('data-board-tab', /.*/);
 
   // Read-only is the *absence* of the mutating props, so there is nothing to
   // press rather than something that presses and does nothing.
   await expect(bob.page.getByRole('button', { name: 'Remove from board' })).toHaveCount(0);
   await expect(bob.page.getByRole('button', { name: /Arrange|Edit layout/ })).toHaveCount(0);
+  // And the strip's menu drops the board actions entirely rather than greying
+  // them: on All cards they would apply the moment you picked a board, but on
+  // somebody else's they never can.
+  await bob.page.getByRole('button', { name: 'Menu' }).click();
+  await expect(bob.page.getByRole('menuitem', { name: /Delete/ })).toHaveCount(0);
+  await expect(bob.page.getByRole('menuitem', { name: /Edit board/ })).toHaveCount(0);
+  await bob.page.keyboard.press('Escape');
+});
 
-  // The fork is a real one: new ids at every level, and it lands in Bob's own
-  // library where he can edit it.
+test('a copy of a board is the reader’s own, and opens as their own tab', async () => {
+  // The fork is a real one — new ids at every level — and it is an own board
+  // from the moment it exists, so it opens in its own tab rather than dropping
+  // the reader back on All cards to go looking for it.
   await bob.page.getByRole('button', { name: 'Make my copy' }).click();
   await expect(bob.page).toHaveURL(/\/cards$/);
-  await expect(bob.page.getByRole('button', { name: new RegExp(`^${BOARD}`) })).toBeVisible();
-  await bob.page.getByRole('button', { name: new RegExp(`^${BOARD}`) }).click();
   await expect(bob.page.getByRole('button', { name: CARD })).toBeVisible();
+
+  // Its tab carries no guest mark: same name as the one it was forked from,
+  // and that is exactly why the mark has to be what tells them apart.
+  await expect(
+    bob.page.getByRole('button', { name: `${BOARD} · 1 card`, exact: true }),
+  ).toBeVisible();
+  await expect(
+    bob.page.getByRole('button', { name: new RegExp(`^${BOARD} · shared by ${AUTHOR}`) }),
+  ).toBeVisible();
 });
 
 test('the room lists all three, and the author’s own screen agrees', async () => {

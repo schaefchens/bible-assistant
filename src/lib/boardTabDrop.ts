@@ -16,8 +16,11 @@
 
 /** On the strip's root element. */
 export const LIBRARY_TABS_ATTR = 'data-library-tabs';
-/** On each board tab, carrying that board's id. The All-cards tab deliberately
- * has none: every card is already in it, so it is not a target. */
+/** On each of the user's **own** board tabs, carrying that board's id. Two
+ * kinds of tab deliberately have none, and in both cases the absence *is* the
+ * rule rather than a guard implementing it: All cards, because every card is
+ * already in it; and a shared board, because it is somebody else's and there
+ * is nothing a drop could write to. */
 export const BOARD_TAB_ATTR = 'data-board-tab';
 
 type TabDropHit = {

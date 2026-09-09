@@ -90,7 +90,8 @@ This file is the orientation map. When changing code, find the relevant subsyste
 | Community ⇄ reading seam | `src/services/community/spaceReading.ts` |
 | Which reading list an id names (own, or shared) | `src/services/community/sharedReading.ts` — `resolveListById` |
 | A shared plan or board as bytes | `src/services/community/sharedPayload.ts` (build, signed) + `sharedItems.ts` (parse, fork) |
-| A room somebody else owns | `src/routes/RoomPage.tsx` + `src/components/community/SharedBoardView.tsx` |
+| A room somebody else owns | `src/routes/RoomPage.tsx` |
+| Somebody else's board, read-only | `src/components/community/SharedBoardView.tsx` — a body under `/cards`' tab strip |
 | Which narration path an item takes | `src/services/narration/narrationRequest.ts` |
 | Loading one segment, whatever kind (and walking past a versification gap) | `src/services/reading/segmentLoader.ts` |
 | Reading-list order + expansion | `src/services/reading/readingSequence.ts` |
@@ -877,6 +878,14 @@ add cards / delete) are `disabled` on All cards rather than hidden.
 
 **Per-tab counts are resolved against the live cards**, not `board.cardIds.length`:
 deleting a card does not rewrite the boards holding it, so the stored ids overcount.
+A *shared* board is the exception and its count is exact, because it ships its cards.
+
+**There is a third region**, after the user's own boards and a rule: boards other
+people share with them, marked with a guest glyph, not sortable, and not drop
+targets. What makes that possible without a `libraryStore → communityStore`
+dependency is that the selection is a `TabSelection` union whose shared arm lives
+in the *route* rather than in `activeBoardId` — see "A shared board is a tab" under
+Community spaces, which is also where the rest of the rules are.
 
 **The two bodies are separate components** (`AllCardsView`, `BoardCardsView`), and
 the board one is keyed by board id — so a board switch drops its tag filter by
@@ -1994,27 +2003,82 @@ keyed **by id** rather than by source because five call sites hold a bare
 `listId` out of a `ListProvenance`. `ensureOpen`'s `staleList` needs **both**
 `initialized` flags, or a mirrored plan looks deleted during the boot race.
 
-#### A shared board is a screen, not a tab
+#### A shared board is a tab, and the route is what makes it one
 
-`/rooms/:code/boards/:itemId`, reusing `BoardCardsView` whole. Putting it in
-`/cards`' tab strip was tried on paper and the code refuses: **`activeBoardId` is
-nulled against the user's own boards in `libraryStore.init` and again in
-`librarySync.pullFromServer`**, so a foreign tab would deselect itself on every
-boot and every sync. Teaching those to read the community store would put a
-dependency into a store that has none, in the direction `onCommunityPulled()`
-exists to prevent. Four smaller costs agreed: a third region in a strip whose
-docblock justifies having two, guards that would be correct only by accident
-(`hasActive` is already false for a foreign board), a dead `/cards/:cardId`
-route for a foreign card, and unbounded growth in a strip that cannot collapse.
-Discoverability is one row in the strip's `⋮`.
+`/cards/shared/:itemId`, a third region in the tab strip after the user's own
+boards and a rule, reusing `BoardCardsView` whole — the four view modes are the
+board's entire value, and reimplementing them is four copies of a rule.
 
-Read-only is the **absence** of the three mutating props on `BoardCardsView`,
-not no-op versions of them: the sortable is never armed, remove is not rendered,
-and the corkboard has nothing to commit. `CardStack.onDelete` had to become
-optional because it also fires on a keypress. A card opens as a `FlipCard` in a
-sheet, never `CardEditor` — the read-only version of nine controlled inputs plus
-a save that reconciles every board's `cardIds` is a form with everything
-disabled, a shape nobody has seen in this app.
+It shipped first as its own screen off the room, because the code appeared to
+refuse a tab: **`activeBoardId` is nulled against the user's own boards in
+`libraryStore.init` and again in `librarySync.pullFromServer`**, so a foreign id
+put there deselects itself on every boot and every sync — and teaching those two
+to read the community store would push a dependency into a store that has none,
+in the direction `onCommunityPulled()` exists to prevent. That reasoning was
+sound and the conclusion was wrong: **the id never has to go there.** `CardsPage`
+holds the shared half of its selection in the *route*, so both null-outs stay
+true, `libraryStore` still cannot see the community store, and the persistence
+story is arguably better — a route is shareable and survives a reload. The
+screen off the room went with it, since two renderers for one board is the
+duplication this file keeps cataloguing; the room's board row links here.
+
+Why it moved at all: on its own screen it was, in the maintainer's words, a
+disaster to find. Boards are looked for where boards are.
+
+**The selection is a union, not a nullable id** (`TabSelection`: `all` | `own` |
+`shared`). Written as one id, every board action would be gated on "is this id
+in `boards`?" — which is false for a shared tab, so the mutations would no-op
+*correctly, for the wrong reason*. Four of the five things in this feature are
+that same move — a rule expressed as a shape rather than as a guard someone has
+to remember:
+
+| the rule | how it is expressed |
+| --- | --- |
+| board actions apply to your own board only | `active.kind === 'own'`, not `activeBoard !== undefined` |
+| you cannot drag a card onto somebody else's board | the tab carries no `data-board-tab`, and that attribute *is* the drop target |
+| a shared tab is not in `boardOrder` | it renders outside the `SortableContext` |
+| read-only | the *absence* of `BoardCardsView`'s three mutating props |
+
+The strip's `⋮` **hides** the board actions on a shared tab where it merely
+*disables* them on All cards, and the difference is meant: on All cards they
+would apply the moment you picked a board, so greying them says "pick one"; on
+somebody else's board they can never apply, and a greyed Delete beside their
+name suggests otherwise.
+
+Two things the tab has that a row in a room did not, and both are load-bearing
+rather than decoration. It carries a **guest mark** (`GuestIcon`), *in the
+accessible name as well as on screen* — two people may both have a board called
+"Merkverse", so the name alone cannot say whose it is, and a strip that reads
+identically to a screen reader whichever tab you are on says nothing. And it
+keeps the **author's colour**, because that is the board's identity; the mark is
+what says whose.
+
+The board is shown in the **author's view mode**, with no toggle, since
+switching writes `board.viewMode` and a mirror has nowhere to write. The count
+is `mirror.cards.length` and is *exact* — a shared board ships its cards, so
+`boardCounts`' "stored ids overcount" rule cannot apply. A card opens as a
+`FlipCard` in a sheet, never `CardEditor`: the read-only version of nine
+controlled inputs plus a save that reconciles every board's `cardIds` is a form
+with everything disabled, a shape nobody has seen in this app. `CardStack.onDelete`
+is optional for the same family of reasons — it also fires on a keypress.
+
+**A fork opens as its own tab**, and in that order: `setActiveBoardId` first,
+then leave the shared route, or the new tab flashes past All cards on the way.
+It has the same name as the board it came from, which is precisely why the guest
+mark rather than the name has to be what tells them apart.
+
+The one cost accepted rather than solved is **growth**: follow five prolific
+people and the strip grows by fifteen tabs, and unlike the picker's author
+groups a tab strip cannot collapse. Own boards come first and All cards is
+pinned outside the scroller, so nothing of the user's is ever pushed off —
+which is what makes waiting acceptable. If it bites, the next move is a pin
+("put this on my tabs") rather than a cap, because a strip that silently drops
+a tab is worse than a long one.
+
+A shared board that goes away under the reader — withdrawn, or the room
+unsubscribed — redirects to `/cards`, but only once **both** stores are
+initialized. Bouncing during the boot race is the bug `readerStore.ensureOpen`'s
+`staleList` already had to learn.
 
 #### The subscriber's room screen
 
@@ -2227,8 +2291,10 @@ title and "new space", and that arithmetic is written down beside the class.
   from the server cannot mean deleted, or a failed `items.list` would destroy the author's shelf.
 - Progress on a shared plan survives unsubscribing, since the row is keyed by list id and
   nothing deletes it. Accepted: resubscribing restores your place.
-- Shared boards are not tabs in `/cards` (see above for why the code refuses); they are reached
-  from the room, with a pointer in the strip's `⋮`.
+- A shared board's tab is **not** remembered across a reload the way an own board's is: the
+  selection is in the route, so reloading `/cards` lands on whichever own board was last
+  active. Deliberate — that is the same property that keeps the id out of `activeBoardId` —
+  and the route itself is shareable, so the link is the way back.
 - Moderation now covers the four things Apple guideline 1.2 and the Play UGC policy ask for
   (see "Moderation" above), with two gaps left on purpose: a **reader's block does not remove
   that person as a subscriber of the user's own spaces** — `Membership` is keyed by uuid and

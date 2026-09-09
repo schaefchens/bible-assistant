@@ -188,10 +188,8 @@
       "freeform": "Corkboard",
       "switchTo": "Switch view"
     },
-    "shared": "Shared boards",
-    "sharedCount_one": "{{count}} shared board",
-    "sharedCount_other": "{{count}} shared boards",
     "readOnly": "This is {{author}}'s board.",
+    "sharedBy": "shared by {{author}}",
     "makeCopy": "Make my copy",
     "makeCopyHint": "A copy you can edit, with cards of your own.",
     "share": "Share to a shelf"
