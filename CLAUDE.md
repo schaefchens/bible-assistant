@@ -2100,17 +2100,22 @@ or the reader is left walking a shelf that no longer resolves.
 
 ### Where the share code is asked for
 
-The code field is **the only thing in the Shelves header besides the title**. It
-used to sit at the bottom of the list of spaces you already read, which is
-exactly where nobody looks for the way in — and being handed a code is the
-commonest reason to open that screen at all.
+The code field sits **beside "new shelf" in the body**, on one row under the
+sentence that names both ways in. It began at the bottom of the list of shelves
+you already read — exactly where nobody looks for the way in, when being handed
+a code is the commonest reason to open the screen at all — then spent a while in
+the header, which is where it stopped working: neither it nor the button
+shrinks, so the title column (`min-w-0 flex-1`) was the only thing that could,
+and on a narrow phone the heading and its subtitle collapsed to nothing. The
+header is now the title alone and the subtitle fits.
 
-"New shelf" used to sit beside it and has moved down into the body, under the
-sentence explaining what a shelf is for and above the list of your own. Two
-reasons: the sentence is what makes the button worth pressing, and neither the
-field nor the button shrinks — so on a narrow phone the title column
-(`min-w-0 flex-1`) was the only thing that could, and the heading and its
-subtitle collapsed to nothing.
+Moving it made its own hint a problem worth knowing about. That hint was
+`absolute right-4`, pinned to the header so a message could not shove the
+header's height around mid-typing — and in the body the same trick laid a
+five-line error across the tabs and the first shelf. It is in flow now, inside a
+`flex-1` column so a wrapped error has somewhere to go while the input keeps its
+own narrow width. Growing the head block is harmless here: it is not fixed
+chrome, and the list below simply gets one line less to scroll in.
 
 It has **no button**. `parseSpaceCodeInput` already answers "is this a code
 yet?" on every keystroke, so the field submits itself the moment the answer is

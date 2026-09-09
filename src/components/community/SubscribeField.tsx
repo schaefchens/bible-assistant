@@ -94,10 +94,9 @@ export function SubscribeField({ onSubscribed }: { onSubscribed?: () => void }) 
   const note = error ?? status ?? (focused ? t('community.addByCodeHint') : null);
 
   return (
-    // Sized to a code, not to the space available: in the header it competes
-    // with the screen's title, and a field wide enough to swallow the row would
-    // push "new space" off a narrow phone.
-    <div className="min-w-0 shrink">
+    // `flex-1` so the column, not the input, takes the row's spare width: the
+    // input keeps its own narrow size and a wrapped error gets somewhere to go.
+    <div className="min-w-0 flex-1">
       <input
         value={code}
         onChange={(e) => onChange(e.target.value)}
@@ -116,22 +115,22 @@ export function SubscribeField({ onSubscribed }: { onSubscribed?: () => void }) 
         autoCorrect="off"
         maxLength={64}
         disabled={busy}
-        // Narrow on purpose: this header also holds the screen's title and
-        // "new space". 7rem is what the placeholder needs at this size — any
-        // narrower and the prompt itself is clipped, which is the one thing
-        // the field has to say. Widens where there is room.
-        //
-        // The arithmetic at 375px (iPhone SE): 32 padding + 16 gaps + 112
-        // field + ~110 button leaves ~105 for the title, which "Räume" and a
-        // truncated subtitle fit. At 320 the title truncates too; nothing
-        // overflows, because the title block is the flex-1 min-w-0 one.
+        // 7rem is what the placeholder needs at this size — any narrower and
+        // the prompt itself is clipped, which is the one thing the field has to
+        // say. It widens where there is room, and beside "new shelf" there is:
+        // at 375px that row is 32 padding + 8 gap + ~130 button + 112 field,
+        // with the rest to spare.
         className="w-28 sm:w-40 min-w-0 bg-surface-raised rounded-xl px-2.5 py-1.5 font-mono text-xs sm:text-sm text-ink outline-none focus:ring-2 focus:ring-brand/60 disabled:opacity-60"
       />
-      {/* Absolute, so a hint or an error can't shove the header's own height
-          around while someone is typing in it. */}
+      {/* In flow, and under the field it belongs to. It used to be `absolute
+          right-4`, pinned to the header this field lived in so that a hint
+          could not shove the header's height around mid-typing. Beside "new
+          shelf" that same trick laid a five-line error across the tabs and the
+          first shelf — the head block is not fixed chrome, and growing it just
+          gives the list below one line less to scroll in. */}
       {note && (
         <p
-          className={`absolute right-4 mt-1 max-w-[16rem] text-right text-[11px] ${
+          className={`mt-1 text-[11px] ${
             error ? 'text-red-400' : 'text-ink-muted'
           }`}
         >

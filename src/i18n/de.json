@@ -805,7 +805,7 @@
     "shareFailed": "Konnte nicht geteilt werden. Versuche es erneut, sobald du online bist.",
     "deleteItem": "Löschen",
     "shareCodeIsRoom": "Der Code öffnet das Regal; nur der Link öffnet dieses Stück.",
-    "indexHint": "Lege Regale an und teile deine Lesepläne, Karten und Tafeln und eigenen Gedanken und Texte mit anderen.",
+    "indexHint": "Lege Regale an und teile deine Lesepläne, Karten und Tafeln und eigenen Gedanken und Texte mit anderen.\nOder füge ein mit dir geteiltes Regal mit dem Code hinzu.",
     "unsubscribeConfirm": "„{{name}}“ nicht mehr lesen?"
   },
   "feedback": {

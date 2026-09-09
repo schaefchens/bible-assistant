@@ -151,20 +151,14 @@ function SpacesIndex({
     <div className="flex flex-col h-full min-h-0">
       {/* No back button: this is a nav tab now, and the tab bar is how you
           leave it. `/spaces/:id` keeps its own — its fallback is this index. */}
-      {/* `relative` so the code field's hint can hang under it without
-          changing the header's height as you type. */}
-      <header className="relative px-4 py-2 border-b border-surface-raised/50 bg-surface/90 backdrop-blur flex items-center gap-2">
-        <div className="min-w-0 flex-1">
-          <h1 className="font-serif text-brand text-lg truncate">{t('community.title')}</h1>
-          <p className="text-[11px] text-ink-muted truncate">{t('community.subtitle')}</p>
-        </div>
-        {/* Being sent a code is the commonest reason to be on this screen, so
-            the field stays up here — and it is now the only thing competing
-            with the title. "New shelf" used to sit beside it, which on a narrow
-            phone squeezed the title column (`min-w-0 flex-1`) to nothing: the
-            two of them do not shrink, so the heading and its subtitle were the
-            only things that could. */}
-        {hasProfile && <SubscribeField onSubscribed={() => setTab('following')} />}
+      {/* Just the title now. Both of the things that used to sit beside it —
+          "new shelf" and the code field — are in the body, under the sentence
+          that explains them. Neither shrinks, so up here they squeezed the
+          title column (`min-w-0 flex-1`) to nothing on a narrow phone: the
+          heading and its subtitle were the only things that could. */}
+      <header className="px-4 py-2 border-b border-surface-raised/50 bg-surface/90 backdrop-blur">
+        <h1 className="font-serif text-brand text-lg truncate">{t('community.title')}</h1>
+        <p className="text-[11px] text-ink-muted truncate">{t('community.subtitle')}</p>
       </header>
 
       {/* A column rather than one long scroller: only one of the two lists
@@ -189,12 +183,26 @@ function SpacesIndex({
                 Above the list of them, so the screen reads as an explanation,
                 the action it implies, and then what you already have. */}
             <div className="shrink-0 space-y-3">
-              <p className="text-xs leading-relaxed text-ink-muted">
+              {/* `whitespace-pre-line`, because the string carries a newline:
+                  the two ways onto this screen — make one, or add one somebody
+                  shared — are two sentences and read as two lines. */}
+              <p className="text-xs leading-relaxed text-ink-muted whitespace-pre-line">
                 {t('community.indexHint')}
               </p>
-              <button type="button" onClick={() => void create()} className="btn-primary text-sm">
-                + {t('community.newSpace')}
-              </button>
+              {/* The two ways in, side by side and in the order the sentence
+                  above puts them. */}
+              {/* `items-start`, because the field grows downward when it has
+                  something to say and the button should stay put. */}
+              <div className="flex items-start gap-2">
+                <button
+                  type="button"
+                  onClick={() => void create()}
+                  className="btn-primary text-sm shrink-0 whitespace-nowrap"
+                >
+                  + {t('community.newSpace')}
+                </button>
+                <SubscribeField onSubscribed={() => setTab('following')} />
+              </div>
             </div>
 
             {/* `aria-pressed` buttons rather than ARIA tabs, matching the two
