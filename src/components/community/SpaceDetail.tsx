@@ -345,14 +345,24 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
                   )}
                 </span>
                 {stale && (
-                  <SmallButton onClick={() => void republishItem(item.id)}>
+                  <SmallButton
+                    label={`${t('community.updateShared')} — ${item.title}`}
+                    onClick={() => void republishItem(item.id)}
+                  >
                     {t('community.updateShared')}
                   </SmallButton>
                 )}
-                <SmallButton onClick={() => void withdrawItem(item.id)}>
+                <SmallButton
+                  label={`${t('community.withdraw')} — ${item.title}`}
+                  onClick={() => void withdrawItem(item.id)}
+                >
                   {t('community.withdraw')}
                 </SmallButton>
-                <SmallButton danger onClick={() => void deleteItem(item.id)}>
+                <SmallButton
+                  danger
+                  label={`${t('community.deleteItem')} — ${item.title}`}
+                  onClick={() => void deleteItem(item.id)}
+                >
                   {t('community.deleteItem')}
                 </SmallButton>
               </div>
@@ -397,15 +407,24 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 function SmallButton({
   children,
   onClick,
+  label,
   danger = false,
 }: {
   children: React.ReactNode;
   onClick: () => void;
+  /**
+   * What this button does *to what*. A row of shared items repeats Update,
+   * Withdraw and Delete once per item, so the visible word alone leaves a
+   * screen reader announcing the same three names three times over with
+   * nothing to tell them apart.
+   */
+  label?: string;
   danger?: boolean;
 }) {
   return (
     <button
       type="button"
+      aria-label={label}
       onClick={onClick}
       className={clsx(
         'px-2.5 py-1 rounded-lg text-xs transition-colors shrink-0',

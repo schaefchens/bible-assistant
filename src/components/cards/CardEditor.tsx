@@ -231,6 +231,12 @@ export function CardEditor({ card, onClose }: Props) {
               <button
                 key={b.id}
                 type="button"
+                // Named and pressed explicitly, like the colour swatches above.
+                // `Field` wraps its children in a `<label>`, which labels every
+                // control inside it — so without these all the pills announce
+                // as "Boards" and none of them says whether it is on.
+                aria-label={b.name}
+                aria-pressed={boardIds.includes(b.id)}
                 onClick={() => toggleBoard(b.id)}
                 className={
                   'rounded-full px-3 py-1 text-xs transition-colors ' +

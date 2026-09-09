@@ -419,11 +419,36 @@ the screen did. The same caveat applies to a user who ticks a passage and is
 killed by the OS within those few milliseconds — accepted, since re-ticking
 costs one tap and `completed` is union-merged.
 
+**Two roles that are easy to get wrong here**: the `/cards` strip's `⋮` items
+are `role="menuitem"`, not buttons; and a control inside `CardEditor`'s `Field`
+inherits the field's `<label>` as its accessible name unless it carries its own
+`aria-label` — which is why the board pills and the shared-item row's
+Update/Withdraw/Delete each name what they act on. Both were found by a spec
+failing to find a control, which is the honest way to find them.
+
 **A long-press drag needs `support/gestures.ts`.** `page.dragTo()` presses,
 moves and releases at once, which never satisfies dnd-kit's activation delay —
 the drag simply does not start. The helper imports `LONG_PRESS_MS` and
 `MOVE_TOLERANCE_PX` from `lib/gestureConstants.ts` rather than restating them,
 which is what that module exists for.
+
+**A sharing journey is gated on the wire, not on the screen.** Every write in
+this feature rides the sync queue, so the UI reacts long before the server has
+judged and stored anything — and a piece that never reached it looks, from the
+author's side, exactly like one that did. Two failures cost real time before
+`support/community.ts` was written this way: a room whose name field was filled
+but never blurred stayed called "New space" for every reader while the owner's
+own screen showed what they typed, and a publish that silently never left the
+device passed a `toBeVisible` on its own title. Both helpers now wait for the
+matching `*.upsert` — `makeRoom`'s predicate additionally checks the **request
+body carries the name**, since waiting for "a `spaces.upsert`" is satisfied by
+the creation itself.
+
+**Two identities are the expensive part**, so the sharing specs are
+`describe.serial` blocks over one `beforeAll` rather than independent tests, and
+both installs are minted fresh: the `app` project's saved profile is shared by
+every spec in a run, so building an owner out of it means every name in every
+sharing spec must stay unique against every other, forever.
 
 **Selectors are production DOM, never test hooks.** There is no `data-testid` in `src/`.
 Specs use roles, accessible names (locale pinned to `en-US`), and the `data-*` attributes
