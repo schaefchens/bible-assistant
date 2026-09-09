@@ -130,20 +130,13 @@ function SpacesIndex({
           <h1 className="font-serif text-brand text-lg truncate">{t('community.title')}</h1>
           <p className="text-[11px] text-ink-muted truncate">{t('community.subtitle')}</p>
         </div>
-        {hasProfile && (
-          <>
-            {/* Left of "new space": being sent a code is the commonest reason
-                to be on this screen, and this used to be the last thing on it. */}
-            <SubscribeField />
-            <button
-              type="button"
-              onClick={() => void create()}
-              className="btn-primary text-sm shrink-0 whitespace-nowrap"
-            >
-              + {t('community.newSpace')}
-            </button>
-          </>
-        )}
+        {/* Being sent a code is the commonest reason to be on this screen, so
+            the field stays up here — and it is now the only thing competing
+            with the title. "New shelf" used to sit beside it, which on a narrow
+            phone squeezed the title column (`min-w-0 flex-1`) to nothing: the
+            two of them do not shrink, so the heading and its subtitle were the
+            only things that could. */}
+        {hasProfile && <SubscribeField />}
       </header>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 pb-28 space-y-6">
@@ -159,12 +152,18 @@ function SpacesIndex({
           </div>
         ) : (
           <>
-            {/* What a shelf is *for*, above the list of them. The header's
-                subtitle says what the screen holds; this says what you can do
-                with one, which is the part that is not guessable from a list of
-                names — a shelf takes reading lists and boards as well as
-                pieces, and sharing it is an accept/deny rather than a link. */}
-            <p className="text-xs leading-relaxed text-ink-muted">{t('community.indexHint')}</p>
+            {/* What a shelf is *for*, and the way to get one — as a pair,
+                because the sentence is what makes the button worth pressing.
+                Above the list of them, so the screen reads as an explanation,
+                the action it implies, and then what you already have. */}
+            <div className="space-y-3">
+              <p className="text-xs leading-relaxed text-ink-muted">
+                {t('community.indexHint')}
+              </p>
+              <button type="button" onClick={() => void create()} className="btn-primary text-sm">
+                + {t('community.newSpace')}
+              </button>
+            </div>
 
             <section className="space-y-2">
               <SectionTitle>{t('community.mine')}</SectionTitle>

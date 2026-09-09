@@ -2050,10 +2050,17 @@ key and deletes their subscriptions, so their shelf goes with them.
 
 ### Where the share code is asked for
 
-The code field is **in the Shelves header, left of "new shelf"**. It used to sit at
-the bottom of the list of spaces you already read, which is exactly where nobody
-looks for the way in — and being handed a code is the commonest reason to open
-that screen at all.
+The code field is **the only thing in the Shelves header besides the title**. It
+used to sit at the bottom of the list of spaces you already read, which is
+exactly where nobody looks for the way in — and being handed a code is the
+commonest reason to open that screen at all.
+
+"New shelf" used to sit beside it and has moved down into the body, under the
+sentence explaining what a shelf is for and above the list of your own. Two
+reasons: the sentence is what makes the button worth pressing, and neither the
+field nor the button shrinks — so on a narrow phone the title column
+(`min-w-0 flex-1`) was the only thing that could, and the heading and its
+subtitle collapsed to nothing.
 
 It has **no button**. `parseSpaceCodeInput` already answers "is this a code
 yet?" on every keystroke, so the field submits itself the moment the answer is

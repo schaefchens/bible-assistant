@@ -603,7 +603,7 @@
   },
   "community": {
     "title": "Shelves",
-    "subtitle": "Your own writing, and the people you read",
+    "subtitle": "Share your thoughts with others",
     "mine": "Your shelves",
     "following": "You are reading",
     "newSpace": "New shelf",
@@ -805,7 +805,7 @@
     "shareFailed": "Couldn't share that. Try again once you're back online.",
     "deleteItem": "Delete",
     "shareCodeIsRoom": "The code opens the shelf; only the link opens this piece.",
-    "indexHint": "Put your writing, reading lists and boards on a shelf, then share its code — you decide who may read it."
+    "indexHint": "Make shelves and share your reading plans, cards and boards, and your own thoughts and writing with others."
   },
   "feedback": {
     "open": "Report a bug or send feedback",
