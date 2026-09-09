@@ -78,13 +78,13 @@ export async function handleWritePost(args: ToolArgs['write_post']): Promise<Too
     const lookup = resolveSpaceByName(args.space);
     if (!lookup.ok) return { ok: false, error: lookup.error };
     if (!lookup.key.spaceId) {
-      return { ok: false, error: `"${lookup.label}" is someone else's space — you can only write in your own` };
+      return { ok: false, error: `"${lookup.label}" is someone else's shelf — you can only write in your own` };
     }
     spaceId = lookup.key.spaceId;
   } else {
     spaceId = state.spaces.find((sp) => sp.kind === 'today')?.id;
   }
-  if (!spaceId) return { ok: false, error: 'no space to write in' };
+  if (!spaceId) return { ok: false, error: 'no shelf to write in' };
 
   const now = Date.now();
   const title = args.title?.trim() || firstLineAsTitle(text);
@@ -158,7 +158,7 @@ export async function handleReadNew(args: ToolArgs['read_new']): Promise<ToolDis
     return {
       ok: false,
       error: today
-        ? 'nobody the user follows has posted in their Today space'
+        ? 'nobody the user follows has posted in their Today shelf'
         : 'there is nothing new to read',
     };
   }
@@ -190,12 +190,12 @@ function ownSpaceByName(name: string | undefined): { ok: true; id: string } | { 
   const state = useCommunityStore.getState();
   if (!state.profile) return { ok: false, error: 'the user has not created a community profile yet' };
   const spaces = state.spaces;
-  if (spaces.length === 0) return { ok: false, error: 'the user has no spaces to share into yet' };
+  if (spaces.length === 0) return { ok: false, error: 'the user has no shelves to share into yet' };
   if (!name) {
     if (spaces.length === 1) return { ok: true, id: spaces[0].id };
     return {
       ok: false,
-      error: `ask which space: ${spaces.map((s) => spaceDisplayName(s)).join(', ')}`,
+      error: `ask which shelf: ${spaces.map((s) => spaceDisplayName(s)).join(', ')}`,
     };
   }
   const wanted = name.trim().toLowerCase();
@@ -205,7 +205,7 @@ function ownSpaceByName(name: string | undefined): { ok: true; id: string } | { 
   if (!hit) {
     return {
       ok: false,
-      error: `no space of the user's called "${name}". They have: ${spaces
+      error: `no shelf of the user's called "${name}". They have: ${spaces
         .map((s) => spaceDisplayName(s))
         .join(', ')}`,
     };

@@ -47,8 +47,16 @@ type SpaceCandidate = {
  * Room" still matches exactly, one tier earlier.
  */
 const SPACE_FILLER_WORDS = new Set([
-  'the', 'a', 'an', 'of', 'from', 'by', 'in', 'space', 'room', 'read', 'please',
-  'der', 'die', 'das', 'den', 'dem', 'von', 'vom', 'im', 'raum', 'bitte', 'lies',
+  'the', 'a', 'an', 'of', 'from', 'by', 'in', 'read', 'please',
+  'der', 'die', 'das', 'den', 'dem', 'von', 'vom', 'im', 'bitte', 'lies',
+  // The generic noun for the thing itself, in both languages. "shelf" is what
+  // the UI calls it now; "space" and "room" stay because older invitations,
+  // older habits and this codebase's own vocabulary all still say them, and a
+  // word nobody uses costs nothing here. A shelf actually *named* "Regal" is
+  // unaffected — `spaceContentWords` falls back to every word when filtering
+  // would leave none.
+  'space', 'spaces', 'room', 'rooms', 'shelf', 'shelves',
+  'raum', 'räume', 'regal', 'regale',
 ]);
 
 /** "my Today" is not a loose name — it says whose. */

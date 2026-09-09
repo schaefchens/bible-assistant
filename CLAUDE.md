@@ -1178,8 +1178,20 @@ actions and on-disk paths for the sake of a word. So: when editing copy the noun
 is *shelf*, when editing code it is *space*. German also changes gender with the
 noun — `der Raum` became `das Regal` — so the articles moved too.
 
-The one place the two still disagree is `services/ai/prompts.ts`, which teaches
-the model the word "space" / "Raum" — see "Known limitations".
+**The model is told both**, since it sits on the seam: the prompts, the tool
+descriptions and the handlers' error strings all say *shelf*, and each prompt
+block names the code word once — `Regale (im Code "spaces", daher die
+Werkzeugnamen)` — so `read_space` and `list_spaces` still read as the obvious
+tools for it. The tool *names* and the `space` parameter are wire contract and
+did not move.
+
+The functional half of that is `SPACE_FILLER_WORDS` in `spaceNameMatch.ts`:
+"Christophs Regal" has to reduce to `['christophs']` the way "Christophs Raum"
+always did, or the commonest phrasing resolves to nothing and the model's next
+move is to look for a book of the Bible called Christoph. All five words —
+shelf, space, room, Regal, Raum — are filler, because older invitations and
+older habits still say the old ones. `tests/unit/spaceNameMatch.test.ts` pins
+it, and a shelf genuinely *named* "Regal" still matches, a tier earlier.
 
 A **space** is one person's collection of their own writing; a **post** is one piece in it.
 Sharing is invite-only by a share code — there is no public listing, no discovery, no follower
@@ -2071,12 +2083,12 @@ title and "new space", and that arithmetic is written down beside the class.
   the interstitial stops being reached on that platform.
 - No QR code yet. Sharing a code or a link covers it; scanning would need a camera plugin plus
   iOS/Android permissions.
-- **The assistant still says "space" / "Raum".** The UI noun is now *shelf* / *Regal*, but
-  `services/ai/prompts.ts` is code rather than i18n and was left alone. That is not merely
-  cosmetic: the prompt is also what teaches the model which words map to `read_space` and
-  `list_spaces`, so a user who learns "Regal" from the UI and asks for it by that name may
-  not be understood. Fixing it is one word in each of the two prompt blocks — the **tool
-  names stay exactly as they are**.
+- **"my shelf", said with nothing else, does not resolve** — nor did "mein Raum" before the
+  rename, so this is a pre-existing gap rather than one the new noun opened. An ownership word
+  plus the generic noun leaves `spaceContentWords` with no tokens at all, and its fallback then
+  matches them literally, which can only fail. The fix is to treat "no tokens left, and they
+  said *my*" as "their own, if there is exactly one" — which means separating that case from
+  the fallback rather than reusing it.
 - **A shared plan or board is a snapshot with a manual republish** (see above). Deliberate, but
   it does mean an author who fixes a typo has to press Update, and nothing nags them to.
 - Withdrawing a shared item on one device leaves the row marked `shared` on another until an

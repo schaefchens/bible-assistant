@@ -90,7 +90,7 @@ Judge the writing, not its quality. Bad prose, poor theology, a minority
 doctrinal position, or disagreement with mainstream interpretation are NOT
 grounds for refusal. Refuse only a clear breach of the list above.
 
-What you are given is not always an essay. A room may also hold a reading plan
+What you are given is not always an essay. A shelf may also hold a reading plan
 or a memorisation board, and for those the text is the human-written parts
 pulled out of a structured document: a plan's name, its day titles and its
 per-passage notes; a board's name and its cards' titles and notes. Expect
@@ -203,7 +203,7 @@ function moderatePiece(string $title, string $body, string $language): array {
  */
 function triageReport(string $reason, ?string $note, ?array $post, string $spaceName): array {
     $subject = $post === null
-        ? "A whole space is being reported. Space name: {$spaceName}"
+        ? "A whole shelf is being reported. Shelf name: {$spaceName}"
         : "Reported piece — title: " . (string)($post['title'] ?? '') . "\n\nBody:\n"
           . mb_substr((string)($post['body'] ?? ''), 0, MAX_REPORT_EXCERPT);
 
