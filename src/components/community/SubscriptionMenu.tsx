@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
+import { releaseReader } from '@/lib/spacePlayback';
 import { ReportDialog } from './ReportDialog';
 import { ShareSpaceSheet } from './ShareSpaceSheet';
-import { spaceSourceKey } from '@/services/reading/readingSequence';
 import { useCommunityStore } from '@/store/communityStore';
-import { useReaderStore } from '@/store/readerStore';
 
 /**
  * What a reader can do about somebody else's space: stop reading it, report it,
@@ -31,24 +30,14 @@ export function SubscriptionMenu({
   spaceLabel: string;
 }) {
   const { t } = useTranslation();
-  const unsubscribe = useCommunityStore((s) => s.unsubscribe);
   const blockAuthor = useCommunityStore((s) => s.blockAuthor);
   const codesOfAuthor = useCommunityStore((s) => s.codesOfAuthor);
-  const setSource = useReaderStore((s) => s.setSource);
-  const source = useReaderStore((s) => s.source);
   const [open, setOpen] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [sharing, setSharing] = useState(false);
 
   /** Don't leave the reader walking a space that is about to disappear. */
-  const releaseReader = (codes: string[]) => {
-    if (source.kind !== 'space') return;
-    if (codes.some((c) => spaceSourceKey(source) === `c:${c}`)) {
-      void setSource({ kind: 'bible' });
-    }
-  };
-
   return (
     <>
       <div className="relative shrink-0">
@@ -80,17 +69,10 @@ export function SubscriptionMenu({
               className="absolute right-0 top-full mt-1 z-40 w-52 py-1 rounded-xl bg-surface-raised border border-surface-raised/70 shadow-lg"
               role="menu"
             >
-              {/* First, and the only one here that isn't a complaint: a reader
-                  who likes a space is the likeliest person to recommend it, and
-                  what they pass on is the same code they were given. */}
-              <MenuItem
-                onClick={() => {
-                  setOpen(false);
-                  setSharing(true);
-                }}
-              >
-                {t('community.shareSpace.action')}
-              </MenuItem>
+              {/* Only the complaints are left. Sharing and stopping reading
+                  are icons on the row now: both are harmless, and a menu is
+                  what keeps *these* two a deliberate act rather than a
+                  mis-tap. */}
               <MenuItem
                 onClick={() => {
                   setOpen(false);
@@ -120,15 +102,6 @@ export function SubscriptionMenu({
                   {t('community.blockAuthor.confirmBody')}
                 </p>
               )}
-              <MenuItem
-                onClick={() => {
-                  setOpen(false);
-                  releaseReader([code]);
-                  void unsubscribe(code);
-                }}
-              >
-                {t('community.unsubscribe')}
-              </MenuItem>
             </div>
           </>
         )}

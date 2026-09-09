@@ -3,8 +3,12 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { PostEditor } from '@/components/community/PostEditor';
 import { SpaceDetail } from '@/components/community/SpaceDetail';
+import { ShareSpaceButton, ShareSpaceSheet } from '@/components/community/ShareSpaceSheet';
 import { SubscribeField } from '@/components/community/SubscribeField';
+import { QuillIcon, ShareIcon, TrashIcon, UnlinkIcon } from '@/components/common/icons';
+import { useLocale } from '@/hooks/useLocale';
 import { ROUTES } from '@/lib/appRoutes';
+import { releaseReader } from '@/lib/spacePlayback';
 import clsx from 'clsx';
 import { Empty, Row } from '@/components/community/spaceRows';
 import { SubscriptionMenu } from '@/components/community/SubscriptionMenu';
@@ -45,6 +49,11 @@ export function SpacesPage() {
   const termsAccepted = useCommunityTermsAccepted();
 
   const space = routeId ? spaces.find((s) => s.id === routeId) : undefined;
+  // The editor follows the **draft**, not the route. Resolving its shelf from
+  // `:id` quietly meant a piece could only be started from a shelf's own
+  // screen; the draft has carried its `spaceId` all along, so the index can
+  // start one too.
+  const draftSpace = draftPost ? spaces.find((s) => s.id === draftPost.spaceId) : undefined;
 
   // A profile that predates the content standards has not agreed to them, and
   // this is the one screen every community path goes through — including the
@@ -52,11 +61,11 @@ export function SpacesPage() {
   // opt-in and never see this.
   if (profile && !termsAccepted) return <CommunityTermsGate />;
 
-  if (draftPost && space) {
+  if (draftPost && draftSpace) {
     return (
       <PostEditor
         post={draftPost}
-        space={space}
+        space={draftSpace}
         onClose={() => setDraftPost(null)}
       />
     );
@@ -73,6 +82,7 @@ export function SpacesPage() {
       spaces={spaces}
       subscriptions={subscriptions}
       onOpenSettings={() => navigate(ROUTES.settings)}
+      onNewPost={setDraftPost}
     />
   );
 }
@@ -82,11 +92,13 @@ function SpacesIndex({
   spaces,
   subscriptions,
   onOpenSettings,
+  onNewPost,
 }: {
   hasProfile: boolean;
   spaces: Space[];
   subscriptions: Subscription[];
   onOpenSettings: () => void;
+  onNewPost: (draft: Post) => void;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -228,6 +240,7 @@ function SpacesIndex({
                             ? () => void openSpace({ spaceId: space.id })
                             : undefined
                         }
+                        trailing={<OwnSpaceActions space={space} onNewPost={onNewPost} />}
                       />
                     );
                   })}
@@ -268,15 +281,24 @@ function SpacesIndex({
                           posts.length > 0 ? () => void openSpace({ code: sub.code }) : undefined
                         }
                         trailing={
-                          <SubscriptionMenu
-                            code={sub.code}
-                            authorKey={sub.pinnedKey}
-                            ownerName={sub.ownerName}
-                            spaceLabel={spaceLabel(sub.ownerName, {
-                              kind: sub.spaceKind ?? 'custom',
-                              name: sub.spaceName,
-                            })}
-                          />
+                          <span className="flex shrink-0 items-center">
+                            <FollowedSpaceActions
+                              sub={sub}
+                              title={spaceLabel(sub.ownerName, {
+                                kind: sub.spaceKind ?? 'custom',
+                                name: sub.spaceName,
+                              })}
+                            />
+                            <SubscriptionMenu
+                              code={sub.code}
+                              authorKey={sub.pinnedKey}
+                              ownerName={sub.ownerName}
+                              spaceLabel={spaceLabel(sub.ownerName, {
+                                kind: sub.spaceKind ?? 'custom',
+                                name: sub.spaceName,
+                              })}
+                            />
+                          </span>
                         }
                       />
                     );
@@ -290,6 +312,141 @@ function SpacesIndex({
     </div>
   );
 }
+
+/**
+ * What you can do to one of your own shelves without opening it: put something
+ * on it, pass it on, throw it away.
+ *
+ * Icons rather than the `⋮` the shelves-you-read rows carry, because these
+ * three are the shelf's whole point and none of them is a complaint — that menu
+ * exists to hold *report* and *block* away from a mis-tap, and there is nothing
+ * of that kind here.
+ *
+ * Delete goes through the same `window.confirm` as the one on the shelf's own
+ * screen: it is the same irreversible act, and it should ask the same question
+ * wherever it is offered. "Today" has none — `deleteSpace` refuses it, so
+ * offering a button that cannot work would be the worst of both.
+ */
+function OwnSpaceActions({
+  space,
+  onNewPost,
+}: {
+  space: Space;
+  onNewPost: (draft: Post) => void;
+}) {
+  const { t } = useTranslation();
+  const lang = useLocale();
+  const deleteSpace = useCommunityStore((s) => s.deleteSpace);
+  const title = spaceDisplayName(space);
+
+  const write = () => {
+    const now = Date.now();
+    onNewPost({
+      id: crypto.randomUUID(),
+      spaceId: space.id,
+      title: '',
+      body: '',
+      language: lang,
+      publishedAt: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+  };
+
+  return (
+    <span className="flex shrink-0 items-center">
+      <button
+        type="button"
+        onClick={write}
+        aria-label={`${t('community.newPost')} — ${title}`}
+        title={t('community.newPost') as string}
+        className={ROW_ACTION}
+      >
+        <QuillIcon size={15} />
+      </button>
+      <ShareSpaceButton
+        spaceId={space.id}
+        label={`${t('community.shareSpace.action')} — ${title}`}
+        className={ROW_ACTION}
+      />
+      {space.kind !== 'today' && (
+        <button
+          type="button"
+          onClick={() => {
+            if (window.confirm(t('community.deleteSpaceConfirm', { name: title }))) {
+              void deleteSpace(space.id);
+            }
+          }}
+          aria-label={`${t('community.deleteSpace')} — ${title}`}
+          title={t('community.deleteSpace') as string}
+          className={clsx(ROW_ACTION, 'hover:text-red-400')}
+        >
+          <TrashIcon size={15} />
+        </button>
+      )}
+    </span>
+  );
+}
+
+/**
+ * The same idea for a shelf you only read: pass it on, or let it go.
+ *
+ * No quill — it is not yours to write in — and no trash, because nothing is
+ * destroyed: you stop reading, and the code would let you back in. Hence a
+ * broken link rather than a bin, and hence the question being "stop reading?"
+ * rather than "delete?".
+ *
+ * `⋮` stays beside these holding *report* and *block*. Those two are complaints
+ * about a person, and a menu is what keeps them a deliberate act rather than a
+ * mis-tap — which is exactly why the two harmless ones came out of it.
+ */
+function FollowedSpaceActions({ sub, title }: { sub: Subscription; title: string }) {
+  const { t } = useTranslation();
+  const unsubscribe = useCommunityStore((s) => s.unsubscribe);
+  const [sharing, setSharing] = useState(false);
+
+  return (
+    <span className="flex shrink-0 items-center">
+      <button
+        type="button"
+        onClick={() => setSharing(true)}
+        aria-label={`${t('community.shareSpace.action')} — ${title}`}
+        title={t('community.shareSpace.action') as string}
+        className={ROW_ACTION}
+      >
+        <ShareIcon />
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          if (window.confirm(t('community.unsubscribeConfirm', { name: title }))) {
+            // Before the unsubscribe, not after: the reader may be walking this
+            // very shelf, and it has to be sent home rather than left on one
+            // that no longer resolves.
+            releaseReader([sub.code]);
+            void unsubscribe(sub.code);
+          }
+        }}
+        aria-label={`${t('community.unsubscribe')} — ${title}`}
+        title={t('community.unsubscribe') as string}
+        className={clsx(ROW_ACTION, 'hover:text-red-400')}
+      >
+        <UnlinkIcon size={15} />
+      </button>
+      <ShareSpaceSheet
+        code={sub.code}
+        title={title}
+        open={sharing}
+        onClose={() => setSharing(false)}
+      />
+    </span>
+  );
+}
+
+/** One shape for all three, so they read as a set rather than three controls. */
+const ROW_ACTION =
+  'h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-ink-muted ' +
+  'hover:text-brand active:scale-95 transition-all disabled:opacity-40';
 
 /**
  * One of the index's two lists, as a switch.

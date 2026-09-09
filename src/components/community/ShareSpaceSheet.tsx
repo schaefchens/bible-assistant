@@ -155,9 +155,16 @@ export function ShareSpaceSheet({
 export function ShareSpaceButton({
   spaceId,
   target,
+  label,
   className,
 }: {
   spaceId: string | undefined;
+  /**
+   * Overrides the accessible name. A list of shelves shows one of these per
+   * row, and "Share this shelf" repeated six times tells a screen reader
+   * nothing about which shelf is which.
+   */
+  label?: string;
   /**
    * One piece inside the space, when the button sits on a piece rather than on
    * the space — the reader's does. The sheet then offers both, defaulting to
@@ -202,8 +209,8 @@ export function ShareSpaceButton({
       <button
         type="button"
         disabled={minting}
-        aria-label={t('community.shareSpace.action') as string}
-        title={t('community.shareSpace.action') as string}
+        aria-label={label ?? (t('community.shareSpace.action') as string)}
+        title={label ?? (t('community.shareSpace.action') as string)}
         onClick={(e) => {
           e.stopPropagation();
           void onTap();

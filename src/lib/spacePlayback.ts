@@ -1,7 +1,7 @@
 import { audioPlayback } from './audioPlaybackManager';
 import { startAmbientIfEnabled, startPlaybackForVerses } from './startPlayback';
 import { resolveSpace } from '@/services/community/spaceReading';
-import { postSegmentRef, segmentId } from '@/services/reading/readingSequence';
+import { postSegmentRef, segmentId, spaceSourceKey } from '@/services/reading/readingSequence';
 import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
 
@@ -69,4 +69,22 @@ export async function openSelectionInReader(
   startAmbientIfEnabled();
   void startPlaybackForVerses(segment.id, segment.verses, 0);
   return true;
+}
+
+
+/**
+ * Send the reader home if it is walking one of these shelves.
+ *
+ * The counterpart of {@link playSpaceInReader}, and it belongs beside it rather
+ * than in whichever component happens to unsubscribe: dropping a subscription
+ * from the index, from a shelf's own menu, or by blocking its author are three
+ * callers of one rule. `readerStore.ensureOpen` would heal it on the next open
+ * anyway, but not until then — the reader would sit on a shelf that is gone.
+ */
+export function releaseReader(codes: string[]): void {
+  const source = useReaderStore.getState().source;
+  if (source.kind !== 'space') return;
+  if (codes.some((c) => spaceSourceKey(source) === `c:${c}`)) {
+    void useReaderStore.getState().setSource({ kind: 'bible' });
+  }
 }

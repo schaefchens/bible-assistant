@@ -240,6 +240,20 @@ export const ShareIcon = ({ size = 15, className }: IconProps) => (
   </Glyph>
 );
 
+/**
+ * A broken chain link, for letting go of somebody else's shelf.
+ *
+ * Deliberately not the trash: nothing of theirs is destroyed and nothing of
+ * yours is either — the connection ends, and the code would let you back in.
+ */
+export const UnlinkIcon = ({ size = 16, className }: IconProps) => (
+  <Glyph size={size} stroke={1.8} className={className}>
+    <path d="M17.4 12.6l1.5-1.5a4.3 4.3 0 0 0-6.1-6.1l-1.5 1.5" />
+    <path d="M6.6 11.4l-1.5 1.5a4.3 4.3 0 0 0 6.1 6.1l1.5-1.5" />
+    <path d="M8 3v2.4M3 8h2.4M16 21v-2.4M21 16h-2.4" />
+  </Glyph>
+);
+
 /** A ribbon-style bookmark, for "report this piece". */
 export const FlagIcon = ({ size = 14, className }: IconProps) => (
   <Glyph size={size} stroke={1.8} className={className}>

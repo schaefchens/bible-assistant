@@ -199,7 +199,12 @@ export async function roomEventuallyWithout(page: Page, room: Room, text: string
 
 /** Write a piece and publish it. Moderation runs for real, so keep it on-theme. */
 export async function publishPiece(page: Page, title: string, body: string): Promise<void> {
-  await page.getByRole('button', { name: /New piece/ }).click();
+  // "+ New piece" and not /New piece/: the index now carries a write button per
+  // shelf row, so the loose pattern matched two of those while the click that
+  // opens this screen was still in flight — a strict-mode violation reported
+  // against a page the spec had already left. The leading "+" is this screen's
+  // alone, so the locator waits for the navigation instead of racing it.
+  await page.getByRole('button', { name: '+ New piece' }).click();
   await page.getByRole('textbox', { name: 'Title' }).fill(title);
   await page.getByRole('textbox', { name: 'Your text' }).fill(body);
 

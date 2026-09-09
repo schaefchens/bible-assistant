@@ -558,6 +558,7 @@ Before writing a helper, check whether one of these already exists.
 | how a segment loads, and how a gap is walked past | `services/reading/segmentLoader.ts` | half in there, half in `readerStore` |
 | "did they actually read that?" | `lib/readerProgress.ts` — the dwell rule | inline in `readerStore`, reaching back into it |
 | a community write reaching the queue | `store/communityOps.ts` — `flush` / `queued` | module-private in `communityStore`, where three modules could not reach it |
+| sending the reader home when a shelf goes | `lib/spacePlayback.ts` — `releaseReader` | module-private in `SubscriptionMenu`, where the index's own unsubscribe could not reach it |
 
 Two conventions that follow from the same idea:
 
@@ -2078,6 +2079,24 @@ Three details are load-bearing:
   visibly changes.
 - **`aria-pressed` buttons, not ARIA tabs**, matching the two switches this app
   already has — the `/cards` strip and the share sheet's piece/shelf toggle.
+
+Each row carries its own actions on the right, and which ones differ by whose
+shelf it is. Your own gets **write, share, delete**; one you read gets **share
+and disconnect** — no quill, because it is not yours to write in, and a broken
+link rather than a bin, because nothing is destroyed and the code would let you
+back in. The `⋮` beside the second pair keeps *report* and *block*: those are
+complaints about a person, and a menu is what makes them deliberate, which is
+exactly why the harmless two came out of it.
+
+**Every one of them names the shelf it acts on** (`Delete shelf — Werkstatt`).
+Six rows of identically-named buttons tell a screen reader nothing, and it is
+also what stopped a spec counting "is this shelf listed once?" from counting the
+row's own delete button as a second listing.
+
+Both destructive ones go through the same `window.confirm` the shelf's own
+screen uses — the same irreversible act should ask the same question wherever it
+is offered — and disconnecting calls `releaseReader` **before** it unsubscribes,
+or the reader is left walking a shelf that no longer resolves.
 
 ### Where the share code is asked for
 

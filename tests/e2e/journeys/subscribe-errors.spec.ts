@@ -23,7 +23,7 @@ const CODE_FIELD = /Add a shelf by code/;
  * a count assertion on a shared name passes alone and fails in a full run.
  * (`run.mjs` resets per-user state once per run, not per spec.)
  */
-const SPACE = 'Eigener Raum';
+const SPACE = 'Eigenes Regal';
 
 async function makeProfile(page: Page, name: string) {
   await page.goto('/');
@@ -74,8 +74,13 @@ test('your own code is refused, and named as your own', async ({ page }) => {
 
   await expect(page.locator('main')).toContainText(/your own shelf/i, { timeout: 30_000 });
   // And it is still listed once, not twice — which is what allowing it did:
-  // the space appeared both as one of yours and as one you follow.
-  await expect(page.getByRole('button', { name: new RegExp(SPACE) })).toHaveCount(1);
+  // the shelf appeared both as one of yours and as one you follow.
+  //
+  // Anchored, because a row's own actions are named after the shelf they act on
+  // ("Delete shelf — Eigener Raum") and would otherwise be counted as a second
+  // listing. A row's button *starts* with the shelf's name; an action's does
+  // not.
+  await expect(page.getByRole('button', { name: new RegExp(`^${SPACE}`) })).toHaveCount(1);
 });
 
 /**
