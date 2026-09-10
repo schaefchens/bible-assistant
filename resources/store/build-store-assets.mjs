@@ -6,12 +6,21 @@
  *
  * Source captures are raw 1080x2400 emulator screencaps.
  */
-import sharp from '/Users/css/Projects/scharfmedia/bible-assistant/node_modules/sharp/lib/index.js';
+import sharp from 'sharp';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const SHOTS = '/private/tmp/claude-502/-Users-css-Projects-scharfmedia-bible-assistant/9e911031-8f17-4d2e-b51e-6a68954315c3/scratchpad/shots';
-const OUT = '/Users/css/Projects/scharfmedia/bible-assistant/resources/store';
+// Paths are relative to this file. They used to be absolute, which broke the
+// moment the project moved out of Projects/scharfmedia — and SHOTS pointed at
+// a per-session scratchpad directory that no longer exists at all.
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+// Raw 1080x2400 emulator screencaps; the ones the frames below name live in
+// resources/store/raw. Pass a directory as the first argument (or set SHOTS)
+// when a fresh set is still sitting somewhere temporary.
+const SHOTS = process.argv[2] ?? process.env.SHOTS ?? join(HERE, 'raw');
+const OUT = HERE;
 
 // Brand palette — lifted from tailwind.config.js so the frames match the app.
 const NAVY = '#1a1a2e';
