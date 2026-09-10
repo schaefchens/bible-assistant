@@ -1,5 +1,6 @@
-Karten und Tafeln sind jetzt ein Bildschirm.
+Regale — teile Lesepläne, Tafeln und eigene Gedanken.
 
-• Alle Karten und alle Tafeln liegen hinter einer Reihe von Tabs — und du kannst eine Karte direkt auf den Tab einer Tafel ziehen.
-• Räume haben einen eigenen Tab, das Code-Feld sitzt ganz oben: Einladung einfügen, fertig.
-• Für Räume gibt es jetzt inhaltliche Regeln, dazu Melden und Blockieren, damit das Gelesene biblisch bleibt.
+• Aus Räumen werden Regale: lege eines an und teile Lesepläne und Tafeln hinein. Deine Leser folgen dem Plan mit eigenem Fortschritt oder nehmen sich eine Kopie.
+• Eine geteilte Tafel sitzt als eigener Tab bei deinen Karten.
+• Sag es einfach: Der Assistent legt Regale an, teilt hinein und nimmt Leser auf.
+• Karten und Tafeln liegen jetzt hinter einer Reihe von Tabs.

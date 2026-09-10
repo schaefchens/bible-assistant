@@ -1,5 +1,6 @@
-Cards and boards are one screen now.
+Shelves — share reading plans, boards and your own thoughts.
 
-• Every card and all your boards sit behind one row of tabs — and you can drag a card straight onto a board's tab to file it there.
-• Spaces has its own tab, with the code field at the top: paste an invitation and you're reading.
-• Spaces now have written content standards, plus reporting and blocking, so what you read stays Bible-centred.
+• Spaces are now shelves: make one and put reading plans and boards on it. Your readers follow the plan with their own progress, or take a copy.
+• A shared board sits as its own tab among your cards.
+• Just say it: the assistant makes shelves, shares into them and lets readers in.
+• Cards and boards now sit behind one row of tabs.
