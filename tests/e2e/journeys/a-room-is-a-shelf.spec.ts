@@ -184,9 +184,19 @@ test('a board reaches the room, and lands in the card library as a guest tab', a
   // them: on All cards they would apply the moment you picked a board, but on
   // somebody else's they never can.
   await bob.page.getByRole('button', { name: 'Menu' }).click();
+  // Wait for the menu to actually be open before asserting what is *absent*
+  // from it. `toHaveCount(0)` is satisfied just as well by a menu that never
+  // opened, so without this the two assertions below hold even if the ⋮ button
+  // stops working entirely — they would have gone on passing while proving
+  // nothing.
+  await expect(bob.page.getByRole('menuitem', { name: /New card/ })).toBeVisible();
   await expect(bob.page.getByRole('menuitem', { name: /Delete/ })).toHaveCount(0);
   await expect(bob.page.getByRole('menuitem', { name: /Edit board/ })).toHaveCount(0);
+  // And leave it shut. This dropdown hangs over the "Make my copy" button the
+  // next test presses, so a menu leaked out of here does not fail here — it
+  // fails there, ninety seconds later, pointing at the wrong thing.
   await bob.page.keyboard.press('Escape');
+  await expect(bob.page.getByRole('menuitem')).toHaveCount(0);
 });
 
 test('a copy of a board is the reader’s own, and opens as their own tab', async () => {

@@ -189,11 +189,19 @@ export function LibraryTabs({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setMenu(null);
     };
-    // Defer attaching so the same pointerdown that opened the menu can't
-    // close it on the document handler.
+    // Escape is live immediately; only the *pointer* listener is deferred.
+    //
+    // The deferral exists because the pointerdown that opened the menu is
+    // still in flight and would close it again on the document handler — a
+    // reason that has nothing to do with keys. Sweeping the key listener into
+    // the same timeout left a window in which the menu was already painted and
+    // Escape silently did nothing: measured at one animation frame, and
+    // reliably reproducible by pressing ⋮ and hitting Escape straight after.
+    // It is also what made `a-room-is-a-shelf` leak an open menu into the next
+    // test, where it covered the button that test was trying to press.
+    document.addEventListener('keydown', onKey);
     const t = setTimeout(() => {
       document.addEventListener('pointerdown', onDocPointer);
-      document.addEventListener('keydown', onKey);
     }, 0);
     return () => {
       clearTimeout(t);
