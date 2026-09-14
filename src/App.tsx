@@ -2,6 +2,7 @@ import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router
 import { Capacitor } from '@capacitor/core';
 import { AppShell } from '@/components/common/AppShell';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
+import { InstallPrompt } from '@/components/common/InstallPrompt';
 import { ChatPage } from '@/routes/ChatPage';
 import { ReadPage } from '@/routes/ReadPage';
 import { ReadingListsPage } from '@/routes/ReadingListsPage';
@@ -30,6 +31,11 @@ export default function App() {
   return (
     <Router basename={IS_NATIVE ? undefined : ROUTER_BASE}>
       <ErrorBoundary>
+        {/* Above the routes rather than inside AppShell: the shell renders the
+            onboarding wizard *instead of* its whole tree until onboarding is
+            done, and a visitor arriving on `?install=1` from a QR code or a
+            flyer is exactly the person who has not onboarded yet. */}
+        <InstallPrompt />
         <Routes>
           <Route element={<AppShell />}>
             <Route index element={<ChatPage />} />

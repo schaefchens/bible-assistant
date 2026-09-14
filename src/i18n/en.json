@@ -842,5 +842,21 @@
     "submit": "Send",
     "sent": "Sent. Thank you — this is exactly what helps.",
     "failed": "It couldn't be sent. Your text is still here — try again when you're online."
+  },
+  "install": {
+    "title": "Install Bible Assistant",
+    "intro": "Put it on your home screen and it opens like any other app — full screen, and it reads to you offline.",
+    "action": "Install",
+    "notNow": "Not now",
+    "done": {
+      "title": "Added to your home screen",
+      "body": "Bible Assistant is being installed. You can close this tab and open it from your home screen."
+    },
+    "steps": {
+      "ios": "Tap the Share button in the browser bar, then choose \"Add to Home Screen\".",
+      "firefox": "Firefox on Android can install it: open the menu (⋮) and choose \"Install\". On a computer, open this page in Chrome or Edge instead.",
+      "safari": "In Safari, choose File ▸ \"Add to Dock\". On older versions, open this page in Chrome or Edge instead.",
+      "other": "Open your browser’s menu and look for \"Install app\" or \"Add to Home screen\"."
+    }
   }
 }

@@ -7,6 +7,7 @@ import './i18n';
 import App from './App';
 import { hydrateIdentity } from '@/lib/bootIdentity';
 import { reclaimLegacyAudioCache } from '@/lib/mediaCache';
+import { initPwaInstall } from '@/lib/pwaInstall';
 import { initPwaUpdate } from '@/lib/pwaUpdate';
 import { initReadingHosts } from '@/lib/readingHosts';
 import { initPlaybackController } from '@/lib/playbackController';
@@ -14,6 +15,12 @@ import { initAutoPlay } from '@/lib/autoPlay';
 import { applyTheme } from '@/lib/theme';
 import { useSettingsStore } from '@/store/settingsStore';
 
+// Before initPwaUpdate(): registering the service worker is one of the things
+// that makes Chrome fire `beforeinstallprompt`, and a listener added after the
+// event has fired has missed it for good. (The `?install=1` intent itself is
+// read at module-eval time, in pwaInstall.ts, so it cannot be lost by anyone
+// reordering these calls.)
+initPwaInstall();
 initPwaUpdate();
 // Must come first: the two initializers below install playbackStore
 // subscribers that resolve verses through the host registry.

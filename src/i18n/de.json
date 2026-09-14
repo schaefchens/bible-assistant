@@ -842,5 +842,21 @@
     "submit": "Senden",
     "sent": "Gesendet. Danke — genau das hilft weiter.",
     "failed": "Konnte nicht gesendet werden. Dein Text steht noch da — versuch es erneut, wenn du online bist."
+  },
+  "install": {
+    "title": "Bible Assistant installieren",
+    "intro": "Leg sie auf deinen Startbildschirm — dann öffnet sie sich wie jede andere App, im Vollbild, und liest dir auch offline vor.",
+    "action": "Installieren",
+    "notNow": "Jetzt nicht",
+    "done": {
+      "title": "Zum Startbildschirm hinzugefügt",
+      "body": "Bible Assistant wird installiert. Du kannst diesen Tab schließen und die App vom Startbildschirm aus öffnen."
+    },
+    "steps": {
+      "ios": "Tippe in der Browserleiste auf „Teilen“ und wähle „Zum Home-Bildschirm“.",
+      "firefox": "Firefox für Android kann sie installieren: Menü (⋮) öffnen und „Installieren“ wählen. Am Rechner öffne diese Seite stattdessen in Chrome oder Edge.",
+      "safari": "Wähle in Safari „Ablage ▸ Zum Dock hinzufügen“. In älteren Versionen öffne diese Seite stattdessen in Chrome oder Edge.",
+      "other": "Öffne das Menü deines Browsers und suche „App installieren“ oder „Zum Startbildschirm hinzufügen“."
+    }
   }
 }

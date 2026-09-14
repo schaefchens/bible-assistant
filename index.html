@@ -15,6 +15,25 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Bible" />
     <title>Bible Assistant</title>
+    <!--
+      Park an early install event. `beforeinstallprompt` can fire before
+      /src/main.tsx runs at all: module scripts are deferred, so on a warm visit
+      Chrome can decide the app is installable while the document is still
+      parsing. Nothing re-fires the event on request, so a listener added by the
+      bundle would simply have missed it — and `?install=1` would then fall
+      through to written instructions on the one browser that has a real dialog.
+
+      preventDefault() also suppresses Chrome's own mini-infobar, which is the
+      normal thing to do when the app offers its own install affordance.
+      src/lib/pwaInstall.ts adopts whatever is parked here and keeps its own
+      listener for events that arrive later.
+    -->
+    <script>
+      addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        window.__installPromptEvent = e;
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>
