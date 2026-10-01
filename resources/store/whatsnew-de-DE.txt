@@ -1,6 +1,6 @@
-Regale — teile Lesepläne, Tafeln und eigene Gedanken.
+Erzählstimmen — die Bibel in einer Stimme, die du selbst anlegst.
 
-• Aus Räumen werden Regale: lege eines an und teile Lesepläne und Tafeln hinein. Deine Leser folgen dem Plan mit eigenem Fortschritt oder nehmen sich eine Kopie.
-• Eine geteilte Tafel sitzt als eigener Tab bei deinen Karten.
-• Sag es einfach: Der Assistent legt Regale an, teilt hinein und nimmt Leser auf.
-• Karten und Tafeln liegen jetzt hinter einer Reihe von Tabs.
+• Eigene Stimmen: Name, Bild und wie sie spricht — mit OpenAI oder ElevenLabs, auf deinem eigenen Schlüssel.
+• Eine Stimme liest vor, eine andere antwortet. Deine Wahl gilt auf all deinen Geräten.
+• Verleih eine Stimme an ein Regal: Deine Leser hören darin, und du legst fest, was sie vorliest und wie viel.
+• Sag es einfach: Der Assistent wechselt die Stimme beim Namen.

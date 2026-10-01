@@ -1,6 +1,6 @@
-Shelves — share reading plans, boards and your own thoughts.
+Narration voices — the Bible, read in a voice you make yourself.
 
-• Spaces are now shelves: make one and put reading plans and boards on it. Your readers follow the plan with their own progress, or take a copy.
-• A shared board sits as its own tab among your cards.
-• Just say it: the assistant makes shelves, shares into them and lets readers in.
-• Cards and boards now sit behind one row of tabs.
+• Your own voices: a name, a picture and how it speaks — on OpenAI or ElevenLabs, with your own key.
+• One voice reads, another replies, and your choice follows you to all your devices.
+• Lend a voice to a shelf: your readers listen in it, and you decide what it reads and how much.
+• Just say it: the assistant switches voices by name.
