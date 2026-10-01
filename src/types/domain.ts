@@ -2,37 +2,6 @@ import type { Translation } from '@/services/bible/bibleApi';
 
 export type Locale = 'en' | 'de';
 
-export type OpenAiVoiceId =
-  | 'alloy'
-  | 'echo'
-  | 'fable'
-  | 'onyx'
-  | 'nova'
-  | 'shimmer'
-  | 'coral'
-  | 'sage'
-  | 'verse';
-
-export type VoiceId = OpenAiVoiceId | 'browser';
-
-export const OPENAI_VOICE_OPTIONS: OpenAiVoiceId[] = [
-  'alloy',
-  'echo',
-  'fable',
-  'onyx',
-  'nova',
-  'shimmer',
-  'coral',
-  'sage',
-  'verse',
-];
-
-export const VOICE_OPTIONS: VoiceId[] = ['browser', ...OPENAI_VOICE_OPTIONS];
-
-export function isBrowserVoice(v: VoiceId): v is 'browser' {
-  return v === 'browser';
-}
-
 type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
 
 /**

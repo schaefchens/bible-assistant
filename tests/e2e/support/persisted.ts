@@ -47,3 +47,37 @@ export async function progressPersisted(page: Page, entries = 1): Promise<void> 
     )
     .toBeGreaterThanOrEqual(entries);
 }
+
+/**
+ * Wait until a narration voice with this name is stored in IndexedDB — the
+ * same "a screen is not storage" rule as above: the voices screen shows a new
+ * voice as soon as the store has it, a moment before Dexie does.
+ */
+export async function voicePersisted(page: Page, name: string): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          (wanted) =>
+            new Promise<boolean>((resolve) => {
+              const req = indexedDB.open('bible-assistant');
+              req.onsuccess = () => {
+                const db = req.result;
+                if (!db.objectStoreNames.contains('voices')) return resolve(false);
+                const all = db.transaction('voices').objectStore('voices').getAll();
+                all.onsuccess = () =>
+                  resolve(
+                    (all.result as { name?: string; deleted?: number }[]).some(
+                      (row) => row.name === wanted && row.deleted !== 1,
+                    ),
+                  );
+                all.onerror = () => resolve(false);
+              };
+              req.onerror = () => resolve(false);
+            }),
+          name,
+        ),
+      { timeout: 15_000, message: `voice "${name}" never reached IndexedDB` },
+    )
+    .toBe(true);
+}

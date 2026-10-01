@@ -35,9 +35,28 @@ function handleListJson(string $path, string $key): void {
     respond(200, [$key => $items]);
 }
 
-function handleUpsertItem(string $path, string $itemKey, string $listKey): void {
+/**
+ * Replace-or-append one item by `id`.
+ *
+ * `$sanitize` (optional) whitelists the item before anything is stored — the
+ * collections that have one pass it, the older ones store what they are sent.
+ * `$maxItems` (optional, 0 = none) caps how many *distinct* ids the file may
+ * hold: a new id past the cap is refused with 400, while updating an existing
+ * one is always allowed, so a full collection can still be edited.
+ */
+function handleUpsertItem(
+    string $path,
+    string $itemKey,
+    string $listKey,
+    ?callable $sanitize = null,
+    int $maxItems = 0,
+): void {
     $body = readJsonBody();
     $item = $body[$itemKey] ?? null;
+    if ($sanitize !== null) {
+        if (!is_array($item)) fail(400, "$itemKey required");
+        $item = $sanitize($item);
+    }
     if (!is_array($item) || empty($item['id'])) fail(400, "$itemKey required");
 
     $items = file_exists($path) ? json_decode(@file_get_contents($path) ?: '[]', true) : [];
@@ -50,7 +69,10 @@ function handleUpsertItem(string $path, string $itemKey, string $listKey): void 
             break;
         }
     }
-    if (!$found) $items[] = $item;
+    if (!$found) {
+        if ($maxItems > 0 && count($items) >= $maxItems) fail(400, "too many {$listKey}");
+        $items[] = $item;
+    }
 
     writeJsonFile($path, $items);
     respond(200, [$listKey => $items]);

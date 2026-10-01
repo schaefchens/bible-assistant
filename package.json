@@ -19,6 +19,7 @@
     "bible:counts": "node scripts/bible/buildVerseCounts.mjs",
     "community:verify": "node scripts/community/verifySigning.mjs",
     "community:verify:api": "node scripts/community/verifyBackend.mjs",
+    "voices:verify:api": "node scripts/voices/verifyVoicesBackend.mjs",
     "test": "npm run test:unit && npm run test:component && npm run test:int",
     "test:unit": "vitest run --project unit",
     "test:int": "vitest run --project int",
@@ -29,7 +30,7 @@
     "e2e:live": "node tests/e2e/run.mjs --project=live",
     "lint": "eslint .",
     "preview": "vite preview",
-    "verify": "tsc -b && npm run lint && npm run bible:verify && npm run community:verify && npm run community:verify:api && npm test"
+    "verify": "tsc -b && npm run lint && npm run bible:verify && npm run community:verify && npm run community:verify:api && npm run voices:verify:api && npm test"
   },
   "dependencies": {
     "@capacitor-community/text-to-speech": "^8.0.2",

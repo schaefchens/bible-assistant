@@ -58,17 +58,32 @@ export async function enqueueOrderSync(
   order: string[],
   updatedAt: number,
 ): Promise<boolean> {
+  return enqueueCollapsed(op, { order, updatedAt });
+}
+
+/**
+ * Enqueue the voice selection (which voice reads, which one replies). One
+ * record, last-write-wins on `updatedAt` — so it collapses exactly like an
+ * order: only the newest choice is worth sending.
+ *
+ * Returns whether it was queued (false when sync is off), like enqueueOp.
+ */
+export async function enqueueVoiceSelectionSync(selection: {
+  narration: string;
+  assistant: string;
+  updatedAt: number;
+}): Promise<boolean> {
+  return enqueueCollapsed('voiceSelection.set', selection);
+}
+
+/** Replace any pending op of this kind with this one. */
+async function enqueueCollapsed(op: SyncOp['op'], payload: unknown): Promise<boolean> {
   if (!syncEnabled()) return false;
   const pending = await db.syncQueue.where('op').equals(op).primaryKeys();
   if (pending.length > 0) {
     await db.syncQueue.bulkDelete(pending);
   }
-  await db.syncQueue.add({
-    op,
-    payload: { order, updatedAt },
-    createdAt: Date.now(),
-    attempts: 0,
-  });
+  await db.syncQueue.add({ op, payload, createdAt: Date.now(), attempts: 0 });
   return true;
 }
 

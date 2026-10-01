@@ -11,6 +11,7 @@ import type {
   Space,
   Subscription,
 } from '@/types/domain';
+import type { VoiceProfile } from '@/services/voices/voiceProfiles';
 
 type LocalCard = Card & {
   dirty?: 0 | 1;
@@ -31,6 +32,13 @@ type LocalReadingList = ReadingList & {
  * outlive the only thing that gives it meaning. */
 type LocalReadingProgress = ReadingProgress & {
   dirty?: 0 | 1;
+};
+
+/** A narration voice, synced like a reading list: see
+ * services/voices/voiceProfiles.ts. */
+export type LocalVoice = VoiceProfile & {
+  dirty?: 0 | 1;
+  deleted?: 0 | 1;
 };
 
 /** The three flags that live only on the device. */
@@ -184,6 +192,9 @@ export type SyncOp = {
     | 'readingList.upsert'
     | 'readingList.delete'
     | 'readingProgress.set'
+    | 'voice.upsert'
+    | 'voice.delete'
+    | 'voiceSelection.set'
     | 'profile.set'
     | 'profile.delete'
     | 'space.upsert'
@@ -254,6 +265,7 @@ class BibleAssistantDb extends Dexie {
   sharedItems!: Table<LocalSharedItem, string>;
   feedItems!: Table<FeedItem, string>;
   seenPosts!: Table<SeenPost, string>;
+  voices!: Table<LocalVoice, string>;
 
   constructor() {
     super('bible-assistant');
@@ -385,6 +397,29 @@ class BibleAssistantDb extends Dexie {
       sharedItems: 'id, spaceId, updatedAt, dirty, shared',
       feedItems: 'id, code, publishedAt',
       seenPosts: '&id',
+    });
+
+    // Narration voices: synced like reading lists (dirty/deleted flags, one
+    // upsert/delete op each). The selection — which voice reads and which one
+    // replies — is a `preferences` row, like the card order.
+    this.version(12).stores({
+      cards: 'id, title, updatedAt, dirty',
+      boards: 'id, name, updatedAt, dirty',
+      syncQueue: '++id, op, createdAt',
+      preferences: '&key',
+      mediaCache: '&url, lastUsedAt, pinned',
+      narration: '&key',
+      readingLists: 'id, name, updatedAt, dirty',
+      readingProgress: '&listId, updatedAt, dirty',
+      spaces: 'id, updatedAt, dirty',
+      posts: 'id, spaceId, publishedAt, updatedAt, dirty, shared',
+      subscriptions: '&code, updatedAt, dirty',
+      memberships: '[userId+spaceId], spaceId, status, dirty',
+      feedPosts: 'id, code, publishedAt',
+      sharedItems: 'id, spaceId, updatedAt, dirty, shared',
+      feedItems: 'id, code, publishedAt',
+      seenPosts: '&id',
+      voices: 'id, name, updatedAt, dirty',
     });
   }
 }

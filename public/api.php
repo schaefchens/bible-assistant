@@ -4,12 +4,13 @@ declare(strict_types=1);
 /**
  * Bible Assistant — the PHP backend.
  *
- * This file is the front door: it loads the fourteen files in api/, then routes
+ * This file is the front door: it loads the files in api/, then routes
  * `?action=NAME` to a handler. **The switch below is the endpoint list** — it
  * is complete by construction, so nothing here restates it. (There used to be
  * a hand-written list in this docblock; by the time the file reached 2,800
  * lines it was missing the nineteen community actions, tts.speak,
- * bible.chapter, the OpenAI-key trio and moderation.check.)
+ * bible.chapter, the OpenAI-key trio and moderation.check. A file count went
+ * the same way, which is why there is none here either.)
  *
  * Deploy this file **and api/** to the webspace alongside the built SPA;
  * `scripts/deploy.sh` names both, and one without the other 500s on every
@@ -27,7 +28,10 @@ declare(strict_types=1);
  * Two rules the router enforces before any handler runs, and the reason it is
  * worth reading top to bottom: `$ACCOUNT_ACTIONS` is the whole set of actions
  * that bring a user directory into existence, and `$OPENAI_ACTIONS` the whole
- * set that resolve a key. Adding an action to either has consequences the
+ * set that resolve an OpenAI key up front. (`tts` and `tts.speak` are not in
+ * it: they resolve whoever pays — OpenAI or ElevenLabs — inside the handler,
+ * on a cache miss only, so a hit needs no key at all. See withTtsPayer() in
+ * api/audio.php.) Adding an action to either list has consequences the
  * handler cannot see.
  */
 
@@ -47,7 +51,7 @@ error_reporting(E_ALL);
  */
 const APP_ROOT = __DIR__;
 
-// ---------- the backend, in fourteen files ----------------------------------
+// ---------- the backend, file by file ---------------------------------------
 //
 // Loaded in dependency order, all of them, before anything is dispatched —
 // PHP hoists each file's top-level functions, so the router below can call
@@ -56,14 +60,16 @@ const APP_ROOT = __DIR__;
 // bootstrap  what exists on disk, and what Apache may serve
 // http       respond/fail, input narrowing, identity, CORS
 // store      the JSON files under storage/, and the generic collection endpoints
-// openai     which key pays, the curl shapes, how a failure is reported
+// openai     which OpenAI key pays, the curl shapes, how a failure is reported
 // chat       the assistant proxy
-// audio      tts, tts.speak, forced alignment, transcribe
+// audio      tts, tts.speak, who pays for narration, forced alignment, transcribe
 // bible      Zefania XML -> verses
-// account    the caller's own key, account.delete, recording, ambient
+// account    the stored provider keys, account.delete, recording, ambient
+// voices     what a voice is: audible config, its hash, profiles, the collection
+// elevenlabs the ElevenLabs transport, its key, narration, and the proxies
 // community  what a space is on disk: paths, sanitizers, codes, signatures
 // spaces     the owner's own community endpoints
-// sharing    the three endpoints that cross accounts
+// sharing    the endpoints that cross accounts
 // moderation the content standards, and the judge
 // reports    report.create
 // feedback   feedback.create
@@ -76,6 +82,8 @@ require_once __DIR__ . '/api/chat.php';
 require_once __DIR__ . '/api/audio.php';
 require_once __DIR__ . '/api/bible.php';
 require_once __DIR__ . '/api/account.php';
+require_once __DIR__ . '/api/voices.php';
+require_once __DIR__ . '/api/elevenlabs.php';
 require_once __DIR__ . '/api/community.php';
 require_once __DIR__ . '/api/spaces.php';
 require_once __DIR__ . '/api/sharing.php';
@@ -125,7 +133,10 @@ $ACCOUNT_ACTIONS = [
     'cards.upsert', 'cards.delete', 'cards.order.set',
     'boards.upsert', 'boards.delete', 'boards.order.set',
     'readingLists.upsert', 'readingLists.delete', 'readingProgress.set',
-    'auth.openaiKey.set', 'recording.upload',
+    'voices.upsert', 'voices.delete', 'voices.selection.set',
+    // Key *writers* only: `.status` reads a file that may not exist, and
+    // `.clear` removes one — neither has anything to store.
+    'auth.openaiKey.set', 'auth.elevenlabsKey.set', 'recording.upload',
     // Community writers. `space.request` is NOT here: it writes into the
     // *owner's* directory, and the caller's own dir already exists because
     // profile.set is a precondition for asking at all.
@@ -139,15 +150,19 @@ if (in_array($action, $ACCOUNT_ACTIONS, true)) {
     requireUserDir($ctx);
 }
 
-// Resolve the effective OpenAI key once per request — prefer the caller's
-// own key over the shared OPENAI_API_KEY so usage bills to their account.
-// Honoured by every handler that touches OpenAI; the new auth.openaiKey.set
-// handler ignores this and uses the freshly-submitted key for validation.
-$OPENAI_ACTIONS = ['chat', 'tts', 'tts.speak', 'transcribe', 'recording.upload'];
+// Resolve who pays OpenAI once per request — the caller's own key over the
+// shared OPENAI_API_KEY, so usage bills to their account (see openAiPayer).
+// Honoured by every handler that always calls OpenAI; auth.openaiKey.set
+// ignores it and validates the freshly-submitted key instead.
+//
+// tts and tts.speak are deliberately absent: a cache hit must be served with
+// no key at all, and a miss may be ElevenLabs, so they resolve their payer
+// inside the handler, on the miss (withTtsPayer in api/audio.php).
+$OPENAI_ACTIONS = ['chat', 'transcribe', 'recording.upload'];
 $ctx['preferShared'] = (($_SERVER['HTTP_X_PREFER_SHARED_KEY'] ?? '') === '1');
 if (in_array($action, $OPENAI_ACTIONS, true)) {
-    $ctx['openaiKey'] = effectiveOpenAiKey($ctx, $ctx['preferShared']);
-    if ($ctx['openaiKey'] === '') {
+    $ctx['payer'] = openAiPayer($ctx);
+    if ($ctx['payer']['key'] === '') {
         fail(500, 'no OpenAI API key configured');
     }
 }
@@ -176,6 +191,47 @@ switch ($action) {
         break;
     case 'auth.openaiKey.clear':
         handleOpenAiKeyClear($ctx);
+        break;
+    case 'auth.elevenlabsKey.status':
+        handleElevenLabsKeyStatus($ctx);
+        break;
+    case 'auth.elevenlabsKey.set':
+        handleElevenLabsKeySet($ctx);
+        break;
+    case 'auth.elevenlabsKey.clear':
+        handleElevenLabsKeyClear($ctx);
+        break;
+
+    // ElevenLabs, on the caller's own key only — the voice library, the
+    // credits left, and designing a voice from a description.
+    case 'elevenlabs.subscription':
+        handleElevenLabsSubscription($ctx);
+        break;
+    case 'elevenlabs.voices':
+        handleElevenLabsVoices($ctx);
+        break;
+    case 'elevenlabs.design':
+        handleElevenLabsDesign($ctx);
+        break;
+    case 'elevenlabs.design.save':
+        handleElevenLabsDesignSave($ctx);
+        break;
+
+    // The user's narration voices, synced like reading lists.
+    case 'voices.list':
+        handleListJson(voicesPath($ctx['userDir']), 'voices');
+        break;
+    case 'voices.upsert':
+        handleVoiceUpsert($ctx);
+        break;
+    case 'voices.delete':
+        handleDeleteItem(voicesPath($ctx['userDir']), 'voices');
+        break;
+    case 'voices.selection.get':
+        handleVoiceSelectionGet($ctx);
+        break;
+    case 'voices.selection.set':
+        handleVoiceSelectionSet($ctx);
         break;
     case 'cards.list':
         handleListJson($ctx['userDir'] . '/cards.json', 'cards');

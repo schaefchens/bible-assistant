@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Request } from '@playwright/test';
 import { appReady } from '../support/app';
+import { voicePersisted } from '../support/persisted';
 
 /**
  * Journey: tap play on a chapter and hear it read, with the words lighting up.
@@ -16,11 +17,11 @@ import { appReady } from '../support/app';
  * cached under voice `echo`, and its cached alignment carries a valid
  * `sourceTextHash` so `cachedAlignmentMatches` passes.
  *
- * Three defaults make `echo` the voice the app actually asks for, rather than a
- * coincidence: this profile has no personal OpenAI key, so
- * `effectiveReadingVoice()` falls through `ALLOWED_READING_VOICES_SHARED` to
- * `'echo'` and `effectiveVoiceStyle()` returns `''` (no path segment); and
- * `readChapterHeadings` is off, so no announcement audio is requested on top.
+ * Two defaults make `echo` the voice the app actually asks for, rather than a
+ * coincidence: the selected narration voice is the system Echo, and this
+ * profile has no personal OpenAI key — so even a voice of its own resolves to
+ * Echo with no style (no path segment); see services/voices/voiceProfiles.ts.
+ * The heading the wizard switches on is cached too.
  */
 
 type TtsCall = { action: 'tts' | 'tts.speak'; body: Record<string, unknown>; cached: boolean; audioUrl?: string };
@@ -178,4 +179,50 @@ test('the verse being read is tinted', async ({ page }) => {
   // Scoped, and keyed: `data-verse-key` is what marks a rendered verse of a
   // reading, as opposed to the appearance sheet's sample.
   await expect(page.locator(`${READER} [data-verse-key].verse-current`)).toHaveCount(1);
+});
+
+/**
+ * A narration voice made on a device with no key of its own: it is kept — and
+ * would sync — but this session cannot pay for it, so the reading falls back
+ * to Echo. After a reload too, which is the part worth proving: the old voice
+ * settings *reset* a voice they couldn't use, and a voice is a stored record
+ * now, so a regression here would either lose the voice or, worse, read in it
+ * on the shared key's bill.
+ *
+ * And it still costs nothing: the fallback is the same Echo, from the same warm
+ * cache, at the same paths.
+ */
+test('a voice made without a key is kept, and the reading falls back to Echo from the cache', async ({ page }) => {
+  const name = `Narrator ${Date.now()}`;
+  await page.goto('/settings');
+  await appReady(page);
+  await page.getByRole('button', { name: 'Voice & playback' }).click();
+  await page.getByRole('button', { name: 'Narration voice' }).click();
+  await page.getByRole('button', { name: /Create a voice/ }).click();
+  await page.getByLabel('Name', { exact: true }).fill(name);
+  await page.getByRole('radio', { name: /Cedar/ }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+  // Chosen for reading, and locked: the hero says what reads instead.
+  await expect(page.getByRole('radio', { name: new RegExp(name) })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByText(/Echo is reading for now/)).toBeVisible();
+  await voicePersisted(page, name);
+
+  const tts = recordTts(page);
+  await page.reload();
+  await openPsalm117(page);
+  await page.getByRole('button', { name: 'Read this chapter aloud' }).click();
+  await expect
+    .poll(() => tts.filter((c) => c.action === 'tts').length, { timeout: 30_000 })
+    .toBe(2);
+  const verses = tts.filter((c) => c.action === 'tts');
+  expect(verses.map((c) => c.body.voice)).toEqual(['echo', 'echo']);
+  expect(verses[0].body).not.toHaveProperty('voiceStyle');
+  expect(verses[0].audioUrl).toBe('/storage/audio/echo/KJV/19/117/1.mp3');
+  const uncached = tts.filter((c) => !c.cached).map((c) => `${c.action} ${JSON.stringify(c.body)}`);
+  expect(uncached, 'these narration requests were not cache hits — this run called OpenAI').toEqual([]);
+
+  // The voice survived the reload, still chosen.
+  await page.goto('/settings/voices');
+  await expect(page.getByRole('radio', { name: new RegExp(name) })).toHaveAttribute('aria-checked', 'true');
 });

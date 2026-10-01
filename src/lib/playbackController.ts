@@ -1,16 +1,13 @@
 import { audioPlayback, type PlaybackTrack } from './audioPlaybackManager';
 import { browserTts, type BrowserTtsItem } from './browserTts';
 import { buildPlaybackPlan, type PlanItem } from './playbackPlan';
-import { planToBrowserItems, planToOpenAiTracks } from './startPlayback';
+import { planToBrowserItems, planToTtsTracks } from './startPlayback';
 import { readingHosts } from './readingHosts';
 import { usePlaybackStore } from '@/store/playbackStore';
-import {
-  effectiveReadingVoice,
-  effectiveVoiceStyle,
-  useSettingsStore,
-} from '@/store/settingsStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
-import { isBrowserVoice, type OpenAiVoiceId } from '@/types/domain';
+import { isDeviceVoice } from '@/services/voices/ttsVoice';
+import { currentNarrationVoice } from './narrationVoice';
 
 /**
  * Watches reading-rhythm settings and rebuilds the upcoming portion of the
@@ -57,8 +54,12 @@ async function rebuildCurrentTail(): Promise<void> {
       | BrowserTtsItem
       | undefined;
 
-  const readerVoice = effectiveReadingVoice();
-  const usingBrowser = browserTts.isActive() || isBrowserVoice(readerVoice);
+  // The engine is whichever one is *reading*, never what the setting now
+  // says: choosing the device voice while a narration voice plays used to push
+  // this rebuild into an idle device queue. A voice change on its own does not
+  // rebuild anything — the queued tail keeps the voice it was built in, and the
+  // next reading starts in the new one.
+  const usingBrowser = browserTts.isActive();
 
   // The currently-playing track tells us where to slice. For the audio
   // engine: highlightVerse=false means it's an announcement; the verse
@@ -107,13 +108,12 @@ async function rebuildCurrentTail(): Promise<void> {
     return;
   }
 
-  const tracks = await planToOpenAiTracks(
-    shifted,
-    cur.groupId,
-    readerVoice as OpenAiVoiceId,
-    effectiveVoiceStyle() || undefined,
-    undefined,
-  );
+  // The audio engine is reading, but the voice now resolves to the device one
+  // (picked on another device, or a key that just went away): leave the queue
+  // as it is rather than switch engines under a reading.
+  const voice = currentNarrationVoice();
+  if (isDeviceVoice(voice)) return;
+  const tracks = await planToTtsTracks(shifted, cur.groupId, voice);
   // A newer rebuild may have started while TTS fetches were in flight —
   // drop this one to avoid stomping fresher state.
   if (myGen !== inflightGeneration) return;

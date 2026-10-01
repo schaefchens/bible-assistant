@@ -30,7 +30,7 @@ type IconProps = { size?: number; className?: string };
  * screen only — can use the frame without earning a name in this file. Reach
  * for it instead of writing the eleven-line `<svg …>` opening tag again.
  */
-function Glyph({
+export function Glyph({
   size,
   stroke = 2,
   filled,
@@ -284,6 +284,71 @@ export const UnlinkIcon = ({ size = 16, className }: IconProps) => (
 export const FlagIcon = ({ size = 14, className }: IconProps) => (
   <Glyph size={size} stroke={1.8} className={className}>
     <path d="M5 21V4.5c3.5-1.6 6.5.9 10-.5v9c-3.5 1.4-6.5-1.1-10 .5" />
+  </Glyph>
+);
+
+// ─── Narration voices ─────────────────────────────────────────────────────
+
+export const PlusIcon = ({ size = 18, className }: IconProps) => (
+  <Glyph size={size} className={className}>
+    <path d="M12 5v14M5 12h14" />
+  </Glyph>
+);
+
+/** Filled square: stop a preview. */
+export const StopIcon = ({ size = 14, className }: IconProps) => (
+  <Glyph size={size} filled className={className}>
+    <rect x="6" y="6" width="12" height="12" rx="2" />
+  </Glyph>
+);
+
+/** A speaker with sound coming out of it: "hear this voice". */
+export const SpeakerIcon = ({ size = 17, className }: IconProps) => (
+  <Glyph size={size} stroke={1.8} className={className}>
+    <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
+    <path d="M15.5 9a4 4 0 0 1 0 6" />
+    <path d="M18.3 6.5a7.5 7.5 0 0 1 0 11" />
+  </Glyph>
+);
+
+/** An API key. */
+export const KeyIcon = ({ size = 16, className }: IconProps) => (
+  <Glyph size={size} stroke={1.8} className={className}>
+    <circle cx="8" cy="15" r="4" />
+    <path d="M10.8 12.2L20 3" />
+    <path d="M16.5 6.5l2.5 2.5M14 9l2 2" />
+  </Glyph>
+);
+
+/** A camera: "add a picture". */
+export const CameraIcon = ({ size = 16, className }: IconProps) => (
+  <Glyph size={size} stroke={1.8} className={className}>
+    <path d="M4 8.5h3l1.6-2.5h6.8L17 8.5h3v10H4z" />
+    <circle cx="12" cy="13.2" r="3.2" />
+  </Glyph>
+);
+
+/** A padlock: this voice needs a key the user hasn't added yet. */
+export const LockIcon = ({ size = 13, className }: IconProps) => (
+  <Glyph size={size} stroke={2} className={className}>
+    <rect x="5" y="11" width="14" height="9" rx="2" />
+    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+  </Glyph>
+);
+
+/** A phone: the voice built into this device. */
+export const DeviceIcon = ({ size = 16, className }: IconProps) => (
+  <Glyph size={size} stroke={1.8} className={className}>
+    <rect x="7" y="3" width="10" height="18" rx="2.5" />
+    <path d="M11 17.5h2" />
+  </Glyph>
+);
+
+/** Two sparks: a voice *designed* from a description. */
+export const SparkleIcon = ({ size = 16, className }: IconProps) => (
+  <Glyph size={size} stroke={1.8} className={className}>
+    <path d="M10 3l1.6 4.4L16 9l-4.4 1.6L10 15l-1.6-4.4L4 9l4.4-1.6z" />
+    <path d="M18 14l.8 2.2L21 17l-2.2.8L18 20l-.8-2.2L15 17l2.2-.8z" />
   </Glyph>
 );
 

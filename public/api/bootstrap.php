@@ -28,6 +28,20 @@ if (!defined('OPENAI_API_KEY')) {
     define('OPENAI_API_KEY', getenv('OPENAI_API_KEY') ?: '');
 }
 
+/**
+ * Where ElevenLabs is reached. secrets.php may define it first — the
+ * voices:verify:api harness points it at a local stub — and api/elevenlabs.php
+ * accepts only an https:// origin or a loopback http:// one.
+ *
+ * A `define`, never getenv(), and there is deliberately no shared ElevenLabs
+ * key at all: ElevenLabs is paid for by the user's own stored key only.
+ * Reading the environment would be a trap besides — scripts/deploy.sh exports
+ * sftp.env, so a key kept there would silently become everybody's.
+ */
+if (!defined('ELEVENLABS_API_BASE')) {
+    define('ELEVENLABS_API_BASE', 'https://api.elevenlabs.io');
+}
+
 const STORAGE_DIR = APP_ROOT . '/storage';
 const USERS_DIR = STORAGE_DIR . '/users';
 const AUDIO_DIR = STORAGE_DIR . '/audio';
@@ -54,6 +68,14 @@ const REPORTS_DIR = STORAGE_DIR . '/reports';
 const REPORTS_UNFOUNDED_DIR = REPORTS_DIR . '/unfounded';
 /** Cached moderation verdicts, content-addressed like generated speech. */
 const MODERATION_DIR = STORAGE_DIR . '/moderation';
+/**
+ * Speech in the making: the per-entry generation locks and the temp files a
+ * synthesis writes before they are renamed into AUDIO_DIR. Private because a
+ * temp file is audio nobody has published yet, and a lock's name says what is
+ * being generated. Empty whenever nothing is generating — a finished or failed
+ * request removes what it put here.
+ */
+const WORK_DIR = STORAGE_DIR . '/work';
 /** A report carries a snapshot of the offending text, capped so a report can't
  * be used to store arbitrary data on the server. */
 const MAX_REPORT_NOTE = 1000;
@@ -148,6 +170,23 @@ const BIBLE_XML_MAP = [
     'ELB'  => 'elb.xml',
 ];
 
+/**
+ * The language each translation is read in — the same keys as BIBLE_XML_MAP.
+ * Decides the language hint in composeTtsInstructions() and, for ElevenLabs,
+ * both the `language_code` sent upstream and the language segment of the
+ * cache path. Add a translation to both maps or to neither.
+ */
+const TRANSLATION_LANGUAGE = [
+    'S00'  => 'de',
+    'ESV'  => 'en',
+    'KJV'  => 'en',
+    'NKJV' => 'en',
+    'LUT'  => 'de',
+    'HFA'  => 'de',
+    'S51'  => 'de',
+    'ELB'  => 'de',
+];
+
 /** Cache schema marker. Bump when the verse JSON shape changes so stale
  * entries on disk get invalidated on next read. */
 const BIBLE_CACHE_FORMAT = 'xml-v2';
@@ -191,9 +230,10 @@ function denyHttp(string $dir): void {
  * Directories whose contents are user-authored text, an identity, or a device
  * fingerprint. None of it is ever served over HTTP.
  *
- *   users/       secret.txt and openai_key.txt, plus every card and list. A
- *                userId travels on every request, so without this anyone
- *                knowing one could GET the secret it authenticates with.
+ *   users/       secret.txt and the stored provider keys (*_key.txt), plus
+ *                every card, list and voice. A userId travels on every
+ *                request, so without this anyone knowing one could GET the
+ *                secret it authenticates with.
  *   shares/      code -> the account owning it: serving these would enumerate
  *                every space on the server.
  *   reports/     who reported whom. Only the maintainer, over SFTP, reads it —
@@ -201,8 +241,9 @@ function denyHttp(string $dir): void {
  *   moderation/  cached verdicts, and a verdict quotes the text it judged.
  *   feedback/    what testers wrote, with the route and user agent they wrote
  *                it from.
+ *   work/        generation locks and unpublished temp audio — see WORK_DIR.
  */
-const PRIVATE_DIRS = [USERS_DIR, SHARES_DIR, REPORTS_DIR, MODERATION_DIR, FEEDBACK_DIR];
+const PRIVATE_DIRS = [USERS_DIR, SHARES_DIR, REPORTS_DIR, MODERATION_DIR, FEEDBACK_DIR, WORK_DIR];
 
 /**
  * Directories served statically, deliberately.

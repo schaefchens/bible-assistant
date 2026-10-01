@@ -10,7 +10,7 @@ import {
   type NarrationProgressMap,
   type NarrationStatus,
 } from '@/store/narrationStore';
-import type { OpenAiVoiceId } from '@/types/domain';
+import type { TtsVoice } from '@/services/voices/ttsVoice';
 
 /**
  * Downloading a *set* of things — a day of a reading plan, a page of a plain
@@ -61,13 +61,12 @@ export function subjectsForSegments(segments: SegmentRef[]): NarrationSubject[] 
 /** The group's targets: the voice applied, in order, without repeats. */
 export function narrationTargetsFor(
   subjects: NarrationSubject[],
-  voice: OpenAiVoiceId,
-  voiceStyle: string,
+  voice: TtsVoice,
 ): NarrationTarget[] {
   const out: NarrationTarget[] = [];
   const seen = new Set<string>();
   for (const subject of subjects) {
-    const target: NarrationTarget = { ...subject, voice, voiceStyle };
+    const target: NarrationTarget = { ...subject, voice };
     const key = narrationTargetKey(target);
     if (seen.has(key)) continue;
     seen.add(key);

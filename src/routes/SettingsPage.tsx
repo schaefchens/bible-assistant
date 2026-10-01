@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  hasActivePersonalKey,
-  useSettingsStore,
-  type MicPosition,
-} from '@/store/settingsStore';
-import { VOICE_OPTIONS, type VoiceId } from '@/types/domain';
+import { useNavigate } from 'react-router-dom';
+import { useSettingsStore, type MicPosition } from '@/store/settingsStore';
+import { useLibraryStore } from '@/store/libraryStore';
+import { useVoiceSelection } from '@/hooks/useSpeechVoice';
+import { ROUTES } from '@/lib/appRoutes';
+import { SYSTEM_DEVICE_ID, SYSTEM_ECHO_ID, findVoice, type VoiceRole } from '@/services/voices/voiceProfiles';
+import { VoiceAvatar } from '@/components/voiceProfiles/VoiceAvatar';
+import { LockIcon } from '@/components/common/icons';
 import { getPassphrase } from '@/lib/passphrase';
 import type { ThemeChoice } from '@/lib/theme';
 import { ReadingAppearanceSheet } from '@/components/reader/ReadingAppearanceSheet';
@@ -14,7 +16,6 @@ import { SettingsGroup, SettingsField } from '@/components/settings/SettingsGrou
 import { SettingsRow } from '@/components/settings/SettingsRow';
 import { SegmentedControl } from '@/components/common/SegmentedControl';
 import { TranslationPickerSheet } from '@/components/bible/TranslationPickerSheet';
-import { OpenAiKeySection } from '@/components/settings/OpenAiKeySection';
 import { StorageSection } from '@/components/settings/StorageSection';
 import { UpdatesSection } from '@/components/settings/UpdatesSection';
 import { CommunitySection } from '@/components/settings/CommunitySection';
@@ -28,6 +29,7 @@ type GroupId = 'general' | 'reading' | 'speech' | 'mic' | 'community' | 'account
 
 export function SettingsPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const settings = useSettingsStore();
   const passphrase = getPassphrase() ?? '';
   const words = passphrase.split(' ');
@@ -115,45 +117,14 @@ export function SettingsPage() {
           }
           onClick={() => setPlaybackOpen(true)}
         />
-        <SettingsField label={t('settings.voice')}>
-          <VoiceSelect
-            value={settings.voice}
-            onChange={(v) => settings.setVoice(v)}
-            allowedVoices={hasActivePersonalKey(settings) ? undefined : ['echo', 'browser']}
-          />
-          {settings.voice === 'browser' && (
-            <p className="mt-2 text-xs text-ink-muted">{t('settings.browserVoiceHint')}</p>
-          )}
-          {!hasActivePersonalKey(settings) && (
-            <p className="mt-2 text-xs text-ink-muted">
-              {t('settings.readingVoiceRestricted')}
-            </p>
-          )}
-        </SettingsField>
-
-        {/* Only meaningful with a personal key on a non-browser voice, so it is
-            absent rather than disabled the rest of the time. */}
-        {settings.voice !== 'browser' && hasActivePersonalKey(settings) && (
-          <SettingsField label={t('settings.voiceStyle')}>
-            <input
-              value={settings.voiceStyle}
-              onChange={(e) => settings.setVoiceStyle(e.target.value)}
-              placeholder={t('settings.voiceStyleHint')}
-              className="w-full bg-surface-raised text-ink rounded-xl px-3 py-2"
-            />
-          </SettingsField>
-        )}
-
-        <SettingsField
-          label={t('settings.assistantVoice')}
-          hint={t('settings.assistantVoiceHint')}
-        >
-          <VoiceSelect
-            value={settings.assistantVoice}
-            onChange={(v) => settings.setAssistantVoice(v)}
-            allowedVoices={hasActivePersonalKey(settings) ? undefined : ['browser']}
-          />
-          <label className="flex items-center gap-2 mt-3">
+        {/* Which voice reads and which one replies — each a row that opens the
+            voices screen (/settings/voices), where voices are made, chosen and
+            given their keys. The checkbox stays here: it is how the e2e
+            harness quiets replies, by exactly this label. */}
+        <VoiceRow role="narration" label={t('narrationVoices.rows.narration')} />
+        <VoiceRow role="assistant" label={t('narrationVoices.rows.assistant')} />
+        <SettingsField>
+          <label className="flex items-center gap-2">
             <input
               type="checkbox"
               checked={settings.speakAssistant}
@@ -206,9 +177,12 @@ export function SettingsPage() {
       </SettingsGroup>
 
       <SettingsGroup title={t('settings.groups.account')} {...groupProps('account')}>
-        <SettingsField label={t('settings.openaiKey.title')}>
-          <OpenAiKeySection />
-        </SettingsField>
+        {/* The keys live with the voices they pay for, but the OpenAI one also
+            pays for chat and transcription — so it is findable from here too. */}
+        <SettingsRow
+          label={t('narrationVoices.rows.keys')}
+          onClick={() => navigate(`${ROUTES.voices}?focus=providers`)}
+        />
         <SettingsField label={t('settings.sync.title')}>
           <SyncSection />
         </SettingsField>
@@ -283,32 +257,38 @@ export function SettingsPage() {
   );
 }
 
-function VoiceSelect({
-  value,
-  onChange,
-  allowedVoices,
-}: {
-  value: VoiceId;
-  onChange: (v: VoiceId) => void;
-  /** Optional allowlist; defaults to the full VOICE_OPTIONS list. */
-  allowedVoices?: VoiceId[];
-}) {
+/** A Settings row naming the voice a role speaks in, with its face, opening
+ * the voices screen for that role. A lock says the chosen voice is waiting on
+ * a key (it reads in its fallback meanwhile — the screen says which). */
+function VoiceRow({ role, label }: { role: VoiceRole; label: string }) {
   const { t } = useTranslation();
-  const options = allowedVoices
-    ? VOICE_OPTIONS.filter((v) => allowedVoices.includes(v))
-    : VOICE_OPTIONS;
+  const navigate = useNavigate();
+  const voices = useLibraryStore((s) => s.voices);
+  const { id, availability } = useVoiceSelection(role);
+  const profile = findVoice(id, voices);
+  const name =
+    id === SYSTEM_DEVICE_ID
+      ? t('narrationVoices.system.device')
+      : id === SYSTEM_ECHO_ID || !profile
+        ? t('narrationVoices.system.echo')
+        : profile.name;
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value as VoiceId)}
-      className="w-full bg-surface-raised text-ink rounded-xl px-3 py-2"
-    >
-      {options.map((v) => (
-        <option key={v} value={v}>
-          {v === 'browser' ? t('settings.browserVoice') : v}
-        </option>
-      ))}
-    </select>
+    <SettingsRow
+      label={label}
+      onClick={() => navigate(role === 'assistant' ? `${ROUTES.voices}?for=assistant` : ROUTES.voices)}
+      value={
+        <span className="inline-flex items-center gap-2 min-w-0 justify-end">
+          {availability !== 'ok' && <LockIcon className="shrink-0 text-amber-400" />}
+          <span className="truncate">{name}</span>
+          <VoiceAvatar
+            name={name}
+            avatar={profile?.avatar}
+            system={id === SYSTEM_DEVICE_ID ? 'device' : id === SYSTEM_ECHO_ID || !profile ? 'echo' : undefined}
+            size={26}
+          />
+        </span>
+      }
+    />
   );
 }
 

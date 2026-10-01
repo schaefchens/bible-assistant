@@ -1,6 +1,6 @@
 import { db, type NarrationEntry } from '@/db/dexie';
 import type { Translation } from '@/services/bible/bibleApi';
-import type { OpenAiVoiceId } from '@/types/domain';
+import { voiceKeyPart, type TtsVoice } from '@/services/voices/ttsVoice';
 
 /**
  * Which narration audio the device already holds, and where it lives.
@@ -11,29 +11,32 @@ import type { OpenAiVoiceId } from '@/types/domain';
  * duplicate it in two languages and break silently the day it changes. So they
  * are recorded verbatim after a successful download and read back as-is.
  *
- * Announcement keys carry the voice style and language because api.php hashes
- * both into its own cache key — two readings of "Verse 16" with different styles
- * are different audio.
+ * The voice's part of every key is `voiceKeyPart` (services/voices/ttsVoice.ts),
+ * which for an OpenAI voice is `${voice}|${style}` exactly as it always was —
+ * so `v|echo||KJV|19|117|1` is still Psalm 117:1 in Echo, and every chapter
+ * downloaded before voices had names still resolves. Announcement keys carry
+ * the language too, because api.php hashes it into its own cache key.
  */
 
 export function verseKey(
-  voice: OpenAiVoiceId,
-  voiceStyle: string,
+  voice: TtsVoice,
   translation: Translation,
   bookId: number,
   chapter: number,
   verse: number,
 ): string {
-  return `v|${voice}|${voiceStyle}|${translation}|${bookId}|${chapter}|${verse}`;
+  return `v|${voiceKeyPart(voice)}|${translation}|${bookId}|${chapter}|${verse}`;
 }
 
-export function speakKey(
-  voice: OpenAiVoiceId,
-  voiceStyle: string,
-  language: string,
-  text: string,
-): string {
-  return `s|${voice}|${voiceStyle}|${language}|${text}`;
+export function speakKey(voice: TtsVoice, language: string, text: string): string {
+  return `s|${voiceKeyPart(voice)}|${language}|${text}`;
+}
+
+/** The key prefixes that are this voice's and nobody else's — for giving back
+ * a voice's downloads when it is deleted. */
+export function narrationKeyPrefixes(voice: TtsVoice): [string, string] {
+  const part = voiceKeyPart(voice);
+  return [`v|${part}|`, `s|${part}|`];
 }
 
 export async function getNarration(key: string): Promise<NarrationEntry | undefined> {

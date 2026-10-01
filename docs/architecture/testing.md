@@ -64,8 +64,13 @@ TouchSensor. `pwa` is the only one that wants a service worker, and it
 *rebuilds* `dist/` to produce a genuine update; that is safe because
 `__BUILD_TIME__` makes every build a new bundle with identical behaviour.
 
-`bible:verify` and `community:verify*` are part of the integration layer and predate the
-naming; they stay exactly as they are.
+`bible:verify`, `community:verify*` and `voices:verify:api` are part of the integration
+layer and predate the naming; they stay exactly as they are. `voices:verify:api` is the
+only place ElevenLabs is exercised, and it never calls ElevenLabs: `secrets.php` points
+`ELEVENLABS_API_BASE` at an in-process Node stub whose behaviour is chosen by the key
+value, so every error code, the v4 chunk-and-join and the character-to-word alignment
+are checked offline in seconds — against `lib/wordTokens.ts`, the very tokenizer
+`WordHighlighter` uses.
 
 **The E2E tier serves `dist/`.** That directory is already the whole deployed app — `api.php`,
 `secrets.php`, the Zefania XML, `sw.js`, and a warm `storage/audio` — so one `php -S -t dist`

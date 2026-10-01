@@ -1,6 +1,5 @@
 import type { ChatToolDefinition } from '@/services/api/chat';
 import type { Translation } from '@/services/bible/bibleApi';
-import type { OpenAiVoiceId } from '@/types/domain';
 import type { MicPosition } from '@/store/settingsStore';
 
 /**
@@ -14,7 +13,7 @@ import type { MicPosition } from '@/store/settingsStore';
 export type SettingsToolArgs = {
   set_language: { language: 'en' | 'de' };
   set_translation: { translation: Translation };
-  set_voice: { voice: OpenAiVoiceId };
+  set_voice: { name: string; for?: 'reading' | 'assistant' };
   set_playback_rate: { rate: number };
   set_music: {
     enabled?: boolean;
@@ -75,16 +74,15 @@ export const SETTINGS_TOOLS: ChatToolDefinition[] = [
     type: 'function',
     function: {
       name: 'set_voice',
-      description: 'Switch TTS voice.',
+      description:
+        "Switch the voice that reads aloud — or, with for: 'assistant', the voice that speaks your replies. Pass the voice's name as the user said it: one of their own narration voices (they name them, e.g. \"Grandpa\"), \"Echo\", or the device voice. A plain OpenAI voice name (marin, cedar, nova, onyx, …) also works when the user has their own OpenAI key. A name that matches nothing returns the voices there are — offer those, never guess.",
       parameters: {
         type: 'object',
         properties: {
-          voice: {
-            type: 'string',
-            enum: ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'coral', 'sage', 'verse'],
-          },
+          name: { type: 'string' },
+          for: { type: 'string', enum: ['reading', 'assistant'] },
         },
-        required: ['voice'],
+        required: ['name'],
       },
     },
   },

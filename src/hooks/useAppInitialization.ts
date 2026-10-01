@@ -1,17 +1,13 @@
 import { useEffect } from 'react';
 import { useCommunityStore } from '@/store/communityStore';
 import { useLibraryStore } from '@/store/libraryStore';
-import {
-  effectiveAssistantVoice,
-  effectiveReadingVoice,
-  useSettingsStore,
-} from '@/store/settingsStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useLastReadingStore } from '@/store/lastReadingStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { readingHosts } from '@/lib/readingHosts';
 import { isScriptureUnit } from '@/types/domain';
-import { getOpenAiKeyStatus } from '@/services/api/auth';
+import { getElevenLabsKeyStatus, getOpenAiKeyStatus } from '@/services/api/auth';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { useBiblePacksStore } from '@/store/biblePacksStore';
 import { applyTheme, applyThemeMode, watchSystemTheme } from '@/lib/theme';
@@ -93,35 +89,32 @@ export function useAppInitialization(hasPassphrase: boolean): void {
     };
   }, [init, setOnline, hasPassphrase]);
 
-  // 4. Hydrate the personal-OpenAI-key status from the server. On hasKey=false,
-  // call the effective-voice helpers once so previously-stored non-allowed
-  // values (reading or assistant voice) get force-reset to their locked
-  // defaults before the first playback / chat reply.
+  // 4. Hydrate the personal key statuses (OpenAI and ElevenLabs) from the
+  // server — both file checks there, run side by side. Until they land, the
+  // voice resolvers treat a custom voice as unavailable and fall back for the
+  // moment; nothing is *reset*. (This used to force the stored voice back to
+  // Echo whenever the status call couldn't finish, which on an offline cold
+  // start forgot a custom voice for good.) A chapter already downloaded in the
+  // chosen voice plays in it regardless — see `readingTtsVoice`.
   //
-  // Skipped while offline: the request is guaranteed to fail, and prune() (the
-  // catch path) is what we'd do anyway. An offline-first install shouldn't fire
-  // a doomed request on every cold start.
+  // Skipped while offline: the requests are guaranteed to fail, and an
+  // offline-first install shouldn't fire doomed requests on every cold start.
   useEffect(() => {
     if (!hasPassphrase) return;
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      effectiveReadingVoice();
-      effectiveAssistantVoice();
-      return;
-    }
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
     let cancelled = false;
-    const prune = () => {
-      effectiveReadingVoice();
-      effectiveAssistantVoice();
-    };
+    const settings = useSettingsStore.getState();
     void getOpenAiKeyStatus()
       .then((s) => {
-        if (cancelled) return;
-        useSettingsStore.getState().setUserOpenAiKeyStatus(!!s.hasKey, s.masked ?? null);
-        prune();
+        if (!cancelled) settings.setUserOpenAiKeyStatus(!!s.hasKey, s.masked ?? null);
       })
-      .catch(() => {
-        if (!cancelled) prune();
-      });
+      .catch(() => {});
+    void getElevenLabsKeyStatus()
+      .then((s) => {
+        if (!cancelled) settings.setUserElevenLabsKeyStatus(!!s.hasKey, s.masked ?? null);
+      })
+      // An api.php from before voices answers "unknown action": no key, then.
+      .catch(() => {});
     return () => {
       cancelled = true;
     };

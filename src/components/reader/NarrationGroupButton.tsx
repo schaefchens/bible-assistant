@@ -24,12 +24,8 @@ import {
   type NarrationSubject,
 } from '@/services/narration/narrationDownload';
 import { useNarrationStore } from '@/store/narrationStore';
-import {
-  effectiveReadingVoice,
-  effectiveVoiceStyle,
-  useSettingsStore,
-} from '@/store/settingsStore';
-import { isBrowserVoice, type OpenAiVoiceId } from '@/types/domain';
+import { useNarrationVoice } from '@/hooks/useSpeechVoice';
+import { ECHO_VOICE, isDeviceVoice, type TtsVoice } from '@/services/voices/ttsVoice';
 
 type Props = {
   /**
@@ -64,21 +60,22 @@ type Props = {
  */
 export function NarrationGroupButton({ subjects, label, compact = false }: Props) {
   const { t } = useTranslation();
-  // Subscribed, not read once: switching voice changes which narration this
-  // button is even talking about.
-  const voiceSetting = useSettingsStore((s) => s.voice);
-  const readingVoice = effectiveReadingVoice();
-  const voiceStyle = effectiveVoiceStyle();
-  const usesDeviceVoice = isBrowserVoice(readingVoice);
-  const voice = readingVoice as OpenAiVoiceId;
+  // Subscribed, not read once: switching voice — or key status arriving after
+  // boot — changes which narration this button is even talking about.
+  const narrationVoice = useNarrationVoice();
+  const usesDeviceVoice = isDeviceVoice(narrationVoice);
+  // Echo is only a stand-in so the hooks below run unconditionally; on the
+  // device voice this renders nothing.
+  const voice: TtsVoice = isDeviceVoice(narrationVoice) ? ECHO_VOICE : narrationVoice;
 
   // `subjects` is rebuilt on every render of the sheet, so the group's own key
-  // is the real dependency — it changes exactly when the items or the voice do,
-  // and it is the identity the run map is keyed by anyway.
-  const built = narrationTargetsFor(subjects, voice, voiceStyle);
+  // is the real dependency — it changes exactly when the items or the voice do
+  // (the voice is part of every target key), and it is the identity the run
+  // map is keyed by anyway.
+  const built = narrationTargetsFor(subjects, voice);
   const groupKey = narrationGroupKey(built);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const targets = useMemo(() => built, [groupKey, voiceSetting]);
+  const targets = useMemo(() => built, [groupKey]);
   const keys = useMemo(() => targets.map(narrationTargetKey), [targets]);
 
   // Aggregates, each a primitive: the per-item progress ticks write to this

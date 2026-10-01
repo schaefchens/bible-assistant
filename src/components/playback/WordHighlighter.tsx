@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import clsx from 'clsx';
 import { usePlaybackStore } from '@/store/playbackStore';
+import { isSpaceToken, splitWordsAndSpaces } from '@/lib/wordTokens';
 import type { VerseSummary } from '@/types/domain';
 
 
@@ -58,7 +59,7 @@ export function WordHighlighter({
       : -1,
   );
 
-  const words = useMemo(() => verse.text.split(/(\s+)/), [verse.text]);
+  const words = useMemo(() => splitWordsAndSpaces(verse.text), [verse.text]);
   let wordCounter = -1;
 
   const inline = layout === 'inline';
@@ -67,7 +68,7 @@ export function WordHighlighter({
   const Tag = inline ? 'span' : 'p';
 
   const tokens = words.map((token, i) => {
-    if (/^\s+$/.test(token)) return <span key={i}>{token}</span>;
+    if (isSpaceToken(token)) return <span key={i}>{token}</span>;
     wordCounter++;
     const idx = wordCounter;
     const active = activeWordIndex === idx;

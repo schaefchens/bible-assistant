@@ -9,6 +9,13 @@ import {
 } from './libraryOrder';
 import { indexProgress, normalizeCard, normalizeList, sortLists } from './libraryRows';
 import { createLibrarySync, expandStoredSpans } from './librarySync';
+import {
+  VOICE_SELECTION_KEY,
+  consumeLegacyVoices,
+  createLibraryVoices,
+  liveVoices,
+  type VoiceDraft,
+} from './libraryVoices';
 import { db, stripLocal } from '@/db/dexie';
 import type {
   Card,
@@ -21,6 +28,14 @@ import {
   emptyReadingProgress,
 } from '@/services/reading/readingProgress';
 import { reconcileOrder, reorderInArray } from '@/utils/orderingUtils';
+import type { OpenAiVoiceId } from '@/services/voices/ttsVoice';
+import {
+  DEFAULT_VOICE_SELECTION,
+  normalizeVoiceSelection,
+  type VoiceProfile,
+  type VoiceRole,
+  type VoiceSelection,
+} from '@/services/voices/voiceProfiles';
 import {
   enqueueOp,
   enqueueProgressSync,
@@ -42,6 +57,12 @@ export type LibraryState = {
   boardOrder: string[];
   boardOrderUpdatedAt: number;
   activeBoardId: string | null;
+  /** The user's narration voices, oldest first. Synced; see libraryVoices.ts. */
+  voices: VoiceProfile[];
+  /** Which voice reads and which one replies — synced, so the choice follows
+   * the user across devices. Resolve it through lib/narrationVoice.ts, which
+   * also knows what this session may spend. */
+  voiceSelection: VoiceSelection;
   online: boolean;
   pendingOps: number;
   /** Re-read the queue length. For writers outside this store (communityStore),
@@ -66,6 +87,11 @@ export type LibraryState = {
   setEntryDone: (listId: string, entryId: string, done: boolean) => Promise<void>;
   /** Record where the user is in a list, without changing what's ticked. */
   setCurrentEntry: (listId: string, entryId: string | undefined) => Promise<void>;
+  createVoice: (draft: VoiceDraft) => Promise<string>;
+  updateVoice: (id: string, patch: Partial<VoiceDraft>) => Promise<void>;
+  deleteVoice: (id: string) => Promise<void>;
+  selectVoice: (role: VoiceRole, id: string) => Promise<void>;
+  ensureOpenAiVoice: (voice: OpenAiVoiceId, style?: string) => Promise<string>;
   setOnline: (value: boolean) => void;
   flushQueue: () => Promise<void>;
   pullFromServer: () => Promise<void>;
@@ -82,6 +108,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
   // The server-facing half — see librarySync.ts, which holds two of the three
   // `syncEnabled` chokepoints.
   const sync = createLibrarySync(set, get);
+  const voiceActions = createLibraryVoices(set, get);
   return {
   cards: [],
   boards: [],
@@ -92,6 +119,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
   boardOrder: [],
   boardOrderUpdatedAt: 0,
   activeBoardId: null,
+  voices: [],
+  voiceSelection: DEFAULT_VOICE_SELECTION,
   online: typeof navigator !== 'undefined' ? navigator.onLine : true,
   pendingOps: 0,
   refreshPendingOps: async () => {
@@ -110,6 +139,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       savedCardOrderRow,
       savedBoardOrderRow,
       activeRow,
+      voiceRows,
+      voiceSelectionRow,
     ] = await Promise.all([
       db.cards.filter((c) => c.deleted !== 1).toArray(),
       db.boards.filter((b) => b.deleted !== 1).toArray(),
@@ -119,6 +150,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       db.preferences.get(CARD_ORDER_KEY),
       db.preferences.get(BOARD_ORDER_KEY),
       db.preferences.get(ACTIVE_BOARD_KEY),
+      db.voices.toArray(),
+      db.preferences.get(VOICE_SELECTION_KEY),
     ]);
     const liveCards = cards.map(stripLocal).map(normalizeCard);
     const liveBoards = boards.map(stripLocal);
@@ -140,10 +173,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
       boardOrder: boardOrder.order,
       boardOrderUpdatedAt: boardOrder.updatedAt,
       activeBoardId,
+      voices: liveVoices(voiceRows),
+      voiceSelection: voiceSelectionRow
+        ? normalizeVoiceSelection(voiceSelectionRow.value)
+        : DEFAULT_VOICE_SELECTION,
       pendingOps: pending,
       initialized: true,
     });
     void expandStoredSpans(get);
+    // Before the first pull, so a migrated voice rides the same flush.
+    await consumeLegacyVoices(set, get).catch(() => {});
     if (navigator.onLine) {
       void get().pullFromServer().catch(() => {});
       void get().flushQueue().catch(() => {});
@@ -340,6 +379,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
     if (value) void get().flushQueue();
   },
 
+    ...voiceActions,
     ...sync,
   };
 });

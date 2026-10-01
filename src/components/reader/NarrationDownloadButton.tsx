@@ -2,16 +2,12 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import {
-  effectiveReadingVoice,
-  effectiveVoiceStyle,
-  useSettingsStore,
-} from '@/store/settingsStore';
-import {
   narrationTargetKey,
   type NarrationSubject,
 } from '@/services/narration/narrationDownload';
 import { useNarrationStore } from '@/store/narrationStore';
-import { isBrowserVoice, type OpenAiVoiceId } from '@/types/domain';
+import { useNarrationVoice } from '@/hooks/useSpeechVoice';
+import { ECHO_VOICE, isDeviceVoice, type TtsVoice } from '@/services/voices/ttsVoice';
 import {
   CheckIcon,
   DownloadIcon,
@@ -35,11 +31,9 @@ type Props = { subject: NarrationSubject };
  */
 export function NarrationDownloadButton({ subject }: Props) {
   const { t } = useTranslation();
-  // Subscribed, not just read once: switching voice changes which narration this
-  // button is even talking about.
-  const voiceSetting = useSettingsStore((s) => s.voice);
-  const readingVoice = effectiveReadingVoice();
-  const voiceStyle = effectiveVoiceStyle();
+  // Subscribed, not just read once: switching voice — or key status arriving
+  // after boot — changes which narration this button is even talking about.
+  const narrationVoice = useNarrationVoice();
 
   const check = useNarrationStore((s) => s.check);
   const download = useNarrationStore((s) => s.download);
@@ -55,9 +49,11 @@ export function NarrationDownloadButton({ subject }: Props) {
     return () => window.clearTimeout(id);
   }, [confirmingRemove]);
 
-  const usesDeviceVoice = isBrowserVoice(readingVoice);
-  const voice = readingVoice as OpenAiVoiceId;
-  const target = { ...subject, voice, voiceStyle };
+  const usesDeviceVoice = isDeviceVoice(narrationVoice);
+  // Echo is only a stand-in so the hooks below run unconditionally; on the
+  // device voice this renders nothing.
+  const voice: TtsVoice = isDeviceVoice(narrationVoice) ? ECHO_VOICE : narrationVoice;
+  const target = { ...subject, voice };
   const key = narrationTargetKey(target);
   const status = useNarrationStore((s) => s.status[key]) ?? 'unknown';
   const progress = useNarrationStore((s) => s.progress[key]);
@@ -81,7 +77,7 @@ export function NarrationDownloadButton({ subject }: Props) {
     // `target` is rebuilt every render, so the key it produces is the real
     // dependency — it changes exactly when the subject or the voice does.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [check, usesDeviceVoice, key, voiceSetting]);
+  }, [check, usesDeviceVoice, key]);
 
   if (usesDeviceVoice) return null;
 

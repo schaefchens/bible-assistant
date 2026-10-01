@@ -1,6 +1,6 @@
 import { localeForTranslation } from '@/lib/translationLocaleMap';
 import type { PlanItem } from '@/lib/playbackPlan';
-import type { OpenAiVoiceId } from '@/types/domain';
+import type { TtsVoice } from '@/services/voices/ttsVoice';
 import { speakKey, verseKey } from './narrationIndex';
 import {
   cachedNarrationSource,
@@ -64,17 +64,12 @@ type NarrationRequest =
   /** Keyed by a sha256 of the text: a post paragraph, or an announcement. */
   | { addressed: 'text'; speech: SpeechNarrationRequest };
 
-export function narrationRequestFor(
-  it: PlanItem,
-  voice: OpenAiVoiceId,
-  voiceStyle: string,
-): NarrationRequest {
+export function narrationRequestFor(it: PlanItem, voice: TtsVoice): NarrationRequest {
   if (it.kind === 'verse' && !isPostItem(it)) {
     return {
       addressed: 'reference',
       verse: {
         voice,
-        voiceStyle,
         text: it.verse.text,
         translation: it.verse.translation,
         bookId: it.verse.bookId,
@@ -87,7 +82,6 @@ export function narrationRequestFor(
     addressed: 'text',
     speech: {
       voice,
-      voiceStyle,
       language: languageOf(it),
       text: it.kind === 'verse' ? it.verse.text : it.text,
     },
@@ -95,32 +89,20 @@ export function narrationRequestFor(
 }
 
 /** How this item is addressed in the narration index. */
-export function narrationKeyFor(
-  it: PlanItem,
-  voice: OpenAiVoiceId,
-  voiceStyle: string,
-): string {
-  const req = narrationRequestFor(it, voice, voiceStyle);
+export function narrationKeyFor(it: PlanItem, voice: TtsVoice): string {
+  const req = narrationRequestFor(it, voice);
   return req.addressed === 'reference'
-    ? verseKey(
-        voice,
-        voiceStyle,
-        req.verse.translation,
-        req.verse.bookId,
-        req.verse.chapter,
-        req.verse.verse,
-      )
-    : speakKey(voice, voiceStyle, req.speech.language, req.speech.text);
+    ? verseKey(voice, req.verse.translation, req.verse.bookId, req.verse.chapter, req.verse.verse)
+    : speakKey(voice, req.speech.language, req.speech.text);
 }
 
 /** Fetch it, generating on the server if it isn't cached anywhere. */
 export function resolveNarrationFor(
   it: PlanItem,
-  voice: OpenAiVoiceId,
-  voiceStyle: string,
+  voice: TtsVoice,
   signal?: AbortSignal,
 ): Promise<NarrationRef> {
-  const req = narrationRequestFor(it, voice, voiceStyle);
+  const req = narrationRequestFor(it, voice);
   return req.addressed === 'reference'
     ? resolveVerseNarration(req.verse, signal)
     : resolveSpeechNarration(req.speech, signal);
@@ -135,12 +117,8 @@ export function resolveNarrationFor(
  * a post paragraph misses every time, and a downloaded post would silently
  * drop to the device voice the moment the network went away.
  */
-export function cachedNarrationFor(
-  it: PlanItem,
-  voice: OpenAiVoiceId,
-  voiceStyle: string,
-): Promise<NarrationRef | null> {
-  const req = narrationRequestFor(it, voice, voiceStyle);
+export function cachedNarrationFor(it: PlanItem, voice: TtsVoice): Promise<NarrationRef | null> {
+  const req = narrationRequestFor(it, voice);
   return req.addressed === 'reference'
     ? cachedNarrationSource.getVerse(req.verse)
     : cachedNarrationSource.getSpeech(req.speech);

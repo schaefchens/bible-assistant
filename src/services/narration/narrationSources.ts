@@ -1,15 +1,14 @@
 import { postTts, postTtsSpeak } from '@/services/api/tts';
 import { isCached } from '@/lib/mediaCache';
 import type { Translation } from '@/services/bible/bibleApi';
-import type { OpenAiVoiceId } from '@/types/domain';
+import type { TtsVoice } from '@/services/voices/ttsVoice';
 import { getNarration, putNarration, speakKey, verseKey } from './narrationIndex';
 
 /** Where a piece of narration's audio and word-alignment live. */
 export type NarrationRef = { audioUrl: string; alignmentUrl: string };
 
 export type VerseNarrationRequest = {
-  voice: OpenAiVoiceId;
-  voiceStyle: string;
+  voice: TtsVoice;
   text: string;
   translation: Translation;
   bookId: number;
@@ -18,8 +17,7 @@ export type VerseNarrationRequest = {
 };
 
 export type SpeechNarrationRequest = {
-  voice: OpenAiVoiceId;
-  voiceStyle: string;
+  voice: TtsVoice;
   language: 'en' | 'de';
   text: string;
 };
@@ -67,12 +65,10 @@ async function fromIndex(key: string): Promise<NarrationRef | null> {
 export const cachedNarrationSource: NarrationSource = {
   name: 'cached',
   getVerse(req) {
-    return fromIndex(
-      verseKey(req.voice, req.voiceStyle, req.translation, req.bookId, req.chapter, req.verse),
-    );
+    return fromIndex(verseKey(req.voice, req.translation, req.bookId, req.chapter, req.verse));
   },
   getSpeech(req) {
-    return fromIndex(speakKey(req.voice, req.voiceStyle, req.language, req.text));
+    return fromIndex(speakKey(req.voice, req.language, req.text));
   },
 };
 
@@ -94,7 +90,6 @@ const serverTtsSource: NarrationSource = {
       {
         text: req.text,
         voice: req.voice,
-        voiceStyle: req.voiceStyle || undefined,
         translation: req.translation,
         bookId: req.bookId,
         chapter: req.chapter,
@@ -103,7 +98,7 @@ const serverTtsSource: NarrationSource = {
       { signal },
     );
     await putNarration(
-      verseKey(req.voice, req.voiceStyle, req.translation, req.bookId, req.chapter, req.verse),
+      verseKey(req.voice, req.translation, req.bookId, req.chapter, req.verse),
       tts.audioUrl,
       tts.alignmentUrl,
     );
@@ -111,19 +106,10 @@ const serverTtsSource: NarrationSource = {
   },
   async getSpeech(req, signal) {
     const tts = await postTtsSpeak(
-      {
-        text: req.text,
-        voice: req.voice,
-        voiceStyle: req.voiceStyle || undefined,
-        language: req.language,
-      },
+      { text: req.text, voice: req.voice, language: req.language },
       { signal },
     );
-    await putNarration(
-      speakKey(req.voice, req.voiceStyle, req.language, req.text),
-      tts.audioUrl,
-      tts.alignmentUrl,
-    );
+    await putNarration(speakKey(req.voice, req.language, req.text), tts.audioUrl, tts.alignmentUrl);
     return { audioUrl: tts.audioUrl, alignmentUrl: tts.alignmentUrl };
   },
 };

@@ -1,5 +1,5 @@
-# The fourteen files beside this one are *includes*, required by ../api.php,
-# and never endpoints — the router is the only way in.
+# Every file beside this one is an *include*, required by ../api.php, and
+# never an endpoint — the router is the only way in.
 #
 # Denied per-directory rather than from the root .htaccess, where the natural
 # spelling (<Directory "api">) is invalid and makes Apache 500 the entire site.

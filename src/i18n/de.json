@@ -342,6 +342,185 @@
       "show": "Feedback-Knopf anzeigen"
     }
   },
+  "narrationVoices": {
+    "title": "Erzählstimmen",
+    "subtitleLine": "Wer dir vorliest – und wie",
+    "system": {
+      "echo": "Echo",
+      "device": "Gerätestimme"
+    },
+    "roles": {
+      "reading": "Vorlesen",
+      "replies": "Antworten"
+    },
+    "hero": {
+      "label": "Gewählte Stimme",
+      "reads": "Liest dir vor",
+      "replies": "Spricht Antworten",
+      "fallback": "Vorerst liest {{name}} –"
+    },
+    "syncOff": "Deine Stimmen bleiben auf diesem Gerät, bis du die Synchronisierung einschaltest.",
+    "syncOffLink": "Konto & Sync",
+    "sections": {
+      "system": "Eingebaut",
+      "yours": "Deine Stimmen",
+      "providers": "Anbieter & Schlüssel"
+    },
+    "usage": {
+      "both": "Liest · Antwortet",
+      "reads": "Liest",
+      "replies": "Antwortet"
+    },
+    "hearVoice": "{{name}} anhören",
+    "edit": "{{name}} bearbeiten",
+    "create": "Stimme erstellen",
+    "createHint": "Gib ihr einen Namen, ein Gesicht und eine Sprechweise",
+    "providersHint": "Eigene Stimmen erzählen über dein eigenes Konto. Schlüssel werden auf dem Server geprüft und mit deinem Konto gespeichert – die App sieht nur einen maskierten Hinweis.",
+    "rows": {
+      "narration": "Erzählstimme",
+      "assistant": "Assistentenstimme",
+      "keys": "API-Schlüssel"
+    },
+    "subtitle": {
+      "device": "Auf diesem Gerät · funktioniert offline",
+      "openai": "OpenAI · {{voice}}",
+      "openaiStyled": "OpenAI · {{voice}} · eigene Sprechweise",
+      "elevenlabs": "ElevenLabs · {{voice}} · {{model}}"
+    },
+    "locked": {
+      "openai": "Diese Stimme braucht deinen eigenen OpenAI-Schlüssel.",
+      "elevenlabs": "Diese Stimme braucht deinen ElevenLabs-Schlüssel.",
+      "failed": "ElevenLabs hat sie in dieser Sitzung abgelehnt."
+    },
+    "keys": {
+      "connected": "Verbunden",
+      "notConnected": "Nicht verbunden",
+      "remove": "Schlüssel entfernen",
+      "confirmRemove": "Zum Entfernen erneut tippen",
+      "save": "Speichern",
+      "checking": "Wird geprüft…",
+      "elevenLabsTitle": "ElevenLabs-API-Schlüssel",
+      "elevenLabsHint": "Für ElevenLabs-Stimmen – die lebensechteste Erzählung, die es gibt, abgerechnet über deinen ElevenLabs-Tarif. Gib dem Schlüssel Zugriff auf Text to Speech, Voices (lesen) und Voice Generation.",
+      "elevenLabsGetKey": "Schlüssel erstellen",
+      "elevenLabsInvalid": "ElevenLabs hat diesen Schlüssel nicht akzeptiert.",
+      "credits": "{{used}} von {{limit}} Credits verbraucht",
+      "resets": "erneuert sich am {{date}}",
+      "creditsHidden": "Dieser Schlüssel darf dein Konto nicht lesen, daher werden die restlichen Credits nicht angezeigt. Vorlesen funktioniert trotzdem."
+    },
+    "failure": {
+      "quota": "Deine ElevenLabs-Credits sind aufgebraucht.",
+      "key": "ElevenLabs hat deinen Schlüssel abgelehnt.",
+      "voice": "Diese Stimme lässt sich auf deinem ElevenLabs-Konto nicht mehr verwenden.",
+      "fellBack": "Vorerst liest die eingebaute Stimme. Deine Auswahl bleibt erhalten.",
+      "retry": "Erneut versuchen",
+      "open": "Stimmen öffnen"
+    },
+    "openai": {
+      "voice": "Stimme",
+      "best": "Beste",
+      "blurb": {
+        "marin": "Natürlich und warm",
+        "cedar": "Tief und natürlich",
+        "alloy": "Neutral, ausgewogen",
+        "ash": "Klar, im Gesprächston",
+        "ballad": "Sanft, ausdrucksvoll",
+        "coral": "Hell, freundlich",
+        "echo": "Ruhig und gleichmäßig",
+        "fable": "Erzähler, britisch",
+        "nova": "Warm, jugendlich",
+        "onyx": "Tief, bestimmt",
+        "sage": "Behutsam, gemessen",
+        "shimmer": "Leicht, luftig",
+        "verse": "Ausdrucksstark, lebendig"
+      }
+    },
+    "style": {
+      "title": "Wie sie spricht",
+      "hint": "Wird der Stimme vor jeder Lesung gesagt. Wähle einen Ausgangspunkt und mach ihn zu deinem.",
+      "placeholder": "z. B. langsam und warm, mit sanften Pausen an den Kommas",
+      "reverent": "Ehrfürchtig",
+      "reverentText": "Lies langsam und ehrfürchtig, mit Wärme und stillem Staunen, und halte an jedem Komma sanft inne.",
+      "storyteller": "Warmer Erzähler",
+      "storytellerText": "Lies wie ein warmherziger Erzähler am Kaminfeuer: ohne Eile, nah und behutsam ausdrucksvoll.",
+      "calm": "Ruhig & langsam",
+      "calmText": "Sprich ruhig und langsam, mit langen, friedlichen Pausen – eine Stimme für den Abend und die Ruhe.",
+      "bright": "Hell & klar",
+      "brightText": "Sprich hell und klar in gemächlichem Tempo, mit freundlicher Energie.",
+      "dramatic": "Dramatische Lesung",
+      "dramaticText": "Lies dramatisch: mit reicher Dynamik, lebendiger Betonung und bedeutungsvollen Pausen."
+    },
+    "elevenlabs": {
+      "voice": "Stimme",
+      "noneChosen": "Noch keine Stimme gewählt",
+      "designedPending": "Deine entworfene Stimme – wird beim Speichern zu ElevenLabs hinzugefügt",
+      "fromLibrary": "Meine ElevenLabs-Stimmen",
+      "design": "Neue Stimme beschreiben",
+      "libraryTitle": "Deine ElevenLabs-Stimmen",
+      "search": "Stimmen suchen",
+      "libraryFailed": "Deine Stimmen konnten nicht von ElevenLabs geladen werden.",
+      "libraryEmpty": "Keine Stimmen gefunden.",
+      "loadMore": "Mehr laden",
+      "loadingMore": "Wird geladen…",
+      "model": "Modell",
+      "v4": "Eleven v4 – am ausdrucksstärksten",
+      "v4Hint": "Das neueste und lebensechteste Modell von ElevenLabs. Empfohlen.",
+      "v2": "Multilingual v2 – am gleichmäßigsten",
+      "v2Hint": "Am beständigsten bei langen Lesungen; zusätzlich Stil und Tempo.",
+      "stability": "Stabilität",
+      "stabilityHint": "Niedriger klingt ausdrucksvoller, höher gleichmäßiger von Vers zu Vers.",
+      "similarity": "Ähnlichkeit",
+      "similarityHint": "Wie genau sie bei der ursprünglichen Stimme bleibt.",
+      "style": "Stilbetonung",
+      "styleHint": "Gibt Charakter. Für Bibeltexte niedrig halten.",
+      "speed": "Tempo",
+      "byIdHint": "Oder eine Stimme über ihre ID verwenden – von der ElevenLabs-Website, oder wenn dein Schlüssel keine Stimmen auflisten darf.",
+      "useId": "Verwenden",
+      "libraryFailedHint": "Hat dein Schlüssel keinen Zugriff auf „Voices (lesen)“, kannst du unten trotzdem eine Stimme über ihre ID verwenden."
+    },
+    "design": {
+      "title": "Stimme beschreiben",
+      "intro": "Beschreib die Stimme, die du hören möchtest – ElevenLabs macht drei Varianten davon, jede liest Psalm 23. Behalte die, die dir gefällt.",
+      "placeholder": "z. B. ein älterer Mann mit warmer, sanfter und weiser Stimme",
+      "example1": "Ein älterer Mann mit warmer, sanfter und weiser Stimme, wie ein Großvater am Kaminfeuer",
+      "example2": "Eine ruhige Frau mit klarer, beruhigender Stimme zum Vorlesen am Abend",
+      "example3": "Eine tiefe, volle Männerstimme mit ehrfürchtigem Ernst, wie in einer Kathedrale",
+      "generate": "Drei Stimmen erzeugen",
+      "generating": "Stimmen werden erzeugt…",
+      "cost": "Verbraucht einen Teil deiner ElevenLabs-Credits.",
+      "failed": "ElevenLabs konnte aus dieser Beschreibung keine Stimmen erzeugen.",
+      "choose": "Wähle eine aus",
+      "option": "Stimme {{n}}",
+      "hearOption": "Stimme {{n}} anhören",
+      "use": "Nehmen",
+      "defaultName": "Entworfene Stimme",
+      "tooShort": "Beschreib die Stimme in ein, zwei Sätzen."
+    },
+    "editor": {
+      "newTitle": "Neue Stimme",
+      "editTitle": "Stimme bearbeiten",
+      "save": "Speichern",
+      "saving": "Wird gespeichert…",
+      "avatar": "Bild auswählen",
+      "removeAvatar": "Bild entfernen",
+      "name": "Name",
+      "namePlaceholder": "z. B. Opa",
+      "provider": "Anbieter",
+      "needsOpenAiKey": "Füge deinen OpenAI-Schlüssel hinzu, um diese Stimme zu hören. Bis dahin liest Echo.",
+      "needsElevenLabsKey": "Füge deinen ElevenLabs-Schlüssel hinzu, um ElevenLabs-Stimmen zu verwenden.",
+      "delete": "Stimme löschen",
+      "confirmDelete": "Erneut tippen – löscht sie auf all deinen Geräten",
+      "hearSample": "Hörprobe",
+      "stopSample": "Stopp",
+      "sampleHint": "Psalm 23, gelesen in dieser Stimme",
+      "sampleCost": "Psalm 23 · beim ersten Mal etwa {{chars}} ElevenLabs-Credits",
+      "sampleLocked": "Füge den Schlüssel für diesen Anbieter hinzu, um sie zu hören",
+      "pickVoice": "Wähle zuerst eine ElevenLabs-Stimme.",
+      "imageFailed": "Dieses Bild konnte nicht verwendet werden.",
+      "saveFailed": "Die Stimme konnte nicht gespeichert werden.",
+      "missing": "Diese Stimme gibt es nicht mehr."
+    },
+    "sample": "Der HERR ist mein Hirte; mir wird nichts mangeln. Er weidet mich auf einer grünen Aue und führet mich zum frischen Wasser. Er erquicket meine Seele; er führet mich auf rechter Straße um seines Namens willen."
+  },
   "chatReader": {
     "ambient": "Hintergrundmusik ein-/ausschalten"
   },
@@ -403,7 +582,8 @@
         "assistantLabel": "Assistenzstimme",
         "preview": "Vorhören",
         "stop": "Stopp",
-        "previewText": "Und Gott sprach: Es werde Licht."
+        "previewText": "Und Gott sprach: Es werde Licht.",
+        "moreInSettings": "Stimmen benennen, ihnen ein Gesicht geben oder eine ElevenLabs-Stimme wählen: Einstellungen › Erzählstimmen."
       },
       "sync": {
         "title": "Synchronisieren & sichern?",

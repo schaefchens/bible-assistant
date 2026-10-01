@@ -5,8 +5,8 @@ import type { Translation } from '@/services/bible/bibleApi';
 import { spacePostUnits } from '@/services/community/spaceReading';
 import { loadChapterSummaries } from '@/services/bible/verseSummaries';
 import { useSettingsStore } from '@/store/settingsStore';
-import type { OpenAiVoiceId } from '@/types/domain';
-import { getNarration } from './narrationIndex';
+import { voiceKeyPart, type TtsVoice } from '@/services/voices/ttsVoice';
+import { getNarration, narrationKeyPrefixes } from './narrationIndex';
 import { narrationKeyFor, resolveNarrationFor } from './narrationRequest';
 
 /**
@@ -56,31 +56,31 @@ type PostSubject = { kind: 'post'; spaceId: string; postId: string };
  * What a download is *of*, minus the voice — which is what every caller
  * actually has in hand. Narration is per-voice, but a chapter row or a post
  * knows nothing about that; the control that renders it supplies the voice
- * (`effectiveReadingVoice`) and hands over a full `NarrationTarget`.
+ * (`useNarrationVoice`) and hands over a full `NarrationTarget`.
  */
 export type NarrationSubject = ChapterSubject | PostSubject;
 
 /** A subject plus the voice it is narrated in. */
-export type NarrationTarget = NarrationSubject & {
-  voice: OpenAiVoiceId;
-  voiceStyle: string;
-};
+export type NarrationTarget = NarrationSubject & { voice: TtsVoice };
 
 export type NarrationCoverage = 'missing' | 'partial' | 'installed';
 
 export type NarrationProgress = { done: number; total: number };
 
 /**
- * Identity of a downloaded item. Includes the voice: narration is per-voice,
- * and a chapter held in Echo says nothing about the same chapter in Nova.
+ * Identity of a downloaded item. Includes the whole audible voice: narration is
+ * per-voice, and a chapter held in Echo says nothing about the same chapter in
+ * Nova — or in Nova with a different style, which used to share this key and
+ * so one download status, one dedupe slot and one abort controller.
  *
  * Only ever a key into `narrationStore`'s transient maps — the Dexie keys are
  * `narrationKeyFor`'s, per plan item — so its shape is free to change.
  */
 export function narrationTargetKey(t: NarrationTarget): string {
+  const voice = voiceKeyPart(t.voice);
   return t.kind === 'post'
-    ? `post|${t.voice}|${t.spaceId}|${t.postId}`
-    : `${t.voice}|${t.translation}|${t.bookId}|${t.chapter}`;
+    ? `post|${voice}|${t.spaceId}|${t.postId}`
+    : `${voice}|${t.translation}|${t.bookId}|${t.chapter}`;
 }
 
 /**
@@ -142,7 +142,7 @@ export async function narrationCoverage(
 
   let have = 0;
   for (const it of items) {
-    const entry = await getNarration(narrationKeyFor(it, target.voice, target.voiceStyle));
+    const entry = await getNarration(narrationKeyFor(it, target.voice));
     if (entry && (await isCached(entry.audioUrl))) have++;
   }
   if (have === 0) return 'missing';
@@ -170,7 +170,7 @@ export async function downloadNarration(
 
   for (const it of plan) {
     if (signal.aborted) throw new DOMException('aborted', 'AbortError');
-    const ref = await resolveNarrationFor(it, target.voice, target.voiceStyle, signal);
+    const ref = await resolveNarrationFor(it, target.voice, signal);
     // Pinning is the actual download: resolveNarrationFor may well have found
     // the item already cached from ordinary playback, in which case this just
     // promotes those bytes out of reach of the LRU sweep, with no network.
@@ -190,9 +190,7 @@ export async function downloadNarration(
  * them here would silently degrade other downloads to save a few kilobytes.
  */
 export async function deleteNarration(target: NarrationTarget): Promise<void> {
-  const keys = (await textItems(target)).map((it) =>
-    narrationKeyFor(it, target.voice, target.voiceStyle),
-  );
+  const keys = (await textItems(target)).map((it) => narrationKeyFor(it, target.voice));
 
   const urls: string[] = [];
   for (const key of keys) {
@@ -204,5 +202,42 @@ export async function deleteNarration(target: NarrationTarget): Promise<void> {
     await db.narration.bulkDelete(keys);
   } catch {
     // Nothing to recover from — the worst case is space we failed to reclaim.
+  }
+}
+
+/**
+ * Give back everything this device holds in one voice — every chapter, post
+ * and announcement narrated in it — when the voice itself is deleted.
+ *
+ * Downloads are pinned, and pinned bytes are exempt from the LRU sweep, so
+ * without this they would outlive the voice forever. The caller decides
+ * whether to: two profiles can share one audible voice (and a profile can sound
+ * exactly like Echo), and their audio is the same files.
+ *
+ * A file another remaining index entry still points at is kept — announcement
+ * clips in particular are shared across voices' items only by URL, never by
+ * key, so this checks the URLs rather than trusting the prefix alone.
+ */
+export async function deleteNarrationForVoice(voice: TtsVoice): Promise<void> {
+  try {
+    const prefixes = narrationKeyPrefixes(voice);
+    const doomed = await db.narration
+      .filter((e) => prefixes.some((p) => e.key.startsWith(p)))
+      .toArray();
+    if (doomed.length === 0) return;
+    const doomedKeys = new Set(doomed.map((e) => e.key));
+    const kept = new Set<string>();
+    await db.narration.each((e) => {
+      if (doomedKeys.has(e.key)) return;
+      kept.add(e.audioUrl);
+      kept.add(e.alignmentUrl);
+    });
+    const urls = doomed
+      .flatMap((e) => [e.audioUrl, e.alignmentUrl])
+      .filter((url) => !kept.has(url));
+    await db.mediaCache.bulkDelete(urls);
+    await db.narration.bulkDelete([...doomedKeys]);
+  } catch {
+    // Space we failed to reclaim, nothing worse.
   }
 }

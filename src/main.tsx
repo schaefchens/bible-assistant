@@ -12,6 +12,7 @@ import { initPwaUpdate } from '@/lib/pwaUpdate';
 import { initReadingHosts } from '@/lib/readingHosts';
 import { initPlaybackController } from '@/lib/playbackController';
 import { initAutoPlay } from '@/lib/autoPlay';
+import { initProviderFailureWatch } from '@/lib/providerFailureWatch';
 import { applyTheme } from '@/lib/theme';
 import { useSettingsStore } from '@/store/settingsStore';
 
@@ -27,6 +28,7 @@ initPwaUpdate();
 initReadingHosts();
 initPlaybackController();
 initAutoPlay();
+initProviderFailureWatch();
 // Reclaim the disk held by the retired Workbox `verse-audio-v2` cache; nothing
 // reads or expires it now that mediaCache has taken over.
 void reclaimLegacyAudioCache();

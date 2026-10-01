@@ -1,6 +1,8 @@
 import type { Translation } from '@/services/bible/bibleApi';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useLibraryStore } from '@/store/libraryStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
+import { voiceNameById } from '@/services/voices/voiceNames';
 
 /**
  * The two system messages every turn is prefixed with.
@@ -68,6 +70,7 @@ export function systemPrompt(locale: 'en' | 'de', translation: Translation): str
  */
 export function playbackStatePrompt(currentTrackTitle: string | null): string {
   const s = useSettingsStore.getState();
+  const library = useLibraryStore.getState();
   const rate = audioPlayback.getPlaybackRate();
   const loop = audioPlayback.isLoopCurrent();
   const ambientPlaying = audioPlayback.ambient.isPlaying();
@@ -97,6 +100,15 @@ export function playbackStatePrompt(currentTrackTitle: string | null): string {
     `  pauseBetweenChaptersMs: ${s.pauseBetweenChaptersMs}`,
     `set_mic_position:`,
     `  position: ${s.micCorner}`,
+    `set_voice:`,
+    `  reading: ${promptName(voiceNameById(library.voiceSelection.narration, library.voices))}`,
+    `  assistant: ${promptName(voiceNameById(library.voiceSelection.assistant, library.voices))}`,
   ];
   return lines.join('\n');
+}
+
+/** A user-written voice name, made safe to sit in a system prompt: one line,
+ * quoted, short. */
+function promptName(name: string): string {
+  return JSON.stringify(name.replace(/\s+/g, ' ').slice(0, 40));
 }

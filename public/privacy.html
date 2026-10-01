@@ -84,7 +84,8 @@
   <li>Deine Karten, Tafeln und Einstellungen liegen auf dem Server des Anbieters, damit du sie auf mehreren
       Geräten nutzen kannst.</li>
   <li>Für Spracherkennung, Antworten des Assistenten und das Vorlesen wird OpenAI als Auftragsverarbeiter
-      eingesetzt.</li>
+      eingesetzt. Wenn du einen eigenen ElevenLabs-Schlüssel hinterlegst, wird für ElevenLabs-Stimmen
+      zusätzlich ElevenLabs genutzt — über dein eigenes ElevenLabs-Konto.</li>
   <li>Der Bibeltext selbst wird auf dem Gerät gespeichert und benötigt keine Verbindung.</li>
 </ul>
 
@@ -136,6 +137,16 @@
     <td>Server des Anbieters</td>
   </tr>
   <tr>
+    <td>Eigener ElevenLabs-Schlüssel (optional)</td>
+    <td>Vorlesen mit ElevenLabs-Stimmen über dein eigenes ElevenLabs-Konto</td>
+    <td>Server des Anbieters → ElevenLabs</td>
+  </tr>
+  <tr>
+    <td>Eigene Erzählstimmen: Name, optionales Bild, Stimm-Einstellungen</td>
+    <td>Auswahl der Stimme, die vorliest; bei eingeschalteter Synchronisierung auf all deinen Geräten</td>
+    <td>Gerät; mit Synchronisierung auch Server des Anbieters</td>
+  </tr>
+  <tr>
     <td>Server-Protokolle (IP-Adresse, Zeitpunkt, Anfrage)</td>
     <td>Betrieb und Sicherheit</td>
     <td>Server des Anbieters</td>
@@ -169,6 +180,11 @@
       Sprachsynthese. Nach den Bedingungen für die OpenAI-API werden über die API übermittelte Inhalte nicht
       zum Trainieren der Modelle verwendet.
       <a href="https://openai.com/policies/privacy-policy" rel="noreferrer">Datenschutzhinweise von OpenAI</a></li>
+  <li><strong>ElevenLabs</strong> (Eleven Labs Inc.) — Sprachsynthese, nur wenn du einen eigenen ElevenLabs-Schlüssel
+      hinterlegst und eine ElevenLabs-Stimme verwendest. Die vorzulesenden Texte werden mit deinem Schlüssel über
+      dein eigenes ElevenLabs-Konto verarbeitet; dort erscheinen sie nach den Bedingungen von ElevenLabs auch in
+      deinem Verlauf.
+      <a href="https://elevenlabs.io/privacy-policy" rel="noreferrer">Datenschutzhinweise von ElevenLabs</a></li>
   <li><strong>Hetzner Online GmbH</strong> — Hosting des Servers innerhalb der Europäischen Union.</li>
   <li><strong>Google</strong> — Verteilung der Android-App über Google Play sowie, je nach Gerät, die
       Spracherkennung des Betriebssystems.</li>
@@ -186,7 +202,8 @@
 <ul>
   <li>Karten, Tafeln und eigene Aufnahmen bleiben gespeichert, bis du sie löschst.</li>
   <li>Sprachaufnahmen zur Umwandlung in Text werden nach der Verarbeitung nicht dauerhaft aufbewahrt.</li>
-  <li>Einen eigenen OpenAI-Schlüssel kannst du in den Einstellungen jederzeit entfernen.</li>
+  <li>Einen eigenen OpenAI- oder ElevenLabs-Schlüssel kannst du in den Einstellungen jederzeit entfernen.</li>
+  <li>Eine Erzählstimme, die du löschst, wird — bei eingeschalteter Synchronisierung — auch vom Server gelöscht.</li>
   <li>Für die vollständige Löschung deiner Bibliothek genügt eine E-Mail an die oben genannte Adresse mit
       deiner Kennung.</li>
 </ul>
@@ -226,7 +243,9 @@
       advertising.</li>
   <li>Your cards, boards and settings are kept on the provider's server so you can use them on more than one
       device.</li>
-  <li>OpenAI is used as a processor for speech recognition, assistant replies and reading aloud.</li>
+  <li>OpenAI is used as a processor for speech recognition, assistant replies and reading aloud. If you add
+      your own ElevenLabs key, ElevenLabs is also used for ElevenLabs voices — through your own ElevenLabs
+      account.</li>
   <li>The Bible text itself is stored on your device and needs no connection.</li>
 </ul>
 
@@ -277,6 +296,16 @@
     <td>Provider's server</td>
   </tr>
   <tr>
+    <td>Your own ElevenLabs key (optional)</td>
+    <td>Reading aloud in ElevenLabs voices through your own ElevenLabs account</td>
+    <td>Provider's server → ElevenLabs</td>
+  </tr>
+  <tr>
+    <td>Your narration voices: name, optional picture, voice settings</td>
+    <td>Choosing the voice that reads to you; with sync on, on all your devices</td>
+    <td>Device; with sync also the provider's server</td>
+  </tr>
+  <tr>
     <td>Server logs (IP address, timestamp, request)</td>
     <td>Operation and security</td>
     <td>Provider's server</td>
@@ -309,6 +338,10 @@
       speech synthesis. Under the OpenAI API terms, content submitted through the API is not used to train
       their models.
       <a href="https://openai.com/policies/privacy-policy" rel="noreferrer">OpenAI privacy policy</a></li>
+  <li><strong>ElevenLabs</strong> (Eleven Labs Inc.) — speech synthesis, only if you add your own ElevenLabs key and
+      use an ElevenLabs voice. The text to be read is processed with your key through your own ElevenLabs account,
+      where, under ElevenLabs' terms, it also appears in your history.
+      <a href="https://elevenlabs.io/privacy-policy" rel="noreferrer">ElevenLabs privacy policy</a></li>
   <li><strong>Hetzner Online GmbH</strong> — server hosting within the European Union.</li>
   <li><strong>Google</strong> — distribution of the Android app through Google Play and, depending on the
       device, the operating system's speech recognition.</li>
@@ -325,7 +358,8 @@
 <ul>
   <li>Cards, boards and your own recordings stay until you delete them.</li>
   <li>Voice recordings sent for transcription are not retained after processing.</li>
-  <li>You can remove your own OpenAI key at any time in Settings.</li>
+  <li>You can remove your own OpenAI or ElevenLabs key at any time in Settings.</li>
+  <li>A narration voice you delete is — with sync on — deleted from the server too.</li>
   <li>To have your library deleted in full, email the address above with your identifier.</li>
 </ul>
 

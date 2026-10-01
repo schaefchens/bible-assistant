@@ -22,9 +22,12 @@ import {
   enqueueOp,
   enqueueOrderSync,
   enqueueProgressSync,
+  enqueueVoiceSelectionSync,
   shouldDropSyncOp,
   syncEnabled,
 } from './syncQueueManager';
+import { normalizeVoiceProfile, type VoiceProfile } from '@/services/voices/voiceProfiles';
+import { adoptedVoiceSelection, liveVoices } from './libraryVoices';
 import {
   ACTIVE_BOARD_KEY,
   BOARD_ORDER_KEY,
@@ -190,15 +193,21 @@ export async function expandStoredSpans(get: GetState): Promise<void> {
  * clobber it.
  */
 async function seedSyncQueue(get: GetState): Promise<void> {
-  const [cardRows, boardRows, listRows, progressRows] = await Promise.all([
+  const [cardRows, boardRows, listRows, progressRows, voiceRows] = await Promise.all([
     db.cards.toArray(),
     db.boards.toArray(),
     db.readingLists.toArray(),
     db.readingProgress.toArray(),
+    db.voices.toArray(),
   ]);
   await seedRows(cardRows, 'card.upsert', 'card.delete');
   await seedRows(boardRows, 'board.upsert', 'board.delete');
   await seedRows(listRows, 'readingList.upsert', 'readingList.delete');
+  await seedRows(voiceRows, 'voice.upsert', 'voice.delete');
+  // The same rule as an order: a selection nobody ever made has nothing to
+  // say, and pushing the default would create the account for it alone.
+  const { voiceSelection } = get();
+  if (voiceSelection.updatedAt > 0) await enqueueVoiceSelectionSync(voiceSelection);
   const { cardOrder, cardOrderUpdatedAt, boardOrder, boardOrderUpdatedAt } = get();
   // An order that has never been set has nothing to say, and pushing it would
   // create the account purely to record two empty arrays — exactly the eager
@@ -280,6 +289,18 @@ export function createLibrarySync(set: SetState, get: GetState) {
               await markSynced(db.readingProgress, p.listId, p.updatedAt);
               break;
             }
+            case 'voice.upsert': {
+              await apiPostJson('voices.upsert', { voice: op.payload });
+              const v = op.payload as VoiceProfile;
+              await markSynced(db.voices, v.id, v.updatedAt);
+              break;
+            }
+            case 'voice.delete':
+              await apiPostJson('voices.delete', op.payload);
+              break;
+            case 'voiceSelection.set':
+              await apiPostJson('voices.selection.set', op.payload);
+              break;
           }
           await db.syncQueue.delete(op.id!);
           set((s) => ({ pendingOps: Math.max(0, s.pendingOps - 1) }));
@@ -338,8 +359,16 @@ export function createLibrarySync(set: SetState, get: GetState) {
 
     pullFromServer: async () => {
       if (!syncEnabled()) return;
-      const [cardsResp, boardsResp, cardOrderResp, boardOrderResp, listsResp, progressResp] =
-        await Promise.all([
+      const [
+        cardsResp,
+        boardsResp,
+        cardOrderResp,
+        boardOrderResp,
+        listsResp,
+        progressResp,
+        voicesResp,
+        voiceSelectionResp,
+      ] = await Promise.all([
           apiGetJson<{ cards: Card[] }>('cards.list'),
           apiGetJson<{ boards: Board[] }>('boards.list'),
           apiGetJson<{ order: string[]; updatedAt: number }>('cards.order.get').catch(
@@ -357,6 +386,10 @@ export function createLibrarySync(set: SetState, get: GetState) {
           apiGetJson<{ progress: unknown[] }>('readingProgress.list').catch(() => ({
             progress: [],
           })),
+          // Voices postdate the rest; the same "an older api.php must not cost
+          // the user their cards" rule applies.
+          apiGetJson<{ voices: unknown[] }>('voices.list').catch(() => ({ voices: [] })),
+          apiGetJson<unknown>('voices.selection.get').catch(() => null),
         ]);
       const remoteCards = cardsResp.cards ?? [];
       const remoteBoards = boardsResp.boards ?? [];
@@ -366,10 +399,14 @@ export function createLibrarySync(set: SetState, get: GetState) {
       const remoteProgress = (progressResp.progress ?? [])
         .map(normalizeReadingProgress)
         .filter((p): p is ReadingProgress => p !== null);
+      const remoteVoices = (voicesResp.voices ?? [])
+        .map(normalizeVoiceProfile)
+        .filter((v): v is VoiceProfile => v !== null);
 
       const queued = await db.syncQueue.toArray();
-      await db.transaction('rw', db.cards, db.boards, db.readingLists, db.readingProgress, async () => {
+      await db.transaction('rw', [db.cards, db.boards, db.readingLists, db.readingProgress, db.voices], async () => {
         await adoptRemoteRows(db.cards, remoteCards, pendingUpsertIds(queued, 'card.upsert'));
+        await adoptRemoteRows(db.voices, remoteVoices, pendingUpsertIds(queued, 'voice.upsert'));
         await adoptRemoteRows(db.boards, remoteBoards, pendingUpsertIds(queued, 'board.upsert'));
         await adoptRemoteRows(
           db.readingLists,
@@ -389,11 +426,12 @@ export function createLibrarySync(set: SetState, get: GetState) {
         }
       });
 
-      const [cards, boards, listRows, progressRows] = await Promise.all([
+      const [cards, boards, listRows, progressRows, voiceRows] = await Promise.all([
         db.cards.filter((c) => c.deleted !== 1).toArray(),
         db.boards.filter((b) => b.deleted !== 1).toArray(),
         db.readingLists.filter((l) => l.deleted !== 1).toArray(),
         db.readingProgress.toArray(),
+        db.voices.toArray(),
       ]);
       const liveCards = cards.map(stripLocal).map(normalizeCard);
       const liveBoards = boards.map(stripLocal);
@@ -421,9 +459,15 @@ export function createLibrarySync(set: SetState, get: GetState) {
       if (nextActive !== currentActive) {
         await db.preferences.delete(ACTIVE_BOARD_KEY);
       }
+      const voiceSelection = await adoptedVoiceSelection(
+        voiceSelectionResp,
+        get().voiceSelection,
+      );
       set({
         cards: liveCards,
         boards: liveBoards,
+        voices: liveVoices(voiceRows),
+        voiceSelection,
         readingLists: sortLists(listRows.map(stripLocal).map(normalizeList)),
         readingProgress: indexProgress(progressRows.map(stripLocal)),
         cardOrder: cardOrder.order,

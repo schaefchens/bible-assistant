@@ -7,12 +7,16 @@ import {
 import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { readingHosts } from './readingHosts';
 import { usePlaybackStore } from '@/store/playbackStore';
+import { useSettingsStore } from '@/store/settingsStore';
+import type { VerseSummary } from '@/types/domain';
 import {
-  effectiveReadingVoice,
-  effectiveVoiceStyle,
-  useSettingsStore,
-} from '@/store/settingsStore';
-import { isBrowserVoice, type OpenAiVoiceId, type VerseSummary } from '@/types/domain';
+  isDeviceVoice,
+  sameTtsVoice,
+  ttsConcurrency,
+  type TtsVoice,
+} from '@/services/voices/ttsVoice';
+import { providerFailureOf } from '@/services/api/client';
+import { currentNarrationVoice, selectedNarrationVoice } from './narrationVoice';
 import {
   buildPlaybackPlan,
   sliceFromVerseIndex,
@@ -82,29 +86,33 @@ function definitelyOffline(): boolean {
  * the premium voice and skip the rest, leaving holes in the middle of a chapter.
  * Reading all of it in the device voice is worse-sounding but whole.
  */
-async function planFullyCached(
-  plan: PlanItem[],
-  voice: OpenAiVoiceId,
-  voiceStyle: string,
-): Promise<boolean> {
+async function planFullyCached(plan: PlanItem[], voice: TtsVoice): Promise<boolean> {
   for (const it of plan) {
-    if (!(await cachedNarrationFor(it, voice, voiceStyle))) return false;
+    if (!(await cachedNarrationFor(it, voice))) return false;
   }
   return true;
 }
 
 /**
- * Which engine reads this plan: the on-device voice, or OpenAI TTS?
+ * Which voice reads this plan — a narration voice, or `null` for the device
+ * voice.
  *
- * Being offline counts as "device voice" even when an OpenAI voice is selected —
- * unless the whole plan is already downloaded, in which case being offline is
- * irrelevant and the premium narration plays. That exception is the entire point
- * of downloading a chapter; without it the download would be silently useless in
- * the one situation it was made for.
+ * In order:
  *
- * Without the fallback, every buildTrack() in an offline reading fails, each
- * failure is swallowed, and the reading plays *nothing at all* — the app looks
- * broken with no error surfaced anywhere.
+ * 1. **The voice the user chose, if the whole plan is already downloaded in
+ *    it.** Playing what is on the device costs nothing, so it plays even when
+ *    this session could not *generate* in that voice: offline, or in the
+ *    moment after boot before the key status has arrived — which would
+ *    otherwise read a chapter someone downloaded in their own voice in Echo.
+ * 2. Otherwise the voice this session resolves to (the chosen one if it can
+ *    speak, else its fallback), when online.
+ * 3. Offline, that voice still — if the plan is fully downloaded in it.
+ * 4. Otherwise the device voice. Being offline with nothing downloaded would
+ *    make every `buildTrack()` fail and the reading play *nothing at all*; the
+ *    device voice is worse-sounding but whole.
+ *
+ * All-or-nothing on purpose (see `planFullyCached`): a partial hit would read
+ * the downloaded verses in one voice and skip the rest.
  *
  * Not a pure predicate: choosing the device voice *because* of the network
  * announces the fallback once per session, so the UI can explain why the voice
@@ -118,13 +126,17 @@ async function planFullyCached(
  * engines under it would both leave two engines talking over each other and
  * throw away better audio.
  */
-export async function readingUsesBrowserVoice(plan: PlanItem[]): Promise<boolean> {
-  const voice = effectiveReadingVoice();
-  if (isBrowserVoice(voice)) return true;
-  if (!definitelyOffline()) return false;
-  if (await planFullyCached(plan, voice as OpenAiVoiceId, effectiveVoiceStyle())) return false;
+export async function readingTtsVoice(plan: PlanItem[]): Promise<TtsVoice | null> {
+  const chosen = selectedNarrationVoice();
+  const resolved = currentNarrationVoice();
+  if (!isDeviceVoice(chosen) && chosen !== resolved && (await planFullyCached(plan, chosen))) {
+    return chosen;
+  }
+  if (isDeviceVoice(resolved)) return null;
+  if (!definitelyOffline()) return resolved;
+  if (await planFullyCached(plan, resolved)) return resolved;
   announceNarrationFallback();
-  return true;
+  return null;
 }
 
 /**
@@ -181,8 +193,8 @@ export async function startPlaybackForVerses(
   });
   const plan = sliceFromVerseIndex(fullPlan, startIndex);
 
-  const readerVoice = effectiveReadingVoice();
-  if (await readingUsesBrowserVoice(plan)) {
+  const voice = await readingTtsVoice(plan);
+  if (!voice) {
     const items = planToBrowserItems(plan, groupId);
     void browserTts.speakQueue(items);
     return;
@@ -193,14 +205,10 @@ export async function startPlaybackForVerses(
   // Awaited so startReadingPlaylist sequences subsequent readings AFTER this
   // one's stream rather than letting their feeds supersede it mid-build.
   const firstIsVerse = plan[0]?.kind === 'verse';
-  await streamReading(
-    plan,
-    groupId,
-    readerVoice as OpenAiVoiceId,
-    effectiveVoiceStyle() || undefined,
-    undefined,
-    { mode: 'playQueue', startWordIndex: firstIsVerse ? startWordIndex : undefined },
-  );
+  await streamReading(plan, groupId, voice, undefined, {
+    mode: 'playQueue',
+    startWordIndex: firstIsVerse ? startWordIndex : undefined,
+  });
 }
 
 /**
@@ -246,19 +254,12 @@ async function enqueueReadingForGroup(
     pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
     wholeChapter: group?.wholeChapter ?? false,
   });
-  const readerVoice = effectiveReadingVoice();
-  if (await readingUsesBrowserVoice(plan)) {
+  const voice = await readingTtsVoice(plan);
+  if (!voice) {
     void browserTts.enqueue(planToBrowserItems(plan, groupId));
     return;
   }
-  await streamReading(
-    plan,
-    groupId,
-    readerVoice as OpenAiVoiceId,
-    effectiveVoiceStyle() || undefined,
-    undefined,
-    { mode: 'enqueue' },
-  );
+  await streamReading(plan, groupId, voice, undefined, { mode: 'enqueue' });
 }
 
 export function planToBrowserItems(plan: PlanItem[], groupId: string): BrowserTtsItem[] {
@@ -272,28 +273,23 @@ export function planToBrowserItems(plan: PlanItem[], groupId: string): BrowserTt
   }));
 }
 
-// How many verse-TTS requests to generate in parallel. The old sequential
-// loop meant a long passage (e.g. a whole 29-verse chapter) finished its LAST
-// verse's TTS before the FIRST could play — a multi-second silent gap before
-// a continuation, scaling with passage length. A small pool keeps generation
-// well ahead of playback while staying within sane backend/OpenAI concurrency.
-const TTS_BUILD_CONCURRENCY = 4;
-
 /**
  * Why a track didn't build. The distinction matters: an abort is the user
  * stopping, while a failure means TTS is unreachable — and in a fresh reading
  * that is the difference between "stop" and "play the whole passage with the
- * device voice instead of nothing at all".
+ * device voice instead of nothing at all". A *provider* failure (the ElevenLabs
+ * key refused, the credits gone, the voice missing) is a third case: the voice
+ * cannot speak this session, but its fallback can, so the reading continues in
+ * that instead of skipping every remaining verse.
  */
 type BuildOutcome =
   | { ok: true; track: PlaybackTrack }
-  | { ok: false; aborted: boolean };
+  | { ok: false; aborted: boolean; providerFailure: boolean };
 
 async function buildTrack(
   it: PlanItem,
   groupId: string,
-  voice: OpenAiVoiceId,
-  voiceStyle: string | undefined,
+  voice: TtsVoice,
   signal?: AbortSignal,
 ): Promise<BuildOutcome> {
   try {
@@ -309,7 +305,7 @@ async function buildTrack(
     // paragraphs. That flag suppresses the per-word tick for *announcements*,
     // whose alignment maps onto nothing rendered; a post paragraph is rendered
     // verbatim, so its highlighting is exactly as valid as a verse's.
-    const ref = await resolveNarrationFor(it, voice, voiceStyle ?? '', signal);
+    const ref = await resolveNarrationFor(it, voice, signal);
     return {
       ok: true,
       track: {
@@ -324,15 +320,23 @@ async function buildTrack(
   } catch (e) {
     const aborted = e instanceof DOMException && e.name === 'AbortError';
     if (!aborted) console.warn('tts failed', it.kind, e);
-    return { ok: false, aborted };
+    return { ok: false, aborted, providerFailure: providerFailureOf(e) !== null };
   }
 }
 
-export async function planToOpenAiTracks(
+/**
+ * Build a whole plan's tracks at once — the prefetch and the mid-reading
+ * rebuild, where nothing plays until all of it is ready.
+ *
+ * Bounded concurrency (`ttsConcurrency`): the old sequential loop meant a long
+ * passage finished its LAST verse's TTS before the FIRST could play, and an
+ * unbounded one would trip the smaller ElevenLabs tiers' concurrency limits —
+ * a refused request is a silent hole in a chapter.
+ */
+export async function planToTtsTracks(
   plan: PlanItem[],
   groupId: string,
-  voice: OpenAiVoiceId,
-  voiceStyle: string | undefined,
+  voice: TtsVoice,
   signal?: AbortSignal,
 ): Promise<PlaybackTrack[]> {
   // Generate with bounded concurrency, preserving plan order via indexed
@@ -344,11 +348,11 @@ export async function planToOpenAiTracks(
       if (signal?.aborted) return;
       const i = cursor++;
       if (i >= plan.length) return;
-      const out = await buildTrack(plan[i], groupId, voice, voiceStyle, signal);
+      const out = await buildTrack(plan[i], groupId, voice, signal);
       results[i] = out.ok ? out.track : null;
     }
   };
-  const poolSize = Math.min(TTS_BUILD_CONCURRENCY, plan.length);
+  const poolSize = Math.min(ttsConcurrency(voice), plan.length);
   await Promise.all(Array.from({ length: poolSize }, () => worker()));
   return results.filter((t): t is PlaybackTrack => t !== null);
 }
@@ -373,8 +377,7 @@ type StreamStart =
 export async function streamReading(
   plan: PlanItem[],
   groupId: string,
-  voice: OpenAiVoiceId,
-  voiceStyle: string | undefined,
+  voice: TtsVoice,
   signal: AbortSignal | undefined,
   start: StreamStart,
 ): Promise<void> {
@@ -385,11 +388,27 @@ export async function streamReading(
   if (group?.verses.length) publishNowPlaying(group.verses);
   let gen = -1;
   let started = false;
+  // The voice can change once, mid-reading: when the provider refuses it
+  // (ElevenLabs credits run out halfway through a chapter, say), the failure
+  // watcher has already recorded why by the time the error reaches here, so
+  // re-resolving yields the fallback — and the rest of the chapter is read in
+  // that rather than skipped verse by verse. Once, because a second refusal
+  // means the fallback is not the answer either.
+  let speaking = voice;
+  let rerouted = false;
   try {
     for (const it of plan) {
       if (signal?.aborted) break;
       if (started && !audioPlayback.isFeed(gen)) break; // superseded / stopped
-      const out = await buildTrack(it, groupId, voice, voiceStyle, signal);
+      let out = await buildTrack(it, groupId, speaking, signal);
+      if (!out.ok && out.providerFailure && !rerouted) {
+        rerouted = true;
+        const fallback = currentNarrationVoice();
+        if (!isDeviceVoice(fallback) && !sameTtsVoice(fallback, speaking)) {
+          speaking = fallback;
+          out = await buildTrack(it, groupId, speaking, signal);
+        }
+      }
       if (!out.ok) {
         // Nothing has played yet, this is a fresh user-initiated reading, and
         // TTS is unreachable (offline, backend down, no key, quota) — so every
@@ -451,7 +470,7 @@ export function playFromVerseWord(
 ): void {
   if (verses.length === 0) return;
 
-  if (browserTts.isActive() || isBrowserVoice(effectiveReadingVoice())) {
+  if (browserTts.isActive() || isDeviceVoice(currentNarrationVoice())) {
     void startPlaybackForVerses(groupId, verses, verseIndex);
     return;
   }

@@ -1,5 +1,6 @@
 import { requireIdentity } from '@/lib/identity';
 import { useSettingsStore } from '@/store/settingsStore';
+import type { ElevenLabsFailure } from '@/services/voices/voiceProfiles';
 // Resolves to the same '/assistant/api.php' on the web build; on the native
 // build it carries the absolute backend origin, which the WebView can't infer.
 import { API_BASE } from './origin';
@@ -48,6 +49,72 @@ function notifyUserKeyFailure(): void {
   }
 }
 
+/**
+ * An ElevenLabs refusal that will keep happening for the rest of the session —
+ * the key is missing or refused, the credits are gone, or one voice can no
+ * longer be used — as opposed to a blip (a rate limit, an outage, a busy
+ * server), which is `null` here and simply retried by whoever asked.
+ *
+ * Recognised by the `provider` the server stamps on every ElevenLabs error, so
+ * it can never be confused with `user_key_failed`, which means "your OpenAI key
+ * was refused, offer the shared one" and must not fire for ElevenLabs.
+ *
+ * `action` is the request that failed. A missing or refused key and spent
+ * credits stop narration whatever asked; a missing *permission* or an unusable
+ * voice only does when narration asked — a key without "user read" can't show
+ * the credits, and that must not silence a key that narrates perfectly well.
+ * Defaults to narration, which is what every caller outside this module is.
+ */
+export function providerFailureOf(err: unknown, action = 'tts'): ElevenLabsFailure | null {
+  if (!(err instanceof ApiError) || typeof err.body !== 'object' || err.body === null) return null;
+  const body = err.body as { error?: unknown; provider?: unknown; voiceId?: unknown };
+  if (body.provider !== 'elevenlabs') return null;
+  const narration = action === 'tts' || action === 'tts.speak';
+  switch (body.error) {
+    case 'elevenlabs_key_missing':
+    case 'elevenlabs_key_failed':
+      return { kind: 'key' };
+    case 'elevenlabs_key_permissions':
+      return narration ? { kind: 'key' } : null;
+    case 'elevenlabs_quota_exceeded':
+      return { kind: 'quota' };
+    case 'elevenlabs_voice_unavailable':
+    case 'elevenlabs_not_allowed':
+      if (!narration) return null;
+      return typeof body.voiceId === 'string'
+        ? {
+            kind: 'voice',
+            voiceId: body.voiceId,
+            reason: body.error === 'elevenlabs_not_allowed' ? 'not_allowed' : 'unavailable',
+          }
+        : { kind: 'key' };
+    default:
+      return null;
+  }
+}
+
+/** Listener for `providerFailureOf` failures, the counterpart of
+ * `onUserKeyFailure`: lib/providerFailureWatch.ts records them in settings so
+ * every voice resolver falls back at once, rather than each caller learning it
+ * from its own failed request. The second argument is the server's code. */
+type ProviderFailureListener = (failure: ElevenLabsFailure, code: string) => void;
+const providerFailureListeners = new Set<ProviderFailureListener>();
+
+export function onProviderFailure(fn: ProviderFailureListener): () => void {
+  providerFailureListeners.add(fn);
+  return () => providerFailureListeners.delete(fn);
+}
+
+function notifyProviderFailure(failure: ElevenLabsFailure, code: string): void {
+  for (const fn of providerFailureListeners) {
+    try {
+      fn(failure, code);
+    } catch {
+      /* swallow — bad listener shouldn't block others */
+    }
+  }
+}
+
 function authHeaders(): Record<string, string> {
   const identity = requireIdentity();
   const headers: Record<string, string> = {
@@ -78,7 +145,7 @@ export async function apiPostJson<T = unknown>(
     signal: opts?.signal,
   });
 
-  return parseResponse<T>(res);
+  return parseResponse<T>(res, action);
 }
 
 export async function apiGetJson<T = unknown>(action: string): Promise<T> {
@@ -86,7 +153,7 @@ export async function apiGetJson<T = unknown>(action: string): Promise<T> {
     method: 'GET',
     headers: authHeaders(),
   });
-  return parseResponse<T>(res);
+  return parseResponse<T>(res, action);
 }
 
 export async function apiPostForm<T = unknown>(action: string, form: FormData): Promise<T> {
@@ -95,10 +162,10 @@ export async function apiPostForm<T = unknown>(action: string, form: FormData): 
     headers: authHeaders(),
     body: form,
   });
-  return parseResponse<T>(res);
+  return parseResponse<T>(res, action);
 }
 
-async function parseResponse<T>(res: Response): Promise<T> {
+async function parseResponse<T>(res: Response, action: string): Promise<T> {
   const text = await res.text();
   let parsed: unknown = undefined;
   if (text) {
@@ -116,6 +183,10 @@ async function parseResponse<T>(res: Response): Promise<T> {
     }
     const apiErr = new ApiError(msg, res.status, parsed);
     if (isUserKeyFailure(apiErr)) notifyUserKeyFailure();
+    // Synchronously, before the throw: whoever catches this re-resolves its
+    // voice and must already see the failure recorded (see streamReading).
+    const providerFailure = providerFailureOf(apiErr, action);
+    if (providerFailure) notifyProviderFailure(providerFailure, msg);
     throw apiErr;
   }
   return parsed as T;

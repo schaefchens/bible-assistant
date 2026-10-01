@@ -2,27 +2,25 @@ import { postTtsSpeak } from '@/services/api/tts';
 import { browserTts } from '@/lib/browserTts';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { usePlaybackStore } from '@/store/playbackStore';
-import {
-  effectiveAssistantVoice,
-  effectiveVoiceStyle,
-  useSettingsStore,
-} from '@/store/settingsStore';
-import { isBrowserVoice } from '@/types/domain';
+import { useSettingsStore } from '@/store/settingsStore';
+import { currentAssistantVoice } from '@/lib/narrationVoice';
 
 /** Speak the assistant's text reply aloud (when "speak assistant" is enabled),
- * routing to browser TTS or OpenAI TTS depending on the chosen assistant
- * voice. No-op for empty text or when speaking is disabled. */
+ * routing to the device voice or a narration voice depending on the chosen
+ * assistant voice. The voice's own style comes with it — replies no longer
+ * borrow the reading voice's. No-op for empty text or when speaking is
+ * disabled. */
 export async function speakAssistantReply(text: string, messageId: string): Promise<void> {
   const trimmed = stripMarkdownForSpeech(text);
   if (!trimmed) return;
   const { speakAssistant, locale } = useSettingsStore.getState();
   if (!speakAssistant) return;
-  const assistantVoice = effectiveAssistantVoice();
+  const assistantVoice = currentAssistantVoice();
   // A verse is actively playing → the reply should interject (pause the
   // reading, speak, resume) rather than queue behind the whole passage.
   const readingActive = usePlaybackStore.getState().status === 'playing';
 
-  if (isBrowserVoice(assistantVoice)) {
+  if (assistantVoice.provider === 'device') {
     const lang = locale === 'de' ? 'de-DE' : 'en-US';
     if (readingActive && !browserTts.isActive()) {
       // Reading is on the OpenAI/Web-Audio engine: pause it, speak the reply,
@@ -42,12 +40,10 @@ export async function speakAssistantReply(text: string, messageId: string): Prom
     }
     return;
   }
-  const voiceStyle = effectiveVoiceStyle();
   try {
     const tts = await postTtsSpeak({
       text: trimmed,
       voice: assistantVoice,
-      voiceStyle: voiceStyle || undefined,
       language: locale === 'de' ? 'de' : 'en',
     });
     audioPlayback.ensureContext();

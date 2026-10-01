@@ -3,8 +3,8 @@ import { browserTts, type BrowserTtsItem } from './browserTts';
 import { buildPlaybackPlan } from './playbackPlan';
 import {
   planToBrowserItems,
-  planToOpenAiTracks,
-  readingUsesBrowserVoice,
+  planToTtsTracks,
+  readingTtsVoice,
   streamReading,
 } from './startPlayback';
 import {
@@ -18,12 +18,11 @@ import { noteEntryFinished, noteEntryStarted } from './readingProgressTracker';
 import { readingHosts } from './readingHosts';
 import { rangeHistoryNote } from './chatReadingHost';
 import { usePlaybackStore } from '@/store/playbackStore';
-import {
-  effectiveReadingVoice,
-  effectiveVoiceStyle,
-  useSettingsStore,
-} from '@/store/settingsStore';
-import type { OpenAiVoiceId, VerseSummary } from '@/types/domain';
+import { useLibraryStore } from '@/store/libraryStore';
+import { useSettingsStore } from '@/store/settingsStore';
+import type { VerseSummary } from '@/types/domain';
+import { voiceKeyPart } from '@/services/voices/ttsVoice';
+import { currentNarrationVoice } from './narrationVoice';
 
 /**
  * Auto-play continues the current reading once it naturally ends, and prefetches
@@ -40,10 +39,13 @@ type PrefetchCache = {
   key: string;
   next: NextReading;
   summaries: VerseSummary[];
-  /** Pre-built tracks (OpenAI voice) — ready to enqueue. */
+  /** Pre-built tracks (a narration voice) — ready to enqueue. */
   tracks: PlaybackTrack[] | null;
-  /** For browser TTS, we only prefetch verse text; tracks are null. */
-  isBrowserVoice: boolean;
+  /** The voice the tracks were built in (`voiceKeyPart`), or null when the
+   * device voice was going to read and only the text was prefetched. Checked
+   * at enqueue time: tracks built in one voice must never be queued after the
+   * user switched to another. */
+  voiceKey: string | null;
 };
 
 let lastPlayedGroupId: string | null = null;
@@ -64,9 +66,9 @@ function autoPlayOn(): boolean {
  * True when the device voice is the engine that just read — still speaking, or
  * soft-ended and waiting for a continuation to bridge into.
  *
- * `readingUsesBrowserVoice` cannot answer this: it decides from the *setting*
- * and the network, and a reading that fell back to the device voice because TTS
- * was unreachable still has an OpenAI voice selected and an online browser.
+ * `readingTtsVoice` cannot answer this: it decides from the *setting* and the
+ * network, and a reading that fell back to the device voice because TTS was
+ * unreachable still has a narration voice selected and an online browser.
  */
 function browserTtsIsReading(): boolean {
   return browserTts.isActive() || browserTts.isSoftEnded();
@@ -95,11 +97,13 @@ async function enqueueContinuationFor(
   const settings = useSettingsStore.getState();
   let summaries: VerseSummary[];
   let tracksFromPrefetch: PlaybackTrack[] | null = null;
+  let prefetchVoiceKey: string | null = null;
 
   const key = continuationKey(next);
   if (prefetched && prefetched.key === key) {
     summaries = prefetched.summaries;
     tracksFromPrefetch = prefetched.tracks;
+    prefetchVoiceKey = prefetched.voiceKey;
     prefetched = null;
   } else {
     summaries = await loadReadingVerses(next, settings.locale);
@@ -127,7 +131,6 @@ async function enqueueContinuationFor(
   // app mid-chapter still resumes in the right place.
   noteEntryStarted(next.provenance);
 
-  const readerVoice = effectiveReadingVoice();
   // Built up front: the engine choice needs to see the plan, because a chapter
   // already downloaded should keep playing in its downloaded voice even offline.
   const contPlan = buildPlaybackPlan(summaries, {
@@ -151,17 +154,20 @@ async function enqueueContinuationFor(
   // quota), and without this the continuation would ask the same dead service
   // again and the reading would simply stop — measured, with a backend
   // returning 502: every track failed to build and nothing was enqueued at all.
-  if (browserTtsIsReading() || (await readingUsesBrowserVoice(contPlan))) {
+  const voice = browserTtsIsReading() ? null : await readingTtsVoice(contPlan);
+  if (!voice) {
     const items: BrowserTtsItem[] = planToBrowserItems(contPlan, newGroupId);
     void browserTts.enqueue(items);
     return;
   }
 
   // An empty prefetch is a *failed* prefetch, not a silent chunk — fall through
-  // to the cold build rather than enqueueing nothing.
-  const prefetchTracks = tracksFromPrefetch?.length
-    ? tracksFromPrefetch.map((t) => ({ ...t, groupId: newGroupId }))
-    : null;
+  // to the cold build rather than enqueueing nothing. Nor is a prefetch built
+  // in a voice the user has since left: that chunk would read in the old one.
+  const prefetchTracks =
+    tracksFromPrefetch?.length && prefetchVoiceKey === voiceKeyPart(voice)
+      ? tracksFromPrefetch.map((t) => ({ ...t, groupId: newGroupId }))
+      : null;
 
   if (prefetchTracks) {
     // Prefetch hit: the whole chunk is already built, so enqueue it at once.
@@ -172,14 +178,7 @@ async function enqueueContinuationFor(
     // Cold build: stream so the continuation's first verse plays after one TTS
     // round-trip instead of after the whole (possibly chapter-long) chunk —
     // this is the fix for the long silent gap before a continuation.
-    await streamReading(
-      contPlan,
-      newGroupId,
-      readerVoice as OpenAiVoiceId,
-      effectiveVoiceStyle() || undefined,
-      undefined,
-      { mode: 'enqueue' },
-    );
+    await streamReading(contPlan, newGroupId, voice, undefined, { mode: 'enqueue' });
   }
 }
 
@@ -201,7 +200,6 @@ async function schedulePrefetchFor(groupId: string): Promise<void> {
     if (controller.signal.aborted || summaries.length === 0) return;
 
     let tracks: PlaybackTrack[] | null = null;
-    const prefetchVoice = effectiveReadingVoice();
     const plan = buildPlaybackPlan(summaries, {
       locale: settings.locale,
       readChapterHeadings: settings.readChapterHeadings,
@@ -211,27 +209,21 @@ async function schedulePrefetchFor(groupId: string): Promise<void> {
       pauseBetweenChaptersMs: settings.pauseBetweenChaptersMs,
       wholeChapter: isWholeChapterReading(next),
     });
-    const usingBrowser = await readingUsesBrowserVoice(plan);
-    if (!usingBrowser) {
-      tracks = await planToOpenAiTracks(
-        plan,
-        groupId,
-        prefetchVoice as OpenAiVoiceId,
-        effectiveVoiceStyle() || undefined,
-        controller.signal,
-      );
+    const voice = await readingTtsVoice(plan);
+    if (voice) {
+      tracks = await planToTtsTracks(plan, groupId, voice, controller.signal);
     }
     if (controller.signal.aborted) return;
     // Nothing built means TTS failed for every item, which is a failure to
     // report by *not* caching: a cached empty result reads as "this chunk is
     // silent" at enqueue time, and the reading ends with no error anywhere.
-    if (!usingBrowser && tracks !== null && tracks.length === 0) return;
+    if (voice && tracks !== null && tracks.length === 0) return;
     prefetched = {
       key: continuationKey(next),
       next,
       summaries,
       tracks,
-      isBrowserVoice: usingBrowser,
+      voiceKey: voice ? voiceKeyPart(voice) : null,
     };
   } catch {
     /* abort or fetch failure — retry on next trigger */
@@ -358,8 +350,22 @@ export function initAutoPlay(): void {
     }
   });
 
+  // A new narration voice — picked here, synced in from another device, or
+  // forced by a key that just failed — makes the prefetched chunk the wrong
+  // audio. Dropping it also clears the anchor, so the per-frame subscriber
+  // above prefetches again in the new voice on its next tick.
+  let lastVoice = currentNarrationVoice();
+  const dropPrefetchOnVoiceChange = () => {
+    const voice = currentNarrationVoice();
+    if (voice === lastVoice) return;
+    lastVoice = voice;
+    cancelAutoPlayPrefetch();
+  };
+  useLibraryStore.subscribe(dropPrefetchOnVoiceChange);
+
   // React when the user toggles auto-play ON mid-playback.
   useSettingsStore.subscribe((state, prev) => {
+    dropPrefetchOnVoiceChange();
     if (state.autoPlayReading && !prev.autoPlayReading && lastPlayedGroupId) {
       void schedulePrefetchFor(lastPlayedGroupId);
     }

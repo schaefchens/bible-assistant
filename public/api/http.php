@@ -77,8 +77,16 @@ function safeUuid(mixed $v, string $what = 'id'): string {
  *   - userDir      string  USERS_DIR/{userId} — may not exist yet
  *   - preferShared bool    added by the router: caller opted into the shared
  *                          OpenAI key for this request (X-Prefer-Shared-Key)
- *   - openaiKey    string  added by the router for OpenAI actions only: the
- *                          resolved key (personal unless preferShared/absent)
+ *   - payer        array   who pays for the upstream call this request makes:
+ *                          ['provider' => 'openai'|'elevenlabs',
+ *                           'key'      => the key to send,
+ *                           'who'      => 'requester' (the caller's own
+ *                                         stored key) | 'operator' (this
+ *                                         server's shared OpenAI key)].
+ *                          Added by the router for $OPENAI_ACTIONS (see
+ *                          openAiPayer), and by withTtsPayer() inside tts /
+ *                          tts.speak on a cache miss only — a cache hit never
+ *                          resolves a key, so it costs nobody anything.
  * authenticate() populates the first three; the router adds the rest.
  */
 

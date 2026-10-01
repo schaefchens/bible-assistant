@@ -15,6 +15,9 @@ export const ROUTES = {
   subscribe: '/subscribe',
   cards: '/cards',
   settings: '/settings',
+  /** Narration voices: the gallery, and `/settings/voices/:id` (or `new`) the
+   * editor. Under Settings, so the Settings tab stays lit. */
+  voices: '/settings/voices',
 } as const;
 
 /** Routes that show scripture and therefore want the reading affordances

@@ -2,18 +2,20 @@
 
 > Part of the architecture notes indexed in [`CLAUDE.md`](../../CLAUDE.md). Moved there verbatim; "above" and "below" may refer to sections that now live in a sibling file.
 
-One PHP front door; routes on `?action=`. Per-user data dirs keyed by an identity derived from the user's passphrase. OpenAI actions (`chat`, `tts`, `tts.speak`, `transcribe`, `recording.upload`) require a key — a personal key (sent by the client) or the shared key, selected via the `X-Prefer-Shared-Key` header.
+One PHP front door; routes on `?action=`. Per-user data dirs keyed by an identity derived from the user's passphrase. `chat`, `transcribe` and `recording.upload` resolve an OpenAI key before their handler runs — the user's personal key, **stored on the server** by `auth.openaiKey.set` (the client never holds it), or the shared key, which `X-Prefer-Shared-Key` forces for a session. `tts` and `tts.speak` decide who pays inside the handler, on a cache miss only — see "Who pays" below.
 
 **Accounts are lazy.** `authenticate()` validates the identity headers and creates
 nothing; `requireUserDir()` creates `storage/users/{id}` and is called from the router
-only for `$ACCOUNT_ACTIONS` (the cards/boards writers, `auth.openaiKey.set`,
-`recording.upload`). Everything else works with no directory at all — the readers guard
+only for `$ACCOUNT_ACTIONS` (the cards/boards/reading-list/voice writers, the two key
+setters `auth.openaiKey.set` and `auth.elevenlabsKey.set`, `recording.upload`, and the
+community writers). Everything else works with no directory at all — the readers guard
 with `file_exists`/`is_readable` and answer empty. This is what makes the client's sync
 opt-in truthful: a user who only reads scripture and asks the assistant questions leaves
 nothing on the server. Don't move an action into `$ACCOUNT_ACTIONS` without meaning it,
 and don't reintroduce an eager `mkdir` in `authenticate()`.
 
-**Fourteen files, loaded by `api.php` before anything is dispatched.** It was one
+**A file per concern, loaded by `api.php` before anything is dispatched** — no count
+here, because the last one went stale the same way the endpoint list did. It was one
 2,786-line file, which meant a change to moderation had to be read alongside the
 Zefania parser and the curl helpers. `api.php` is now the header, the requires and
 the router — and **the router's `switch` is the endpoint list**, complete by
@@ -26,11 +28,13 @@ construction, which is why the docblock no longer carries a hand-written copy (b
 | `api/bootstrap.php` | what exists on disk, and what Apache may serve. Side effects only |
 | `api/http.php` | `respond`/`fail`, input narrowing (`safe*`), identity, CORS |
 | `api/store.php` | the JSON files under `storage/`, and the generic collection endpoints |
-| `api/openai.php` | which key pays, the four curl shapes, how a failure is reported |
+| `api/openai.php` | which OpenAI key pays (`openAiPayer`), the four curl shapes, how a failure is reported |
 | `api/chat.php` | the assistant proxy |
-| `api/audio.php` | `tts`, `tts.speak`, forced alignment, `transcribe` |
-| `api/bible.php` | Zefania XML → verses |
-| `api/account.php` | the caller's own key, `account.delete`, `recording.upload`, `ambient.list` |
+| `api/audio.php` | `tts`, `tts.speak`, who pays for narration (`ttsPayer`), the shared key's limits, forced alignment, `transcribe`; the pure MP3 framing and the ElevenLabs character-timings → words converter |
+| `api/bible.php` | Zefania XML → verses (`bibleChapterVerses`, also the ElevenLabs verse context) |
+| `api/account.php` | the stored provider keys (the only code that touches `users/{id}/*_key.txt`), `account.delete`, `recording.upload`, `ambient.list` |
+| `api/voices.php` | what a narration voice is: the audible-config rules, its canonical hash, `sanitizeVoiceProfile`, the voices collection and the selection |
+| `api/elevenlabs.php` | the ElevenLabs transport (the only `xi-api-key`), its failure mapping, the key trio, narration, and the four proxies |
 | `api/community.php` | what a space is on disk: paths, sanitizers, share codes, signatures, the moderation text pulled out of a payload |
 | `api/spaces.php` | the owner's own community endpoints |
 | `api/sharing.php` | the four endpoints that cross accounts |
@@ -76,7 +80,7 @@ Three things about that split are load-bearing:
   every request 500ing for the rest of the transfer — and permanently, if the
   transfer then fails.
 
-Actions: `chat`, `tts`, `tts.speak`, `bible.chapter`, `transcribe`, `auth.openaiKey.{status,set,clear}`, `cards.{list,upsert,delete,order.get,order.set}`, `boards.{list,upsert,delete,order.get,order.set}`, `readingLists.{list,upsert,delete}`, `readingProgress.{list,set}`, `recording.upload`, `account.delete`, `ambient.list`, and the community actions:
+Actions: `chat`, `tts`, `tts.speak`, `bible.chapter`, `transcribe`, `auth.openaiKey.{status,set,clear}`, `auth.elevenlabsKey.{status,set,clear}`, `elevenlabs.{subscription,voices,design,design.save}`, `voices.{list,upsert,delete}`, `voices.selection.{get,set}`, `cards.{list,upsert,delete,order.get,order.set}`, `boards.{list,upsert,delete,order.get,order.set}`, `readingLists.{list,upsert,delete}`, `readingProgress.{list,set}`, `recording.upload`, `account.delete`, `ambient.list`, and the community actions:
 `profile.{get,set,delete}`, `profile.avatar.upload`, `spaces.{list,upsert,delete}`,
 `spaces.code.set`, `posts.{list,upsert,delete}`, `items.{list,upsert,delete}`,
 `members.{list,decide}`,
@@ -95,3 +99,48 @@ it. The client tolerates both reading-list actions being absent (an older api.ph
 not their cards.
 
 Bible text is parsed from Zefania XML in `public/bibles/*.xml` (S00, S51, LUT, HFA, ELB = German; ESV, KJV, NKJV = English). Client base URL + error handling: `src/services/api/client.ts` (`apiPostJson` / `apiGetJson` / `apiPostForm`, `ApiError`, `onUserKeyFailure`).
+
+## Who pays — narration and the provider keys
+
+Narration is the one place the payer depends on the request body — OpenAI or
+ElevenLabs, and later perhaps a voice's owner rather than its listener — so it is
+resolved **inside the handler, on a cache miss only**: `ttsPayer($ctx, $provider)` /
+`withTtsPayer()` in `api/audio.php`. A hit is served with no key at all, which is also
+why `tts` and `tts.speak` are not in `$OPENAI_ACTIONS` any more. The answer is
+`['provider', 'key', 'who' => 'requester'|'operator']`, and everything downstream reads
+`who` rather than re-deriving it from the filesystem (`failOpenAi` used to, and reported
+an *empty* key file as the user's key failing).
+
+- **The shared key reads Echo, and only Echo.** When the operator pays, a miss may
+  generate voice `echo` with no style; anything else is 403 `openai_key_required`
+  (`requireOperatorAllows`). The client has always offered only that on the shared key;
+  this makes the server agree, now that custom voices are in front of everyone.
+- **Keys are stored, never sent per request.** `account.php`'s helpers —
+  `storedKey`/`storeKey`/`clearStoredKey`/`maskKey` — are the only code that reads or
+  writes `users/{id}/*_key.txt`, written 0600 from creation (tempnam + rename; the old
+  write-then-chmod left a window). A key with a control character is refused before it
+  can reach a header line, and an outage while validating is 502 `openai_unavailable`,
+  not "rejected".
+- **ElevenLabs is always the requester's own key.** There is no shared one, and
+  `ELEVENLABS_API_BASE` is a `define` only — never `getenv`, because `deploy.sh` exports
+  `sftp.env` into the build environment. Only `elevenLabsRequest()` builds an
+  `xi-api-key` header, on `curlExec()` and never on the OpenAI curl wrappers, which fall
+  back to the shared *OpenAI* key. ElevenLabs errors carry `provider: 'elevenlabs'`,
+  the `payer`, and on narration the `voiceId` and `model`; none is ever `user_key_failed`
+  (the client reads that as "offer the shared OpenAI key"). The codes are listed in
+  [`voices.md`](voices.md).
+
+**ElevenLabs narration is content-addressed and immutable**:
+`/storage/audio/el/{cfgHash}/{lang|_}/{k[0:2]}/{k}.mp3|.json`, `cfgHash` the first 20
+hex of a sha256 over `audibleConfigCanonical()` (fixed two-decimal settings, the model,
+the voice, `EL_CONFIG_VERSION`, the output format) and `k` a sha256 of
+`el-content-v1`, the language and the text. So a verse and the same words through
+`tts.speak` share a file, nothing is regenerated in place under an `immutable` URL, and
+nobody can overwrite another request's audio. A miss takes a per-entry lock in
+`storage/work/` (a `PRIVATE_DIRS` member), re-checks, synthesizes to a temp file and
+renames into place with the JSON last — its presence is what a hit tests. Bump
+`EL_CONFIG_VERSION` only when the same config and text would now sound different.
+
+`npm run voices:verify:api` (`scripts/voices/`) proves all of it against an in-process
+ElevenLabs stub, with the shared OpenAI key blanked and a canary key planted to prove
+no upstream request ever carried it.

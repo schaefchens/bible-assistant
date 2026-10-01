@@ -6,8 +6,13 @@ declare(strict_types=1);
 if (!defined('APP_ROOT')) { http_response_code(404); exit; }
 
 /**
- * The account itself: the caller's own OpenAI key, erasing everything stored
- * for an identity, a training recording, and the ambient music listing.
+ * The account itself: the caller's own provider keys, erasing everything
+ * stored for an identity, a training recording, and the ambient music listing.
+ *
+ * The stored-key helpers below (`storedKey`, `storeKey`, `clearStoredKey`,
+ * `storedKeyMeta`) are the **only** code that touches users/{id}/*_key.txt.
+ * Everything else asks a payer resolver — openAiPayer() in api/openai.php,
+ * elevenLabsPayer() in api/elevenlabs.php — which asks these.
  */
 
 function handleRecordingUpload(array $ctx): void {
@@ -31,7 +36,7 @@ function handleRecordingUpload(array $ctx): void {
     // Word alignment from the real recording. Non-fatal: the recording is
     // already saved, so an alignment failure (incl. a rejected key) just skips
     // the alignment file rather than failing the upload.
-    $align = forcedAlignment($dest, "{$verse}.mp3", $ctx['openaiKey'] ?? null);
+    $align = forcedAlignment($dest, "{$verse}.mp3", $ctx['payer']['key'] ?? null);
     $alignmentPath = "{$dir}/{$verse}.json";
     if ((int)($align['_status'] ?? 0) === 200) {
         writeAlignment($alignmentPath, $align);
@@ -45,8 +50,8 @@ function handleRecordingUpload(array $ctx): void {
 
 /**
  * Delete everything this server holds for the caller: cards, boards, their
- * orders, the personal OpenAI key, any uploaded recordings, and finally the
- * secret that claimed the identity.
+ * orders, voices and the voice selection, the stored provider keys, any
+ * uploaded recordings, and finally the secret that claimed the identity.
  *
  * The counterpart to sync being opt-in — switching it back off has to be able
  * to leave nothing behind. Idempotent: deleting an account that was never
@@ -113,30 +118,107 @@ function handleAmbientList(): void {
     respond(200, ['tracks' => $tracks]);
 }
 
+// ---------- stored provider keys --------------------------------------------
+
+/**
+ * The file each provider's key lives in, under users/{id}/. A provider that is
+ * not listed here has no stored key — that is the whole registry.
+ */
+const PROVIDER_KEY_FILES = [
+    'openai' => 'openai_key.txt',
+    'elevenlabs' => 'elevenlabs_key.txt',
+];
+
+function storedKeyPath(string $userDir, string $provider): string {
+    $name = PROVIDER_KEY_FILES[$provider] ?? null;
+    if ($name === null) fail(500, 'unknown key provider');
+    return $userDir . '/' . $name;
+}
+
+/** Facts about a stored key that are not the key (ElevenLabs: `restricted`).
+ * Beside the key, never inside it, so the key file stays exactly one key. */
+function storedKeyMetaPath(string $userDir, string $provider): string {
+    return preg_replace('/\.txt$/', '.meta.json', storedKeyPath($userDir, $provider)) ?? '';
+}
+
+/** The caller's own key for a provider, or '' when they have none. Never the
+ * shared key — that decision is the payer resolver's. Creates nothing. */
+function storedKey(string $userDir, string $provider): string {
+    $f = storedKeyPath($userDir, $provider);
+    if (!is_readable($f)) return '';
+    return trim((string)@file_get_contents($f));
+}
+
+/** What storeKey() recorded beside the key; [] when nothing (or no key). */
+function storedKeyMeta(string $userDir, string $provider): array {
+    return readJsonObjectFile(storedKeyMetaPath($userDir, $provider)) ?? [];
+}
+
+/**
+ * Store a key so that it is never readable by anyone else, not even for an
+ * instant: tempnam() creates the file 0600 *before* the key is written into
+ * it, and rename() puts it in place atomically. (The old write-then-chmod left
+ * a window in which a fresh key sat in a 0644 file.)
+ *
+ * The caller's directory must exist — every key writer is in
+ * $ACCOUNT_ACTIONS. `$meta` replaces whatever was recorded for the previous
+ * key; it is best-effort, because the key is what matters.
+ */
+function storeKey(string $userDir, string $provider, string $key, array $meta = []): bool {
+    $f = storedKeyPath($userDir, $provider);
+    $tmp = @tempnam($userDir, '.key-');
+    if ($tmp === false) return false;
+    // tempnam() falls back to the system temp dir when $userDir is unusable —
+    // and a rename from there could cross filesystems, i.e. copy with the
+    // destination's default mode. Refuse rather than risk it.
+    if (realpath(dirname($tmp)) !== realpath($userDir)) {
+        @unlink($tmp);
+        return false;
+    }
+    if (@file_put_contents($tmp, $key) !== strlen($key) || !@chmod($tmp, 0600) || !@rename($tmp, $f)) {
+        @unlink($tmp);
+        return false;
+    }
+    $metaPath = storedKeyMetaPath($userDir, $provider);
+    if ($meta === []) {
+        if (file_exists($metaPath)) @unlink($metaPath);
+    } else {
+        @file_put_contents($metaPath, json_encode($meta, JSON_UNESCAPED_SLASHES));
+    }
+    return true;
+}
+
+/** Remove a stored key and what was recorded about it. Idempotent, and
+ * creates nothing — clearing a key that was never set is a success. */
+function clearStoredKey(string $userDir, string $provider): void {
+    foreach ([storedKeyPath($userDir, $provider), storedKeyMetaPath($userDir, $provider)] as $f) {
+        if (file_exists($f)) @unlink($f);
+    }
+}
+
 /** Show last-4 chars of a key so the UI can confirm which one is saved
  * without exposing it. Anything shorter than 8 chars is masked entirely. */
-function maskOpenAiKey(string $key): string {
+function maskKey(string $key): string {
     $len = strlen($key);
     if ($len <= 8) return str_repeat('•', $len);
     return substr($key, 0, 3) . '…' . substr($key, -4);
 }
 
+// ---------- the caller's own OpenAI key -------------------------------------
+
 function handleOpenAiKeyStatus(array $ctx): void {
-    $f = $ctx['userDir'] . '/openai_key.txt';
-    $hasKey = is_readable($f);
-    $payload = ['hasKey' => $hasKey];
-    if ($hasKey) {
-        $k = trim((string)@file_get_contents($f));
-        if ($k !== '') $payload['masked'] = maskOpenAiKey($k);
-        else $payload['hasKey'] = false;
-    }
-    respond(200, $payload);
+    $key = storedKey($ctx['userDir'], 'openai');
+    respond(200, $key === '' ? ['hasKey' => false] : ['hasKey' => true, 'masked' => maskKey($key)]);
 }
 
 function handleOpenAiKeySet(array $ctx): void {
     $body = readJsonBody();
     $key = trim(safeString($body['key'] ?? '', 512));
     if ($key === '') fail(400, 'missing key');
+    // The key becomes an HTTP header below and on every later OpenAI call; a
+    // CR or LF inside it is header injection, not a key. Refused before any
+    // network call.
+    if (preg_match('/[\x00-\x1F\x7F]/', $key)) fail(400, 'invalid key format');
 
     // Validate by hitting /v1/models with the submitted key. Cheap, no
     // request body, and surfaces a clear error if the key is rejected.
@@ -146,30 +228,30 @@ function handleOpenAiKeySet(array $ctx): void {
         CURLOPT_TIMEOUT => 30,
         CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $key],
     ]);
-    $resp = curl_exec($ch);
-    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    if ($resp === false || $status !== 200) {
+    $r = curlExec($ch);
+    $status = $r['status'];
+    // An outage proves nothing about the key, so it must not read as a
+    // verdict on it: 502, and nothing is stored.
+    if ($r['error'] !== null || $status >= 500) {
+        fail(502, 'openai_unavailable', [
+            'status' => $status,
+            'detail' => 'OpenAI could not be reached to check this key, so it was not saved. Please try again.',
+        ]);
+    }
+    if ($status !== 200) {
         $detail = '';
-        if (is_string($resp) && $resp !== '') {
-            $decoded = json_decode($resp, true);
-            if (is_array($decoded) && isset($decoded['error']['message'])) {
-                $detail = (string)$decoded['error']['message'];
-            }
+        $decoded = json_decode($r['body'], true);
+        if (is_array($decoded) && isset($decoded['error']['message'])) {
+            $detail = (string)$decoded['error']['message'];
         }
         fail(400, 'key rejected by OpenAI', ['status' => $status, 'detail' => $detail]);
     }
 
-    $f = $ctx['userDir'] . '/openai_key.txt';
-    if (@file_put_contents($f, $key, LOCK_EX) === false) {
-        fail(500, 'could not store key');
-    }
-    @chmod($f, 0600);
-    respond(200, ['hasKey' => true, 'masked' => maskOpenAiKey($key)]);
+    if (!storeKey($ctx['userDir'], 'openai', $key)) fail(500, 'could not store key');
+    respond(200, ['hasKey' => true, 'masked' => maskKey($key)]);
 }
 
 function handleOpenAiKeyClear(array $ctx): void {
-    $f = $ctx['userDir'] . '/openai_key.txt';
-    if (file_exists($f)) @unlink($f);
+    clearStoredKey($ctx['userDir'], 'openai');
     respond(200, ['hasKey' => false]);
 }

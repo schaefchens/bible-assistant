@@ -138,23 +138,36 @@ but `check` refuses to speak over a live download, so it found the status still
 button that looked like it had done nothing. It now sets `'unknown'` first. Easy to miss with
 one chapter and glaring with a day of them, which is how it was found.
 
-**A continuation stays on the engine that is already reading.** `readingUsesBrowserVoice`
+**A continuation stays on the engine that is already reading.** `readingTtsVoice`
 answers from the *setting* and the network, so it cannot see a reading that dropped to the
-device voice because TTS was unreachable — an OpenAI voice is still selected and the browser is
+device voice because TTS was unreachable — a narration voice is still selected and the browser is
 still online. `autoPlay.browserTtsIsReading()` is the other half, and without it a reading that
 fell back simply stopped at the chunk boundary: measured against a backend returning 502, every
 track failed to build and the continuation enqueued nothing at all, with no error anywhere. The
 same episode is why an **empty prefetch is treated as a failed one** rather than cached — a
 cached empty track list reads as "this chunk is silent" at enqueue time.
 
-**A reading never plays silence.** `startPlayback.readingUsesBrowserVoice(plan)` folds
+**A reading never plays silence.** `startPlayback.readingTtsVoice(plan)` folds
 "definitely offline" into the engine choice — *unless* the whole plan is already
 downloaded, in which case being offline is irrelevant and the premium narration plays.
-All-or-nothing: a partial hit would read some verses in one voice and skip the rest.
-`streamReading` additionally falls back to the device voice if the *first* track fails
-for any non-abort reason (which also covers backend-down, no-key and quota).
+It asks about the voice the user **chose** first, before the one this session resolves to:
+a chapter downloaded in their own ElevenLabs voice costs nothing to play, so it plays in
+it offline — and in the moment after boot before key status arrives, when the resolver
+would still say Echo. All-or-nothing: a partial hit would read some verses in one voice
+and skip the rest. `streamReading` additionally falls back to the device voice if the
+*first* track fails for any non-abort reason (which also covers backend-down, no-key and
+quota), and re-resolves **once** on a provider refusal mid-chapter (see
+[`voices.md`](voices.md)).
 
-Both are "decide once" by design: `playbackController`'s mid-reading rebuild and
-`playFromVerseWord` keep asking `isBrowserVoice()` alone, because a reading queued while
-online keeps working offline (its audio is in `mediaCache`, and seeking a queued track
-needs no network), and because two engines sharing one queue talk over each other.
+Both are "decide once" by design: `playbackController`'s mid-reading rebuild takes its
+engine from `browserTts.isActive()`, and `playFromVerseWord` keeps asking whether the
+narration voice is the device one, because a reading queued while online keeps working
+offline (its audio is in `mediaCache`, and seeking a queued track needs no network), and
+because two engines sharing one queue talk over each other.
+
+**Downloads are per audible voice.** A `NarrationTarget` carries a whole `TtsVoice`, and
+`narrationTargetKey` includes its `voiceKeyPart` — two styles of one OpenAI voice used to
+share one download status, one dedupe slot and one abort controller. A chapter downloaded
+in a voice only plays offline in *that* voice. Deleting a voice gives its pinned audio
+back (`deleteNarrationForVoice`), unless another profile — or Echo — sounds exactly the
+same, in which case the files are theirs too.

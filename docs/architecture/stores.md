@@ -57,7 +57,7 @@ type inside it, unlike the same line written inside `create<CommunityState>`.
 Every parameter in those modules is annotated for that reason, not by
 preference — `markSeen(postId: string)` was the first.
 
-## The library, in four modules
+## The library, in five modules
 
 `libraryStore` was 903 lines: cards, boards, reading lists, progress **and** the
 server. The CRUD half and the sync half share state but almost no code, so they
@@ -70,6 +70,7 @@ keeps them from importing each other.
 | `store/librarySync.ts` | `flushQueue`, `pullFromServer`, `enableSync`, `disableSync` |
 | `store/libraryOrder.ts` | the order rule, and the three `preferences` keys |
 | `store/libraryRows.ts` | turning a stored row into a row the app renders |
+| `store/libraryVoices.ts` | narration voices and the voice selection: their writes, the selection's collapse and adoption, the one-time import of the old voice settings |
 
 Three things about it are load-bearing:
 
@@ -79,7 +80,7 @@ Three things about it are load-bearing:
 - **`librarySync` is a factory over `(set, get)`**, so the four action bodies
   moved *verbatim*. Nothing inside them was rewritten, which is what let the
   integration tests stand as the net rather than being rewritten alongside.
-- **`librarySync` imports only `type LibraryState` from the store**, which
+- **`librarySync` and `libraryVoices` import only `type LibraryState` from the store**, which
   `verbatimModuleSyntax` erases. `expandStoredSpans` and `seedSyncQueue` take
   `get` for the same reason: they used to reach the store through its own module
   import, which from there would be a cycle. Don't add a value import back.
@@ -87,3 +88,13 @@ Three things about it are load-bearing:
 `lib/` and `services/` read stores directly via `useXStore.getState()`; React components use
 the `useXStore(selector)` hooks for reactivity. The one read path that *is* behind a contract
 is playback-group → verses, via `src/lib/readingHosts.ts` (see [`playback.md`](playback.md)).
+
+**Voices sit in the library, not in settings, because they sync.** A voice is
+user content made on one device and used on another, exactly like a reading list,
+so it has the same row flags, the same one-op-per-change and the same adoption on
+pull; the selection is one record that collapses and adopts like an order
+(`libraryVoices.adoptedVoiceSelection` mirrors `libraryOrder.adoptedOrder`). What
+stays in `settingsStore` is what a *session* may spend — key status and an
+ElevenLabs failure — which never syncs and never persists. The two meet only in
+the pure resolver, through `lib/narrationVoice.ts` and `hooks/useSpeechVoice.ts`;
+neither store imports the other's voice state. See [`voices.md`](voices.md).

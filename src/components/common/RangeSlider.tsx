@@ -1,3 +1,5 @@
+import { useId } from 'react';
+
 /**
  * The app's labelled range input: a label row with the value right-aligned, over
  * a native slider tinted `accent-brand`.
@@ -33,9 +35,15 @@ export function RangeSlider({
   track?: string;
   hint?: string;
 }) {
+  // The label names the input (it used to sit beside it unassociated), so a
+  // screen reader — and an e2e spec — can address the slider by its label.
+  const id = useId();
   return (
     <div>
-      <label className="flex items-center justify-between text-xs text-ink-muted mb-1 gap-2">
+      <label
+        htmlFor={id}
+        className="flex items-center justify-between text-xs text-ink-muted mb-1 gap-2"
+      >
         <span>{label}</span>
         {format && <span className="font-mono tabular-nums shrink-0">{format(value)}</span>}
       </label>
@@ -47,6 +55,7 @@ export function RangeSlider({
         />
       )}
       <input
+        id={id}
         type="range"
         min={min}
         max={max}

@@ -29,9 +29,27 @@ function handleBibleChapter(): void {
         fail(400, 'missing bible.chapter params');
     }
 
+    $r = bibleChapterVerses($translation, $bookId, $chapter);
+    if (isset($r['error'])) fail(...$r['error']);
+    respond(200, ['verses' => $r['verses'], 'cached' => $r['cached']]);
+}
+
+/**
+ * One chapter's verse rows, from the storage/bible cache or parsed out of the
+ * Zefania XML (and then cached). Answers instead of failing, because it has
+ * two callers that disagree about failure: bible.chapter turns `error` into
+ * its response, and ElevenLabs narration — which reads a verse's neighbours
+ * for continuity — simply does without.
+ *
+ *   ['verses' => array, 'cached' => bool]
+ *   ['error' => [int $status, string $message, array $extra]]   (for fail())
+ *
+ * `$translation` is used verbatim as the cache directory, as it always was.
+ */
+function bibleChapterVerses(string $translation, int $bookId, int $chapter): array {
     $xmlSlug = BIBLE_XML_MAP[strtoupper($translation)] ?? null;
     if ($xmlSlug === null) {
-        fail(400, 'unknown translation', ['translation' => $translation]);
+        return ['error' => [400, 'unknown translation', ['translation' => $translation]]];
     }
 
     $dir = STORAGE_DIR . "/bible/{$translation}/{$bookId}";
@@ -45,25 +63,24 @@ function handleBibleChapter(): void {
             // Cache uses { format, verses } so future schema bumps via
             // BIBLE_CACHE_FORMAT invalidate stale entries automatically.
             if (is_array($cached) && ($cached['format'] ?? null) === BIBLE_CACHE_FORMAT) {
-                respond(200, ['verses' => $cached['verses'] ?? [], 'cached' => true]);
-                return;
+                return ['verses' => $cached['verses'] ?? [], 'cached' => true];
             }
         }
     }
 
     $xmlPath = APP_ROOT . '/bibles/' . $xmlSlug;
     if (!is_readable($xmlPath)) {
-        fail(500, 'bible xml missing on server', ['translation' => $translation]);
+        return ['error' => [500, 'bible xml missing on server', ['translation' => $translation]]];
     }
     $verses = parseZefaniaChapter($xmlPath, $bookId, $chapter);
     if ($verses === null) {
-        fail(404, 'chapter not found', ['translation' => $translation, 'bookId' => $bookId, 'chapter' => $chapter]);
+        return ['error' => [404, 'chapter not found', ['translation' => $translation, 'bookId' => $bookId, 'chapter' => $chapter]]];
     }
     file_put_contents($file, json_encode([
         'format' => BIBLE_CACHE_FORMAT,
         'verses' => $verses,
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-    respond(200, ['verses' => $verses, 'cached' => false]);
+    return ['verses' => $verses, 'cached' => false];
 }
 
 /**

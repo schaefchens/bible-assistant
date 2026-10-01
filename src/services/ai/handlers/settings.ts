@@ -2,9 +2,23 @@ import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { clamp01 } from '@/lib/math';
 import { getAmbientTracks } from '@/services/api/ambient';
 import { useGlobalVoiceStore } from '@/store/globalVoiceStore';
-import { useSettingsStore } from '@/store/settingsStore';
+import { useLibraryStore } from '@/store/libraryStore';
+import { hasActivePersonalKey, useSettingsStore } from '@/store/settingsStore';
+import { isOpenAiVoiceId } from '@/services/voices/ttsVoice';
+import {
+  SYSTEM_DEVICE_ID,
+  SYSTEM_ECHO_ID,
+  resolveVoice,
+  selectedVoice,
+  voiceAccessOf,
+  voiceAvailability,
+  type VoiceProfile,
+  type VoiceRole,
+} from '@/services/voices/voiceProfiles';
+import { DEVICE_VOICE_ALIASES, voiceNameById } from '@/services/voices/voiceNames';
 import type { ToolArgs } from '../tools';
 import type { ToolDispatchResult } from '../toolResult';
+import { byName, type Found } from './match';
 
 /**
  * The `set_*` tools: everything the assistant can change about how the app
@@ -60,9 +74,65 @@ export function handleSetTranslation(args: ToolArgs['set_translation']): ToolDis
   return { ok: true };
 }
 
-export function handleSetVoice(args: ToolArgs['set_voice']): ToolDispatchResult {
-  useSettingsStore.getState().setVoice(args.voice);
-  return { ok: true };
+/** A spoken voice name → a selection id: the device voice under any of its
+ * names, then `byName` over Echo and the user's own voices. */
+function voiceIdByName(named: string, voices: VoiceProfile[]): Found<string> {
+  if (DEVICE_VOICE_ALIASES.includes(named.trim().toLowerCase())) {
+    return { ok: true, value: SYSTEM_DEVICE_ID };
+  }
+  const candidates = [
+    { id: SYSTEM_ECHO_ID, name: voiceNameById(SYSTEM_ECHO_ID, voices) },
+    { id: SYSTEM_DEVICE_ID, name: voiceNameById(SYSTEM_DEVICE_ID, voices) },
+    ...voices.map((v) => ({ id: v.id, name: v.name })),
+  ];
+  const found = byName(named, candidates, (c) => c.name, 'voices');
+  return found.ok ? { ok: true, value: found.value.id } : found;
+}
+
+/**
+ * Choose a voice by name, for reading or for replies.
+ *
+ * Choosing is a preference, so it always lands — even a voice this session
+ * cannot pay for (no ElevenLabs key yet), exactly as in Settings. The reply
+ * then says what will actually be heard and why, so the model can tell the
+ * user rather than claim a voice they are not going to hear.
+ *
+ * "Use Nova" keeps working the way it did when voices were bare OpenAI ids:
+ * with a personal key, a base name nobody named a voice after makes one.
+ */
+export async function handleSetVoice(args: ToolArgs['set_voice']): Promise<ToolDispatchResult> {
+  const role: VoiceRole = args.for === 'assistant' ? 'assistant' : 'narration';
+  const library = useLibraryStore.getState();
+  let found = voiceIdByName(args.name, library.voices);
+  const base = args.name.trim().toLowerCase();
+  if (!found.ok && isOpenAiVoiceId(base) && hasActivePersonalKey(useSettingsStore.getState())) {
+    found = { ok: true, value: await library.ensureOpenAiVoice(base) };
+  }
+  if (!found.ok) return { ok: false, error: found.error };
+
+  await useLibraryStore.getState().selectVoice(role, found.value);
+  const { voices, voiceSelection } = useLibraryStore.getState();
+  const input = { voices, selection: voiceSelection, access: voiceAccessOf(useSettingsStore.getState()) };
+  const availability = voiceAvailability(role, selectedVoice(role, input), input.access);
+  const name = voiceNameById(found.value, voices);
+  if (availability === 'ok') {
+    return { ok: true, data: { selected: name, for: args.for ?? 'reading' } };
+  }
+  const plays = resolveVoice(role, input);
+  return {
+    ok: true,
+    data: {
+      selected: name,
+      for: args.for ?? 'reading',
+      // Said plainly, so the reply is honest about what will be heard.
+      nowPlaysIn: voiceNameById(plays.provider === 'device' ? SYSTEM_DEVICE_ID : SYSTEM_ECHO_ID, voices),
+      reason: {
+        'needs-openai-key': 'it needs the user\'s own OpenAI key, which is not set',
+        'needs-elevenlabs-key': 'it needs the user\'s ElevenLabs key, which is not set',
+        'elevenlabs-failed': 'ElevenLabs refused it this session (key, credits or the voice itself)',
+      }[availability],
+    },
+  };
 }
 
 export function handleSetMicPosition(args: ToolArgs['set_mic_position']): ToolDispatchResult {

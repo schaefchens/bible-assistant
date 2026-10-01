@@ -11,6 +11,7 @@ import { SpacesPage } from '@/routes/SpacesPage';
 import { SubscribePage } from '@/routes/SubscribePage';
 import { CardsPage } from '@/routes/CardsPage';
 import { SettingsPage } from '@/routes/SettingsPage';
+import { VoicesPage } from '@/routes/VoicesPage';
 
 const ROUTER_BASE = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
 
@@ -60,6 +61,8 @@ export default function App() {
             <Route path="boards" element={<Navigate to="/cards" replace />} />
             <Route path="boards/:boardId" element={<CardsPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="settings/voices" element={<VoicesPage />} />
+            <Route path="settings/voices/:id" element={<VoicesPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

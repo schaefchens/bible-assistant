@@ -342,6 +342,185 @@
       "show": "Show the feedback button"
     }
   },
+  "narrationVoices": {
+    "title": "Narration voices",
+    "subtitleLine": "Who reads to you — and how",
+    "system": {
+      "echo": "Echo",
+      "device": "Device voice"
+    },
+    "roles": {
+      "reading": "Reading",
+      "replies": "Replies"
+    },
+    "hero": {
+      "label": "Selected voice",
+      "reads": "Reads to you",
+      "replies": "Speaks replies",
+      "fallback": "{{name}} is reading for now —"
+    },
+    "syncOff": "Your voices stay on this device until you turn on Sync.",
+    "syncOffLink": "Account & sync",
+    "sections": {
+      "system": "Built in",
+      "yours": "Your voices",
+      "providers": "Providers & keys"
+    },
+    "usage": {
+      "both": "Reads · Replies",
+      "reads": "Reads",
+      "replies": "Replies"
+    },
+    "hearVoice": "Hear {{name}}",
+    "edit": "Edit {{name}}",
+    "create": "Create a voice",
+    "createHint": "Name it, give it a face, choose how it speaks",
+    "providersHint": "Custom voices narrate on your own account. Keys are checked and stored on the server with your account — this app only ever sees a masked hint.",
+    "rows": {
+      "narration": "Narration voice",
+      "assistant": "Assistant voice",
+      "keys": "API keys"
+    },
+    "subtitle": {
+      "device": "On this device · works offline",
+      "openai": "OpenAI · {{voice}}",
+      "openaiStyled": "OpenAI · {{voice}} · own style",
+      "elevenlabs": "ElevenLabs · {{voice}} · {{model}}"
+    },
+    "locked": {
+      "openai": "This voice needs your own OpenAI key.",
+      "elevenlabs": "This voice needs your ElevenLabs key.",
+      "failed": "ElevenLabs refused it this session."
+    },
+    "keys": {
+      "connected": "Connected",
+      "notConnected": "Not connected",
+      "remove": "Remove key",
+      "confirmRemove": "Tap again to remove",
+      "save": "Save",
+      "checking": "Checking…",
+      "elevenLabsTitle": "ElevenLabs API key",
+      "elevenLabsHint": "For ElevenLabs voices — the most lifelike narration there is, billed to your ElevenLabs plan. Give the key Text to Speech, Voices (read) and Voice Generation access.",
+      "elevenLabsGetKey": "Create a key",
+      "elevenLabsInvalid": "ElevenLabs did not accept this key.",
+      "credits": "{{used}} of {{limit}} credits used",
+      "resets": "resets {{date}}",
+      "creditsHidden": "This key can't read your account, so remaining credits aren't shown. Narration works all the same."
+    },
+    "failure": {
+      "quota": "Your ElevenLabs credits are used up.",
+      "key": "ElevenLabs refused your key.",
+      "voice": "That voice can't be used on your ElevenLabs account any more.",
+      "fellBack": "Narration switched to the built-in voice for now. Your choice is kept.",
+      "retry": "Try again",
+      "open": "Open voices"
+    },
+    "openai": {
+      "voice": "Voice",
+      "best": "Best",
+      "blurb": {
+        "marin": "Natural and warm",
+        "cedar": "Deep and natural",
+        "alloy": "Neutral, balanced",
+        "ash": "Clear, conversational",
+        "ballad": "Soft, expressive",
+        "coral": "Bright, friendly",
+        "echo": "Calm and steady",
+        "fable": "A storyteller, British",
+        "nova": "Warm, youthful",
+        "onyx": "Deep, authoritative",
+        "sage": "Gentle, measured",
+        "shimmer": "Light, airy",
+        "verse": "Expressive, dynamic"
+      }
+    },
+    "style": {
+      "title": "How it speaks",
+      "hint": "Told to the voice before every reading. Pick a starting point, then make it yours.",
+      "placeholder": "e.g. slowly and warmly, with gentle pauses at commas",
+      "reverent": "Reverent",
+      "reverentText": "Read slowly and reverently, with warmth and quiet awe, pausing gently at each comma.",
+      "storyteller": "Warm storyteller",
+      "storytellerText": "Read like a warm storyteller by the fireside: unhurried, intimate and gently expressive.",
+      "calm": "Calm & slow",
+      "calmText": "Speak calmly and slowly, with long, peaceful pauses — a voice for evening and rest.",
+      "bright": "Bright & clear",
+      "brightText": "Speak brightly and clearly at an easy pace, with friendly energy.",
+      "dramatic": "Dramatic reading",
+      "dramaticText": "Give a dramatic reading: rich dynamics, vivid emphasis and meaningful pauses."
+    },
+    "elevenlabs": {
+      "voice": "Voice",
+      "noneChosen": "No voice chosen yet",
+      "designedPending": "Your designed voice — saved to ElevenLabs when you save",
+      "fromLibrary": "My ElevenLabs voices",
+      "design": "Describe a new voice",
+      "libraryTitle": "Your ElevenLabs voices",
+      "search": "Search voices",
+      "libraryFailed": "Couldn't load your voices from ElevenLabs.",
+      "libraryEmpty": "No voices found.",
+      "loadMore": "Load more",
+      "loadingMore": "Loading…",
+      "model": "Model",
+      "v4": "Eleven v4 — most expressive",
+      "v4Hint": "ElevenLabs' newest and most lifelike. Recommended.",
+      "v2": "Multilingual v2 — steadiest",
+      "v2Hint": "The most consistent over long readings; adds style and speed.",
+      "stability": "Stability",
+      "stabilityHint": "Lower is more expressive, higher is steadier from verse to verse.",
+      "similarity": "Similarity",
+      "similarityHint": "How closely it keeps to the original voice.",
+      "style": "Style exaggeration",
+      "styleHint": "Adds character. Keep it low for scripture.",
+      "speed": "Speed",
+      "byIdHint": "Or use a voice by its ID — from the ElevenLabs website, or when your key may not list voices.",
+      "useId": "Use",
+      "libraryFailedHint": "If your key has no “Voices (read)” access, you can still use a voice by its ID below."
+    },
+    "design": {
+      "title": "Describe a voice",
+      "intro": "Describe the voice you want to hear, and ElevenLabs makes three takes on it, each reading Psalm 23. Keep the one you like.",
+      "placeholder": "e.g. a warm, elderly man with a gentle, wise voice",
+      "example1": "A warm, elderly man with a gentle, wise voice, like a grandfather reading by the fire",
+      "example2": "A calm woman with a clear, soothing voice for evening reading",
+      "example3": "A deep, resonant male voice with a reverent, cathedral-like gravity",
+      "generate": "Make three voices",
+      "generating": "Making voices…",
+      "cost": "Uses some of your ElevenLabs credits.",
+      "failed": "ElevenLabs couldn't make voices from that description.",
+      "choose": "Choose one",
+      "option": "Voice {{n}}",
+      "hearOption": "Hear voice {{n}}",
+      "use": "Use",
+      "defaultName": "Designed voice",
+      "tooShort": "Describe the voice in a sentence or two."
+    },
+    "editor": {
+      "newTitle": "New voice",
+      "editTitle": "Edit voice",
+      "save": "Save",
+      "saving": "Saving…",
+      "avatar": "Choose a picture",
+      "removeAvatar": "Remove picture",
+      "name": "Name",
+      "namePlaceholder": "e.g. Grandpa",
+      "provider": "Provider",
+      "needsOpenAiKey": "Add your OpenAI key to hear this voice. Until then Echo reads.",
+      "needsElevenLabsKey": "Add your ElevenLabs key to use ElevenLabs voices.",
+      "delete": "Delete voice",
+      "confirmDelete": "Tap again — deletes it on all your devices",
+      "hearSample": "Hear a sample",
+      "stopSample": "Stop",
+      "sampleHint": "Psalm 23, read in this voice",
+      "sampleCost": "Psalm 23 · about {{chars}} ElevenLabs credits the first time",
+      "sampleLocked": "Add the key for this provider to hear it",
+      "pickVoice": "Choose an ElevenLabs voice first.",
+      "imageFailed": "That picture couldn't be used.",
+      "saveFailed": "Couldn't save the voice.",
+      "missing": "This voice doesn't exist any more."
+    },
+    "sample": "The LORD is my shepherd; I shall not want. He maketh me to lie down in green pastures: he leadeth me beside the still waters. He restoreth my soul: he leadeth me in the paths of righteousness for his name's sake."
+  },
   "chatReader": {
     "ambient": "Toggle background music"
   },
@@ -403,7 +582,8 @@
         "assistantLabel": "Assistant voice",
         "preview": "Preview",
         "stop": "Stop",
-        "previewText": "And God said, let there be light."
+        "previewText": "And God said, let there be light.",
+        "moreInSettings": "Name a voice, give it a face or pick an ElevenLabs voice in Settings › Narration voices."
       },
       "sync": {
         "title": "Sync & backup?",

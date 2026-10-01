@@ -4,7 +4,7 @@ import { cryptoRandomInt } from '@/lib/cryptoRandom';
 import { buildPlaybackPlan } from '@/lib/playbackPlan';
 import {
   planToBrowserItems,
-  readingUsesBrowserVoice,
+  readingTtsVoice,
   startAmbientIfEnabled,
   streamReading,
 } from '@/lib/startPlayback';
@@ -29,13 +29,9 @@ import {
 import { parseReference } from '@/services/bible/referenceParser';
 import { toVerseSummaries } from '@/services/bible/verseSummaries';
 import { useChatStore } from '@/store/chatStore';
-import {
-  effectiveReadingVoice,
-  effectiveVoiceStyle,
-  useSettingsStore,
-} from '@/store/settingsStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { useRibbonsStore, type RibbonColor, RIBBON_COLORS } from '@/store/ribbonsStore';
-import type { OpenAiVoiceId, VerseSummary } from '@/types/domain';
+import type { VerseSummary } from '@/types/domain';
 import type { ToolArgs } from '../tools';
 import type { DispatchContext, ToolDispatchResult } from '../toolResult';
 
@@ -58,8 +54,6 @@ export async function handleReadVerses(
   // auto-play; lookup_verses passes autoplay=false).
   const immediate = autoplay && args.immediate === true;
   const { locale, translation: defaultTrans } = useSettingsStore.getState();
-  const voice = effectiveReadingVoice();
-  const voiceStyle = effectiveVoiceStyle();
   const translation = args.translation ?? defaultTrans;
   const verses = await getVerses(translation, parsed);
   if (verses.length === 0) return { ok: false, error: 'no verses found' };
@@ -111,7 +105,8 @@ export async function handleReadVerses(
             ...it,
             verseIndex: it.verseIndex + existingVerseCount,
           }));
-    if (await readingUsesBrowserVoice(plan)) {
+    const voice = await readingTtsVoice(plan);
+    if (!voice) {
       if (!ctx.signal?.aborted) {
         const items = planToBrowserItems(plan, ctx.messageId);
         // speakQueue replaces the active playlist (hard stop); enqueue appends.
@@ -121,14 +116,9 @@ export async function handleReadVerses(
     } else {
       // Stream verses in as they're generated so the first plays promptly;
       // playQueue mode hard-stops for an immediate read, enqueue mode appends.
-      void streamReading(
-        plan,
-        ctx.messageId,
-        voice as OpenAiVoiceId,
-        voiceStyle || undefined,
-        ctx.signal,
-        { mode: immediate ? 'playQueue' : 'enqueue' },
-      );
+      void streamReading(plan, ctx.messageId, voice, ctx.signal, {
+        mode: immediate ? 'playQueue' : 'enqueue',
+      });
     }
   }
 

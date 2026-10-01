@@ -152,6 +152,77 @@ describe('dispatchTool — settings tools reach the store', () => {
   });
 });
 
+/**
+ * `set_voice` resolves a *spoken* name, so it gets the resolver's three tiers
+ * and its honesty rule: a voice the session cannot pay for is still chosen (it
+ * is a preference, like in Settings), but the reply says what will be heard.
+ */
+describe('dispatchTool — set_voice chooses a voice by name', () => {
+  const GRANDPA = '0b2c6f1e-3a4d-4c5e-9f60-718293a4b5c6';
+  const GRANNY = '1c2d3e4f-5a6b-4c7d-8e9f-a0b1c2d3e4f5';
+  const voice = (id: string, name: string, config: object) => ({
+    v: 1 as const, id, name, config, createdAt: 1, updatedAt: 1,
+  });
+
+  beforeEach(async () => {
+    await db.voices.clear();
+    useLibraryStore.setState({
+      voices: [
+        voice(GRANDPA, 'Grandpa Joe', { provider: 'openai', voice: 'onyx', style: 'warm' }),
+        voice(GRANNY, 'Granny', { provider: 'elevenlabs', voiceId: 'JBFqnCBsd6RMkjVDRZzb', model: 'eleven_v4', stability: 0.5, similarity: 0.75 }),
+      ] as never,
+      voiceSelection: { narration: 'system:echo', assistant: 'system:device', updatedAt: 0 },
+    });
+    useSettingsStore.setState({
+      hasUserOpenAiKey: true, sessionPreferSharedKey: false,
+      hasUserElevenLabsKey: false, elevenLabsFailure: null,
+    });
+  });
+
+  it.each([
+    ['an exact name', 'Granny', GRANNY],
+    ['a unique substring, any case', 'grandpa', GRANDPA],
+    ['the device voice by any of its names', 'Gerätestimme', 'system:device'],
+    ['the system voice', 'echo', 'system:echo'],
+  ])('%s', async (_, name, id) => {
+    const r = await dispatchTool('set_voice', JSON.stringify({ name }), ctx);
+    expect(r.ok).toBe(true);
+    expect(useLibraryStore.getState().voiceSelection.narration).toBe(id);
+  });
+
+  it('"several match" is a question, and a miss names what there is', async () => {
+    const several = await dispatchTool('set_voice', '{"name":"gran"}', ctx);
+    expect(several).toEqual({ ok: false, error: expect.stringContaining('ask which') });
+    const miss = await dispatchTool('set_voice', '{"name":"Gandalf"}', ctx);
+    expect(miss).toEqual({ ok: false, error: expect.stringContaining('Grandpa Joe') });
+    expect(useLibraryStore.getState().voiceSelection.narration).toBe('system:echo');
+  });
+
+  it('`for: assistant` chooses the voice for replies, not for reading', async () => {
+    await dispatchTool('set_voice', '{"name":"Grandpa","for":"assistant"}', ctx);
+    expect(useLibraryStore.getState().voiceSelection).toMatchObject({
+      narration: 'system:echo', assistant: GRANDPA,
+    });
+  });
+
+  it('chooses a voice that needs a missing key, and says what plays instead', async () => {
+    const r = await dispatchTool('set_voice', '{"name":"Granny"}', ctx);
+    expect(r).toMatchObject({ ok: true, data: { selected: 'Granny', nowPlaysIn: 'Echo' } });
+    expect(useLibraryStore.getState().voiceSelection.narration).toBe(GRANNY);
+  });
+
+  it('a bare OpenAI voice name makes that voice, with a key — and only with one', async () => {
+    const r = await dispatchTool('set_voice', '{"name":"nova"}', ctx);
+    expect(r.ok).toBe(true);
+    const made = useLibraryStore.getState().voices.find((v) => v.name === 'Nova');
+    expect(made?.config).toEqual({ provider: 'openai', voice: 'nova', style: '' });
+    expect(useLibraryStore.getState().voiceSelection.narration).toBe(made?.id);
+
+    useSettingsStore.setState({ hasUserOpenAiKey: false });
+    expect((await dispatchTool('set_voice', '{"name":"shimmer"}', ctx)).ok).toBe(false);
+  });
+});
+
 describe('dispatchTool — library tools reach Dexie and the store', () => {
   it('creates a card the store and the database both have', async () => {
     const r = await dispatchTool(

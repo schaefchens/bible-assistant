@@ -1,7 +1,7 @@
 import { apiPostJson } from './client';
 import { serverUrl } from './origin';
 import type { Translation } from '@/services/bible/bibleApi';
-import type { OpenAiVoiceId } from '@/types/domain';
+import { ttsSpeakBody, ttsVerseBody, type TtsVoice } from '@/services/voices/ttsVoice';
 
 type TtsResponse = {
   audioUrl: string;
@@ -24,11 +24,15 @@ function absolutize(r: TtsResponse): TtsResponse {
   };
 }
 
+/**
+ * Narrate one verse, keyed by its reference. The body is built by
+ * `ttsVerseBody` — for an OpenAI voice it is byte for byte the body this app
+ * has always sent, which is what keeps the server's warm cache warm.
+ */
 export function postTts(
-  body: {
+  req: {
     text: string;
-    voice: OpenAiVoiceId;
-    voiceStyle?: string;
+    voice: TtsVoice;
     translation: Translation;
     bookId: number;
     chapter: number;
@@ -36,19 +40,22 @@ export function postTts(
   },
   opts?: { signal?: AbortSignal },
 ): Promise<TtsResponse> {
-  return apiPostJson<TtsResponse>('tts', body, opts).then(absolutize);
+  const { voice, ...verse } = req;
+  return apiPostJson<TtsResponse>('tts', ttsVerseBody(voice, verse), opts).then(absolutize);
 }
 
 export function postTtsSpeak(
-  body: {
+  req: {
     text: string;
-    voice: OpenAiVoiceId;
-    voiceStyle?: string;
+    voice: TtsVoice;
     /** ISO-639-1 language code hint ("en" | "de"). Helps the model lock in
      * pronunciation on short announcements like "Vers 16". */
     language?: 'en' | 'de';
   },
   opts?: { signal?: AbortSignal },
 ): Promise<TtsResponse> {
-  return apiPostJson<TtsResponse>('tts.speak', body, opts).then(absolutize);
+  const { voice, ...speech } = req;
+  return apiPostJson<TtsResponse>('tts.speak', ttsSpeakBody(voice, speech), opts).then(
+    absolutize,
+  );
 }

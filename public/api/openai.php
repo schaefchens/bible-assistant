@@ -14,41 +14,44 @@ if (!defined('APP_ROOT')) { http_response_code(404); exit; }
  */
 
 /**
- * Resolve the OpenAI key to use for a request. Prefer the caller's saved
- * personal key (users/{id}/openai_key.txt) so usage is billed to their
- * account; fall back to OPENAI_API_KEY only when they haven't set one or
- * have explicitly opted into the shared key via X-Prefer-Shared-Key.
- * Returns '' when no key is configured anywhere.
+ * Who pays OpenAI for this request: the caller's own stored key (so usage is
+ * billed to their account), or this server's shared OPENAI_API_KEY when they
+ * have none or have opted into it for the session via X-Prefer-Shared-Key.
+ *
+ *   ['provider' => 'openai', 'key' => string, 'who' => 'requester'|'operator']
+ *
+ * The **one** answer to "which OpenAI key" — the router asks it for
+ * $OPENAI_ACTIONS, withTtsPayer() asks it on a narration cache miss, and
+ * failOpenAi() reads `who` from its answer instead of guessing from the
+ * filesystem. `key` is '' when nothing is configured anywhere; the callers
+ * decide what that means (today: 500 'no OpenAI API key configured').
  */
-function effectiveOpenAiKey(array $ctx, bool $preferShared = false): string {
-    if (!$preferShared && isset($ctx['userDir'])) {
-        $f = $ctx['userDir'] . '/openai_key.txt';
-        if (is_readable($f)) {
-            $k = trim((string)@file_get_contents($f));
-            if ($k !== '') return $k;
-        }
+function openAiPayer(array $ctx): array {
+    if (!($ctx['preferShared'] ?? false) && isset($ctx['userDir'])) {
+        $own = storedKey($ctx['userDir'], 'openai');
+        if ($own !== '') return ['provider' => 'openai', 'key' => $own, 'who' => 'requester'];
     }
-    return OPENAI_API_KEY;
+    return ['provider' => 'openai', 'key' => OPENAI_API_KEY, 'who' => 'operator'];
 }
 
 /**
- * Run a prepared cURL handle and always close it. Returns a normalized result:
+ * Run a prepared cURL handle. Returns a normalized result:
  *   ['error' => string|null, 'status' => int, 'body' => string, 'contentType' => string]
  * `error` is non-null only on transport failure (curl_exec === false), in which
- * case `status` is 0. The three wrappers below build their options then shape
- * this into their own return contracts.
+ * case `status` is 0. The wrappers below — and elevenLabsRequest() — build their
+ * options then shape this into their own return contracts.
+ *
+ * No curl_close(): it has done nothing since PHP 8.0 (the handle is freed when
+ * the last reference goes) and is deprecated as of 8.5.
  */
 function curlExec(\CurlHandle $ch): array {
     $body = curl_exec($ch);
     if ($body === false) {
-        $err = curl_error($ch);
-        curl_close($ch);
-        return ['error' => $err, 'status' => 0, 'body' => '', 'contentType' => ''];
+        return ['error' => curl_error($ch), 'status' => 0, 'body' => '', 'contentType' => ''];
     }
     $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $contentType = (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
-    curl_close($ch);
-    return ['error' => null, 'status' => $status, 'body' => $body, 'contentType' => $contentType];
+    return ['error' => null, 'status' => $status, 'body' => (string)$body, 'contentType' => $contentType];
 }
 
 function curlJson(string $url, array $payload, array $extraHeaders = [], ?string $apiKey = null): array {
@@ -116,14 +119,16 @@ function curlMultipart(string $url, array $fields, string $fileField, string $fi
  * Surface an OpenAI error to the client. When the caller is using their own
  * key and OpenAI rejected it (401/403), tag the error with `user_key_failed`
  * so the client can offer a one-time fallback to the shared key for this
- * session.
+ * session. Whose key it was is the payer's `who`, resolved once by
+ * openAiPayer() — never re-derived here.
+ *
+ * OpenAI only: an ElevenLabs failure goes through failElevenLabs(), and is
+ * never `user_key_failed` (that banner offers the shared *OpenAI* key).
  */
 function failOpenAi(array $ctx, string $message, array $resp): void {
     $status = (int)($resp['_status'] ?? 0);
     $detail = $resp['_error'] ?? ($resp['error']['message'] ?? '');
-    $usingPersonalKey = !($ctx['preferShared'] ?? false)
-        && isset($ctx['userDir'])
-        && is_readable($ctx['userDir'] . '/openai_key.txt');
+    $usingPersonalKey = ($ctx['payer']['who'] ?? '') === 'requester';
     if ($usingPersonalKey && ($status === 401 || $status === 403)) {
         fail(502, 'user_key_failed', ['status' => $status, 'detail' => $detail]);
     }

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Locale, VoiceId } from '@/types/domain';
+import type { Locale } from '@/types/domain';
 import type { Translation } from '@/services/bible/bibleApi';
 import { clamp, clamp01 } from '@/lib/math';
 import type { ThemeChoice } from '@/lib/theme';
@@ -9,6 +9,11 @@ import {
   type ReadingAppearance,
 } from '@/lib/readingAppearance';
 import { localeOf } from '@/i18n/locale';
+import {
+  legacyVoicesWorthKeeping,
+  type ElevenLabsFailure,
+  type LegacyVoices,
+} from '@/services/voices/voiceProfiles';
 
 /** The four free-floating slots. Still its own type: hit-testing a drop and
  * the corner anchoring genuinely only deal in these. */
@@ -45,9 +50,14 @@ type SettingsState = {
    * dark-only until now, so anything else would restyle it underneath people. */
   theme: ThemeChoice;
   translation: Translation;
-  voice: VoiceId;
-  voiceStyle: string;
-  assistantVoice: VoiceId;
+  /**
+   * The voice settings from before narration voices existed, parked by the
+   * v18 migration until `libraryStore.init` turns them into synced voice rows
+   * (libraryVoices.consumeLegacyVoices) and clears it. Absent on every install
+   * that never changed the defaults. Which voice reads and replies now lives in
+   * the library, not here — it syncs, and settings don't.
+   */
+  legacyVoices?: LegacyVoices;
   speakAssistant: boolean;
   useWhisperFallback: boolean;
   translationOverridden: boolean;
@@ -96,6 +106,15 @@ type SettingsState = {
   /** Set when the user opts to fall back to the shared server key for this
    * session after their personal key failed. Transient — clears on reload. */
   sessionPreferSharedKey: boolean;
+  /** Whether the server has an ElevenLabs key on file for this user. Hydrated
+   * from auth.elevenlabsKey.status on boot; transient, like the OpenAI one. */
+  hasUserElevenLabsKey: boolean;
+  /** Masked preview of the stored ElevenLabs key. Transient. */
+  userElevenLabsKeyMasked: string | null;
+  /** Why ElevenLabs narration stopped working this session (key refused,
+   * credits gone, a voice missing from the user's library) — so voices fall
+   * back instead of failing on every verse. Transient: a reload asks again. */
+  elevenLabsFailure: ElevenLabsFailure | null;
   /** True once the user has finished (or skipped) the first-run settings
    * wizard. Greenfield boots start at false; the v10→v11 migration
    * backfills true for existing installs so they never see the wizard. */
@@ -138,9 +157,7 @@ type SettingsState = {
   setLocale: (locale: Locale) => void;
   setTheme: (theme: ThemeChoice) => void;
   setTranslation: (translation: Translation, fromUser?: boolean) => void;
-  setVoice: (voice: VoiceId) => void;
-  setVoiceStyle: (style: string) => void;
-  setAssistantVoice: (voice: VoiceId) => void;
+  clearLegacyVoices: () => void;
   setSpeakAssistant: (value: boolean) => void;
   setUseWhisperFallback: (value: boolean) => void;
   setMicCorner: (position: MicPosition) => void;
@@ -162,6 +179,8 @@ type SettingsState = {
   resetReadingAppearance: () => void;
   setUserOpenAiKeyStatus: (hasKey: boolean, masked: string | null) => void;
   setSessionPreferSharedKey: (v: boolean) => void;
+  setUserElevenLabsKeyStatus: (hasKey: boolean, masked: string | null) => void;
+  setElevenLabsFailure: (failure: ElevenLabsFailure | null) => void;
   setOnboardingComplete: (v: boolean) => void;
   setSyncEnabled: (v: boolean) => void;
   acceptCommunityTerms: (version: number) => void;
@@ -169,50 +188,11 @@ type SettingsState = {
 };
 
 /** Whether the user is currently using their own OpenAI key (server has it
- * on file, session hasn't opted into the shared fallback). Gates: which
- * voices appear in the Settings pickers, whether the voice-style input
- * shows, and what the runtime sends to OpenAI. */
+ * on file, session hasn't opted into the shared fallback). What a voice may
+ * spend is decided in services/voices/voiceProfiles.ts (`voiceAccessOf`); this
+ * stays for the screens that only ask about the key itself. */
 export function hasActivePersonalKey(state: SettingsState): boolean {
   return state.hasUserOpenAiKey && !state.sessionPreferSharedKey;
-}
-
-
-/** Reading-voice allowlist when locked (shared server key). Echo because
- * it's the canonical reading voice; browser for offline / API-free. */
-const ALLOWED_READING_VOICES_SHARED: VoiceId[] = ['echo', 'browser'];
-
-/** Assistant-voice allowlist when locked. Browser only — assistant chat
- * TTS via tts.speak is unbounded so we keep it free. */
-const ALLOWED_ASSISTANT_VOICES_SHARED: VoiceId[] = ['browser'];
-
-/** Pick the reading voice to use for an actual playback request. Returns
- * the stored value when unrestricted; otherwise force-resets the store to
- * 'echo' (per the user's preference: prune stale non-allowed values) and
- * returns 'echo'. Safe to call from outside React. */
-export function effectiveReadingVoice(): VoiceId {
-  const s = useSettingsStore.getState();
-  if (hasActivePersonalKey(s)) return s.voice;
-  if (ALLOWED_READING_VOICES_SHARED.includes(s.voice)) return s.voice;
-  useSettingsStore.setState({ voice: 'echo' });
-  return 'echo';
-}
-
-/** Counterpart for the assistant chat-reply voice. Force-resets to
- * 'browser' when locked, matching the picker's allowlist. */
-export function effectiveAssistantVoice(): VoiceId {
-  const s = useSettingsStore.getState();
-  if (hasActivePersonalKey(s)) return s.assistantVoice;
-  if (ALLOWED_ASSISTANT_VOICES_SHARED.includes(s.assistantVoice)) return s.assistantVoice;
-  useSettingsStore.setState({ assistantVoice: 'browser' });
-  return 'browser';
-}
-
-/** Voice-style is paid (OpenAI-only); we keep the stored value (typed
- * text is annoying to lose) but suppress it at runtime when locked so
- * nothing leaks into tts / tts.speak requests on the shared key. */
-export function effectiveVoiceStyle(): string {
-  const s = useSettingsStore.getState();
-  return hasActivePersonalKey(s) ? s.voiceStyle : '';
 }
 
 const DEFAULT_AMBIENT: AmbientSettings = {
@@ -246,12 +226,6 @@ export const useSettingsStore = create<SettingsState>()(
         locale: initialLocale,
         theme: 'dark',
         translation: defaultTranslationFor(initialLocale),
-        voice: 'echo',
-        voiceStyle: '',
-        // Defaults to 'browser' so fresh users on the shared key don't pay
-        // for tts.speak. They can switch to an OpenAI voice once they
-        // supply their own key.
-        assistantVoice: 'browser',
         speakAssistant: true,
         useWhisperFallback: true,
         translationOverridden: false,
@@ -274,6 +248,9 @@ export const useSettingsStore = create<SettingsState>()(
         hasUserOpenAiKey: false,
         userOpenAiKeyMasked: null,
         sessionPreferSharedKey: false,
+        hasUserElevenLabsKey: false,
+        userElevenLabsKeyMasked: null,
+        elevenLabsFailure: null,
         onboardingComplete: false,
         syncEnabled: false,
         communityTermsVersion: 0,
@@ -289,9 +266,7 @@ export const useSettingsStore = create<SettingsState>()(
             translation,
             translationOverridden: fromUser,
           })),
-        setVoice: (voice) => set({ voice }),
-        setVoiceStyle: (voiceStyle) => set({ voiceStyle }),
-        setAssistantVoice: (assistantVoice) => set({ assistantVoice }),
+        clearLegacyVoices: () => set({ legacyVoices: undefined }),
         setSpeakAssistant: (speakAssistant) => set({ speakAssistant }),
         setUseWhisperFallback: (useWhisperFallback) => set({ useWhisperFallback }),
         setMicCorner: (micCorner) => set({ micCorner }),
@@ -324,6 +299,9 @@ export const useSettingsStore = create<SettingsState>()(
           set({ hasUserOpenAiKey: hasKey, userOpenAiKeyMasked: masked }),
         setSessionPreferSharedKey: (sessionPreferSharedKey) =>
           set({ sessionPreferSharedKey }),
+        setUserElevenLabsKeyStatus: (hasKey, masked) =>
+          set({ hasUserElevenLabsKey: hasKey, userElevenLabsKeyMasked: masked }),
+        setElevenLabsFailure: (elevenLabsFailure) => set({ elevenLabsFailure }),
         setOnboardingComplete: (onboardingComplete) =>
           set({ onboardingComplete }),
         // Callers should go through libraryStore.enableSync/disableSync, which
@@ -337,14 +315,21 @@ export const useSettingsStore = create<SettingsState>()(
     },
     {
       name: 'ba.settings',
-      version: 17,
+      version: 18,
       // Don't persist server-derived state — hydrate fresh on every boot.
       // Otherwise an older "hasUserOpenAiKey: true" could outlive a key the
       // server has since cleared.
       // `ignoreRestSiblings` (on in the recommended eslint preset) is what lets
       // these three be named only to be dropped.
-      partialize: ({ hasUserOpenAiKey, userOpenAiKeyMasked, sessionPreferSharedKey, ...rest }) =>
-        rest as SettingsState,
+      partialize: ({
+        hasUserOpenAiKey,
+        userOpenAiKeyMasked,
+        sessionPreferSharedKey,
+        hasUserElevenLabsKey,
+        userElevenLabsKeyMasked,
+        elevenLabsFailure,
+        ...rest
+      }) => rest as SettingsState,
       /**
        * **Only fields whose default changed need a block here.**
        *
@@ -424,6 +409,22 @@ export const useSettingsStore = create<SettingsState>()(
               paperColors: {},
             },
           };
+        }
+        if (version < 18) {
+          // Voices became synced library rows (libraryVoices.ts). The three
+          // device-local settings they replace are *removed* here — the
+          // default merge is shallow, so a key left in persisted state would
+          // be merged back and written out forever — and anything other than
+          // the defaults is parked for libraryStore.init to turn into rows.
+          // Dexie is async and this runs during hydration, so it can't do
+          // that itself.
+          const { voice, voiceStyle, assistantVoice, ...rest } = prev as Partial<SettingsState> & {
+            voice?: string;
+            voiceStyle?: string;
+            assistantVoice?: string;
+          };
+          const legacyVoices = legacyVoicesWorthKeeping({ voice, voiceStyle, assistantVoice });
+          prev = legacyVoices ? { ...rest, legacyVoices } : rest;
         }
         return prev as SettingsState;
       },

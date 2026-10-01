@@ -1,14 +1,11 @@
-import {
-  effectiveAssistantVoice,
-  effectiveVoiceStyle,
-  useSettingsStore,
-} from '@/store/settingsStore';
-import { isBrowserVoice, type OpenAiVoiceId } from '@/types/domain';
+import { useSettingsStore } from '@/store/settingsStore';
 import { postTtsSpeak } from '@/services/api/tts';
+import { voiceKeyPart, type TtsVoice } from '@/services/voices/ttsVoice';
 import { audioPlayback } from './audioPlaybackManager';
+import { currentAssistantVoice } from './narrationVoice';
 
 // Speak a short eyes-free button label using whatever the user picked as
-// their *assistant* voice (browser or one of the OpenAI voices). Mirrors
+// their *assistant* voice (the device voice or a narration voice). Mirrors
 // the canonical pattern in useCommandPipeline (which speaks chat replies)
 // but plays via a parallel AudioContext channel so the label rides on top
 // of any active verse reading instead of pausing or queueing it.
@@ -33,7 +30,8 @@ export function primeSpeechSynthesis(): void {
   }
 }
 
-// Lazy cache keyed by (voice, locale, text). Labels are stable for the
+// Lazy cache keyed by (audible voice, locale, text) — the whole voice, style
+// included, or a style change would keep replaying the old one. Labels are stable for the
 // session so the first long-press of a given button pays the TTS round
 // trip and decode; subsequent presses are instant.
 const bufferCache = new Map<string, AudioBuffer>();
@@ -43,14 +41,14 @@ let activeSource: AudioBufferSourceNode | null = null;
 
 export async function speakLabel(text: string): Promise<void> {
   if (!text) return;
-  const voice = effectiveAssistantVoice();
+  const voice = currentAssistantVoice();
   const locale = useSettingsStore.getState().locale;
 
-  if (isBrowserVoice(voice)) {
+  if (voice.provider === 'device') {
     speakViaBrowser(text, locale);
     return;
   }
-  await speakViaOpenAi(text, voice as OpenAiVoiceId, locale);
+  await speakViaServer(text, voice, locale);
 }
 
 function speakViaBrowser(text: string, locale: 'en' | 'de'): void {
@@ -70,21 +68,12 @@ function speakViaBrowser(text: string, locale: 'en' | 'de'): void {
   }
 }
 
-async function speakViaOpenAi(
-  text: string,
-  voice: OpenAiVoiceId,
-  locale: 'en' | 'de',
-): Promise<void> {
-  const key = `${voice}|${locale}|${text}`;
+async function speakViaServer(text: string, voice: TtsVoice, locale: 'en' | 'de'): Promise<void> {
+  const key = `${voiceKeyPart(voice)}|${locale}|${text}`;
   let buf = bufferCache.get(key);
   if (!buf) {
     try {
-      const tts = await postTtsSpeak({
-        text,
-        voice,
-        voiceStyle: effectiveVoiceStyle() || undefined,
-        language: locale,
-      });
+      const tts = await postTtsSpeak({ text, voice, language: locale });
       const resp = await fetch(tts.audioUrl);
       const arr = await resp.arrayBuffer();
       const ctx = audioPlayback.ensureContext();
