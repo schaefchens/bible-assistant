@@ -13,7 +13,7 @@ import { completeOnboarding, quietTheHarness } from './onboard';
  * step.
  *
  * **Both identities are fresh, and that is deliberate.** The `app` project's
- * saved profile is shared by every spec in a run — CLAUDE.md's "a space made by
+ * saved profile is shared by every spec in a run — docs/architecture/testing.md's "a space made by
  * an earlier spec is still there" — so building an owner out of it means every
  * name in every sharing spec has to be unique against every other, forever.
  * Minting both here costs two onboarding walks (about a second each) and buys a

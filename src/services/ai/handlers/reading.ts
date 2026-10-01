@@ -150,7 +150,8 @@ export async function handleReadVerses(
 
 /** How many chapters a draw may burn through before giving up. Only a chapter
  * the *draw* chose is ever redrawn, and only when the chosen translation
- * genuinely lacks it (versification gaps — see CLAUDE.md): the catalog is
+ * genuinely lacks it (versification gaps — see
+ * docs/architecture/reader.md): the catalog is
  * English versification, so LUT has no Malachi 4 to read. A chapter the user
  * named is an error, not a redraw. */
 const RANDOM_DRAW_ATTEMPTS = 5;

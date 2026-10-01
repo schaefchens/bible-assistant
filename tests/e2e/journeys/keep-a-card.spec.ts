@@ -7,7 +7,8 @@ import { appReady } from '../support/app';
  *
  * Three things here are the app's own shape rather than a test convenience:
  *
- *  - **`New card` matches two buttons.** CLAUDE.md's "two `+` affordances,
+ *  - **`New card` matches two buttons.** docs/architecture/cards-and-boards.md's "two `+`
+ *    affordances,
  *    deliberately": the labelled one in the right cluster (`+ Card`) and the
  *    empty-state one (`+ New card`). `exact` picks the former.
  *  - **A board tab's accessible name carries its live count** — "All cards ·

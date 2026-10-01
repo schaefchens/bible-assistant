@@ -115,8 +115,8 @@ export type SegmentRef = {
   dayIndex?: number;
   dayTitle?: string;
   /**
-   * Set together, and only for a user-written post — see "Community spaces" in
-   * CLAUDE.md. A post segment is not scripture, so `bookId` and `chapter` are 0
+   * Set together, and only for a user-written post — see
+   * docs/architecture/community.md. A post segment is not scripture, so `bookId` and `chapter` are 0
    * and every display path has to ask `isPostSegment()` before reaching for the
    * book catalog.
    *

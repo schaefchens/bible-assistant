@@ -6,7 +6,7 @@ import type { ReadingList, VerseSummary } from '@/types/domain';
 /**
  * `nextReadingAfter` is the highest-consequence rule in the app: it is the one
  * place where a mistake produces **wrong audio** rather than a wrong label.
- * CLAUDE.md records that it "previously existed three times (autoPlay,
+ * docs/architecture/playback.md and community.md record that it "previously existed three times (autoPlay,
  * readerStore, useContinueReading) and the copies disagreed about book
  * rollover", and that without the post guard "auto-play reads a blog post and
  * then starts Genesis".

@@ -16,8 +16,9 @@ Beyond looking verses up:
   the same machinery as scripture;
 - **hands-free mode**, a lock-screen transport, and offline downloads per chapter.
 
-`CLAUDE.md` is the architecture map. Start there for anything structural — it is
-kept current and says *why*, which this file does not.
+`CLAUDE.md` is the architecture map, and `docs/architecture/` holds the reasoning
+behind each subsystem. Start there for anything structural — both are kept current
+and say *why*, which this file does not.
 
 ## Stack
 
@@ -75,8 +76,8 @@ PWA install and iOS speech features need HTTPS — mkcert or a tunnel.
 
 ## Tests
 
-**Four layers, four jobs**, and the entry criteria matter — see "Testing" in
-`CLAUDE.md` for the definition of done and why a test is earned by a risk rather
+**Four layers, four jobs**, and the entry criteria matter — see
+[`docs/architecture/testing.md`](docs/architecture/testing.md) for the definition of done and why a test is earned by a risk rather
 than by a feature.
 
 | layer | what | mocks |

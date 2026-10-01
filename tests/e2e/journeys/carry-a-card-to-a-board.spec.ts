@@ -6,7 +6,7 @@ import { centreOf, longPressDrag } from '../support/gestures';
  * Journey: long-press a card in All cards, carry it up to a board's tab, drop.
  *
  * The most intricate gesture in the app, and the one with the most written
- * about it in CLAUDE.md — four load-bearing details, none of which is visible
+ * about it in docs/architecture/cards-and-boards.md — four load-bearing details, none of which is visible
  * from the outside:
  *
  *  - **the finger is hit-tested, not the card**, which is what lets the card

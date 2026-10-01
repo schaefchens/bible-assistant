@@ -5,12 +5,12 @@ import type { PlaybackTrack } from '@/lib/audioPlaybackManager';
 /**
  * `audioPlaybackManager` is 941 lines and had no coverage at all — and it is
  * the file where a mistake is silence or the wrong audio, the top row of
- * CLAUDE.md's risk table.
+ * the risk table in docs/architecture/testing.md.
  *
  * It could not *have* coverage until now: the class constructs its own
  * `ElementTrackPlayer`, and jsdom has no media stack to drive. That is not an
  * implementation detail waiting to be swapped for Web Audio, either —
- * CLAUDE.md records the measurement that put verses on a media element (over a
+ * docs/architecture/playback.md records the measurement that put verses on a media element (over a
  * 13-second background window WebKit froze `ctx.currentTime` at 7.97 while a
  * media element's went 9.02 -> 22.17). So the seam is a constructor parameter,
  * and the fake below is the whole reason these tests exist.

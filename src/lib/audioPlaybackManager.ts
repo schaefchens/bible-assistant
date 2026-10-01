@@ -152,8 +152,8 @@ class AudioPlaybackManager {
    * `makePlayer` exists so the queue, the feed loop and the ducking rules can
    * be tested. The default is the only thing production uses; a test passes a
    * fake because jsdom has no media stack, and a media element is not an
-   * implementation detail that could be swapped for Web Audio — CLAUDE.md
-   * records the measurement: over a 13-second background window WebKit froze
+   * implementation detail that could be swapped for Web Audio —
+   * docs/architecture/playback.md records the measurement: over a 13-second background window WebKit froze
    * `ctx.currentTime` at 7.97 while a media element's went 9.02 -> 22.17.
    *
    * A parameter with a default rather than a parameter property:

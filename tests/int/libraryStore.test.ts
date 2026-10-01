@@ -6,8 +6,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * That spec is 28 tests deep on the sync engine — the chokepoint, order
  * collapse, flush ordering, the retry policy. The CRUD half had exactly two
  * assertions anywhere (`toolDispatch.test.ts` creating a card and listing it
- * back), and three rules in it are load-bearing enough that CLAUDE.md
- * describes each as deliberate behaviour:
+ * back), and three rules in it are load-bearing enough that the architecture
+ * notes (cards-and-boards.md, reading-lists.md, community.md) describe each as deliberate behaviour:
  *
  *   - `activeBoardId === null` *is* the All-cards tab, so a board that no
  *     longer exists must read as All cards rather than as a blank screen;

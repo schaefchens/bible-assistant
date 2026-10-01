@@ -37,7 +37,7 @@ type ChatRole = 'user' | 'assistant' | 'tool' | 'system';
 
 /**
  * Marks a reading unit that is **not scripture** — one paragraph of a
- * user-written post (see "Community spaces" in CLAUDE.md).
+ * user-written post (see docs/architecture/community.md).
  *
  * This is an optional field on `VerseSummary` rather than a widened
  * `ReadingUnit` supertype because `VerseSummary` is the currency of the whole

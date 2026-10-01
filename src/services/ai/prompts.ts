@@ -7,7 +7,7 @@ import { audioPlayback } from '@/lib/audioPlaybackManager';
  *
  * Prose rules about how the model should behave, not tool schemas — which
  * is why they are here rather than in `tools/`. Two of them are load-bearing
- * and documented in CLAUDE.md: a random pick must go through
+ * and documented in docs/architecture/assistant.md: a random pick must go through
  * `random_passage`, and a shelf name that fails to resolve is **never** a
  * Bible reference. The prompt and the matcher in
  * `services/community/spaceNameMatch.ts` are two halves of one fix.

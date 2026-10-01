@@ -5,9 +5,10 @@
 // within a row, by chapter − 1. 1189 chapters, 31102 verses.
 //
 // These are *weights*, not a promise about any particular translation: the
-// German texts genuinely differ (see CLAUDE.md, "versification gaps"). Anything
-// picking an actual verse draws it from the chapter that comes back, so a
-// shorter chapter can never yield an out-of-range verse.
+// German texts genuinely differ (see "versification gaps" in
+// docs/architecture/reader.md). Anything picking an actual verse draws it from
+// the chapter that comes back, so a shorter chapter can never yield an
+// out-of-range verse.
 
 export const VERSE_COUNTS: readonly (readonly number[])[] = [
   /*  1 Genesis         */ [31, 25, 24, 26, 32, 22, 24, 22, 29, 32, 32, 20, 18, 24, 21, 16, 27, 33, 38, 18, 34, 24, 20, 67, 34, 35, 46, 22, 35, 43, 55, 32, 20, 31, 29, 43, 36, 30, 23, 23, 57, 38, 34, 34, 28, 34, 31, 22, 33, 26],

@@ -20,7 +20,7 @@ import { useSettingsStore } from '@/store/settingsStore';
  * It takes the loaded segments rather than reading the store it was extracted
  * from: all it wants is how long the passage being left was, and importing
  * `readerStore` from here would be the cycle that quietly turns a store's type
- * into `any` (see CLAUDE.md on `communityRows`).
+ * into `any` (see `communityRows` in docs/architecture/stores.md).
  */
 /**
  * What moved the reader, which is the only reliable way to know whether the

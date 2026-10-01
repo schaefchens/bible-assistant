@@ -9,7 +9,8 @@ import type { ReaderSource } from '@/services/reading/readingSequence';
  * A list used to be one thing — a row in `libraryStore` — so eight places
  * asked `readingLists.find(l => l.id === id)` and were right. Now a plan can
  * also be one mirrored out of a room, and two of those eight are the ones
- * CLAUDE.md's definition-of-done table calls severity-1:
+ * the definition-of-done table in docs/architecture/testing.md
+ * calls severity-1:
  *
  * - `readingContinuation.nextInList` returns `undefined` for a list it cannot
  *   find, and `nextReadingAfter` reads that as "decide some other way" and

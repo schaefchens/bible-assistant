@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * `communityStore` had no coverage at all — the one int spec that imported it
  * used it to seed state. That matters more than its 881 lines, because three of
- * its rules sit in CLAUDE.md's "always test" rows:
+ * its rules sit in the "always test" rows of
+ * docs/architecture/testing.md's risk table:
  *
  *   - **access control.** `subscribe` refuses a blocked author and refuses your
  *     own code *before the network*, so a blocked author never even gets a
@@ -365,7 +366,7 @@ describe('init never destroys the user’s own writing', () => {
  * Sharing a plan is a **snapshot**, and the op sequence is what makes that
  * true on the wire.
  *
- * Two rows of CLAUDE.md's definition-of-done table meet here: a sync op
+ * Two rows of the definition-of-done table (docs/architecture/testing.md) meet here: a sync op
  * sequence (a share lost forever) and a persisted shape (`publishedAt` is
  * signed).
  *

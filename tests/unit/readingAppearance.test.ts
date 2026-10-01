@@ -20,7 +20,7 @@ import {
 
 /**
  * The reading palette is *derived*, not stored, and three `fix(reader)` commits
- * live in this arithmetic. CLAUDE.md records the recurring mistake in as many
+ * live in this arithmetic. docs/architecture/theming.md records the recurring mistake in as many
  * words: "This one mistake has now been made three times in this feature (the
  * ink tint floor, the swatch levels, and the first hue sliders); absolute chroma
  * is the trap."

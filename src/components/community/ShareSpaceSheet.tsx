@@ -21,7 +21,7 @@ import { useCommunityStore } from '@/store/communityStore';
  *
  * It stays honest about what that buys the recipient: a code **locates** a
  * space, it does not open it (see "The share code is an address, not a key" in
- * CLAUDE.md). Whoever receives this still has to ask, and the owner still
+ * docs/architecture/community.md). Whoever receives this still has to ask, and the owner still
  * decides — unless the owner set the space to auto-approval, in which case they
  * have already said the code is enough. A subscriber cannot see which of the
  * two it is (`Subscription` caches the space's kind, not its approval mode), so
@@ -144,7 +144,7 @@ export function ShareSpaceSheet({
  *
  * Minting is not a decision being made behind anyone's back: a code creates an
  * *address*, not access (see "The share code is an address, not a key" in
- * CLAUDE.md), the tap is unambiguously "I want to share this", and the owner's
+ * docs/architecture/community.md), the tap is unambiguously "I want to share this", and the owner's
  * own screen offers the identical one-tap `shareCreate`. Rotating a code, which
  * really does have a consequence — every current reader is cleared — stays over
  * there with the sentence that says so.

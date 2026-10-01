@@ -11,7 +11,7 @@ import type { VerseSummary } from '@/types/domain';
  * past it in the direction the user was already going. A missing **post** is a
  * real miss, and walking past it would show the reader a different piece than
  * the one they asked for — wrong content, silently, which is the top row of
- * CLAUDE.md's risk table.
+ * the risk table in docs/architecture/testing.md.
  *
  * This had no test until `loadSegment` came out of `readerStore`: the store
  * built its own fetch and there was no way in. Now the locale is an argument
@@ -19,7 +19,7 @@ import type { VerseSummary } from '@/types/domain';
  * faked — `sequence` is a plain object, because the loader only ever asks it
  * for a neighbour.
  *
- * The miss arrives two ways depending on the source (CLAUDE.md: "test it with
+ * The miss arrives two ways depending on the source (docs/architecture/reader.md: "test it with
  * `isChapterMissing()`, never `instanceof` alone"), so both shapes appear
  * below: a 404 thrown by the online path, and the empty array every source
  * returning nothing produces.

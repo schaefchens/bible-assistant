@@ -13,7 +13,7 @@ import type { CommunityState } from './communityStore';
  *
  * Its own module because it is the one part of the community store that is not
  * the user's own data, and it plays by different rules for that reason.
- * CLAUDE.md puts it plainly: this "sits outside the machinery entirely",
+ * docs/architecture/community.md puts it plainly: this "sits outside the machinery entirely",
  * because `dirty` / `deleted` and the pull's `pending*Ids` all assume one
  * writer per row and somebody else's writing has none. Nothing here rides the
  * sync queue, and nothing here is `syncEnabled`'s business.
