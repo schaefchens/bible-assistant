@@ -1,13 +1,12 @@
 import { audioPlayback, type PlaybackTrack } from './audioPlaybackManager';
 import { browserTts, type BrowserTtsItem } from './browserTts';
 import { buildPlaybackPlan, type PlanItem } from './playbackPlan';
-import { planToBrowserItems, planToTtsTracks } from './startPlayback';
+import { narrationVoiceFor, planToBrowserItems, planToTtsTracks } from './startPlayback';
 import { readingHosts } from './readingHosts';
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { isDeviceVoice } from '@/services/voices/ttsVoice';
-import { currentNarrationVoice } from './narrationVoice';
 
 /**
  * Watches reading-rhythm settings and rebuilds the upcoming portion of the
@@ -110,8 +109,10 @@ async function rebuildCurrentTail(): Promise<void> {
 
   // The audio engine is reading, but the voice now resolves to the device one
   // (picked on another device, or a key that just went away): leave the queue
-  // as it is rather than switch engines under a reading.
-  const voice = currentNarrationVoice();
+  // as it is rather than switch engines under a reading. A shared voice is
+  // asked only for what it was lent for — the reading may have begun in the
+  // fallback for exactly that reason.
+  const voice = narrationVoiceFor(shifted);
   if (isDeviceVoice(voice)) return;
   const tracks = await planToTtsTracks(shifted, cur.groupId, voice);
   // A newer rebuild may have started while TTS fetches were in flight —

@@ -42,6 +42,17 @@ if (!defined('ELEVENLABS_API_BASE')) {
     define('ELEVENLABS_API_BASE', 'https://api.elevenlabs.io');
 }
 
+/**
+ * Where OpenAI is reached — its twin, for the same harness: voices:verify:api
+ * points it at a local stub to prove whose key a sponsored narration spends.
+ * Accepted only as an https:// origin or a loopback http:// one (openAiUrl()
+ * in api/openai.php); anything else fails every OpenAI call rather than
+ * reaching somewhere unintended.
+ */
+if (!defined('OPENAI_API_BASE')) {
+    define('OPENAI_API_BASE', 'https://api.openai.com');
+}
+
 const STORAGE_DIR = APP_ROOT . '/storage';
 const USERS_DIR = STORAGE_DIR . '/users';
 const AUDIO_DIR = STORAGE_DIR . '/audio';
@@ -116,10 +127,12 @@ const MAX_FEED_POSTS = 50;
 const MAX_AVATAR_BYTES = 512 * 1024;
 
 /**
- * Caps on shared items — a reading plan or a board published into a room.
+ * Caps on shared items — a reading plan, a board or a voice published into a
+ * room.
  *
  * The payload ceiling is much higher than MAX_POST_BYTES because a Bible-in-a-
- * year plan is 1,189 entries, each carrying a uuid, which lands near 100KB. It
+ * year plan is 1,189 entries, each carrying a uuid, which lands near 100KB —
+ * and a voice carries its picture inline, up to 96KB of the cap. It
  * is affordable only because a payload lives in its **own** file and never
  * appears in a feed response: space.feed serves headers, which are a few
  * hundred bytes each, and space.item fetches one payload on demand. So the

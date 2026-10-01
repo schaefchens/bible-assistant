@@ -29,6 +29,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { createServer as createNetServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -39,12 +40,22 @@ import { mintSpaceCode } from '../../src/lib/spaceCode.ts';
 import {
   buildBoardPayload,
   buildPlanPayload,
+  buildVoicePayload,
   payloadBytes,
   payloadHash,
 } from '../../src/services/community/sharedPayload.ts';
 
 const bytesToHex = (b) => Buffer.from(b).toString('hex');
-const PORT = 8749 + (process.pid % 200);
+/** A port the OS says is free — a fixed or pid-derived one collides with
+ * whatever else is listening (it once landed on Docker Desktop's). */
+const PORT = await new Promise((resolve, reject) => {
+  const probe = createNetServer();
+  probe.on('error', reject);
+  probe.listen(0, '127.0.0.1', () => {
+    const { port } = probe.address();
+    probe.close(() => resolve(port));
+  });
+});
 const root = mkdtempSync(join(tmpdir(), 'ba-api-'));
 copyFileSync('public/api.php', join(root, 'api.php'));
 // api.php is a router over public/api/*.php, so the docroot needs the whole
@@ -166,10 +177,50 @@ function makePlanItem(space, user, over = {}) {
   return { item: { ...base, ...signItemWith(base, user.pair) }, payload };
 }
 
+/** A 1×1 PNG: the smallest picture a voice may carry. */
+const TINY_AVATAR =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+/** A shared voice: the header, signed, plus the payload the app builds. */
+function makeVoiceItem(space, user, over = {}) {
+  const now = Date.now();
+  const payload =
+    over.payload ??
+    buildVoicePayload(
+      {
+        v: 1,
+        id: randomUUID(),
+        name: 'Opa Georg',
+        sourceName: 'George',
+        avatar: TINY_AVATAR,
+        config: { provider: 'openai', voice: 'cedar', style: 'Ruhig und warm, ohne Eile.' },
+        createdAt: now,
+        updatedAt: now,
+      },
+      { scope: 'scripture', monthly: 50000, dailyPerReader: 7000 },
+    );
+  const base = {
+    id: randomUUID(),
+    spaceId: space.id,
+    kind: 'voice',
+    title: 'Opa Georg',
+    language: 'de',
+    payloadHash: payloadHash(payload),
+    payloadBytes: payloadBytes(payload),
+    publishedAt: now,
+    createdAt: now,
+    updatedAt: now,
+    ...over.item,
+  };
+  return { item: { ...base, ...signItemWith(base, user.pair) }, payload };
+}
+
 /** Writes the docroot's secrets.php. `MODERATION_STUB` is the seam that lets
  * the refusal half of moderation be tested without a live model: PHP's builtin
  * server re-requires this file on every request, so rewriting it takes effect
- * immediately. */
+ * on the next one — with OPcache off, as it is below. On, it revalidates a
+ * file's timestamp only every `opcache.revalidate_freq` seconds, and a stub
+ * written just after a check is served stale. */
 const setSecrets = (lines) =>
   writeFileSync(join(root, 'secrets.php'), `<?php\n${lines.join('\n')}\n`);
 
@@ -179,7 +230,7 @@ const setSecrets = (lines) =>
 setSecrets(["define('OPENAI_API_KEY', '');"]);
 
 let phpErr = '';
-const php = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', root], {
+const php = spawn('php', ['-d', 'opcache.enable=0', '-S', `127.0.0.1:${PORT}`, '-t', root], {
   stdio: ['ignore', 'ignore', 'pipe'],
   env: { ...process.env, OPENAI_API_KEY: '' },
 });
@@ -596,6 +647,48 @@ try {
     assert.equal(existsSync(file), false);
   });
 
+  const voice = makeVoiceItem(shelf, alice);
+
+  await check('a room holds voices too: the payload is checked, then stored exactly as signed', async () => {
+    const r = await call(alice, 'items.upsert', voice);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const list = await call(alice, 'items.list', { spaceId: shelf.id });
+    assert.equal(list.body.items.find((i) => i.id === voice.item.id)?.kind, 'voice');
+    const fetched = await call(bob, 'space.item', { code: shelfCode, itemId: voice.item.id });
+    assert.equal(fetched.body.payload, voice.payload, 'verbatim — the hash covers these bytes');
+    // The picture rides last, so everything before it reads without it.
+    assert.ok(voice.payload.endsWith(`,"avatar":"${TINY_AVATAR}"}`));
+  });
+
+  await check('a voice that is not a voice is refused whole, and nothing is stored', async () => {
+    const good = JSON.parse(voice.payload);
+    const variants = [
+      [{ ...good, v: 2 }, 'unsupported voice payload'],
+      [{ ...good, extra: true }, 'invalid voice payload'],
+      [{ ...good, sharing: { ...good.sharing, perReaderMonthly: 5 } }, 'invalid voice sharing'],
+      [{ ...good, sharing: { scope: 'everything' } }, 'invalid voice sharing'],
+      [{ ...good, sharing: { scope: 'pieces', monthly: 12.5 } }, 'invalid voice sharing'],
+      [{ ...good, sharing: { scope: 'pieces', dailyPerReader: 0 } }, 'invalid voice sharing'],
+      [{ ...good, voice: { ...good.voice, config: { provider: 'azure' } } }, 'unknown voice provider'],
+      [{ ...good, voice: { ...good.voice, config: { provider: 'openai', voice: 'gandalf' } } }, 'unknown OpenAI voice'],
+      [{ ...good, voice: { ...good.voice, name: '   ' } }, 'invalid voice name'],
+      [{ ...good, voice: { ...good.voice, id: '../../x' } }, 'invalid voice id'],
+      [{ ...good, avatar: 'data:image/png;base64,bm90IGFuIGltYWdl' }, 'invalid avatar'],
+      [{ ...good, avatar: 'https://example.com/me.png' }, 'invalid avatar'],
+    ];
+    for (const [payload, error] of variants) {
+      const bad = makeVoiceItem(shelf, alice, { payload: JSON.stringify(payload) });
+      const r = await call(alice, 'items.upsert', bad);
+      assert.equal(r.status, 400, error);
+      assert.equal(r.body.error, error);
+      assert.equal(existsSync(join(root, 'storage', 'users', alice.userId, 'payloads', `${bad.item.id}.json`)), false);
+    }
+    // A plan's signature cannot be lifted onto a voice: the kind is signed.
+    const plan = makePlanItem(shelf, alice);
+    const relabelled = { item: { ...plan.item, kind: 'voice' }, payload: voice.payload };
+    assert.equal((await call(alice, 'items.upsert', relabelled)).status, 400);
+  });
+
   console.log('automated moderation');
 
   const stub = (verdict, reason = '') =>
@@ -824,6 +917,19 @@ try {
       .filter((x) => x.postId === post.id && x.reporterName === 'Bob');
     assert.equal(inHuman.length, 0);
     noStub();
+  });
+
+  await check('a reported voice keeps its picture as evidence; its excerpt is the words alone', async () => {
+    const r = await call(bob, 'report.create', { code: shelfCode, postId: voice.item.id, reason: 'hate' });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const report = readReports().find((x) => x.postId === voice.item.id);
+    assert.equal(report.targetKind, 'voice');
+    assert.equal(report.targetAvatar, TINY_AVATAR, 'removing the voice cannot take the picture with it');
+    assert.match(report.postExcerpt, /Opa Georg/);
+    assert.match(report.postExcerpt, /Ruhig und warm/);
+    assert.equal(report.postExcerpt.includes('base64'), false, 'the judge and the excerpt read words, not pictures');
+    // A report on anything else has no picture.
+    assert.ok(readReports().filter((x) => x.targetKind !== 'voice').every((x) => (x.targetAvatar ?? null) === null));
   });
 
   console.log('feedback');

@@ -1,7 +1,7 @@
 import { apiPostJson } from './client';
 import { serverUrl } from './origin';
 import type { Translation } from '@/services/bible/bibleApi';
-import { ttsSpeakBody, ttsVerseBody, type TtsVoice } from '@/services/voices/ttsVoice';
+import { ttsAction, ttsSpeakBody, ttsVerseBody, type TtsVoice } from '@/services/voices/ttsVoice';
 
 type TtsResponse = {
   audioUrl: string;
@@ -27,7 +27,9 @@ function absolutize(r: TtsResponse): TtsResponse {
 /**
  * Narrate one verse, keyed by its reference. The body is built by
  * `ttsVerseBody` — for an OpenAI voice it is byte for byte the body this app
- * has always sent, which is what keeps the server's warm cache warm.
+ * has always sent, which is what keeps the server's warm cache warm. A voice
+ * somebody shared on a shelf goes to `tts.shared` instead (`ttsAction`), where
+ * its owner pays.
  */
 export function postTts(
   req: {
@@ -41,7 +43,7 @@ export function postTts(
   opts?: { signal?: AbortSignal },
 ): Promise<TtsResponse> {
   const { voice, ...verse } = req;
-  return apiPostJson<TtsResponse>('tts', ttsVerseBody(voice, verse), opts).then(absolutize);
+  return apiPostJson<TtsResponse>(ttsAction(voice, 'verse'), ttsVerseBody(voice, verse), opts).then(absolutize);
 }
 
 export function postTtsSpeak(
@@ -55,7 +57,7 @@ export function postTtsSpeak(
   opts?: { signal?: AbortSignal },
 ): Promise<TtsResponse> {
   const { voice, ...speech } = req;
-  return apiPostJson<TtsResponse>('tts.speak', ttsSpeakBody(voice, speech), opts).then(
+  return apiPostJson<TtsResponse>(ttsAction(voice, 'speak'), ttsSpeakBody(voice, speech), opts).then(
     absolutize,
   );
 }

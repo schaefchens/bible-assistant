@@ -6,17 +6,23 @@ declare(strict_types=1);
 if (!defined('APP_ROOT')) { http_response_code(404); exit; }
 
 /**
- * The three endpoints that cross accounts, and the only ones that do.
+ * The endpoints that cross accounts to read or join a space.
  *
  *   space.peek     read-only: what is at this code? Writes nothing, and needs
  *                  no profile — its whole job is to show an invitation before
  *                  anything is committed.
- *   space.request  the one cross-user *write*: appends a membership row,
- *                  carrying the caller's authenticated id, into the owner's
- *                  file. A requester can never set its own status, and
- *                  re-asking cannot clear a block.
- *   space.feed     the one cross-user *read*: answers an accepted member only,
- *                  with projections rather than stored records.
+ *   space.request  a cross-user *write*: appends a membership row, carrying
+ *                  the caller's authenticated id, into the owner's file. A
+ *                  requester can never set its own status, and re-asking
+ *                  cannot clear a block.
+ *   space.feed     a cross-user *read*: answers an accepted member only, with
+ *                  projections rather than stored records.
+ *   space.item     one shared item's payload, for the same members only.
+ *
+ * Two more cross accounts and live elsewhere: report.create (api/reports.php),
+ * which writes to neither party, and a sponsored narration
+ * (api/sponsorship.php), the other write into an owner's directory — the
+ * spending counters of a voice they shared.
  */
 
 /**
@@ -40,17 +46,8 @@ function handleSpacePeek(array $ctx): void {
     if ($space === null) fail(404, 'unknown share code');
     requireOwnerPublished($target['userDir']);
 
-    $status = null;
-    foreach (readJsonArrayFile(membersPath($target['userDir'])) as $m) {
-        if (!is_array($m)) continue;
-        if (($m['userId'] ?? null) === $ctx['userId'] && ($m['spaceId'] ?? null) === $target['spaceId']) {
-            $status = (string)($m['status'] ?? 'pending');
-            break;
-        }
-    }
-
     respond(200, [
-        'status' => $status,
+        'status' => membershipStatusOf($target['userDir'], $target['spaceId'], $ctx['userId']),
         'space' => publicSpaceOf($space),
         'owner' => publicProfileOf($target['userDir']),
     ]);
@@ -151,14 +148,7 @@ function handleSpaceFeed(array $ctx): void {
     if ($space === null) fail(404, 'unknown share code');
     requireOwnerPublished($target['userDir']);
 
-    $status = 'pending';
-    foreach (readJsonArrayFile(membersPath($target['userDir'])) as $m) {
-        if (!is_array($m)) continue;
-        if (($m['userId'] ?? null) === $ctx['userId'] && ($m['spaceId'] ?? null) === $target['spaceId']) {
-            $status = (string)($m['status'] ?? 'pending');
-            break;
-        }
-    }
+    $status = membershipStatusOf($target['userDir'], $target['spaceId'], $ctx['userId']) ?? 'pending';
     if ($status !== 'accepted') {
         // Deliberately not a 403: "waiting for approval" is a normal state the
         // client shows, and a blocked reader learns no more than a pending one.
@@ -218,26 +208,15 @@ function handleSpaceItem(array $ctx): void {
     if ($space === null) fail(404, 'unknown share code');
     requireOwnerPublished($target['userDir']);
 
-    $status = 'pending';
-    foreach (readJsonArrayFile(membersPath($target['userDir'])) as $m) {
-        if (!is_array($m)) continue;
-        if (($m['userId'] ?? null) === $ctx['userId'] && ($m['spaceId'] ?? null) === $target['spaceId']) {
-            $status = (string)($m['status'] ?? 'pending');
-            break;
-        }
+    if (membershipStatusOf($target['userDir'], $target['spaceId'], $ctx['userId']) !== 'accepted') {
+        fail(403, 'not a member of this space');
     }
-    if ($status !== 'accepted') fail(403, 'not a member of this space');
 
-    $items = pruneExpired(
-        readJsonArrayFile(spaceItemsPath($target['userDir'], $target['spaceId'])),
-        $space['ephemeralHours'] ?? null,
-    );
-    $item = findById($items, $itemId);
+    $item = findById(liveSpaceItems($target['userDir'], $space), $itemId);
     if ($item === null) fail(404, 'unknown item');
 
-    $stored = readJsonObjectFile(itemPayloadPath($target['userDir'], $itemId));
-    $payload = is_array($stored) ? ($stored['payload'] ?? null) : null;
-    if (!is_string($payload)) fail(404, 'unknown item');
+    $payload = storedItemPayload($target['userDir'], $itemId);
+    if ($payload === null) fail(404, 'unknown item');
 
     respond(200, ['item' => $item, 'payload' => $payload]);
 }

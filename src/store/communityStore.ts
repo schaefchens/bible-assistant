@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { createCommunityFeed } from './communityFeed';
 import {
+  NO_MIRRORS,
   byPublishedDesc,
   byUpdatedDesc,
   isOwnCode,
@@ -33,6 +34,8 @@ import { communityTermsAccepted } from '@/lib/communityTerms';
 import * as api from '@/services/api/community';
 import { onCommunityPulled } from '@/services/community/communitySync';
 import { useLibraryStore, nowId } from '@/store/libraryStore';
+import { parseVoicePayload } from '@/services/community/sharedItems';
+import type { VoiceSharing } from '@/services/voices/voiceSharing';
 import type {
   BlockedAuthor,
   Membership,
@@ -40,6 +43,7 @@ import type {
   Profile,
   MirroredBoard,
   MirroredList,
+  MirroredVoice,
   ReportReason,
   SharedItem,
   Space,
@@ -83,7 +87,7 @@ export type CommunityState = {
   /** Which of those currently have a copy on the server. */
   shared: Record<string, boolean>;
   /**
-   * The plans and boards the user has published into their own rooms.
+   * The plans, boards and voices the user has published into their own rooms.
    * Headers only — the payload stays in Dexie, where a year-long plan's ~100KB
    * is not re-read on every render.
    */
@@ -99,6 +103,12 @@ export type CommunityState = {
    * and hashing a payload on every render of the room screen.
    */
   itemSources: Record<string, { sourceId: string; sourceUpdatedAt: number }>;
+  /**
+   * The terms each of the user's shared voices was lent on, read out of its
+   * payload — so the shelf screen shows and edits them without going to Dexie,
+   * exactly as `itemSources` answers "is it out of date?".
+   */
+  voiceTerms: Record<string, VoiceSharing>;
   subscriptions: Subscription[];
   /** Subscribers of the user's spaces. */
   memberships: Membership[];
@@ -107,18 +117,21 @@ export type CommunityState = {
   /** Cached item headers of subscribed rooms, keyed by share code. */
   feedItems: Record<string, SharedItem[]>;
   /**
-   * Other people's plans and boards, parsed and ready to render.
+   * Other people's plans, boards and voices, parsed and ready to render.
    *
    * Derived from `feedItems` plus the payloads in Dexie, and rebuilt wherever
    * either is written — **one array per kind**, deliberately. Exposing the
    * headers and payloads raw would take `useReaderSequence`'s memo from eight
-   * dependencies to eleven and make every consumer do the join itself.
+   * dependencies to eleven and make every consumer do the join itself. Always
+   * written together, through `mirrorsFrom` (see `FeedMirrors`).
    *
    * An item whose payload has not been fetched yet is simply absent here: its
    * header is known-genuine but there is nothing to show.
    */
   mirroredLists: MirroredList[];
   mirroredBoards: MirroredBoard[];
+  /** Voices lent to shelves the user reads — see `MirroredVoice`. */
+  mirroredVoices: MirroredVoice[];
   feedState: Record<string, FeedState>;
   seen: Record<string, number>;
   /**
@@ -151,9 +164,14 @@ export type CommunityState = {
   /** Publish a plan or a board into one of the user's own rooms. */
   shareList: (listId: string, spaceId: string) => Promise<void>;
   shareBoard: (boardId: string, spaceId: string) => Promise<void>;
-  /** Re-snapshot from the live source. Offered, never automatic. */
+  /** Lend one of the user's voices to a room, on these terms. Sharing it there
+   * again — new terms, or the voice edited — updates the one already there. */
+  shareVoice: (voiceId: string, spaceId: string, sharing: VoiceSharing) => Promise<void>;
+  /** Re-snapshot from the live source. Offered, never automatic. A voice keeps
+   * the terms it was shared on. */
   republishItem: (itemId: string) => Promise<void>;
-  /** Take a plan or board off the shelf. The source is untouched. */
+  /** Take a plan, board or voice off the shelf. The source is untouched; for a
+   * voice this is what revokes it. */
   deleteItem: (itemId: string) => Promise<void>;
   /** Fork somebody else's plan or board into the user's own library. */
   copySharedList: (listId: string) => Promise<string | null>;
@@ -179,6 +197,17 @@ export type CommunityState = {
   markSeen: (postId: string) => Promise<void>;
 };
 
+/** The terms of every shared voice among these rows, by item id. */
+function voiceTermsOf(rows: { id: string; kind: SharedItem['kind']; payload: string }[]): Record<string, VoiceSharing> {
+  const out: Record<string, VoiceSharing> = {};
+  for (const row of rows) {
+    if (row.kind !== 'voice') continue;
+    const sharing = parseVoicePayload(row.payload)?.sharing;
+    if (sharing) out[row.id] = sharing;
+  }
+  return out;
+}
+
 /** The same question about a subscription already on the device. `pinnedKey` is
  * the owner's key as the server reported it, so it answers directly. */
 function isOwnSubscription(sub: Subscription, profile: Profile | null, spaces: Space[]): boolean {
@@ -202,12 +231,11 @@ export const useCommunityStore = create<CommunityState>((set, get) => {
   items: [],
   sharedClaims: {},
   itemSources: {},
+  voiceTerms: {},
   subscriptions: [],
   memberships: [],
   feed: {},
-  feedItems: {},
-  mirroredLists: [],
-  mirroredBoards: [],
+  ...NO_MIRRORS,
   feedState: {},
   seen: {},
   blocked: {},
@@ -276,8 +304,8 @@ export const useCommunityStore = create<CommunityState>((set, get) => {
     }
 
     // Rebuilt from Dexie rather than kept, for the reason `mirrorsFrom`
-    // records: three shapes that must agree about which items made the cut.
-    const mirrors = mirrorsFrom(feedItemRows, liveSubs);
+    // records: shapes that must agree about which items made the cut.
+    const mirrors = mirrorsFrom(feedItemRows, liveSubs, get().mirroredVoices);
 
     set({
       profile,
@@ -294,12 +322,11 @@ export const useCommunityStore = create<CommunityState>((set, get) => {
             : [[i.id, { sourceId, sourceUpdatedAt: i.sourceUpdatedAt }] as const];
         }),
       ),
+      voiceTerms: voiceTermsOf(liveItems),
       subscriptions: liveSubs,
       memberships: withoutSelf(memberRows),
       feed,
-      feedItems: mirrors.feedItems,
-      mirroredLists: mirrors.mirroredLists,
-      mirroredBoards: mirrors.mirroredBoards,
+      ...mirrors,
       seen: Object.fromEntries(seenRows.map((r) => [r.id, r.seenAt])),
       blocked,
       reported: (reportedRow?.value as Record<string, number> | undefined) ?? {},
@@ -408,9 +435,7 @@ export const useCommunityStore = create<CommunityState>((set, get) => {
         shared: {},
         memberships: [],
         feed: {},
-        feedItems: {},
-        mirroredLists: [],
-        mirroredBoards: [],
+        ...NO_MIRRORS,
         feedState: {},
         subscriptions: s.subscriptions.map((sub) => ({ ...sub, status: 'revoked' as const })),
       }));

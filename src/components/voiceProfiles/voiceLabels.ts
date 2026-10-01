@@ -35,5 +35,11 @@ export function unavailableReason(availability: VoiceAvailability, t: TFunction)
       return t('narrationVoices.locked.elevenlabs');
     case 'elevenlabs-failed':
       return t('narrationVoices.locked.failed');
+    case 'shared-failed':
+      return t('narrationVoices.locked.sharedFailed');
+    case 'shared-budget':
+      return t('narrationVoices.locked.sharedBudget');
+    case 'shared-cannot-reply':
+      return t('narrationVoices.locked.sharedCannotReply');
   }
 }

@@ -6,9 +6,13 @@ import { useLibraryStore, nowId } from '@/store/libraryStore';
 import {
   buildBoardPayload,
   buildPlanPayload,
+  buildVoicePayload,
   payloadBytes,
   payloadHash,
+  voiceModerationText,
 } from '@/services/community/sharedPayload';
+import { parseVoicePayload } from '@/services/community/sharedItems';
+import { DEFAULT_VOICE_SHARING, type VoiceSharing } from '@/services/voices/voiceSharing';
 import type { Board, Card, Post, SharedItem, SharedItemKind, Space } from '@/types/domain';
 import { byPublishedDesc, byUpdatedDesc, sourceIdOfPayload } from './communityRows';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -16,8 +20,8 @@ import { flush, queued } from './communityOps';
 import type { CommunityState } from './communityStore';
 
 /**
- * The user's **own** writing: their spaces, the pieces in them, and the plans
- * and boards they have shared there.
+ * The user's **own** writing: their spaces, the pieces in them, and the plans,
+ * boards and voices they have shared there.
  *
  * The mirror of `communityFeed`, which owns everything that is somebody
  * else's. These rows have exactly one writer, so unlike the feed they play by
@@ -65,13 +69,15 @@ function boardCardsOf(board: Board, cards: Card[]): Card[] {
 }
 
 /**
- * Build, sign and queue one shared item — the body `shareList`, `shareBoard`
- * and `republishItem` all share.
+ * Build, sign and queue one shared item — the body `shareList`, `shareBoard`,
+ * `shareVoice` and `republishItem` all share.
  *
  * Moderation is asked first, exactly as `publishPost` does and for the same
  * reason: publishing rides the sync queue, where a 422 would otherwise surface
  * as an item that silently never shares. The server judges it again in the
- * write path, which is the check that actually counts.
+ * write path, which is the check that actually counts. `moderationText` is
+ * what the pre-check is shown when the payload itself is not the thing to
+ * show it — a voice's picture would push it past what the check accepts.
  */
 async function publishItem(
   set: SetState,
@@ -83,6 +89,7 @@ async function publishItem(
   sourceUpdatedAt: number,
   sourceId: string,
   existing?: { id: string; publishedAt: number; createdAt: number },
+  moderationText: string = payload,
 ): Promise<void> {
   if (!get().profile) return;
   // The app's language, the same source `write_piece` uses. A plan carries one
@@ -91,7 +98,7 @@ async function publishItem(
   const language = useSettingsStore.getState().locale;
 
   try {
-    const verdict = await api.checkModeration({ title, body: payload, language });
+    const verdict = await api.checkModeration({ title, body: moderationText, language });
     if (!verdict.ok) {
       const err = new Error('content_refused');
       (err as Error & { reason?: string }).reason = verdict.reason;
@@ -138,10 +145,12 @@ async function publishItem(
   const item: SharedItem = { ...base, ...sig };
 
   await db.sharedItems.put({ ...item, payload, sourceUpdatedAt, dirty: 1, shared: 1 });
+  const terms = kind === 'voice' ? parseVoicePayload(payload)?.sharing : undefined;
   set((s) => ({
     items: [item, ...s.items.filter((i) => i.id !== item.id)].sort(byPublishedDesc),
     sharedClaims: { ...s.sharedClaims, [item.id]: true },
     itemSources: { ...s.itemSources, [item.id]: { sourceId, sourceUpdatedAt } },
+    ...(terms ? { voiceTerms: { ...s.voiceTerms, [item.id]: terms } } : {}),
   }));
   await queued('item.upsert', { id: item.id });
   flush();
@@ -330,6 +339,28 @@ export function createCommunityWriting(set: SetState, get: GetState) {
   },
 
   /**
+   * Lend one of the user's voices to one of their rooms.
+   *
+   * What is published is a snapshot of the voice — its name, picture and
+   * sound — **and the terms**: what it may read for the room's readers, and
+   * how much of the user's key they may spend. The server enforces exactly
+   * those, at the moment of spending (public/api/sponsorship.php), so they
+   * live inside the signed payload rather than beside it.
+   *
+   * Sharing the same voice into the same room again is an update, like any
+   * shared item — the item keeps its id, so readers who chose it keep it, and
+   * what they have spent this month still counts. Removing it is `deleteItem`.
+   */
+  shareVoice: async (voiceId: string, spaceId: string, sharing: VoiceSharing) => {
+    const voice = useLibraryStore.getState().voices.find((v) => v.id === voiceId);
+    if (!voice) return;
+    await publishItem(
+      set, get, 'voice', spaceId, voice.name, buildVoicePayload(voice, sharing), voice.updatedAt, voice.id,
+      undefined, voiceModerationText(voice, sharing),
+    );
+  },
+
+  /**
    * Re-snapshot a shared item from its live source.
    *
    * **Offered, never automatic**, and the reason is the same family as
@@ -338,6 +369,9 @@ export function createCommunityWriting(set: SetState, get: GetState) {
    * forty days into is worse than a button. It also keeps `libraryStore` free
    * of any dependency on this store — the source is read here, on demand.
    *
+   * A voice is re-snapshotted on the terms it was shared on; new terms are a
+   * `shareVoice`.
+   *
    * A device that pulled the header but never had the payload cannot do this:
    * the source list or board is not on it either. It simply no-ops.
    */
@@ -345,22 +379,38 @@ export function createCommunityWriting(set: SetState, get: GetState) {
     const row = await db.sharedItems.get(itemId);
     if (!row || row.deleted === 1) return;
     const lib = useLibraryStore.getState();
-    if (row.kind === 'plan') {
-      const list = lib.readingLists.find((l) => l.id === sourceIdOfPayload(row.kind, row.payload));
-      if (!list) return;
-      await publishItem(set, get, 'plan', row.spaceId, list.name, buildPlanPayload(list), list.updatedAt, list.id, row);
-      return;
+    const sourceId = sourceIdOfPayload(row.kind, row.payload);
+    switch (row.kind) {
+      case 'plan': {
+        const list = lib.readingLists.find((l) => l.id === sourceId);
+        if (!list) return;
+        await publishItem(set, get, 'plan', row.spaceId, list.name, buildPlanPayload(list), list.updatedAt, list.id, row);
+        return;
+      }
+      case 'board': {
+        const board = lib.boards.find((b) => b.id === sourceId);
+        if (!board) return;
+        await publishItem(
+          set, get, 'board', row.spaceId, board.name,
+          buildBoardPayload(board, boardCardsOf(board, lib.cards)), board.updatedAt, board.id, row,
+        );
+        return;
+      }
+      case 'voice': {
+        const voice = lib.voices.find((v) => v.id === sourceId);
+        if (!voice) return;
+        const sharing = parseVoicePayload(row.payload)?.sharing ?? DEFAULT_VOICE_SHARING;
+        await publishItem(
+          set, get, 'voice', row.spaceId, voice.name, buildVoicePayload(voice, sharing), voice.updatedAt, voice.id,
+          row, voiceModerationText(voice, sharing),
+        );
+        return;
+      }
     }
-    const board = lib.boards.find((b) => b.id === sourceIdOfPayload(row.kind, row.payload));
-    if (!board) return;
-    await publishItem(
-      set, get, 'board', row.spaceId, board.name,
-      buildBoardPayload(board, boardCardsOf(board, lib.cards)), board.updatedAt, board.id, row,
-    );
   },
 
   /**
-   * Take a plan or board off the shelf.
+   * Take a plan, board or voice off the shelf.
    *
    * **One removal, not two.** A piece has a withdraw *and* a delete because its
    * text lives only on the device, so "stop sharing it but keep it" is a real

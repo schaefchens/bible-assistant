@@ -10,7 +10,7 @@ import {
   type NarrationProgressMap,
   type NarrationStatus,
 } from '@/store/narrationStore';
-import type { TtsVoice } from '@/services/voices/ttsVoice';
+import { isDeviceVoice, type SpeechVoice } from '@/services/voices/ttsVoice';
 
 /**
  * Downloading a *set* of things — a day of a reading plan, a page of a plain
@@ -58,14 +58,21 @@ export function subjectsForSegments(segments: SegmentRef[]): NarrationSubject[] 
   );
 }
 
-/** The group's targets: the voice applied, in order, without repeats. */
+/**
+ * The group's targets: each subject with the voice that would narrate it, in
+ * order, without repeats — and without the subjects the device voice would
+ * read, which have nothing to download. Per subject because a voice somebody
+ * shared may be lent for scripture and not for the pieces beside it.
+ */
 export function narrationTargetsFor(
   subjects: NarrationSubject[],
-  voice: TtsVoice,
+  voiceFor: (subject: NarrationSubject) => SpeechVoice,
 ): NarrationTarget[] {
   const out: NarrationTarget[] = [];
   const seen = new Set<string>();
   for (const subject of subjects) {
+    const voice = voiceFor(subject);
+    if (isDeviceVoice(voice)) continue;
     const target: NarrationTarget = { ...subject, voice };
     const key = narrationTargetKey(target);
     if (seen.has(key)) continue;

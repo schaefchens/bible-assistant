@@ -42,6 +42,8 @@ function handleProfileDelete(array $ctx): void {
     deleteTree($ctx['userDir'] . '/posts');
     deleteTree($ctx['userDir'] . '/items');
     deleteTree($ctx['userDir'] . '/payloads');
+    // What the shelves' readers have spent of any voice shared on them.
+    deleteTree(sponsoredRoot($ctx['userDir']));
     foreach ([profilePath($ctx['userDir']), spacesPath($ctx['userDir']), membersPath($ctx['userDir'])] as $f) {
         if (file_exists($f)) @unlink($f);
     }
@@ -96,7 +98,8 @@ function handleSpaceDelete(array $ctx): void {
 
     // The posts, the shared items and the subscriber list have no meaning
     // without the space. An item's payload lives in a file of its own, so
-    // dropping the header file alone would orphan it.
+    // dropping the header file alone would orphan it — and so do a shared
+    // voice's spending counters.
     $postsFile = spacePostsPath($ctx['userDir'], $id);
     if (file_exists($postsFile)) @unlink($postsFile);
     $itemsFile = spaceItemsPath($ctx['userDir'], $id);
@@ -104,6 +107,7 @@ function handleSpaceDelete(array $ctx): void {
         $itemId = is_array($item) ? (string)($item['id'] ?? '') : '';
         if (preg_match('/^[0-9a-fA-F-]{36}$/', $itemId)) {
             @unlink(itemPayloadPath($ctx['userDir'], $itemId));
+            forgetSponsorship($ctx['userDir'], $itemId);
         }
     }
     if (file_exists($itemsFile)) @unlink($itemsFile);
@@ -241,7 +245,7 @@ function handlePostDelete(array $ctx): void {
 }
 
 /* ------------------------------------------------------------------ *
- * Shared items — a reading plan or a board published into a room
+ * Shared items — a reading plan, a board or a voice published into a room
  *
  * Deliberately the same shape as the three post handlers above, because they
  * are the same job on a second collection. The one structural difference is
@@ -281,6 +285,14 @@ function handleItemUpsert(array $ctx): void {
     // No draft state: the source list or board is the draft.
     if ($item['publishedAt'] <= 0) fail(400, 'cannot share a draft');
     if (!verifyItemSignature($item)) fail(400, 'item signature does not verify');
+    // A voice's payload is the one this server reads back — its terms decide
+    // what the owner's key pays for (api/sponsorship.php) — so it is checked
+    // here, and refused whole when it is not a voice. Checked, not reshaped:
+    // the stored bytes stay exactly what was signed.
+    if ($item['kind'] === 'voice') {
+        $voice = sharedVoiceOf($payload);
+        if (is_string($voice)) fail(400, $voice);
+    }
 
     $space = findById(readJsonArrayFile(spacesPath($ctx['userDir'])), $item['spaceId']);
     if ($space === null) fail(404, 'unknown space');
@@ -323,6 +335,9 @@ function handleItemDelete(array $ctx): void {
     ));
     writeJsonFile($path, $items);
     @unlink(itemPayloadPath($ctx['userDir'], $id));
+    // Removing a voice is what revokes it, and its counters go with it: a
+    // re-share is a new item, with a fresh allowance.
+    forgetSponsorship($ctx['userDir'], $id);
     respond(200, ['items' => $items]);
 }
 

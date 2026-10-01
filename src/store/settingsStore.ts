@@ -12,6 +12,7 @@ import { localeOf } from '@/i18n/locale';
 import {
   legacyVoicesWorthKeeping,
   type ElevenLabsFailure,
+  type SharedVoiceFailure,
   type LegacyVoices,
 } from '@/services/voices/voiceProfiles';
 
@@ -115,6 +116,11 @@ type SettingsState = {
    * credits gone, a voice missing from the user's library) — so voices fall
    * back instead of failing on every verse. Transient: a reload asks again. */
   elevenLabsFailure: ElevenLabsFailure | null;
+  /** Voices somebody shared that stopped speaking this session, by shared
+   * item id — the owner's key refused, or the allowance spent — so they fall
+   * back instead of being refused verse by verse. Transient, like
+   * `elevenLabsFailure`: a reload asks again. */
+  sharedVoiceFailures: Record<string, SharedVoiceFailure>;
   /** True once the user has finished (or skipped) the first-run settings
    * wizard. Greenfield boots start at false; the v10→v11 migration
    * backfills true for existing installs so they never see the wizard. */
@@ -181,6 +187,7 @@ type SettingsState = {
   setSessionPreferSharedKey: (v: boolean) => void;
   setUserElevenLabsKeyStatus: (hasKey: boolean, masked: string | null) => void;
   setElevenLabsFailure: (failure: ElevenLabsFailure | null) => void;
+  setSharedVoiceFailure: (itemId: string, failure: SharedVoiceFailure) => void;
   setOnboardingComplete: (v: boolean) => void;
   setSyncEnabled: (v: boolean) => void;
   acceptCommunityTerms: (version: number) => void;
@@ -251,6 +258,7 @@ export const useSettingsStore = create<SettingsState>()(
         hasUserElevenLabsKey: false,
         userElevenLabsKeyMasked: null,
         elevenLabsFailure: null,
+        sharedVoiceFailures: {},
         onboardingComplete: false,
         syncEnabled: false,
         communityTermsVersion: 0,
@@ -302,6 +310,12 @@ export const useSettingsStore = create<SettingsState>()(
         setUserElevenLabsKeyStatus: (hasKey, masked) =>
           set({ hasUserElevenLabsKey: hasKey, userElevenLabsKeyMasked: masked }),
         setElevenLabsFailure: (elevenLabsFailure) => set({ elevenLabsFailure }),
+        setSharedVoiceFailure: (itemId, failure) =>
+          set((s) =>
+            s.sharedVoiceFailures[itemId] === failure
+              ? {}
+              : { sharedVoiceFailures: { ...s.sharedVoiceFailures, [itemId]: failure } },
+          ),
         setOnboardingComplete: (onboardingComplete) =>
           set({ onboardingComplete }),
         // Callers should go through libraryStore.enableSync/disableSync, which
@@ -328,6 +342,7 @@ export const useSettingsStore = create<SettingsState>()(
         hasUserElevenLabsKey,
         userElevenLabsKeyMasked,
         elevenLabsFailure,
+        sharedVoiceFailures,
         ...rest
       }) => rest as SettingsState,
       /**

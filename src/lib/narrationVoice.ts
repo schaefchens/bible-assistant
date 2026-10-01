@@ -1,3 +1,4 @@
+import { useCommunityStore } from '@/store/communityStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { SpeechVoice } from '@/services/voices/ttsVoice';
@@ -12,9 +13,10 @@ import {
  * Which voice speaks, for code outside React — playback, auto-play, the
  * assistant's spoken replies, the eyes-free labels.
  *
- * The *choice* lives in the library (it syncs); what this session may *spend*
+ * The *choice* lives in the library (it syncs); the voices others lend to the
+ * user's shelves live in the community store; what this session may *spend*
  * lives in settings (key status, a failure this session). The rule that joins
- * them is pure and lives in services/voices/voiceProfiles.ts; this reads both
+ * them is pure and lives in services/voices/voiceProfiles.ts; this reads the
  * stores and asks it. Components use hooks/useSpeechVoice.ts instead, for the
  * reactivity.
  *
@@ -27,6 +29,7 @@ function resolutionInput(): VoiceResolutionInput {
   const library = useLibraryStore.getState();
   return {
     voices: library.voices,
+    shared: useCommunityStore.getState().mirroredVoices,
     selection: library.voiceSelection,
     access: voiceAccessOf(useSettingsStore.getState()),
   };
@@ -50,4 +53,15 @@ export function currentAssistantVoice(): SpeechVoice {
  */
 export function selectedNarrationVoice(): SpeechVoice {
   return selectedVoice('narration', resolutionInput());
+}
+
+/**
+ * What would read if this shared voice were not there — the fallback when it
+ * has refused a reading it cannot do (out of its scope, or a copy the owner
+ * has since updated) while staying selected for the readings it can. Like a
+ * dangling selection, that is the role's default, if this session can pay.
+ */
+export function narrationVoiceWithout(itemId: string): SpeechVoice {
+  const input = resolutionInput();
+  return resolveVoice('narration', { ...input, shared: input.shared.filter((m) => m.itemId !== itemId) });
 }

@@ -70,7 +70,21 @@ only place ElevenLabs is exercised, and it never calls ElevenLabs: `secrets.php`
 `ELEVENLABS_API_BASE` at an in-process Node stub whose behaviour is chosen by the key
 value, so every error code, the v4 chunk-and-join and the character-to-word alignment
 are checked offline in seconds — against `lib/wordTokens.ts`, the very tokenizer
-`WordHighlighter` uses.
+`WordHighlighter` uses. Its shared-voice section adds an OpenAI stub
+(`OPENAI_API_BASE`) and canary keys for an owner and a reader, so "only the owner's key
+was ever sent" is an assertion over every upstream request rather than a hope.
+
+**One unit test spawns `php`, on purpose.** `tests/unit/announcements.test.ts` feeds
+every announcement the real `buildPlaybackPlan` makes — every book, both languages,
+every heading shape — through the real server matcher (`isAnnouncement()`), because
+the two live in different languages and a port of either into the other would be the
+two-copies failure. It is pure on both sides; php is on every machine that runs
+`npm run verify` already, and the test fails loudly, not silently, without it.
+
+**A shared voice is proven refused, never generated, at E2E.** The room journey lends a
+voice whose owner has no key: the reader's requests go to `tts.shared`, each is refused
+before anything is generated, and the reading continues in Echo from the warm cache —
+so the step costs nothing, and the paying half stays in `voices:verify:api`.
 
 **The E2E tier serves `dist/`.** That directory is already the whole deployed app — `api.php`,
 `secrets.php`, the Zefania XML, `sw.js`, and a warm `storage/audio` — so one `php -S -t dist`

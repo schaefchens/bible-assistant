@@ -22,7 +22,8 @@ changes — that is where new rationale goes, not here.
 - `npm run bible:build` / `bible:verify` — regenerate the offline Bible packs / diff them against golden fixtures from the PHP parser. **Run verify after touching either parser.**
 - `npm run bible:counts` — regenerate `src/services/bible/verseCounts.ts` from the KJV pack. Only when the packs or the book catalog change.
 - `npm run community:verify` / `community:verify:api` — signing, share-code and chunking properties; then the community endpoints, `feedback.create`, and "no file in `public/api/` is servable on its own", against a throwaway `php -S`. **Run both after touching signatures, share codes, `postUnits`, `api.php`'s community actions or `feedback.create`, or after adding a handler file.**
-- `npm run voices:verify:api` — keys, the voices collection and ElevenLabs narration (chunking, MP3 joins, the character-to-word alignment, every error code) against a throwaway `php -S` and an in-process ElevenLabs stub — never the real API. **Run after touching `audio.php`, `elevenlabs.php`, `voices.php`, the payer resolvers or `lib/wordTokens.ts`.**
+- `npm run voices:verify:api` — keys, the voices collection, ElevenLabs narration (chunking, MP3 joins, the character-to-word alignment, every error code) and **shared voices** (who pays, the scope, the allowances, the owner's slots) against a throwaway `php -S` and in-process ElevenLabs and OpenAI stubs — never the real APIs. **Run after touching `audio.php`, `elevenlabs.php`, `voices.php`, `sponsorship.php`, the payer resolvers or `lib/wordTokens.ts`.**
+- `npm run voices:announcements` — regenerate `public/api/announcements.php` (the announcement templates and book names a voice lent for scripture may read) from `src/i18n/*.json` and the book catalog. **Run after changing an `announce.*` string or a book's name** — `tests/unit/announcements.test.ts` fails until you do.
 - `npm run build:native` / `npm run sync` — the Capacitor build; `sync` also runs `cap sync`.
 - `npm run icons` — regenerate every app icon from `resources/source/icon.png` (`scripts/icons/buildIcons.mjs`); splash screens stay `capacitor-assets`' job. Sizing is per role (full-bleed vs genuinely masked) — don't "simplify" it back to one shared bitmap.
 - `./scripts/deploy.sh [--dry-run]` — deploy the PWA + PHP over SFTP from an explicit allow-list. It must never upload `storage/` (live user data) or `secrets.php`, and it names **`api.php` and the whole of `api/`** — one without the other 500s on every request.
@@ -52,6 +53,8 @@ changes — that is where new rationale goes, not here.
 | Voice profiles, the selection, which voice speaks | `src/services/voices/voiceProfiles.ts` — `resolveVoice`; read through `src/lib/narrationVoice.ts` (outside React) / `src/hooks/useSpeechVoice.ts` |
 | The voices screen (gallery + editor) and the key cards | `src/routes/VoicesPage.tsx` + `src/components/voiceProfiles/*` |
 | An ElevenLabs refusal becoming session state | `src/lib/providerFailureWatch.ts` + `services/api/client.ts` `providerFailureOf` |
+| A voice lent to a shelf: its terms, what it may read | `src/services/voices/voiceSharing.ts` (`voiceCovers`); the reader's copy is `communityStore.mirroredVoices`; the screens are `ShareVoiceSheet` / `ShelfVoiceSheet` |
+| Whose key pays for a lent voice, and on what terms | `public/api/sponsorship.php` — `withSponsorPayer`, `sharedScopeAllows`, `sponsorAdmit` |
 | What plays next (canonical order *or* a reading list) | `src/lib/readingContinuation.ts` |
 | Auto-continuation + prefetch (the machinery, not the policy) | `src/lib/autoPlay.ts` |
 | Bible reader screen | `src/routes/ReadPage.tsx` + `src/store/readerStore.ts` |
@@ -107,14 +110,14 @@ All in `src/store/`. `(persist)` = survives reload via `zustand/middleware`.
 | --- | --- |
 | `usePlaybackStore` | **Source of truth for audio state**: status, current track, word index (drives `WordHighlighter`), volumes |
 | `useChatStore` | Conversation history, `isProcessing`, `currentTool` |
-| `useSettingsStore` *(persist v18 + migrations)* | User prefs: locale, `theme`, `readingAppearance`, translation, reading/announcement prefs, ambient, mic position, `syncEnabled`; transient key status (OpenAI, ElevenLabs) and `elevenLabsFailure`. **Not** which voice speaks — that syncs, settings don't |
+| `useSettingsStore` *(persist v18 + migrations)* | User prefs: locale, `theme`, `readingAppearance`, translation, reading/announcement prefs, ambient, mic position, `syncEnabled`; transient key status (OpenAI, ElevenLabs), `elevenLabsFailure` and `sharedVoiceFailures`. **Not** which voice speaks — that syncs, settings don't |
 | `useLibraryStore` | Cards + boards + their order, reading lists + per-list progress, **narration voices + the voice selection**, and `pendingOps`. Split across five modules — see [`stores.md`](docs/architecture/stores.md) |
 | `useRibbonsStore` *(persist)* | Colored bookmarks ("ribbons") |
 | `useGlobalVoiceStore` | Mic listening state, last voice response |
 | `useLastReadingStore` *(persist)* | Resume point for "play last reading" — **audio-owned**, written only from the playback subscription. The reader's scroll position deliberately does not write here, or idle scrolling would move it |
 | `useReaderStore` *(persist v2 — `position` + `source`)* | The reader screen: what it is walking through (the Bible, or a reading list), the current segment, the loaded-segment cache + the mounted window |
 | `useBiblePacksStore` *(persist — `wanted` only)* | Offline Bible packs: per-translation status/progress, and which translations the user has asked for |
-| `useCommunityStore` | The community profile, the user's own spaces and posts (drafts included, plus which are `shared`), subscriptions, subscribers. The state and the lifecycle only — the writers live in five sibling modules, see [`stores.md`](docs/architecture/stores.md) |
+| `useCommunityStore` | The community profile, the user's own spaces and posts (drafts included, plus which are `shared`), subscriptions, subscribers, and the mirrors of what others share — plans, boards, **voices**. The state and the lifecycle only — the writers live in five sibling modules, see [`stores.md`](docs/architecture/stores.md) |
 | `useNarrationStore` | Per-target narration download state (status/progress/error) for a chapter *or* a post — `NarrationTarget` is a union. Transient — the truth is in Dexie and `check()` re-derives from it |
 | `useUiLayoutStore` | Transient layout — `bottomBarHeight`, the height of whichever bar the current page puts above the nav (chat composer, reader pager), so floaters clear it |
 | `useUpdateStore` (in `lib/pwaUpdate.ts`) | PWA update-available flag *(named `use*` though it's a store, not a hook — a known, intentionally-left naming exception)* |
@@ -185,6 +188,8 @@ Before writing a helper, check whether one of these already exists.
 | which voice speaks right now | `services/voices/voiceProfiles.ts` — `resolveVoice` | `effectiveReadingVoice` / `effectiveAssistantVoice` / `effectiveVoiceStyle`, which *wrote* the store back to Echo whenever a key looked missing |
 | how a verse is cut into highlighted words | `lib/wordTokens.ts` | inline in `WordHighlighter`; now also the oracle the server's ElevenLabs alignment is checked against |
 | matching a spoken name to a thing | `services/ai/handlers/match.ts` — `byName` | module-private in `handlers/spaces.ts`, out of reach of `set_voice` |
+| the shapes derived from a feed (`feedItems`, a mirror array per kind) | `store/communityRows.ts` — `mirrorsFrom` → `FeedMirrors`, spread by all four writers | four writers, one of which (`unsubscribe`) filtered the arrays by hand |
+| how a narration miss is generated, whoever pays | `public/api/audio.php` — `NarrationJob` (lock, re-check, temp files, rename, clean-up) | ElevenLabs only; OpenAI wrote in place, unlocked — fifty listeners, fifty generations |
 
 Two conventions that follow from the same idea:
 
@@ -264,14 +269,16 @@ no failing test — which is why they are here rather than only there.
 - Posts are plain text because rendered text must equal narrated text. `postUnits`' output is a narration **cache key** — change how it splits and every existing narration and pinned download is orphaned.
 - A share code is an **address, not a key**; access control is the owner's accept/deny. Widen `normalizeSpaceCode` together with api.php's `normalizeShareCode`.
 - Posts absent from the server are never deleted locally. The feed (other people's writing) sits outside the sync machinery entirely.
-- Shared plans and boards ([`community-shared-items.md`](docs/architecture/community-shared-items.md)): `sharedPayload.ts` is the only producer and received bytes are stored verbatim. A shared plan keeps the author's list id; `sameSource` does not compare `code`; don't put `code` on `SegmentRef`; find lists by id via `resolveListById`. A fork mints fresh ids at every level.
+- Shared plans, boards and voices ([`community-shared-items.md`](docs/architecture/community-shared-items.md)): `sharedPayload.ts` is the only producer and received bytes are stored verbatim. A shared plan keeps the author's list id; `sameSource` does not compare `code`; don't put `code` on `SegmentRef`; find lists by id via `resolveListById`. A fork mints fresh ids at every level. Mirrors come only from **accepted** subscriptions, and the four writers spread one `mirrorsFrom` result. A voice's payload is the one the server reads (`sharedVoiceOf`) — it refuses a field it does not know.
 - `MODERATION_POLICY` mirrors `community.terms.*` — change both and bump `COMMUNITY_TERMS_VERSION`. Moderation runs server-side in the write path and fails open ([`community-moderation.md`](docs/architecture/community-moderation.md)).
 - The invite route is the pending state: onboarding's `onDone` must leave `/subscribe/:code` alone ([`community-invites.md`](docs/architecture/community-invites.md)).
 
 **Voices** — [`voices.md`](docs/architecture/voices.md)
 - A voice's cache identity is `voiceKeyPart(config)` and nothing else — never its id, name, picture or payer. For OpenAI it is `${voice}|${style}` byte for byte: Echo's keys and request bodies must stay identical, or every e2e run misses the warm cache and bills OpenAI.
 - `resolveVoice` never writes and returns a shared constant or the profile's own `config` (stable references). The *choice* lives in the library and syncs; what this session may *spend* (key status, `elevenLabsFailure`) is transient settings.
-- `services/voices/ttsVoice.ts` and `voiceProfiles.ts` import no store, no i18n, no `services/api` — stores value-import them during hydration.
+- `services/voices/ttsVoice.ts`, `voiceProfiles.ts` and `voiceSharing.ts` import no store, no i18n, no `services/api` — stores value-import them during hydration.
+- A voice lent to a shelf ([`voices.md`](docs/architecture/voices.md#lending-a-voice-to-a-shelf)): the reader selects it by its **item id**; its `shared` ref rides on its config and never enters `voiceKeyPart`; its requests go to `tts.shared` / `tts.speak.shared`, never a field on `tts` (an older api.php must answer 404, not bill the reader). Ask `voiceCovers` wherever a voice is chosen for a plan — `readingTtsVoice`, the mid-reading rebuild (`narrationVoiceFor`), downloads (`useNarrationVoiceFor`). A `shared_voice_*` refusal is `payer: 'owner'` and must never touch the reader's own key status.
+- Everything that protects a lending owner's money is on the server (`sponsorship.php`): the access checks refuse alike; the allowance is charged **after** the entry lock and the second cache look, and given back only when no audio came back; never the operator key, never `openAiPayer()`; an automatic-approval shelf needs a monthly pool, checked at spend time.
 - An ElevenLabs refusal never uses `user_key_failed`; `parseResponse` notifies the provider-failure watcher *before* throwing, which is what lets `streamReading` re-resolve mid-chapter. Settings › Voice & playback keeps its title and the "Speak assistant replies automatically" label — the e2e harness clicks them.
 
 **Theming** — [`theming.md`](docs/architecture/theming.md)
@@ -287,7 +294,7 @@ no failing test — which is why they are here rather than only there.
 - Accounts are lazy: only `$ACCOUNT_ACTIONS` create `storage/users/{id}`. No eager `mkdir` in `authenticate()`.
 - Never write `__DIR__` in `public/api/` — use `APP_ROOT`. Every file there opens with the `if (!defined('APP_ROOT'))` 404 guard.
 - Never write `<Directory>` in a `.htaccess`: Apache 500s the whole site, and `php -S` — which every harness here uses — cannot catch it.
-- Who pays is resolved in one function per provider — `openAiPayer`, `elevenLabsPayer`, and `ttsPayer` for narration, on a cache miss only — and only `account.php`'s stored-key helpers touch `users/{id}/*_key.txt`. Only `elevenLabsRequest()` builds an `xi-api-key` header; never send another provider a request through the OpenAI curl wrappers, which fall back to the shared OpenAI key.
+- Who pays is resolved in one function per provider — `openAiPayer`, `elevenLabsPayer`, and `ttsPayer` for narration, on a cache miss only; `withSponsorPayer` for a lent voice, whose owner pays — and only `account.php`'s stored-key helpers touch `users/{id}/*_key.txt`. Only `elevenLabsRequest()` builds an `xi-api-key` header; never send another provider a request through the OpenAI curl wrappers, which fall back to the shared OpenAI key.
 - `api.php` and `api/` deploy together, `api/` first; any harness that stages the backend names both. Nothing user-authored crosses accounts except through a `sanitize*` whitelist, and a caller-supplied id becomes a path only via `safe*` (`safeUuid`).
 
 **In-app feedback** — [`feedback.md`](docs/architecture/feedback.md)
@@ -311,7 +318,7 @@ no failing test — which is why they are here rather than only there.
 | [`community-shared-items.md`](docs/architecture/community-shared-items.md) | shared plans and boards: payloads, `ba.item.v1`, the room screen |
 | [`community-screens.md`](docs/architecture/community-screens.md) | resharing, the shelf screen, the index tabs, the code field |
 | [`feedback.md`](docs/architecture/feedback.md) | the bug button and `feedback.create` |
-| [`voices.md`](docs/architecture/voices.md) | narration voices: identity and cache keys, who speaks, sync, keys and providers, ElevenLabs, the screens |
+| [`voices.md`](docs/architecture/voices.md) | narration voices: identity and cache keys, who speaks, sync, keys and providers, ElevenLabs, the screens, lending a voice to a shelf |
 | [`theming.md`](docs/architecture/theming.md) | colour tokens, palettes, reading appearance |
 | [`offline.md`](docs/architecture/offline.md) | sync opt-in, packs, the narration source chain, downloads |
 | [`backend.md`](docs/architecture/backend.md) | `api.php` and its files, lazy accounts, the action list, who pays (narration payers, the stored keys, ElevenLabs) |

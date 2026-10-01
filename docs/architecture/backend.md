@@ -2,7 +2,7 @@
 
 > Part of the architecture notes indexed in [`CLAUDE.md`](../../CLAUDE.md). Moved there verbatim; "above" and "below" may refer to sections that now live in a sibling file.
 
-One PHP front door; routes on `?action=`. Per-user data dirs keyed by an identity derived from the user's passphrase. `chat`, `transcribe` and `recording.upload` resolve an OpenAI key before their handler runs — the user's personal key, **stored on the server** by `auth.openaiKey.set` (the client never holds it), or the shared key, which `X-Prefer-Shared-Key` forces for a session. `tts` and `tts.speak` decide who pays inside the handler, on a cache miss only — see "Who pays" below.
+One PHP front door; routes on `?action=`. Per-user data dirs keyed by an identity derived from the user's passphrase. `chat`, `transcribe` and `recording.upload` resolve an OpenAI key before their handler runs — the user's personal key, **stored on the server** by `auth.openaiKey.set` (the client never holds it), or the shared key, which `X-Prefer-Shared-Key` forces for a session. `tts` and `tts.speak` decide who pays inside the handler, on a cache miss only, and so do `tts.shared` / `tts.speak.shared`, for a voice somebody lent to a shelf — whose owner pays — see "Who pays" below.
 
 **Accounts are lazy.** `authenticate()` validates the identity headers and creates
 nothing; `requireUserDir()` creates `storage/users/{id}` and is called from the router
@@ -30,14 +30,16 @@ construction, which is why the docblock no longer carries a hand-written copy (b
 | `api/store.php` | the JSON files under `storage/`, and the generic collection endpoints |
 | `api/openai.php` | which OpenAI key pays (`openAiPayer`), the four curl shapes, how a failure is reported |
 | `api/chat.php` | the assistant proxy |
-| `api/audio.php` | `tts`, `tts.speak`, who pays for narration (`ttsPayer`), the shared key's limits, forced alignment, `transcribe`; the pure MP3 framing and the ElevenLabs character-timings → words converter |
+| `api/audio.php` | `tts`, `tts.speak` and their `.shared` twins, who pays for narration (`ttsPayer`), the shared key's limits, how a miss is generated (`NarrationJob`: the per-entry lock, temp files, clean-up), forced alignment, `transcribe`; the pure MP3 framing and the ElevenLabs character-timings → words converter |
 | `api/bible.php` | Zefania XML → verses (`bibleChapterVerses`, also the ElevenLabs verse context) |
 | `api/account.php` | the stored provider keys (the only code that touches `users/{id}/*_key.txt`), `account.delete`, `recording.upload`, `ambient.list` |
 | `api/voices.php` | what a narration voice is: the audible-config rules, its canonical hash, `sanitizeVoiceProfile`, the voices collection and the selection |
 | `api/elevenlabs.php` | the ElevenLabs transport (the only `xi-api-key`), its failure mapping, the key trio, narration, and the four proxies |
 | `api/community.php` | what a space is on disk: paths, sanitizers, share codes, signatures, the moderation text pulled out of a payload |
 | `api/spaces.php` | the owner's own community endpoints |
-| `api/sharing.php` | the four endpoints that cross accounts |
+| `api/sharing.php` | the endpoints that cross accounts to read or join a space |
+| `api/announcements.php` | **generated** (`npm run voices:announcements`): the app's announcement templates and book names, which a voice lent for scripture may also read |
+| `api/sponsorship.php` | a voice lent to a shelf: whose key pays (`withSponsorPayer`), what it may read, the allowances and the owner's generation slots |
 | `api/moderation.php` | the content standards (`MODERATION_POLICY`) and the judge |
 | `api/reports.php` | `report.create` |
 | `api/feedback.php` | `feedback.create` |
@@ -80,7 +82,7 @@ Three things about that split are load-bearing:
   every request 500ing for the rest of the transfer — and permanently, if the
   transfer then fails.
 
-Actions: `chat`, `tts`, `tts.speak`, `bible.chapter`, `transcribe`, `auth.openaiKey.{status,set,clear}`, `auth.elevenlabsKey.{status,set,clear}`, `elevenlabs.{subscription,voices,design,design.save}`, `voices.{list,upsert,delete}`, `voices.selection.{get,set}`, `cards.{list,upsert,delete,order.get,order.set}`, `boards.{list,upsert,delete,order.get,order.set}`, `readingLists.{list,upsert,delete}`, `readingProgress.{list,set}`, `recording.upload`, `account.delete`, `ambient.list`, and the community actions:
+Actions: `chat`, `tts`, `tts.speak`, `tts.shared`, `tts.speak.shared`, `bible.chapter`, `transcribe`, `auth.openaiKey.{status,set,clear}`, `auth.elevenlabsKey.{status,set,clear}`, `elevenlabs.{subscription,voices,design,design.save}`, `voices.{list,upsert,delete}`, `voices.selection.{get,set}`, `cards.{list,upsert,delete,order.get,order.set}`, `boards.{list,upsert,delete,order.get,order.set}`, `readingLists.{list,upsert,delete}`, `readingProgress.{list,set}`, `recording.upload`, `account.delete`, `ambient.list`, and the community actions:
 `profile.{get,set,delete}`, `profile.avatar.upload`, `spaces.{list,upsert,delete}`,
 `spaces.code.set`, `posts.{list,upsert,delete}`, `items.{list,upsert,delete}`,
 `members.{list,decide}`,
@@ -130,6 +132,36 @@ an *empty* key file as the user's key failing).
   (the client reads that as "offer the shared OpenAI key"). The codes are listed in
   [`voices.md`](voices.md).
 
+- **A voice lent to a shelf is its owner's key, never the reader's.**
+  `tts.shared` / `tts.speak.shared` are the same handlers with one difference: on a
+  miss, `withSponsorPayer()` (`api/sponsorship.php`) checks — read-only, every
+  "no" alike until the caller is known to be an accepted member — that the caller
+  has a profile, the code names a live space, the membership is accepted, the item
+  is a voice listed in *that* space, the config is the one shared, the text is in
+  its scope, an automatic-approval shelf has a monthly pool, and the owner has a
+  key; and answers the owner's stored key as `who: 'owner'`. Never the operator
+  key, never `openAiPayer()` (which honours the *reader's* session fallback),
+  never an empty key. After the entry lock and the second cache look,
+  `sponsorAdmit()` charges the allowances and takes one of the owner's two slots.
+  Refusals are `shared_voice_{unavailable,mismatch,out_of_scope,budget,busy}`,
+  each `{payer: 'owner', itemId}`, and an owner-paid upstream failure carries no
+  upstream detail. Separate actions, so an api.php that predates them answers 404
+  rather than reading the request as the caller's own. The rules, and why, are in
+  [`voices.md`](voices.md).
+- **`OPENAI_API_BASE`** is the OpenAI twin of `ELEVENLABS_API_BASE` — a `define`,
+  accepted only as https or a loopback stub (`openAiUrl()`), and anything else
+  fails every OpenAI call closed. `voices:verify:api` points it at an in-process
+  stub, so no check there can reach the real service.
+
+**A miss is generated once, whoever pays.** Both providers go through `NarrationJob`
+(`api/audio.php`): the per-entry lock in `storage/work/`, the cache checked again
+under it, the audio and alignment written to temp files and renamed into place with
+the alignment last, and — from a shutdown hook, because `fail()` exits — the temp
+files removed, a sponsored reservation given back when no audio came back, the
+owner's slot and the lock released. OpenAI generated in place, unlocked, until
+shared voices made fifty readers missing one chapter on somebody else's key a real
+case.
+
 **ElevenLabs narration is content-addressed and immutable**:
 `/storage/audio/el/{cfgHash}/{lang|_}/{k[0:2]}/{k}.mp3|.json`, `cfgHash` the first 20
 hex of a sha256 over `audibleConfigCanonical()` (fixed two-decimal settings, the model,
@@ -142,5 +174,6 @@ renames into place with the JSON last — its presence is what a hit tests. Bump
 `EL_CONFIG_VERSION` only when the same config and text would now sound different.
 
 `npm run voices:verify:api` (`scripts/voices/`) proves all of it against an in-process
-ElevenLabs stub, with the shared OpenAI key blanked and a canary key planted to prove
-no upstream request ever carried it.
+ElevenLabs stub and an OpenAI stub, with the shared OpenAI key blanked and a canary key
+planted to prove no upstream request ever carried it — and, for shared voices, that only
+ever the owner's key was sent (checks 19–31).

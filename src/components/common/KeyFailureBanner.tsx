@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { onUserKeyFailure } from '@/services/api/client';
+import { useCommunityStore } from '@/store/communityStore';
+import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { ROUTES } from '@/lib/appRoutes';
 import type { ElevenLabsFailure } from '@/services/voices/voiceProfiles';
@@ -19,6 +21,10 @@ import type { ElevenLabsFailure } from '@/services/voices/voiceProfiles';
  *   lib/providerFailureWatch.ts): no decision to make — narration has already
  *   fallen back to the system voice — so it explains why and offers the way to
  *   fix it. Shown once per distinct failure; dismissing it hides that one.
+ * - **A voice somebody lent** (`settings.sharedVoiceFailures`), when it is a
+ *   voice the user has chosen: the owner's account would not pay, or what they
+ *   allow is spent. Said as the owner's, never as "your key" — the user's own
+ *   keys have nothing to do with it — and shown once per voice and reason.
  */
 export function KeyFailureBanner() {
   const { t } = useTranslation();
@@ -28,6 +34,16 @@ export function KeyFailureBanner() {
   const sessionPreferShared = useSettingsStore((s) => s.sessionPreferSharedKey);
   const elevenLabsFailure = useSettingsStore((s) => s.elevenLabsFailure);
   const [dismissed, setDismissed] = useState<ElevenLabsFailure | null>(null);
+  const sharedFailures = useSettingsStore((s) => s.sharedVoiceFailures);
+  const selection = useLibraryStore((s) => s.voiceSelection);
+  const lentVoices = useCommunityStore((s) => s.mirroredVoices);
+  const [dismissedShared, setDismissedShared] = useState<string | null>(null);
+  // A chosen voice somebody lent, that stopped speaking this session.
+  const lent = lentVoices.find(
+    (m) => (m.itemId === selection.narration || m.itemId === selection.assistant) && sharedFailures[m.itemId],
+  );
+  const lentFailure = lent ? sharedFailures[lent.itemId] : undefined;
+  const lentKey = lent ? `${lent.itemId}|${lentFailure}` : null;
 
   useEffect(() => {
     return onUserKeyFailure(() => {
@@ -85,6 +101,34 @@ export function KeyFailureBanner() {
             {t('narrationVoices.failure.open')}
           </button>
           <button type="button" className="btn-ghost text-xs" onClick={() => setDismissed(elevenLabsFailure)}>
+            {t('keyFailure.dismiss')}
+          </button>
+        </div>
+      </Banner>
+    );
+  }
+
+  if (lent && lentKey !== dismissedShared) {
+    return (
+      <Banner>
+        <p className="text-sm text-ink">
+          {lentFailure === 'budget'
+            ? t('narrationVoices.failure.sharedBudget', { name: lent.name, author: lent.author })
+            : t('narrationVoices.failure.sharedUnavailable', { name: lent.name, author: lent.author })}
+        </p>
+        <p className="text-xs text-ink-muted mt-1">{t('narrationVoices.failure.sharedFellBack')}</p>
+        <div className="flex gap-2 mt-3">
+          <button
+            type="button"
+            className="btn-ghost text-xs"
+            onClick={() => {
+              setDismissedShared(lentKey);
+              navigate(ROUTES.voices);
+            }}
+          >
+            {t('narrationVoices.failure.sharedOpen')}
+          </button>
+          <button type="button" className="btn-ghost text-xs" onClick={() => setDismissedShared(lentKey)}>
             {t('keyFailure.dismiss')}
           </button>
         </div>

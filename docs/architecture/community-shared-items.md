@@ -1,11 +1,13 @@
-# A room holds plans and boards too, not only pieces
+# A room holds plans, boards and voices too, not only pieces
 
 > Part of the architecture notes indexed in [`CLAUDE.md`](../../CLAUDE.md). Moved there verbatim; "above" and "below" may refer to sections that now live in a sibling file.
 
 A room's second content type is `SharedItem` — a **snapshot** of a reading plan,
-or of a board with its cards, signed and published the way a piece is. Cards are
-never shared loose: a board is already "cards grouped to memorize", so it is the
-unit.
+of a board with its cards, or of a narration voice its owner lends the room's
+readers, signed and published the way a piece is. Cards are never shared loose: a
+board is already "cards grouped to memorize", so it is the unit. A voice is the
+one kind that *spends* — its owner's key, on the readers' listening — and has its
+own section below and in [`voices.md`](voices.md).
 
 It sits beside `Post` rather than absorbing it. A post is wired into
 `postUnits`, the reader, narration and `ba.post.v1`; folding the two together
@@ -72,9 +74,12 @@ for a board would leave the corkboard's placements pointing at nothing.
 ## `ba.item.v1`
 
 Same discipline as `canonicalPostMessage`, with two differences worth knowing:
-**`kind` is in the message** (unhashed, a two-value enum) so a plan's signature
-cannot be lifted onto a board, and the payload is committed to **by hash**
-rather than carried. Mirrored in `verifyItemSignature` in `public/api/community.php`.
+**`kind` is in the message** (unhashed: `plan`, `board` or `voice`) so a plan's
+signature cannot be lifted onto a board or a voice, and the payload is committed
+to **by hash** rather than carried. Mirrored in `verifyItemSignature` in
+`public/api/community.php`, whose `sanitizeSharedItem` reads a kind it does not
+know as `plan` — and so fails the signature, because the kind is signed: an
+unknown kind can never be stored as a known one.
 
 ## A shared plan is read as a plan, not as a special case
 
@@ -232,3 +237,33 @@ not trip that file's mirror-and-bump instruction.
 and its extracted text — deleting the thing is the obvious first move after
 being reported. Blocking needs no change: it is keyed by the author's signing
 key and deletes their subscriptions, so their shelf goes with them.
+
+## A voice is the one payload the server reads
+
+A plan's or a board's payload is opaque to api.php — validated for size and
+well-formedness, never interpreted. A voice's is not: its terms decide what the
+owner's key pays for, so `items.upsert` checks it (`sharedVoiceOf()` in
+`api/voices.php`: the config by the same rules as a synced voice, the picture,
+the terms, and **no field it does not know**) and refuses it whole when it is not
+a voice — still storing the bytes exactly as signed. Every sponsored narration
+reads the terms back out of the stored payload, so what the server enforces is
+exactly what the owner published.
+
+Three consequences elsewhere in this machinery:
+
+- **`moderationTextOf` skips inline pictures** (`isInlineImage`): a voice's
+  avatar rides in its payload as base64, which is not writing and would push every
+  word past the judge's cap. `report.create` keeps the picture beside the
+  excerpt (`targetAvatar`), so the evidence survives the voice being removed.
+- **Mirrors come only from accepted subscriptions.** For a voice, a mirror is a
+  voice the reader may choose — offering one every request with would be refused
+  is a fault. The same filter now applies to plans and boards, which closed a
+  quieter version of the gap: a pending subscription's cached rows were rendered.
+- **The derived shapes are written together.** `mirrorsFrom` answers a
+  `FeedMirrors` — `feedItems` and one array per kind — and the four writers (`init`,
+  the feed refresh, `unsubscribe`, `disableCommunity` via `NO_MIRRORS`) spread it,
+  so a kind added there reaches all four. `unsubscribe` used to filter the arrays
+  by hand.
+
+An old client (2.2.x) parses a voice item as a board, fails, and shows nothing for
+it: rooms render from mirrors, and the owner's own screen filters by kind.

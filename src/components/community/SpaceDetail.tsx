@@ -11,10 +11,14 @@ import { BottomSheet, BottomSheetBody } from '@/components/common/BottomSheet';
 import { BoardIcon, ListIcon, ReadersIcon, ShareIcon } from '@/components/common/icons';
 import { SegmentedTabs } from '@/components/common/SegmentedTabs';
 import { AddToShelfSheet } from './AddToShelfSheet';
+import { ShelfVoiceSheet } from '@/components/voiceProfiles/ShelfVoiceSheet';
+import { VoiceAvatar } from '@/components/voiceProfiles/VoiceAvatar';
+import { allowanceLabel, scopeLabel } from '@/components/voiceProfiles/voiceSharingLabels';
+import { needsMonthlyPool } from '@/services/voices/voiceSharing';
 import { useCommunityStore } from '@/store/communityStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useReaderStore } from '@/store/readerStore';
-import type { Post, SharedItemKind, Space } from '@/types/domain';
+import type { Post, Space } from '@/types/domain';
 import { spaceDisplayName } from '@/services/community/spaceName';
 import { useLocale } from '@/hooks/useLocale';
 
@@ -49,18 +53,22 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
   const itemSources = useCommunityStore((s) => s.itemSources);
   const republishItem = useCommunityStore((s) => s.republishItem);
   const deleteItem = useCommunityStore((s) => s.deleteItem);
+  const voiceTerms = useCommunityStore((s) => s.voiceTerms);
   const readingLists = useLibraryStore((s) => s.readingLists);
   const boards = useLibraryStore((s) => s.boards);
+  const voices = useLibraryStore((s) => s.voices);
   const setSource = useReaderStore((s) => s.setSource);
 
   const [confirmingRotate, setConfirmingRotate] = useState(false);
   const [copied, setCopied] = useState(false);
   const [sharingOpen, setSharingOpen] = useState(false);
   const [readersOpen, setReadersOpen] = useState(false);
-  /** Which of the shelf's three kinds of content is showing. */
-  const [tab, setTab] = useState<'pieces' | 'plans' | 'boards'>('pieces');
+  /** Which of the shelf's four kinds of content is showing. */
+  const [tab, setTab] = useState<'pieces' | 'plans' | 'boards' | 'voices'>('pieces');
   /** Non-null while the "put something on this shelf" picker is open. */
-  const [adding, setAdding] = useState<SharedItemKind | null>(null);
+  const [adding, setAdding] = useState<'plan' | 'board' | null>(null);
+  /** Non-null while a voice is being lent here (`{}`) or its terms changed. */
+  const [voiceSheet, setVoiceSheet] = useState<{ itemId?: string } | null>(null);
 
   useEffect(() => {
     if (!confirmingRotate) return;
@@ -82,6 +90,7 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
   /** Split by kind, because each has its own tab and its own way to add one. */
   const plans = useMemo(() => roomItems.filter((i) => i.kind === 'plan'), [roomItems]);
   const sharedBoards = useMemo(() => roomItems.filter((i) => i.kind === 'board'), [roomItems]);
+  const lentVoices = useMemo(() => roomItems.filter((i) => i.kind === 'voice'), [roomItems]);
 
   /**
    * Which shared items no longer match the list or board they came from.
@@ -96,16 +105,22 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
     for (const item of roomItems) {
       const src = itemSources[item.id];
       if (!src) continue;
-      const live =
-        item.kind === 'plan'
-          ? readingLists.find((l) => l.id === src.sourceId)
-          : boards.find((b) => b.id === src.sourceId);
+      const live = (() => {
+        switch (item.kind) {
+          case 'plan':
+            return readingLists.find((l) => l.id === src.sourceId);
+          case 'board':
+            return boards.find((b) => b.id === src.sourceId);
+          case 'voice':
+            return voices.find((v) => v.id === src.sourceId);
+        }
+      })();
       // A source that is gone cannot be out of date — the shared item outlives
       // it deliberately, the way a piece outlives nothing in particular.
       if (live && live.updatedAt !== src.sourceUpdatedAt) stale.add(item.id);
     }
     return stale;
-  }, [roomItems, itemSources, readingLists, boards]);
+  }, [roomItems, itemSources, readingLists, boards, voices]);
 
   const members = memberships.filter((m) => m.spaceId === space.id);
   const pending = members.filter((m) => m.status === 'pending');
@@ -232,6 +247,9 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
             { key: 'pieces', label: t('community.tabPieces'), count: mine.length },
             { key: 'plans', label: t('community.tabPlans'), count: plans.length },
             { key: 'boards', label: t('community.tabBoards'), count: sharedBoards.length },
+            // Not on Today: its items expire after a day, and a voice that
+            // vanished from its readers overnight would look like a fault.
+            ...(isToday ? [] : [{ key: 'voices' as const, label: t('community.tabVoices'), count: lentVoices.length }]),
           ]}
         />
 
@@ -271,7 +289,69 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
             </>
           )}
 
-          {tab !== 'pieces' && (
+          {tab === 'voices' && (
+            <>
+              <button type="button" onClick={() => setVoiceSheet({})} className="btn-primary text-sm">
+                {t('voiceSharing.addVoice')}
+              </button>
+              {lentVoices.length === 0 && (
+                <p className="text-sm text-ink-muted">{t('voiceSharing.noneHere')}</p>
+              )}
+              {/* A voice is lent on terms, so a row says them — and says when
+                  readers cannot use it at all: a shelf anyone can join needs a
+                  monthly allowance, whatever was set when it was lent. */}
+              {lentVoices.map((item) => {
+                const terms = voiceTerms[item.id];
+                const src = itemSources[item.id];
+                const source = src ? voices.find((v) => v.id === src.sourceId) : undefined;
+                const stale = staleSources.has(item.id);
+                const stuck = terms && needsMonthlyPool(space.approval, terms);
+                return (
+                  <div key={item.id} className="rounded-xl bg-surface-raised px-3 py-2 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <VoiceAvatar name={item.title} avatar={source?.avatar} size={32} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-ink">{item.title}</span>
+                        <span className="block text-[11px] text-ink-muted truncate">
+                          {terms
+                            ? `${scopeLabel(terms.scope, t)} · ${allowanceLabel(terms, lang, t)}`
+                            : t('voiceSharing.termsElsewhere')}
+                        </span>
+                      </span>
+                      {stale && (
+                        <SmallButton
+                          label={`${t('community.updateShared')} — ${item.title}`}
+                          onClick={() => void republishItem(item.id)}
+                        >
+                          {t('community.updateShared')}
+                        </SmallButton>
+                      )}
+                      {source && (
+                        <SmallButton
+                          label={`${t('voiceSharing.terms')} — ${item.title}`}
+                          onClick={() => setVoiceSheet({ itemId: item.id })}
+                        >
+                          {t('voiceSharing.terms')}
+                        </SmallButton>
+                      )}
+                      <SmallButton
+                        label={`${t('community.removeFromShelf')} — ${item.title}`}
+                        onClick={() => void deleteItem(item.id)}
+                      >
+                        {t('community.removeFromShelf')}
+                      </SmallButton>
+                    </div>
+                    {stale && (
+                      <p className="text-[10px] uppercase tracking-wider text-ink-muted">{t('community.outOfDate')}</p>
+                    )}
+                    {stuck && <p className="text-[11px] text-amber-400">{t('voiceSharing.needsPool')}</p>}
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+          {(tab === 'plans' || tab === 'boards') && (
             <>
               <button
                 type="button"
@@ -364,6 +444,16 @@ export function SpaceDetail({ space, onNewPost, onEditPost }: Props) {
           spaceId={space.id}
           open
           onClose={() => setAdding(null)}
+        />
+      )}
+
+      {voiceSheet && (
+        <ShelfVoiceSheet
+          key={voiceSheet.itemId ?? 'new'}
+          space={space}
+          itemId={voiceSheet.itemId}
+          open
+          onClose={() => setVoiceSheet(null)}
         />
       )}
 

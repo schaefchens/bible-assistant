@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { BottomSheet, BottomSheetBody } from '@/components/common/BottomSheet';
 import { useCommunityStore } from '@/store/communityStore';
 import { useLibraryStore } from '@/store/libraryStore';
-import type { SharedItemKind } from '@/types/domain';
 
 /**
  * Put one of your own plans or boards on this shelf.
@@ -25,7 +24,8 @@ export function AddToShelfSheet({
   open,
   onClose,
 }: {
-  kind: SharedItemKind;
+  /** A plan or a board: a voice is lent with terms, through `ShareVoiceSheet`. */
+  kind: 'plan' | 'board';
   spaceId: string;
   open: boolean;
   onClose: () => void;

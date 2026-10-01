@@ -1,4 +1,5 @@
 import { clamp } from '@/lib/math';
+import type { SharedVoiceRef } from './voiceSharing';
 
 /**
  * **The one copy of what a narration voice sounds like** — and therefore which
@@ -8,8 +9,8 @@ import { clamp } from '@/lib/math';
  * and the settings that change the sound. A user's voice profile (name, avatar,
  * which device chose it) wraps one of these, and none of that wrapping may ever
  * reach a cache key: two profiles with the same config play the same files,
- * and so — later, when a voice can be shared on a shelf — do the owner and
- * everyone they share it with.
+ * and so do a voice shared on a shelf and everyone it is shared with — see
+ * `SharedTtsVoice`.
  *
  * Pure, and imports nothing that imports a store: the settings migration and
  * the library store value-import this module, and both run while zustand is
@@ -65,6 +66,26 @@ export type TtsVoice = OpenAiTtsVoice | ElevenLabsTtsVoice;
 export type DeviceVoice = { provider: 'device' };
 /** Anything that can speak a reading. */
 export type SpeechVoice = TtsVoice | DeviceVoice;
+
+/**
+ * Somebody else's voice, lent to a shelf the reader follows: its audible config
+ * plus whose it is (`shared`, see voiceSharing.ts).
+ *
+ * The ref rides on the config so that every path that narrates — playback,
+ * prefetch, downloads, a preview — carries it without being told, and every
+ * request goes to `tts.shared` with it, where the voice's owner pays. It is
+ * **never part of the identity**: `voiceKeyPart` builds from the audible
+ * fields alone, so the owner and every reader share one cache, and
+ * `normalizeTtsVoice` drops it, so a voice of the user's own can never carry
+ * one.
+ */
+export type SharedTtsVoice = TtsVoice & { shared: SharedVoiceRef };
+
+/** Whose voice this is, when it is somebody else's — or null for one's own. */
+export function sharedRefOf(v: SpeechVoice): SharedVoiceRef | null {
+  const ref = (v as Partial<SharedTtsVoice>).shared;
+  return ref && typeof ref.code === 'string' && typeof ref.itemId === 'string' ? ref : null;
+}
 
 /** The system narration voice, and the only one the shared server key pays
  * for. Frozen and shared: the resolver hands out this exact object, so a
@@ -229,8 +250,13 @@ type VerseFields = {
  * e2e pins the server's answer to it. An ElevenLabs body also names the voice
  * in `voice`, so an api.php that predates providers fails loudly at OpenAI
  * instead of quietly reading in its default voice.
+ *
+ * A shared voice's body ends with `shared: {code, itemId}` — what the server
+ * finds the owner's terms by — and goes to `tts.shared` (see `ttsAction`). For
+ * every other voice the field is absent, and the body unchanged.
  */
 export function ttsVerseBody(v: TtsVoice, f: VerseFields) {
+  const shared = sharedWire(v);
   if (v.provider === 'openai') {
     return {
       text: f.text,
@@ -240,6 +266,7 @@ export function ttsVerseBody(v: TtsVoice, f: VerseFields) {
       bookId: f.bookId,
       chapter: f.chapter,
       verse: f.verse,
+      shared,
     };
   }
   return {
@@ -251,14 +278,16 @@ export function ttsVerseBody(v: TtsVoice, f: VerseFields) {
     bookId: f.bookId,
     chapter: f.chapter,
     verse: f.verse,
+    shared,
   };
 }
 
 /** The `tts.speak` request body for free text (a post paragraph, a heading,
  * an assistant reply). Same rules as `ttsVerseBody`. */
 export function ttsSpeakBody(v: TtsVoice, f: { text: string; language?: 'en' | 'de' }) {
+  const shared = sharedWire(v);
   if (v.provider === 'openai') {
-    return { text: f.text, voice: v.voice, voiceStyle: v.style || undefined, language: f.language };
+    return { text: f.text, voice: v.voice, voiceStyle: v.style || undefined, language: f.language, shared };
   }
   return {
     text: f.text,
@@ -266,14 +295,37 @@ export function ttsSpeakBody(v: TtsVoice, f: { text: string; language?: 'en' | '
     voice: v.voiceId,
     elevenlabs: elevenLabsWire(v),
     language: f.language,
+    shared,
   };
+}
+
+/** What a request says about whose voice it is: the shelf and the item, and
+ * nothing the server would have to trust (the scope is read from the owner's
+ * own signed terms). */
+function sharedWire(v: TtsVoice): { code: string; itemId: string } | undefined {
+  const ref = sharedRefOf(v);
+  return ref ? { code: ref.code, itemId: ref.itemId } : undefined;
+}
+
+/**
+ * Which api.php action narrates with this voice. A shared voice has actions of
+ * its own rather than a field on the usual ones, so that an api.php predating
+ * them answers 404 — refused — instead of reading the request as the
+ * listener's own and billing it to them.
+ */
+export function ttsAction(v: TtsVoice, kind: 'verse' | 'speak'): 'tts' | 'tts.speak' | 'tts.shared' | 'tts.speak.shared' {
+  const shared = sharedRefOf(v) !== null;
+  if (kind === 'verse') return shared ? 'tts.shared' : 'tts';
+  return shared ? 'tts.speak.shared' : 'tts.speak';
 }
 
 /**
  * How many narration requests to build at once. Four keeps OpenAI comfortably
  * ahead of playback; the smaller ElevenLabs tiers cap concurrent requests
- * lower than that, and a refused request is a silent hole in a chapter.
+ * lower than that, and a refused request is a silent hole in a chapter. A
+ * shared voice runs at most two of its owner's generations at once for all its
+ * readers together (api/sponsorship.php), so asking for more only queues.
  */
 export function ttsConcurrency(v: TtsVoice): number {
-  return v.provider === 'elevenlabs' ? 2 : 4;
+  return v.provider === 'elevenlabs' || sharedRefOf(v) !== null ? 2 : 4;
 }

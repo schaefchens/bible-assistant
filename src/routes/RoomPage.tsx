@@ -3,7 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { CommunityTermsGate } from '@/components/community/CommunityTermsGate';
 import { Empty, Row, SectionTitle } from '@/components/community/spaceRows';
-import { ChevronIcon } from '@/components/common/icons';
+import { CheckIcon, ChevronIcon, SpeakerIcon, SpinnerIcon, StopIcon } from '@/components/common/icons';
+import { VoiceAvatar } from '@/components/voiceProfiles/VoiceAvatar';
+import { allowanceLabel, scopeLabel } from '@/components/voiceProfiles/voiceSharingLabels';
+import { usePreviewVoice } from '@/hooks/usePreviewVoice';
+import { voiceCanReply } from '@/services/voices/voiceSharing';
+import type { MirroredVoice } from '@/types/domain';
 import { useCommunityRefresh } from '@/hooks/useCommunityRefresh';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useLocale } from '@/hooks/useLocale';
@@ -50,6 +55,7 @@ export function RoomPage() {
   const feedState = useCommunityStore((s) => s.feedState[code]);
   const mirroredLists = useCommunityStore((s) => s.mirroredLists);
   const mirroredBoards = useCommunityStore((s) => s.mirroredBoards);
+  const mirroredVoices = useCommunityStore((s) => s.mirroredVoices);
   const readingProgress = useLibraryStore((s) => s.readingProgress);
   const setSource = useReaderStore((s) => s.setSource);
 
@@ -57,6 +63,10 @@ export function RoomPage() {
   const boards = useMemo(
     () => mirroredBoards.filter((m) => m.code === code),
     [mirroredBoards, code],
+  );
+  const voices = useMemo(
+    () => mirroredVoices.filter((m) => m.code === code),
+    [mirroredVoices, code],
   );
 
   /**
@@ -181,6 +191,8 @@ export function RoomPage() {
               </section>
             )}
 
+            {voices.length > 0 && <LentVoices voices={voices} />}
+
             {boards.length > 0 && (
               <section className="space-y-2">
                 <SectionTitle>{t('community.sharedBoards')}</SectionTitle>
@@ -202,6 +214,77 @@ export function RoomPage() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * The voices this room's owner lends its readers: what each may read and how
+ * much may be spent — the owner's terms, enforced by the server — and the
+ * choice to read (or, when the owner allowed anything, to reply) with one.
+ * The owner pays; the listener needs no key of their own.
+ */
+function LentVoices({ voices }: { voices: MirroredVoice[] }) {
+  const { t } = useTranslation();
+  const lang = useLocale();
+  const selection = useLibraryStore((s) => s.voiceSelection);
+  const selectVoice = useLibraryStore((s) => s.selectVoice);
+  const { previewing, loading, preview, stop } = usePreviewVoice();
+  return (
+    <section className="space-y-2">
+      <SectionTitle>{t('community.sharedVoices')}</SectionTitle>
+      {voices.map((m) => {
+        const reads = selection.narration === m.itemId;
+        const replies = selection.assistant === m.itemId;
+        const playing = previewing === m.itemId;
+        return (
+          <div key={m.itemId} className="rounded-xl bg-surface-raised px-3 py-2 space-y-2">
+            <div className="flex items-center gap-3">
+              <VoiceAvatar name={m.name} avatar={m.avatar} size={40} />
+              <span className="min-w-0 flex-1">
+                <span className="block font-serif text-ink truncate">{m.name}</span>
+                <span className="block text-[11px] text-ink-muted truncate">
+                  {scopeLabel(m.sharing.scope, t, m.author)}
+                </span>
+                <span className="block text-[11px] text-ink-muted truncate">
+                  {allowanceLabel(m.sharing, lang, t)}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => (playing ? stop() : void preview(m.config, lang, '', m.itemId))}
+                aria-label={t('narrationVoices.hearVoice', { name: m.name }) as string}
+                className="h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-brand hover:bg-brand/10"
+              >
+                {playing && loading ? <SpinnerIcon size={16} /> : playing ? <StopIcon /> : <SpeakerIcon />}
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void selectVoice('narration', m.itemId)}
+                aria-pressed={reads}
+                className={reads ? 'btn-primary text-xs flex-1' : 'btn-ghost text-xs flex-1'}
+              >
+                {reads && <CheckIcon size={13} />}
+                {reads ? t('community.voiceReads') : t('community.voiceUseForReading')}
+              </button>
+              {voiceCanReply(m.config.shared) && (
+                <button
+                  type="button"
+                  onClick={() => void selectVoice('assistant', m.itemId)}
+                  aria-pressed={replies}
+                  className={replies ? 'btn-primary text-xs flex-1' : 'btn-ghost text-xs flex-1'}
+                >
+                  {replies && <CheckIcon size={13} />}
+                  {replies ? t('community.voiceReplies') : t('community.voiceUseForReplies')}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      <p className="text-[11px] text-ink-muted leading-relaxed">{t('community.sharedVoicesHint')}</p>
+    </section>
   );
 }
 

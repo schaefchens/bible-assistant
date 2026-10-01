@@ -1,12 +1,18 @@
 import type { FeedItem, LocalSharedItem } from '@/db/dexie';
 import { getIdentity } from '@/lib/identity';
 import { codeCarriesFingerprint, codeMatchesKey } from '@/lib/spaceCode';
-import { parseBoardPayload, parsePlanPayload } from '@/services/community/sharedItems';
+import {
+  parseBoardPayload,
+  parsePlanPayload,
+  parseVoicePayload,
+} from '@/services/community/sharedItems';
 import { authorName } from '@/services/community/spaceName';
+import type { SharedTtsVoice } from '@/services/voices/ttsVoice';
 import type {
   Membership,
   MirroredBoard,
   MirroredList,
+  MirroredVoice,
   Profile,
   SharedItem,
   Space,
@@ -88,15 +94,42 @@ export function isOwnCode(code: string, profile: Profile | null, spaces: Space[]
 }
 
 /**
+ * Everything the app derives from the cached items of subscribed rooms: the
+ * headers each room lists, and the items it can render, one array per kind.
+ *
+ * Written only through `mirrorsFrom` (or `NO_MIRRORS`), and always as a whole —
+ * the four places that rebuild them (`init`, the feed refresh, `unsubscribe`,
+ * `disableCommunity`) spread one of these into the store, so a kind added here
+ * reaches all four, and none can update one shape and forget another.
+ */
+export type FeedMirrors = {
+  feedItems: Record<string, SharedItem[]>;
+  mirroredLists: MirroredList[];
+  mirroredBoards: MirroredBoard[];
+  mirroredVoices: MirroredVoice[];
+};
+
+export const NO_MIRRORS: FeedMirrors = Object.freeze({
+  feedItems: {},
+  mirroredLists: [],
+  mirroredBoards: [],
+  mirroredVoices: [],
+});
+
+/**
  * Turn the cached item headers of subscribed rooms into what the app renders.
  *
- * Shared by `init` (reading Dexie at boot) and `refreshSubscriptions` (after a
- * poll), because "same rows, same shaping" is exactly the kind of rule that
- * ends up written twice and drifting. It answers all three shapes at once so
- * they cannot disagree about which items made the cut.
+ * Shared by every writer of the derived shapes (see `FeedMirrors`), because
+ * "same rows, same shaping" is exactly the kind of rule that ends up written
+ * twice and drifting. It answers all of them at once so they cannot disagree
+ * about which items made the cut.
  *
- * Three rules, and each has a failure it prevents:
+ * Five rules, and each has a failure it prevents:
  *
+ * - **Only rooms the owner has let the user into.** A pending or revoked
+ *   subscription's cached rows are not shown — and for a voice that is the
+ *   difference between a voice the reader may select and one every request
+ *   with would be refused.
  * - **Unverified rows are skipped.** They should never have been stored, but a
  *   build that changed the canonicalization could leave one behind — the same
  *   guard `init` already applies to cached posts.
@@ -107,6 +140,10 @@ export function isOwnCode(code: string, profile: Profile | null, spaces: Space[]
  * - **A payload that will not parse is skipped**, not rendered empty. It is the
  *   same refusal a failed signature gets: better an absent plan than a plan
  *   with its days silently missing.
+ * - **A voice keeps its config object** while its payload is unchanged
+ *   (`previousVoices`, matched on item and hash). The voice resolver hands that
+ *   object out, and auto-play reads a new reference as "the voice changed" —
+ *   without this every poll would restart a prefetch.
  *
  * The author's key comes from the *subscription's* `pinnedKey`, never from the
  * item's own `authorKey`: the pinned one is what the reader decided to trust,
@@ -115,15 +152,14 @@ export function isOwnCode(code: string, profile: Profile | null, spaces: Space[]
 export function mirrorsFrom(
   rows: FeedItem[],
   subs: Subscription[],
-): {
-  feedItems: Record<string, SharedItem[]>;
-  mirroredLists: MirroredList[];
-  mirroredBoards: MirroredBoard[];
-} {
-  const byCode = new Map(subs.map((s) => [s.code, s]));
+  previousVoices: readonly MirroredVoice[] = [],
+): FeedMirrors {
+  const byCode = new Map(subs.filter((s) => s.status === 'accepted').map((s) => [s.code, s]));
+  const kept = new Map(previousVoices.map((m) => [m.itemId, m]));
   const feedItems: Record<string, SharedItem[]> = {};
   const mirroredLists: MirroredList[] = [];
   const mirroredBoards: MirroredBoard[] = [];
+  const mirroredVoices: MirroredVoice[] = [];
 
   for (const row of rows) {
     const sub = byCode.get(row.code);
@@ -140,19 +176,56 @@ export function mirrorsFrom(
       authorKey: sub.pinnedKey,
       updatedAt: row.updatedAt,
     };
-    if (row.kind === 'plan') {
-      const list = parsePlanPayload(payload);
-      if (list) mirroredLists.push({ list, ...common });
-    } else {
-      const bundle = parseBoardPayload(payload);
-      if (bundle) mirroredBoards.push({ ...bundle, ...common });
+    switch (row.kind) {
+      case 'plan': {
+        const list = parsePlanPayload(payload);
+        if (list) mirroredLists.push({ list, ...common });
+        break;
+      }
+      case 'board': {
+        const bundle = parseBoardPayload(payload);
+        if (bundle) mirroredBoards.push({ ...bundle, ...common });
+        break;
+      }
+      case 'voice': {
+        const before = kept.get(row.id);
+        const same = before && before.code === row.code && before.payloadHash === row.payloadHash;
+        const voice = same ? before : voiceMirror(row, payload);
+        if (voice) mirroredVoices.push({ ...voice, author: common.author, authorKey: common.authorKey, updatedAt: row.updatedAt });
+        break;
+      }
     }
   }
 
   for (const items of Object.values(feedItems)) items.sort(byPublishedDesc);
   mirroredLists.sort(byUpdatedDesc);
   mirroredBoards.sort(byUpdatedDesc);
-  return { feedItems, mirroredLists, mirroredBoards };
+  mirroredVoices.sort(byUpdatedDesc);
+  return { feedItems, mirroredLists, mirroredBoards, mirroredVoices };
+}
+
+/** A shared voice, parsed, with whose it is on its config — or null. */
+function voiceMirror(row: FeedItem, payload: string): MirroredVoice | null {
+  const parsed = parseVoicePayload(payload);
+  if (!parsed) return null;
+  const config: SharedTtsVoice = {
+    ...parsed.config,
+    shared: { code: row.code, itemId: row.id, spaceId: row.spaceId, scope: parsed.sharing.scope },
+  };
+  return {
+    itemId: row.id,
+    code: row.code,
+    spaceId: row.spaceId,
+    author: '',
+    authorKey: '',
+    name: parsed.voice.name,
+    ...(parsed.voice.sourceName ? { sourceName: parsed.voice.sourceName } : {}),
+    ...(parsed.voice.avatar ? { avatar: parsed.voice.avatar } : {}),
+    sharing: parsed.sharing,
+    config,
+    updatedAt: row.updatedAt,
+    payloadHash: row.payloadHash,
+  };
 }
 
 /**
@@ -181,9 +254,18 @@ export function sourceIdOfPayload(kind: SharedItem['kind'], payload: string): st
   if (!payload) return null;
   try {
     const root = JSON.parse(payload) as Record<string, { id?: unknown } | undefined>;
-    const id = kind === 'plan' ? root.list?.id : root.board?.id;
+    const id = root[PAYLOAD_SOURCE_KEY[kind]]?.id;
     return typeof id === 'string' ? id : null;
   } catch {
     return null;
   }
 }
+
+/** Where each kind's payload keeps its source (see `buildPlanPayload` and its
+ * siblings) — a `Record` over the kind, so a new kind fails to compile here
+ * rather than quietly reading as a board. */
+const PAYLOAD_SOURCE_KEY: Record<SharedItem['kind'], string> = {
+  plan: 'list',
+  board: 'board',
+  voice: 'voice',
+};

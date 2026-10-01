@@ -26,6 +26,7 @@ const { initProviderFailureWatch } = await import('@/lib/providerFailureWatch');
 const { currentNarrationVoice } = await import('@/lib/narrationVoice');
 const { useLibraryStore } = await import('@/store/libraryStore');
 const { useSettingsStore } = await import('@/store/settingsStore');
+const { useCommunityStore } = await import('@/store/communityStore');
 const { DEFAULT_VOICE_SELECTION, SYSTEM_ECHO_ID } = await import('@/services/voices/voiceProfiles');
 const { ECHO_VOICE } = await import('@/services/voices/ttsVoice');
 const { verseKey } = await import('@/services/narration/narrationIndex');
@@ -94,7 +95,9 @@ beforeEach(async () => {
     sessionPreferSharedKey: false,
     hasUserElevenLabsKey: true,
     elevenLabsFailure: null,
+    sharedVoiceFailures: {},
   });
+  useCommunityStore.setState({ mirroredVoices: [] });
   useLibraryStore.setState({
     voices: [{ v: 1, id: PROFILE_ID, name: 'George', config: george, createdAt: 1, updatedAt: 1 }],
     voiceSelection: { narration: PROFILE_ID, assistant: SYSTEM_ECHO_ID, updatedAt: 1 },
@@ -207,6 +210,126 @@ describe('what counts as ElevenLabs refusing narration', () => {
   it('a blip is not a failure: a rate limit, an outage', async () => {
     expect(await failure('tts', { error: 'elevenlabs_rate_limited' })).toBeNull();
     expect(await failure('tts', { error: 'elevenlabs_unavailable' })).toBeNull();
+  });
+});
+
+/**
+ * A voice somebody lent to a shelf: the owner pays, so every refusal is about
+ * *their* account — and must neither silence the rest of a chapter, nor touch
+ * the listener's own keys, nor ever turn into a request the listener pays for.
+ */
+describe('a voice somebody shared', () => {
+  const ITEM = '7e1f0c2a-9b3d-4e5f-8a6b-c7d8e9f0a1b2';
+  const lentGeorge = {
+    ...george,
+    shared: { code: 'ABCDEFGHJKMNPQRS', itemId: ITEM, spaceId: 'SPACE', scope: 'scripture' as const },
+  };
+  const mirror = {
+    itemId: ITEM,
+    code: 'ABCDEFGHJKMNPQRS',
+    spaceId: 'SPACE',
+    author: 'Olivia',
+    authorKey: 'b'.repeat(64),
+    name: 'Opa Georg',
+    sharing: { scope: 'scripture' as const, monthly: 50000 },
+    config: lentGeorge,
+    payloadHash: 'h',
+    updatedAt: 1,
+  };
+
+  /** What was asked of api.php, as `action:verse`; `refuse(action, verse)` answers. */
+  function stubApi(refuse: (action: string, verse: number) => Response | null) {
+    const asked: { action: string; verse: number; body: Record<string, unknown> }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const action = new URL(url, 'http://app').searchParams.get('action') ?? '';
+        const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown> & { verse: number };
+        asked.push({ action, verse: body.verse, body });
+        return (
+          refuse(action, body.verse) ??
+          new Response(JSON.stringify({ audioUrl: `/x/${action}/${body.verse}.mp3`, alignmentUrl: '/x.json', cached: true }), {
+            status: 200,
+          })
+        );
+      }),
+    );
+    vi.spyOn(audioPlayback, 'beginFeed').mockReturnValue(1);
+    vi.spyOn(audioPlayback, 'isFeed').mockReturnValue(true);
+    vi.spyOn(audioPlayback, 'endFeed').mockImplementation(() => {});
+    vi.spyOn(audioPlayback, 'playQueue').mockImplementation(async () => {});
+    vi.spyOn(audioPlayback, 'appendTracks').mockImplementation(() => {});
+    return asked;
+  }
+  const owner = (error: string, status = 403) =>
+    new Response(JSON.stringify({ error, payer: 'owner', itemId: ITEM }), { status });
+
+  beforeEach(() => {
+    // The listener has no key at all: the owner's pays.
+    useSettingsStore.setState({ hasUserElevenLabsKey: false });
+    useCommunityStore.setState({ mirroredVoices: [mirror] });
+    useLibraryStore.setState({ voices: [], voiceSelection: { narration: ITEM, assistant: SYSTEM_ECHO_ID, updatedAt: 1 } });
+  });
+
+  it('reads scripture in the owner’s voice, through tts.shared, naming the shelf and the item', async () => {
+    expect(await readingTtsVoice(plan)).toBe(lentGeorge);
+    const asked = stubApi(() => null);
+    await streamReading(plan, 'g1', lentGeorge, undefined, { mode: 'playQueue' });
+    expect(asked.map((a) => `${a.action}:${a.verse}`)).toEqual(['tts.shared:1', 'tts.shared:2']);
+    expect(asked[0].body.shared).toEqual({ code: 'ABCDEFGHJKMNPQRS', itemId: ITEM });
+  });
+
+  it('a piece on a voice lent for scripture reads in the fallback from its first word', async () => {
+    const piece: PlanItem[] = [{
+      kind: 'verse',
+      verseIndex: 0,
+      pauseAfterMs: 0,
+      verse: {
+        ...verse(1),
+        unit: { kind: 'post', spaceId: 'SPACE', postId: 'p', index: 0, language: 'en', title: 'T', author: 'Olivia', publishedAt: 1 },
+      },
+    }];
+    expect(await readingTtsVoice(piece)).toBe(ECHO_VOICE);
+  });
+
+  it('spent mid-chapter: the rest reads in Echo, that voice is set aside, the listener’s own status untouched', async () => {
+    const asked = stubApi((action, v) => (action === 'tts.shared' && v === 2 ? owner('shared_voice_budget') : null));
+    await streamReading(plan, 'g1', lentGeorge, undefined, { mode: 'playQueue' });
+    expect(asked.map((a) => `${a.action}:${a.verse}`)).toEqual(['tts.shared:1', 'tts.shared:2', 'tts:2']);
+    expect(asked[2].body.voice).toBe('echo');
+    const settings = useSettingsStore.getState();
+    expect(settings.sharedVoiceFailures).toEqual({ [ITEM]: 'budget' });
+    expect(settings.elevenLabsFailure).toBeNull();
+    expect(currentNarrationVoice()).toBe(ECHO_VOICE);
+    expect(useLibraryStore.getState().voiceSelection.narration).toBe(ITEM);
+  });
+
+  it('out of scope reroutes this reading only — the voice stays the one that reads', async () => {
+    const asked = stubApi((action, v) => (action === 'tts.shared' && v === 2 ? owner('shared_voice_out_of_scope') : null));
+    await streamReading(plan, 'g1', lentGeorge, undefined, { mode: 'playQueue' });
+    expect(asked.map((a) => `${a.action}:${a.verse}`)).toEqual(['tts.shared:1', 'tts.shared:2', 'tts:2']);
+    expect(useSettingsStore.getState().sharedVoiceFailures).toEqual({});
+    expect(currentNarrationVoice()).toBe(lentGeorge);
+  });
+
+  it('an api.php without shared voices says "unknown action": refused — never re-sent as the listener’s own', async () => {
+    const asked = stubApi((action) =>
+      action === 'tts.shared' ? new Response(JSON.stringify({ error: 'unknown action' }), { status: 404 }) : null,
+    );
+    await streamReading(plan, 'g1', lentGeorge, undefined, { mode: 'playQueue' });
+    // Refused at verse 1, then Echo for the whole chapter.
+    expect(asked.map((a) => `${a.action}:${a.verse}`)).toEqual(['tts.shared:1', 'tts:1', 'tts:2']);
+    // Never the owner's ElevenLabs voice on a plain `tts`, which would bill the listener.
+    expect(asked.filter((a) => a.action === 'tts').every((a) => a.body.provider === undefined && a.body.voice === 'echo')).toBe(true);
+    expect(useSettingsStore.getState().sharedVoiceFailures).toEqual({ [ITEM]: 'unavailable' });
+    expect(useSettingsStore.getState().elevenLabsFailure).toBeNull();
+  });
+
+  it('busy is a blip: that verse is skipped, nothing is recorded, the voice keeps reading', async () => {
+    const asked = stubApi((action, v) => (action === 'tts.shared' && v === 2 ? owner('shared_voice_busy', 503) : null));
+    await streamReading(plan, 'g1', lentGeorge, undefined, { mode: 'playQueue' });
+    expect(asked.map((a) => `${a.action}:${a.verse}`)).toEqual(['tts.shared:1', 'tts.shared:2']);
+    expect(useSettingsStore.getState().sharedVoiceFailures).toEqual({});
   });
 });
 

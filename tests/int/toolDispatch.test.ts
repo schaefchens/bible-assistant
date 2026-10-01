@@ -211,6 +211,27 @@ describe('dispatchTool — set_voice chooses a voice by name', () => {
     expect(useLibraryStore.getState().voiceSelection.narration).toBe(GRANNY);
   });
 
+  it('finds a voice somebody lent to a shelf, by its name, and chooses it by its item', async () => {
+    const ITEM = '7e1f0c2a-9b3d-4e5f-8a6b-c7d8e9f0a1b2';
+    const { useCommunityStore } = await import('@/store/communityStore');
+    useCommunityStore.setState({
+      mirroredVoices: [{
+        itemId: ITEM, code: 'ROOM', spaceId: 'S', author: 'Olivia', authorKey: 'b'.repeat(64), name: 'Opa Georg',
+        sharing: { scope: 'scripture' },
+        config: { provider: 'openai', voice: 'onyx', style: '', shared: { code: 'ROOM', itemId: ITEM, spaceId: 'S', scope: 'scripture' } },
+        payloadHash: 'h', updatedAt: 1,
+      }],
+    });
+    const r = await dispatchTool('set_voice', '{"name":"Opa Georg"}', ctx);
+    expect(r).toMatchObject({ ok: true, data: { selected: 'Opa Georg' } });
+    expect(useLibraryStore.getState().voiceSelection.narration).toBe(ITEM);
+
+    // Lent for reading only: chosen for replies, it says so, and what replies instead.
+    const replies = await dispatchTool('set_voice', '{"name":"Opa Georg","for":"assistant"}', ctx);
+    expect(replies).toMatchObject({ ok: true, data: { nowPlaysIn: expect.any(String), reason: expect.stringContaining('reading only') } });
+    useCommunityStore.setState({ mirroredVoices: [] });
+  });
+
   it('a bare OpenAI voice name makes that voice, with a key — and only with one', async () => {
     const r = await dispatchTool('set_voice', '{"name":"nova"}', ctx);
     expect(r.ok).toBe(true);

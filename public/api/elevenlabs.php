@@ -10,11 +10,12 @@ if (!defined('APP_ROOT')) { http_response_code(404); exit; }
  *
  * Three rules hold this file together:
  *
- *  1. **The caller's own key pays, always.** There is no shared ElevenLabs key
- *     (see ELEVENLABS_API_BASE in api/bootstrap.php), so everything here
- *     resolves elevenLabsPayer() and answers 403 `elevenlabs_key_missing`
- *     without one — except a narration cache hit, which costs nothing and so
- *     needs no key at all.
+ *  1. **The caller's own key pays** — there is no shared ElevenLabs key (see
+ *     ELEVENLABS_API_BASE in api/bootstrap.php), so everything here resolves
+ *     elevenLabsPayer() and answers 403 `elevenlabs_key_missing` without one —
+ *     except a narration cache hit, which costs nothing and so needs no key at
+ *     all, and a voice somebody shared on a shelf, which its owner's key pays
+ *     for on their terms (api/sponsorship.php).
  *  2. **Only elevenLabsRequest() builds an `xi-api-key` header**, on
  *     curlExec() — never on the OpenAI wrappers in api/openai.php, which fall
  *     back to the shared *OpenAI* key and would hand it to a third party.
@@ -310,8 +311,8 @@ function elevenLabsFailureOf(array $resp, string $key): array {
 
 /**
  * Answer with an ElevenLabs failure. A 429 or 503 says when to come back.
- * `$payer` is who would have paid ('requester' — the caller — for everything
- * today; a shared voice would one day be paid for by its 'owner').
+ * `$payer` is who would have paid: 'requester', the caller. (A shared voice's
+ * owner paying never answers this way — see failOwnerPaidElevenLabs.)
  */
 function failElevenLabs(string $code, int $status, string $payer, array $extra = []): void {
     if ($status === 429 || $status === 503) header('Retry-After: 2');
@@ -614,7 +615,8 @@ function handleElevenLabsDesignSave(array $ctx): void {
 // ---------- narration ---------------------------------------------------------
 
 /**
- * `tts` / `tts.speak` with `provider: 'elevenlabs'`.
+ * `tts` / `tts.speak` with `provider: 'elevenlabs'` — and, with `$shared`,
+ * `tts.shared` / `tts.speak.shared`, for a voice somebody shared on a shelf.
  *
  * The cache path is the audible config plus the text, never the payer or the
  * reference:
@@ -622,21 +624,26 @@ function handleElevenLabsDesignSave(array $ctx): void {
  *   /storage/audio/el/{cfgHash}/{lang|_}/{k[0:2]}/{k}.mp3 | .json
  *   k = sha256("el-content-v1\0" . lang . "\0" . text)
  *
- * so a verse and the same words spoken through tts.speak share one file, and
- * the files never change once written (safe to cache as immutable).
+ * so a verse and the same words spoken through tts.speak share one file, the
+ * files never change once written (safe to cache as immutable), and a shared
+ * voice's audio is its owner's and every reader's alike.
  *
  * Order, all of it load-bearing:
  *   1. a hit is served with no key, no lock and no mkdir;
- *   2. a miss needs a payer, else 403 `elevenlabs_key_missing`;
+ *   2. a miss needs a payer: the caller's own key, else 403
+ *      `elevenlabs_key_missing` — or for a shared voice its owner's, on the
+ *      owner's terms, else a `shared_voice_*` refusal (withSponsorPayer);
  *   3. ignore_user_abort — a listener who skips ahead still leaves the audio
  *      cached for the next one;
  *   4. the per-entry lock in WORK_DIR, then the cache again — two listeners
- *      asking at once cost one generation;
- *   5. synthesize in memory, write a temp file, mkdir, rename, chmod 0644, the
- *      JSON last: its presence is what step 1 tests, so a reader never sees
- *      half an entry. A failure leaves nothing behind (see the shutdown hook).
+ *      asking at once cost one generation; only now does a shared voice charge
+ *      the owner's allowance and take one of their slots, so the second
+ *      listener is never charged;
+ *   5. synthesize in memory, write temp files, rename into place with the JSON
+ *      last: its presence is what step 1 tests, so a reader never sees half an
+ *      entry. A failure leaves nothing behind (NarrationJob).
  */
-function handleElevenLabsNarration(array $ctx, array $body, string $kind): void {
+function handleElevenLabsNarration(array $ctx, array $body, string $kind, bool $shared = false): void {
     $config = elevenLabsConfig($body['elevenlabs'] ?? null);
     $voiceTag = ['voiceId' => $config['voiceId'], 'model' => $config['model']];
 
@@ -692,37 +699,39 @@ function handleElevenLabsNarration(array $ctx, array $body, string $kind): void 
     if (count($chunks) > EL_V4_MAX_CHUNKS) fail(400, 'text too long');
 
     // 2. A miss: somebody has to pay.
-    $ctx = withTtsPayer($ctx, 'elevenlabs', $voiceTag);
+    if ($shared) {
+        $ctx = withSponsorPayer($ctx, $body['shared'] ?? null, [
+            'provider' => 'elevenlabs',
+            'config' => $config,
+            'kind' => $kind,
+            'text' => $text,
+            'verse' => $verse,
+            'language' => $lang,
+            // How the owner's own reading fails, should the owner ask.
+            'failExtra' => $voiceTag,
+        ]);
+    } else {
+        $ctx = withTtsPayer($ctx, 'elevenlabs', $voiceTag);
+        $ctx['sponsor'] = null;
+    }
     $payer = $ctx['payer'];
 
     // 3. Finish what is started, even for a listener who has gone.
     ignore_user_abort(true);
     if (function_exists('set_time_limit')) @set_time_limit(300);
 
-    // 4. One generation per entry. The shutdown hook also runs after fail()'s
-    // exit, which is what makes "a failure leaves nothing behind" true on
-    // every path rather than on the ones that remembered to clean up.
-    $lockPath = WORK_DIR . "/el-{$configHash}-{$entry}.lock";
-    $temps = [];
-    $lock = null;
-    register_shutdown_function(static function () use (&$temps, &$lock, $lockPath): void {
-        foreach ($temps as $f) {
-            if (is_file($f)) @unlink($f);
-        }
-        if ($lock !== null) elevenLabsUnlock($lock, $lockPath);
-    });
-    $lock = elevenLabsLock($lockPath, (float)EL_LOCK_WAIT_SECONDS);
+    // 4. One generation per entry, and on a shared voice one charge.
+    $job = new NarrationJob(WORK_DIR . "/el-{$configHash}-{$entry}.lock");
+    $lock = narrationLock($job->lockPath, (float)EL_LOCK_WAIT_SECONDS);
     if ($lock === null) fail(500, 'could not lock the narration cache');
-    if ($lock === false) {
-        $lock = null;
-        failElevenLabs('tts_busy', 503, $payer['who'], $voiceTag);
-    }
+    if ($lock === false) failNarrationBusy($ctx, $voiceTag);
+    $job->lock = $lock;
     if (is_file($alignmentFile) && is_file($audioFile)) {
         // Somebody else generated it while we waited.
-        elevenLabsUnlock($lock, $lockPath);
-        $lock = null;
+        $job->end();
         $answer(true);
     }
+    if ($ctx['sponsor'] !== null) sponsorAdmit($job, $ctx['sponsor'], $text);
 
     // 5. Synthesize, then publish.
     $context = ['previous' => null, 'next' => null];
@@ -731,9 +740,13 @@ function handleElevenLabsNarration(array $ctx, array $body, string $kind): void 
         ? elevenLabsDialogue($config, $spoken, $chunks, $lang, $context, $payer['key'])
         : elevenLabsSpeech($config, $spoken, $context, $payer['key']);
     if (isset($result['failure'])) {
+        // A chunk that came back was paid for, even if a later one failed.
+        if ($result['spent'] ?? false) $job->spent = true;
         [$code, $status, $extra] = $result['failure'];
+        if ($ctx['sponsor'] !== null) failOwnerPaidElevenLabs($code, $ctx['sponsor']['itemId']);
         failElevenLabs($code, $status, $payer['who'], array_merge($voiceTag, $extra));
     }
+    $job->spent = true;
 
     $converted = elevenLabsWords($text, $result['segments'], $result['duration'], $spoken);
     $alignment = json_encode([
@@ -748,68 +761,30 @@ function handleElevenLabsNarration(array $ctx, array $body, string $kind): void 
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if ($alignment === false) fail(500, 'could not encode the alignment');
 
-    $tmpAudio = elevenLabsTempFile($result['audio'], $temps);
-    $tmpAlignment = elevenLabsTempFile($alignment, $temps);
+    $tmpAudio = narrationTempFile($result['audio'], $job->temps);
+    $tmpAlignment = narrationTempFile($alignment, $job->temps);
     if ($tmpAudio === null || $tmpAlignment === null) fail(500, 'could not write audio file');
-    if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) fail(500, 'could not write audio file');
-    if (!@rename($tmpAudio, $audioFile)) fail(500, 'could not write audio file');
-    @chmod($audioFile, 0644);
-    if (!@rename($tmpAlignment, $alignmentFile)) fail(500, 'could not write audio file');
-    @chmod($alignmentFile, 0644);
-    $temps = [];
+    publishNarration($dir, $tmpAudio, $audioFile, $tmpAlignment, $alignmentFile);
 
-    elevenLabsUnlock($lock, $lockPath);
-    $lock = null;
+    $job->commit();
     $answer(false);
 }
 
 /**
- * Take the per-entry generation lock: a handle on success, false when another
- * request held it for longer than `$waitSeconds`, null when no lock file can
- * be opened at all.
- *
- * The holder deletes the file as it lets go (see elevenLabsUnlock), so a
- * waiter can win a lock on a file that is no longer there; it notices — the
- * inode at the path is not the one it holds — and starts over on the fresh
- * file. That keeps WORK_DIR empty between generations without ever letting
- * two requests generate one entry.
+ * ElevenLabs refused while a voice's *owner* paid. The reader is told only
+ * whether it will keep happening — the owner's key, credits, permissions or
+ * voice are `shared_voice_unavailable`; a busy, unreachable or puzzling
+ * ElevenLabs is `shared_voice_busy` — and none of the upstream detail, which
+ * is about the owner's account and nobody else's business. Never a
+ * `provider: 'elevenlabs'` code: the client would read it as the reader's own
+ * key failing.
  */
-function elevenLabsLock(string $path, float $waitSeconds) {
-    $deadline = microtime(true) + $waitSeconds;
-    while (true) {
-        $fp = @fopen($path, 'c');
-        if ($fp === false) return null;
-        if (flock($fp, LOCK_EX | LOCK_NB)) {
-            clearstatcache(true, $path);
-            $onDisk = @stat($path);
-            $held = fstat($fp);
-            if ($onDisk !== false && $held !== false && $onDisk['ino'] === $held['ino'] && $onDisk['dev'] === $held['dev']) {
-                return $fp;
-            }
-            flock($fp, LOCK_UN);
-            fclose($fp);
-        } else {
-            fclose($fp);
-            if (microtime(true) >= $deadline) return false;
-            usleep(100000);
-        }
-    }
-}
-
-/** Delete the lock file *before* unlocking it — see elevenLabsLock. */
-function elevenLabsUnlock($fp, string $path): void {
-    @unlink($path);
-    flock($fp, LOCK_UN);
-    fclose($fp);
-}
-
-/** Bytes into a fresh 0600 temp file in WORK_DIR, registered for cleanup. */
-function elevenLabsTempFile(string $bytes, array &$temps): ?string {
-    $tmp = @tempnam(WORK_DIR, 'el-');
-    if ($tmp === false) return null;
-    $temps[] = $tmp;
-    if (realpath(dirname($tmp)) !== realpath(WORK_DIR)) return null;
-    return @file_put_contents($tmp, $bytes) === strlen($bytes) ? $tmp : null;
+function failOwnerPaidElevenLabs(string $code, string $itemId): void {
+    $persistent = in_array($code, [
+        'elevenlabs_key_missing', 'elevenlabs_key_failed', 'elevenlabs_key_permissions',
+        'elevenlabs_quota_exceeded', 'elevenlabs_voice_unavailable', 'elevenlabs_not_allowed',
+    ], true);
+    failSponsored($persistent ? 'shared_voice_unavailable' : 'shared_voice_busy', $persistent ? 403 : 503, $itemId);
 }
 
 /**
@@ -987,7 +962,8 @@ function elevenLabsDialogue(array $config, string $spoken, array $chunks, string
         $resp = elevenLabsCall('POST', '/v1/text-to-dialogue/with-timestamps', ['output_format' => EL_OUTPUT_FORMAT],
             $request, $key, 120, EL_NARRATION_MAX_RESPONSE_BYTES);
         $part = elevenLabsTimedAudio($resp, $key);
-        if (isset($part['failure'])) return $part;
+        // `spent`: an earlier chunk's audio came back, and was paid for.
+        if (isset($part['failure'])) return $part + ['spent' => $i > 0];
         $thisFormat = $part['sampleRate'] . '/' . $part['samplesPerFrame'];
         if ($format !== null && $format !== $thisFormat) {
             return ['failure' => ['elevenlabs_bad_response', 502, ['detail' => 'the chunks differ in format']]];

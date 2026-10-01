@@ -67,8 +67,10 @@ function notifyUserKeyFailure(): void {
  */
 export function providerFailureOf(err: unknown, action = 'tts'): ElevenLabsFailure | null {
   if (!(err instanceof ApiError) || typeof err.body !== 'object' || err.body === null) return null;
-  const body = err.body as { error?: unknown; provider?: unknown; voiceId?: unknown };
-  if (body.provider !== 'elevenlabs') return null;
+  const body = err.body as { error?: unknown; provider?: unknown; voiceId?: unknown; payer?: unknown };
+  // Never somebody else's account: a shared voice's owner paying is
+  // `sharedVoiceRefusalOf`'s, and must not touch the listener's own status.
+  if (body.provider !== 'elevenlabs' || body.payer === 'owner') return null;
   const narration = action === 'tts' || action === 'tts.speak';
   switch (body.error) {
     case 'elevenlabs_key_missing':
@@ -90,6 +92,79 @@ export function providerFailureOf(err: unknown, action = 'tts'): ElevenLabsFailu
         : { kind: 'key' };
     default:
       return null;
+  }
+}
+
+/**
+ * A voice somebody shared that the server refused to narrate with — always on
+ * the *owner's* account (`payer: 'owner'`), never the listener's: their own
+ * keys and their own ElevenLabs status are untouched by any of these.
+ *
+ *   unavailable   the owner's key will not pay (none, refused, out of credits,
+ *                 the voice gone) or the user may no longer use the voice —
+ *                 for the rest of the session
+ *   budget        the owner's allowance is spent, until the day or month turns
+ *   out_of_scope  this reading is not one the owner lent the voice for
+ *   mismatch      the owner has changed the voice since this copy was fetched
+ *   busy          try again — the owner's generations are all in use
+ *
+ * An api.php that predates shared voices answers their actions 404, and that
+ * reads as `unavailable` too: refused, never re-sent as the listener's own.
+ */
+export type SharedVoiceRefusal = {
+  itemId: string;
+  kind: 'unavailable' | 'budget' | 'out_of_scope' | 'mismatch' | 'busy';
+};
+
+const SHARED_REFUSALS: Record<string, SharedVoiceRefusal['kind']> = {
+  shared_voice_unavailable: 'unavailable',
+  shared_voice_budget: 'budget',
+  shared_voice_out_of_scope: 'out_of_scope',
+  shared_voice_mismatch: 'mismatch',
+  shared_voice_busy: 'busy',
+};
+
+export function sharedVoiceRefusalOf(err: unknown): SharedVoiceRefusal | null {
+  if (!(err instanceof ApiError) || typeof err.body !== 'object' || err.body === null) return null;
+  const body = err.body as { error?: unknown; payer?: unknown; itemId?: unknown };
+  const kind = typeof body.error === 'string' ? SHARED_REFUSALS[body.error] : undefined;
+  if (body.payer !== 'owner' || !kind || typeof body.itemId !== 'string') return null;
+  return { itemId: body.itemId, kind };
+}
+
+/** The shared-voice actions, which an older api.php does not have. */
+const SHARED_ACTIONS = new Set(['tts.shared', 'tts.speak.shared']);
+
+/** An "unknown action" from an api.php without shared voices, restated as the
+ * refusal of that one voice it is — the item id comes from the request. */
+function olderServerRefusal(res: Response, action: string, request: unknown): ApiError | null {
+  if (res.status !== 404 || !SHARED_ACTIONS.has(action)) return null;
+  const itemId = (request as { shared?: { itemId?: unknown } } | null)?.shared?.itemId;
+  if (typeof itemId !== 'string') return null;
+  return new ApiError('shared_voice_unavailable', 404, {
+    error: 'shared_voice_unavailable',
+    payer: 'owner',
+    itemId,
+  });
+}
+
+type SharedVoiceRefusalListener = (refusal: SharedVoiceRefusal) => void;
+const sharedVoiceRefusalListeners = new Set<SharedVoiceRefusalListener>();
+
+/** Listener for `sharedVoiceRefusalOf` refusals — lib/providerFailureWatch.ts
+ * records the lasting ones in settings, exactly as it does provider failures. */
+export function onSharedVoiceRefusal(fn: SharedVoiceRefusalListener): () => void {
+  sharedVoiceRefusalListeners.add(fn);
+  return () => sharedVoiceRefusalListeners.delete(fn);
+}
+
+function notifySharedVoiceRefusal(refusal: SharedVoiceRefusal): void {
+  for (const fn of sharedVoiceRefusalListeners) {
+    try {
+      fn(refusal);
+    } catch {
+      /* swallow — bad listener shouldn't block others */
+    }
   }
 }
 
@@ -145,7 +220,7 @@ export async function apiPostJson<T = unknown>(
     signal: opts?.signal,
   });
 
-  return parseResponse<T>(res, action);
+  return parseResponse<T>(res, action, body);
 }
 
 export async function apiGetJson<T = unknown>(action: string): Promise<T> {
@@ -165,7 +240,7 @@ export async function apiPostForm<T = unknown>(action: string, form: FormData): 
   return parseResponse<T>(res, action);
 }
 
-async function parseResponse<T>(res: Response, action: string): Promise<T> {
+async function parseResponse<T>(res: Response, action: string, request?: unknown): Promise<T> {
   const text = await res.text();
   let parsed: unknown = undefined;
   if (text) {
@@ -181,12 +256,14 @@ async function parseResponse<T>(res: Response, action: string): Promise<T> {
       const err = (parsed as { error: unknown }).error;
       if (err != null) msg = String(err);
     }
-    const apiErr = new ApiError(msg, res.status, parsed);
+    const apiErr = olderServerRefusal(res, action, request) ?? new ApiError(msg, res.status, parsed);
     if (isUserKeyFailure(apiErr)) notifyUserKeyFailure();
     // Synchronously, before the throw: whoever catches this re-resolves its
     // voice and must already see the failure recorded (see streamReading).
     const providerFailure = providerFailureOf(apiErr, action);
     if (providerFailure) notifyProviderFailure(providerFailure, msg);
+    const sharedRefusal = sharedVoiceRefusalOf(apiErr);
+    if (sharedRefusal) notifySharedVoiceRefusal(sharedRefusal);
     throw apiErr;
   }
   return parsed as T;

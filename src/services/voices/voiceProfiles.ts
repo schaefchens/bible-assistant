@@ -5,10 +5,13 @@ import {
   ECHO_VOICE,
   isOpenAiVoiceId,
   normalizeTtsVoice,
+  sharedRefOf,
   voiceKeyPart,
+  type SharedTtsVoice,
   type SpeechVoice,
   type TtsVoice,
 } from './ttsVoice';
+import { voiceCanReply } from './voiceSharing';
 
 /**
  * A narration voice as the user knows it — a name, maybe a face, and the
@@ -24,8 +27,9 @@ import {
  * - **local state** — which voice reads and which one replies is the separate
  *   `VoiceSelection` record, never a field on a profile.
  *
- * That split is what lets a voice later be published on a shelf: the record
- * travels as-is and its listeners share the owner's audio files.
+ * That split is what lets a voice be lent to a shelf (voiceSharing.ts): its
+ * name, picture and config travel, and its listeners share the owner's audio
+ * files.
  *
  * Pure: imports no store (the settings migration and libraryStore both run
  * this while zustand is still hydrating), and builds no display text — system
@@ -46,8 +50,9 @@ export type VoiceProfile = {
   id: string;
   name: string;
   /** A small inline image (`data:image/jpeg;base64,…`) — inline so it syncs
-   * with the record and works offline. A shared voice would swap it for an
-   * uploaded URL at publish time; nothing else reads the bytes. */
+   * with the record and works offline, and travels inline in a shared voice's
+   * payload too: only a shelf's accepted readers can fetch that, where the
+   * public avatar store would make it everybody's. */
   avatar?: string;
   /** The provider's own name for the voice it wraps ("George", from the
    * user's ElevenLabs library), shown beside the user's name for it. Pure
@@ -96,16 +101,33 @@ export type ElevenLabsFailure =
    * library (`unavailable`), or their plan may not use it (`not_allowed`). */
   | { kind: 'voice'; voiceId: string; reason: 'unavailable' | 'not_allowed' };
 
+/**
+ * Why a voice somebody shared cannot speak this session — a session fact, like
+ * `ElevenLabsFailure`, recorded per shared item from the server's refusal:
+ * the owner's key will not pay (`unavailable`: no key, refused, out of
+ * credits, the voice gone, or a server that predates shared voices), or the
+ * owner's allowance is spent (`budget`) until the day or the month turns.
+ */
+export type SharedVoiceFailure = 'unavailable' | 'budget';
+
 export type VoiceAccess = {
   /** A personal OpenAI key on file, not overridden this session. */
   openAiKey: boolean;
   /** An ElevenLabs key on file. */
   elevenLabsKey: boolean;
   elevenLabsFailure: ElevenLabsFailure | null;
+  /** Shared voices that stopped speaking this session, by item id. */
+  sharedFailures: Readonly<Record<string, SharedVoiceFailure>>;
 };
+
+/** A voice lent to a shelf the user reads, as the resolver needs it — chosen
+ * by its shared item's id (see `MirroredVoice`, which this is a slice of). */
+export type SharedVoiceChoice = { itemId: string; config: SharedTtsVoice };
 
 export type VoiceResolutionInput = {
   voices: readonly VoiceProfile[];
+  /** Voices lent to the shelves the user reads. */
+  shared: readonly SharedVoiceChoice[];
   selection: VoiceSelection;
   access: VoiceAccess;
 };
@@ -117,11 +139,13 @@ export function voiceAccessOf(s: {
   sessionPreferSharedKey: boolean;
   hasUserElevenLabsKey: boolean;
   elevenLabsFailure: ElevenLabsFailure | null;
+  sharedVoiceFailures: Readonly<Record<string, SharedVoiceFailure>>;
 }): VoiceAccess {
   return {
     openAiKey: s.hasUserOpenAiKey && !s.sessionPreferSharedKey,
     elevenLabsKey: s.hasUserElevenLabsKey,
     elevenLabsFailure: s.elevenLabsFailure,
+    sharedFailures: s.sharedVoiceFailures,
   };
 }
 
@@ -139,21 +163,37 @@ export function roleDefault(role: VoiceRole): SpeechVoice {
 }
 
 /**
- * The voice a role has *chosen*, available or not. A selection naming a voice
- * that no longer exists — deleted on another device, or one day withdrawn from
- * a shelf — is the role's default.
+ * The voice a role has *chosen*, available or not: a system voice, one of the
+ * user's own by id, or one lent to a shelf by its shared item's id. A selection
+ * naming a voice that no longer exists — deleted on another device, or taken
+ * off its shelf — is the role's default.
  *
- * Returns a shared constant or the profile's own `config` object, never a new
- * one, so it is safe as a zustand selector result and `!==` means "changed".
+ * Returns a shared constant, the profile's own `config` object or the mirror's
+ * own, never a new one, so it is safe as a zustand selector result and `!==`
+ * means "changed".
  */
 export function selectedVoice(role: VoiceRole, input: VoiceResolutionInput): SpeechVoice {
   const id = input.selection[role];
   if (id === SYSTEM_ECHO_ID) return ECHO_VOICE;
   if (id === SYSTEM_DEVICE_ID) return DEVICE_VOICE;
-  return findVoice(id, input.voices)?.config ?? roleDefault(role);
+  return (
+    findVoice(id, input.voices)?.config ??
+    input.shared.find((m) => m.itemId === id)?.config ??
+    roleDefault(role)
+  );
 }
 
-export type VoiceAvailability = 'ok' | 'needs-openai-key' | 'needs-elevenlabs-key' | 'elevenlabs-failed';
+export type VoiceAvailability =
+  | 'ok'
+  | 'needs-openai-key'
+  | 'needs-elevenlabs-key'
+  | 'elevenlabs-failed'
+  /** A shared voice whose owner's key will not pay this session. */
+  | 'shared-failed'
+  /** A shared voice whose allowance is spent, until the day or month turns. */
+  | 'shared-budget'
+  /** A shared voice its owner lent for reading only — never for replies. */
+  | 'shared-cannot-reply';
 
 /**
  * Can this voice speak for this role right now?
@@ -170,6 +210,16 @@ export function voiceAvailability(
   access: VoiceAccess,
 ): VoiceAvailability {
   if (voice.provider === 'device') return 'ok';
+  // Somebody else's voice: their key pays, so the user's own keys — present or
+  // refused — have nothing to say about it.
+  const shared = sharedRefOf(voice);
+  if (shared) {
+    const failure = access.sharedFailures[shared.itemId];
+    if (failure === 'unavailable') return 'shared-failed';
+    if (failure === 'budget') return 'shared-budget';
+    if (role === 'assistant' && !voiceCanReply(shared)) return 'shared-cannot-reply';
+    return 'ok';
+  }
   if (voice.provider === 'elevenlabs') {
     if (!access.elevenLabsKey) return 'needs-elevenlabs-key';
     const failure = access.elevenLabsFailure;
@@ -202,8 +252,8 @@ export function defaultVoiceName(config: TtsVoice): string {
 /**
  * The whitelisting coercer for a voice row from anywhere — Dexie, a pull, a
  * hand-edited server file. `null` for something that is not a voice, which the
- * caller drops; mirrors `normalizeReadingList`'s role for lists, and is what a
- * shared voice's payload would be parsed with.
+ * caller drops; mirrors `normalizeReadingList`'s role for lists. (A shared
+ * voice's payload has its own, `parseVoicePayload`: it is not a profile.)
  */
 export function normalizeVoiceProfile(raw: unknown): VoiceProfile | null {
   if (!raw || typeof raw !== 'object') return null;

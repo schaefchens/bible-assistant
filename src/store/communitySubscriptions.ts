@@ -6,7 +6,7 @@ import { copyBoard, copyPlan } from '@/services/community/sharedItems';
 import { useLibraryStore } from '@/store/libraryStore';
 import type { BlockedAuthor, ReportReason, Subscription } from '@/types/domain';
 import { flush, queued } from './communityOps';
-import { isOwnCode } from './communityRows';
+import { isOwnCode, mirrorsFrom } from './communityRows';
 import type { CommunityState } from './communityStore';
 
 /**
@@ -119,23 +119,16 @@ export function createCommunitySubscriptions(set: SetState, get: GetState) {
     await db.subscriptions.update(code, { deleted: 1, dirty: 1 });
     await db.feedPosts.where('code').equals(code).delete();
     await db.feedItems.where('code').equals(code).delete();
+    // The mirrors are rebuilt from what is left, the way every other writer
+    // rebuilds them (`FeedMirrors`), rather than filtered here by hand.
+    const subscriptions = get().subscriptions.filter((x) => x.code !== code);
+    const mirrors = mirrorsFrom(await db.feedItems.toArray(), subscriptions, get().mirroredVoices);
     set((s) => {
       const feed = { ...s.feed };
-      const feedItems = { ...s.feedItems };
       const feedState = { ...s.feedState };
       delete feed[code];
-      delete feedItems[code];
       delete feedState[code];
-      return {
-        subscriptions: s.subscriptions.filter((x) => x.code !== code),
-        feed,
-        feedItems,
-        feedState,
-        // The mirrors are derived, so they are filtered rather than rebuilt:
-        // the rows they came from are gone from Dexie a line above.
-        mirroredLists: s.mirroredLists.filter((m) => m.code !== code),
-        mirroredBoards: s.mirroredBoards.filter((m) => m.code !== code),
-      };
+      return { subscriptions, feed, feedState, ...mirrors };
     });
     await queued('subscription.delete', { code });
     flush();

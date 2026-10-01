@@ -364,7 +364,8 @@
     "sections": {
       "system": "Eingebaut",
       "yours": "Deine Stimmen",
-      "providers": "Anbieter & Schlüssel"
+      "providers": "Anbieter & Schlüssel",
+      "shared": "Mit dir geteilt"
     },
     "usage": {
       "both": "Liest · Antwortet",
@@ -390,7 +391,10 @@
     "locked": {
       "openai": "Diese Stimme braucht deinen eigenen OpenAI-Schlüssel.",
       "elevenlabs": "Diese Stimme braucht deinen ElevenLabs-Schlüssel.",
-      "failed": "ElevenLabs hat sie in dieser Sitzung abgelehnt."
+      "failed": "ElevenLabs hat sie in dieser Sitzung abgelehnt.",
+      "sharedFailed": "Wer sie geteilt hat, kann sie gerade nicht bezahlen.",
+      "sharedBudget": "Was dafür freigegeben ist, ist für jetzt aufgebraucht.",
+      "sharedCannotReply": "Sie wurde nur zum Vorlesen geteilt."
     },
     "keys": {
       "connected": "Verbunden",
@@ -413,7 +417,11 @@
       "voice": "Diese Stimme lässt sich auf deinem ElevenLabs-Konto nicht mehr verwenden.",
       "fellBack": "Vorerst liest die eingebaute Stimme. Deine Auswahl bleibt erhalten.",
       "retry": "Erneut versuchen",
-      "open": "Stimmen öffnen"
+      "open": "Stimmen öffnen",
+      "sharedUnavailable": "„{{name}}“ kann gerade nicht vorlesen: {{author}} bezahlt sie im Moment nicht.",
+      "sharedBudget": "„{{name}}“ hat aufgebraucht, was {{author}} freigibt – fürs Erste.",
+      "sharedFellBack": "Echo liest stattdessen. Später klappt es vielleicht wieder.",
+      "sharedOpen": "Stimme wählen"
     },
     "openai": {
       "voice": "Stimme",
@@ -517,9 +525,13 @@
       "pickVoice": "Wähle zuerst eine ElevenLabs-Stimme.",
       "imageFailed": "Dieses Bild konnte nicht verwendet werden.",
       "saveFailed": "Die Stimme konnte nicht gespeichert werden.",
-      "missing": "Diese Stimme gibt es nicht mehr."
+      "missing": "Diese Stimme gibt es nicht mehr.",
+      "confirmDeleteLent_one": "Erneut tippen – löscht sie überall und nimmt sie von {{count}} Regal",
+      "confirmDeleteLent_other": "Erneut tippen – löscht sie überall und nimmt sie von {{count}} Regalen"
     },
-    "sample": "Der HERR ist mein Hirte; mir wird nichts mangeln. Er weidet mich auf einer grünen Aue und führet mich zum frischen Wasser. Er erquicket meine Seele; er führet mich auf rechter Straße um seines Namens willen."
+    "sample": "Der HERR ist mein Hirte; mir wird nichts mangeln. Er weidet mich auf einer grünen Aue und führet mich zum frischen Wasser. Er erquicket meine Seele; er führet mich auf rechter Straße um seines Namens willen.",
+    "lentBy": "Verliehen von {{author}}",
+    "sharedHint": "An Regale verliehen, die du liest – bezahlt von dem, der sie verleiht."
   },
   "chatReader": {
     "ambient": "Hintergrundmusik ein-/ausschalten"
@@ -997,7 +1009,14 @@
     "allShared": "Alles, was du hast, ist schon in diesem Regal.",
     "noPlansHere": "Noch keine Lesepläne in diesem Regal.",
     "noBoardsHere": "Noch keine Tafeln in diesem Regal.",
-    "removeFromShelf": "Vom Regal nehmen"
+    "removeFromShelf": "Vom Regal nehmen",
+    "tabVoices": "Stimmen",
+    "sharedVoices": "Stimmen",
+    "voiceReads": "Liest dir vor",
+    "voiceUseForReading": "Damit vorlesen",
+    "voiceReplies": "Antwortet dir",
+    "voiceUseForReplies": "Damit antworten",
+    "sharedVoicesHint": "Bezahlt wird sie von dem, der sie verleiht. Ist aufgebraucht, was erlaubt ist, liest Echo."
   },
   "feedback": {
     "open": "Fehler melden oder Rückmeldung senden",
@@ -1038,5 +1057,64 @@
       "safari": "Wähle in Safari „Ablage ▸ Zum Dock hinzufügen“. In älteren Versionen öffne diese Seite stattdessen in Chrome oder Edge.",
       "other": "Öffne das Menü deines Browsers und suche „App installieren“ oder „Zum Startbildschirm hinzufügen“."
     }
+  },
+  "voiceSharing": {
+    "scope": {
+      "scripture": "Liest die Schrift",
+      "pieces": "Liest die Schrift und deine Beiträge hier",
+      "piecesOf": "Liest die Schrift und Beiträge von {{author}}",
+      "anything": "Liest alles, antwortet auch"
+    },
+    "allowance": {
+      "monthly": "{{chars}} Zeichen im Monat",
+      "daily": "{{chars}} am Tag pro Leser",
+      "none": "Ohne Grenze"
+    },
+    "aboutChapters_one": "etwa {{count}} Kapitel",
+    "aboutChapters_other": "etwa {{count}} Kapitel",
+    "form": {
+      "reads": "Was sie deinen Lesern vorlesen darf",
+      "scripture": "Die Schrift",
+      "scriptureHint": "Bibelverse und die Ansagen davor. Die sicherste Wahl.",
+      "pieces": "Die Schrift und meine Beiträge",
+      "piecesHint": "Auch, was du im selben Regal veröffentlichst – deine Worte, in deiner Stimme.",
+      "anything": "Alles",
+      "anythingHint": "Jeden Text, auch die Antworten des Assistenten. Leser könnten sie sagen lassen, was sie wollen.",
+      "monthly": "Pro Monat, für alle Leser zusammen",
+      "monthlyHint": "Zeichen neuer Vertonung, die dein Schlüssel bezahlt. Schon Erzeugtes spielt kostenlos.",
+      "daily": "Pro Tag, für jeden Leser",
+      "dailyHint": "Damit niemand allein den Monat für alle aufbraucht.",
+      "noLimit": "Ohne Grenze",
+      "poolRequired": "In dieses Regal kommt jeder mit dem Code – es braucht deshalb eine Monatsgrenze."
+    },
+    "sheetTitle": "„{{name}}“ verleihen",
+    "needsCommunity": "Eine Stimme verleihst du über deine Regale. Richte dafür zuerst dein Profil unter „Regale“ ein.",
+    "openShelves": "Regale öffnen",
+    "intro": "Wen du ein Regal lesen lässt, kann in dieser Stimme hören. Dein Schlüssel bezahlt, was dabei erzeugt wird, in den Grenzen, die du setzt – zu sehen bekommen sie ihn nie. Nimmst du sie vom Regal, ist sofort Schluss.",
+    "needsOpenAiKey": "Diese Stimme bezahlt dein eigener OpenAI-Schlüssel. Bis du ihn hinterlegst, hören deine Leser Echo.",
+    "needsElevenLabsKey": "Diese Stimme bezahlt dein ElevenLabs-Schlüssel. Bis du ihn hinterlegst, hören deine Leser Echo.",
+    "shelves": "Deine Regale",
+    "noShelves": "Du hast noch kein Regal, an das du sie verleihen kannst.",
+    "lentHere": "Hier verliehen",
+    "notLentHere": "Hier nicht verliehen",
+    "update": "Aktualisieren",
+    "lendHere": "Hier verleihen",
+    "stale": "Du hast die Stimme seitdem geändert – „Aktualisieren“ gibt deinen Lesern die neue.",
+    "footnote": "Schon erzeugte Vertonung bleibt für alle abspielbar. Nimmst du die Stimme vom Regal, entstehen deinem Schlüssel keine neuen Kosten.",
+    "termsTitle": "Bedingungen für diese Stimme",
+    "lendTitle": "Eine Stimme verleihen",
+    "noVoices": "Du hast noch keine Stimme – leg eine unter Einstellungen › Erzählstimmen an.",
+    "allLent": "Alle deine Stimmen sind diesem Regal schon verliehen.",
+    "sourceMissing": "Diese Stimme ist nicht auf diesem Gerät; ihre Bedingungen ändern lassen sie sich nur dort, wo sie verliehen wurde. Vom Regal nehmen kannst du sie trotzdem.",
+    "saveTerms": "Bedingungen speichern",
+    "lendAction": "An ein Regal verleihen",
+    "lendHint": "Lass deine Leser in ihr hören, auf deinen Schlüssel.",
+    "lentTo_one": "An {{count}} Regal verliehen",
+    "lentTo_other": "An {{count}} Regale verliehen",
+    "noneHere": "Noch keine Stimmen in diesem Regal.",
+    "termsElsewhere": "Von einem anderen Gerät verliehen",
+    "terms": "Bedingungen",
+    "needsPool": "Deine Leser können sie noch nicht nutzen: In dieses Regal kommt jeder, setz deshalb eine Monatsgrenze.",
+    "addVoice": "+ Stimme verleihen"
   }
 }

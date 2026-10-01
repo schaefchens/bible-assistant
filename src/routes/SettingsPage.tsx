@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useSettingsStore, type MicPosition } from '@/store/settingsStore';
-import { useLibraryStore } from '@/store/libraryStore';
 import { useVoiceSelection } from '@/hooks/useSpeechVoice';
 import { ROUTES } from '@/lib/appRoutes';
-import { SYSTEM_DEVICE_ID, SYSTEM_ECHO_ID, findVoice, type VoiceRole } from '@/services/voices/voiceProfiles';
+import type { VoiceRole } from '@/services/voices/voiceProfiles';
+import { useVoiceFace } from '@/hooks/useVoiceFace';
 import { VoiceAvatar } from '@/components/voiceProfiles/VoiceAvatar';
 import { LockIcon } from '@/components/common/icons';
 import { getPassphrase } from '@/lib/passphrase';
@@ -261,17 +261,9 @@ export function SettingsPage() {
  * the voices screen for that role. A lock says the chosen voice is waiting on
  * a key (it reads in its fallback meanwhile — the screen says which). */
 function VoiceRow({ role, label }: { role: VoiceRole; label: string }) {
-  const { t } = useTranslation();
   const navigate = useNavigate();
-  const voices = useLibraryStore((s) => s.voices);
   const { id, availability } = useVoiceSelection(role);
-  const profile = findVoice(id, voices);
-  const name =
-    id === SYSTEM_DEVICE_ID
-      ? t('narrationVoices.system.device')
-      : id === SYSTEM_ECHO_ID || !profile
-        ? t('narrationVoices.system.echo')
-        : profile.name;
+  const face = useVoiceFace(id);
   return (
     <SettingsRow
       label={label}
@@ -279,13 +271,8 @@ function VoiceRow({ role, label }: { role: VoiceRole; label: string }) {
       value={
         <span className="inline-flex items-center gap-2 min-w-0 justify-end">
           {availability !== 'ok' && <LockIcon className="shrink-0 text-amber-400" />}
-          <span className="truncate">{name}</span>
-          <VoiceAvatar
-            name={name}
-            avatar={profile?.avatar}
-            system={id === SYSTEM_DEVICE_ID ? 'device' : id === SYSTEM_ECHO_ID || !profile ? 'echo' : undefined}
-            size={26}
-          />
+          <span className="truncate">{face.name}</span>
+          <VoiceAvatar name={face.name} avatar={face.avatar} system={face.system} size={26} />
         </span>
       }
     />

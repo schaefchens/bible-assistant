@@ -29,8 +29,11 @@ if (!defined('APP_ROOT')) { http_response_code(404); exit; }
  *     config — plus the synced collection of them and the selection record
  *     ("which voice reads, which one replies"), all under the HTTP-denied
  *     users/ directory. A profile is user-authored, so it reaches disk only
- *     through sanitizeVoiceProfile()'s whitelist; a shelf that one day shares
- *     a voice would carry exactly that record.
+ *     through sanitizeVoiceProfile()'s whitelist.
+ *   - **A voice shared on a shelf**: the same name, picture and config, plus
+ *     the owner's terms (what it may read for others, how much they may
+ *     spend), signed into a shared item's payload — sharedVoiceOf(). Who pays
+ *     for it, and the enforcing of those terms, is api/sponsorship.php.
  */
 
 /** OpenAI's gpt-4o-mini-tts voices — the client's OPENAI_VOICES, unordered. */
@@ -99,11 +102,27 @@ function elFixed(float $v): string {
 /** An OpenAI voice config: one of the thirteen voices, and a style kept byte
  * for byte (it is already a cache key for every install that set one). */
 function openAiVoiceConfig(array $raw): array {
+    return orFail400(openAiVoiceConfigOf($raw));
+}
+
+/** openAiVoiceConfig, answering why not (a message) instead of failing. */
+function openAiVoiceConfigOf(array $raw): array|string {
     $voice = $raw['voice'] ?? null;
-    if (!is_string($voice) || !in_array($voice, OPENAI_TTS_VOICES, true)) fail(400, 'unknown OpenAI voice');
+    if (!is_string($voice) || !in_array($voice, OPENAI_TTS_VOICES, true)) return 'unknown OpenAI voice';
     $style = is_string($raw['style'] ?? null) ? $raw['style'] : '';
-    if (strlen($style) > MAX_OPENAI_STYLE_BYTES) fail(400, 'voice style too long');
+    if (strlen($style) > MAX_OPENAI_STYLE_BYTES) return 'voice style too long';
     return ['provider' => 'openai', 'voice' => $voice, 'style' => $style];
+}
+
+/**
+ * A rule's answer, or the request fails 400 with its message. The rules below
+ * answer rather than fail because a shared voice is read back out of a stored
+ * payload on every sponsored narration — where a refusal has to be the
+ * sponsor's uniform one (see api/sponsorship.php), not a 400 naming the field.
+ */
+function orFail400(array|string $answer): array {
+    if (is_string($answer)) fail(400, $answer);
+    return $answer;
 }
 
 /**
@@ -117,13 +136,16 @@ function openAiVoiceConfig(array $raw): array {
  * (it only decides how).
  */
 function elevenLabsConfig(mixed $raw): array {
-    if (!is_array($raw)) fail(400, 'invalid ElevenLabs settings');
+    return orFail400(elevenLabsConfigOf($raw));
+}
+
+/** elevenLabsConfig, answering why not instead of failing. */
+function elevenLabsConfigOf(mixed $raw): array|string {
+    if (!is_array($raw)) return 'invalid ElevenLabs settings';
     $voiceId = $raw['voiceId'] ?? null;
-    if (!is_string($voiceId) || !preg_match(ELEVENLABS_VOICE_ID_RE, $voiceId)) {
-        fail(400, 'invalid ElevenLabs voice id');
-    }
+    if (!is_string($voiceId) || !preg_match(ELEVENLABS_VOICE_ID_RE, $voiceId)) return 'invalid ElevenLabs voice id';
     $model = $raw['model'] ?? null;
-    if (!is_string($model) || !in_array($model, ELEVENLABS_MODELS, true)) fail(400, 'unknown ElevenLabs model');
+    if (!is_string($model) || !in_array($model, ELEVENLABS_MODELS, true)) return 'unknown ElevenLabs model';
 
     $config = [
         'provider' => 'elevenlabs',
@@ -141,12 +163,27 @@ function elevenLabsConfig(mixed $raw): array {
 
 /** Either provider's config, by its `provider` field. */
 function voiceConfig(mixed $raw): array {
-    if (!is_array($raw)) fail(400, 'voice config required');
+    return orFail400(voiceConfigOf($raw));
+}
+
+/** voiceConfig, answering why not instead of failing. */
+function voiceConfigOf(mixed $raw): array|string {
+    if (!is_array($raw)) return 'voice config required';
     $provider = $raw['provider'] ?? null;
-    if ($provider === 'openai') return openAiVoiceConfig($raw);
-    if ($provider === 'elevenlabs') return elevenLabsConfig($raw);
-    fail(400, 'unknown voice provider');
-    return [];
+    if ($provider === 'openai') return openAiVoiceConfigOf($raw);
+    if ($provider === 'elevenlabs') return elevenLabsConfigOf($raw);
+    return 'unknown voice provider';
+}
+
+/**
+ * Do two configs sound the same? Each provider by its own cache identity:
+ * ElevenLabs by audibleConfigCanonical(), OpenAI by the voice and the style,
+ * byte for byte (its path, see voiceStyleSegment()). Takes normalized configs.
+ */
+function sameVoiceConfig(array $a, array $b): bool {
+    if ($a['provider'] !== $b['provider']) return false;
+    if ($a['provider'] === 'elevenlabs') return audibleConfigCanonical($a) === audibleConfigCanonical($b);
+    return $a['voice'] === $b['voice'] && $a['style'] === $b['style'];
 }
 
 /**
@@ -230,18 +267,21 @@ function sanitizeVoiceProfile(array $raw): array {
  * The bytes must be the image type the data URL claims.
  */
 function voiceAvatar(mixed $v): string {
-    if (!is_string($v) || strlen($v) > MAX_VOICE_AVATAR_CHARS) fail(400, 'invalid avatar');
-    if (!preg_match('#^data:image/(jpeg|png|webp);base64,([A-Za-z0-9+/]++={0,2})$#', $v, $m)) {
-        fail(400, 'invalid avatar');
-    }
+    if (!isVoiceAvatar($v)) fail(400, 'invalid avatar');
+    return $v;
+}
+
+/** voiceAvatar, answering. */
+function isVoiceAvatar(mixed $v): bool {
+    if (!is_string($v) || strlen($v) > MAX_VOICE_AVATAR_CHARS) return false;
+    if (!preg_match('#^data:image/(jpeg|png|webp);base64,([A-Za-z0-9+/]++={0,2})$#', $v, $m)) return false;
     $bytes = base64_decode($m[2], true);
     $magic = [
         'jpeg' => fn(string $b): bool => strncmp($b, "\xFF\xD8\xFF", 3) === 0,
         'png' => fn(string $b): bool => strncmp($b, "\x89PNG\r\n\x1A\n", 8) === 0,
         'webp' => fn(string $b): bool => strncmp($b, 'RIFF', 4) === 0 && substr($b, 8, 4) === 'WEBP',
     ];
-    if ($bytes === false || !$magic[$m[1]]($bytes)) fail(400, 'invalid avatar');
-    return $v;
+    return $bytes !== false && $magic[$m[1]]($bytes);
 }
 
 /** A client timestamp (ms): a finite, non-negative number, kept as sent. */
@@ -252,6 +292,92 @@ function voiceTimestamp(mixed $v): int|float {
 
 function handleVoiceUpsert(array $ctx): void {
     handleUpsertItem(voicesPath($ctx['userDir']), 'voice', 'voices', 'sanitizeVoiceProfile', MAX_VOICES_PER_USER);
+}
+
+// ---------- a voice shared on a shelf -----------------------------------------
+
+/**
+ * What a shared voice may read for others: scripture (and the app's own
+ * announcements) · that plus the owner's pieces on the same shelf · anything.
+ * The client's VoiceSharing scope, word for word.
+ */
+const VOICE_SHARE_SCOPES = ['scripture', 'pieces', 'anything'];
+/** The largest allowance an owner may set, in characters: far beyond any real
+ * month, and small enough that a counter can never overflow. */
+const MAX_VOICE_ALLOWANCE = 100000000;
+
+/**
+ * The terms a voice is shared on: `{scope, monthly?, dailyPerReader?}`, the
+ * two allowances whole characters, absent meaning "no such limit".
+ *
+ * **A field this server does not know is refused, not ignored.** These terms
+ * are enforced here, at the moment of spending, so a restriction a newer
+ * client adds must never be published to a server that would silently not
+ * apply it.
+ */
+function voiceSharingOf(mixed $raw): array|string {
+    if (!is_array($raw)) return 'invalid voice sharing';
+    if (array_diff(array_map('strval', array_keys($raw)), ['scope', 'monthly', 'dailyPerReader']) !== []) {
+        return 'invalid voice sharing';
+    }
+    $scope = $raw['scope'] ?? null;
+    if (!in_array($scope, VOICE_SHARE_SCOPES, true)) return 'invalid voice sharing';
+    $sharing = ['scope' => $scope];
+    foreach (['monthly', 'dailyPerReader'] as $limit) {
+        if (!array_key_exists($limit, $raw)) continue;
+        $v = $raw[$limit];
+        if (!is_int($v) || $v < 1 || $v > MAX_VOICE_ALLOWANCE) return 'invalid voice sharing';
+        $sharing[$limit] = $v;
+    }
+    return $sharing;
+}
+
+/**
+ * A shared voice's payload, read:
+ *
+ *   {"v":1, "voice":{"id","name","sourceName"?,"config"}, "sharing":{…}, "avatar"?}
+ *
+ * Validated, never reshaped: the bytes are what the owner signed, so
+ * items.upsert stores them exactly as sent — and every sponsored narration
+ * reads its terms back out of them through this. The voice's name and avatar
+ * follow sanitizeVoiceProfile()'s rules; the config is normalized, so it can
+ * be compared with a request's (sameVoiceConfig()). Unknown fields are
+ * refused, for the reason voiceSharingOf() gives.
+ *
+ * @return array{voice: array{id: string, name: string, sourceName: ?string}, config: array, sharing: array, avatar: ?string}|string
+ */
+function sharedVoiceOf(string $payload): array|string {
+    $d = json_decode($payload, true);
+    if (!is_array($d) || ($d['v'] ?? null) !== 1) return 'unsupported voice payload';
+    if (array_diff(array_map('strval', array_keys($d)), ['v', 'voice', 'sharing', 'avatar']) !== []) {
+        return 'invalid voice payload';
+    }
+    $voice = $d['voice'] ?? null;
+    if (!is_array($voice) || array_diff(array_map('strval', array_keys($voice)), ['id', 'name', 'sourceName', 'config']) !== []) {
+        return 'invalid voice payload';
+    }
+    $id = $voice['id'] ?? null;
+    if (!is_string($id) || !preg_match('/^[0-9a-fA-F-]{36}$/', $id)) return 'invalid voice id';
+    $name = $voice['name'] ?? null;
+    if (!is_string($name) || trim($name) === '' || mb_strlen($name, 'UTF-8') > MAX_VOICE_NAME_CHARS) {
+        return 'invalid voice name';
+    }
+    $source = $voice['sourceName'] ?? null;
+    if ($source !== null && (!is_string($source) || trim($source) === '' || mb_strlen($source, 'UTF-8') > MAX_VOICE_NAME_CHARS)) {
+        return 'invalid voice name';
+    }
+    $config = voiceConfigOf($voice['config'] ?? null);
+    if (is_string($config)) return $config;
+    $sharing = voiceSharingOf($d['sharing'] ?? null);
+    if (is_string($sharing)) return $sharing;
+    $avatar = $d['avatar'] ?? null;
+    if ($avatar !== null && !isVoiceAvatar($avatar)) return 'invalid avatar';
+    return [
+        'voice' => ['id' => $id, 'name' => $name, 'sourceName' => $source],
+        'config' => $config,
+        'sharing' => $sharing,
+        'avatar' => $avatar,
+    ];
 }
 
 // ---------- the selection ---------------------------------------------------

@@ -1,6 +1,9 @@
 import { clamp } from '@/lib/math';
 import { normalizeCardReferences } from '@/services/bible/cardReference';
 import { normalizeReadingList } from '@/services/reading/readingEntries';
+import { normalizeTtsVoice, type TtsVoice } from '@/services/voices/ttsVoice';
+import { MAX_VOICE_NAME, isAvatarDataUrl } from '@/services/voices/voiceProfiles';
+import { normalizeVoiceSharing, type VoiceSharing } from '@/services/voices/voiceSharing';
 import {
   CARD_COLORS,
   TEXT_SCALE_MAX,
@@ -16,8 +19,8 @@ import {
 } from '@/types/domain';
 
 /**
- * The receiving half of a shared plan or board: turning a payload string that
- * came off the network into something the app will render.
+ * The receiving half of a shared plan, board or voice: turning a payload
+ * string that came off the network into something the app will render.
  *
  * Separate from `sharedPayload.ts` deliberately. That module is the signed
  * *format* and imports only types, so `npm run community:verify` can exercise
@@ -167,6 +170,45 @@ export function parseBoardPayload(payload: string): BoardCardsBundle | null {
   // straight from this and never joins against `libraryStore.cards`.
   const byId = new Map(cards.map((c) => [c.id, c]));
   return { board, cards: cardIds.map((cid) => byId.get(cid)!) };
+}
+
+/** A shared voice as its reader holds it — see `MirroredVoice`. */
+export type SharedVoicePayload = {
+  voice: { id: string; name: string; sourceName?: string; avatar?: string };
+  config: TtsVoice;
+  sharing: VoiceSharing;
+};
+
+/**
+ * A shared voice: its name and picture, its sound, and the owner's terms.
+ *
+ * Null when it is not a voice this build can narrate with — an unknown
+ * provider or model, no terms it recognises — which leaves the shelf without
+ * it rather than with a voice that every request would be refused for. The
+ * server checked the same payload on the way in (sharedVoiceOf() in
+ * api/voices.php), so a null here is a newer owner's app, not an attack.
+ */
+export function parseVoicePayload(payload: string): SharedVoicePayload | null {
+  const root = decode(payload);
+  if (!root || root.v !== 1 || !root.voice || typeof root.voice !== 'object') return null;
+  const v = root.voice as Record<string, unknown>;
+  const id = str(v.id);
+  const config = normalizeTtsVoice(v.config);
+  const sharing = normalizeVoiceSharing(root.sharing);
+  if (!id || !config || !sharing) return null;
+  const name = typeof v.name === 'string' ? v.name.trim().slice(0, MAX_VOICE_NAME) : '';
+  if (!name) return null;
+  const sourceName = typeof v.sourceName === 'string' ? v.sourceName.trim().slice(0, MAX_VOICE_NAME) : '';
+  return {
+    voice: {
+      id,
+      name,
+      ...(sourceName ? { sourceName } : {}),
+      ...(isAvatarDataUrl(root.avatar) ? { avatar: root.avatar } : {}),
+    },
+    config,
+    sharing,
+  };
 }
 
 /**

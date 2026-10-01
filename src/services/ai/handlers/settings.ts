@@ -1,6 +1,7 @@
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { clamp01 } from '@/lib/math';
 import { getAmbientTracks } from '@/services/api/ambient';
+import { useCommunityStore } from '@/store/communityStore';
 import { useGlobalVoiceStore } from '@/store/globalVoiceStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { hasActivePersonalKey, useSettingsStore } from '@/store/settingsStore';
@@ -16,6 +17,7 @@ import {
   type VoiceRole,
 } from '@/services/voices/voiceProfiles';
 import { DEVICE_VOICE_ALIASES, voiceNameById } from '@/services/voices/voiceNames';
+import type { MirroredVoice } from '@/types/domain';
 import type { ToolArgs } from '../tools';
 import type { ToolDispatchResult } from '../toolResult';
 import { byName, type Found } from './match';
@@ -76,7 +78,7 @@ export function handleSetTranslation(args: ToolArgs['set_translation']): ToolDis
 
 /** A spoken voice name → a selection id: the device voice under any of its
  * names, then `byName` over Echo and the user's own voices. */
-function voiceIdByName(named: string, voices: VoiceProfile[]): Found<string> {
+function voiceIdByName(named: string, voices: VoiceProfile[], shared: MirroredVoice[]): Found<string> {
   if (DEVICE_VOICE_ALIASES.includes(named.trim().toLowerCase())) {
     return { ok: true, value: SYSTEM_DEVICE_ID };
   }
@@ -84,6 +86,8 @@ function voiceIdByName(named: string, voices: VoiceProfile[]): Found<string> {
     { id: SYSTEM_ECHO_ID, name: voiceNameById(SYSTEM_ECHO_ID, voices) },
     { id: SYSTEM_DEVICE_ID, name: voiceNameById(SYSTEM_DEVICE_ID, voices) },
     ...voices.map((v) => ({ id: v.id, name: v.name })),
+    // A voice somebody lent to a shelf is chosen by its shared item's id.
+    ...shared.map((m) => ({ id: m.itemId, name: m.name })),
   ];
   const found = byName(named, candidates, (c) => c.name, 'voices');
   return found.ok ? { ok: true, value: found.value.id } : found;
@@ -103,7 +107,8 @@ function voiceIdByName(named: string, voices: VoiceProfile[]): Found<string> {
 export async function handleSetVoice(args: ToolArgs['set_voice']): Promise<ToolDispatchResult> {
   const role: VoiceRole = args.for === 'assistant' ? 'assistant' : 'narration';
   const library = useLibraryStore.getState();
-  let found = voiceIdByName(args.name, library.voices);
+  const shared = useCommunityStore.getState().mirroredVoices;
+  let found = voiceIdByName(args.name, library.voices, shared);
   const base = args.name.trim().toLowerCase();
   if (!found.ok && isOpenAiVoiceId(base) && hasActivePersonalKey(useSettingsStore.getState())) {
     found = { ok: true, value: await library.ensureOpenAiVoice(base) };
@@ -112,9 +117,9 @@ export async function handleSetVoice(args: ToolArgs['set_voice']): Promise<ToolD
 
   await useLibraryStore.getState().selectVoice(role, found.value);
   const { voices, voiceSelection } = useLibraryStore.getState();
-  const input = { voices, selection: voiceSelection, access: voiceAccessOf(useSettingsStore.getState()) };
+  const input = { voices, shared, selection: voiceSelection, access: voiceAccessOf(useSettingsStore.getState()) };
   const availability = voiceAvailability(role, selectedVoice(role, input), input.access);
-  const name = voiceNameById(found.value, voices);
+  const name = voiceNameById(found.value, voices, shared);
   if (availability === 'ok') {
     return { ok: true, data: { selected: name, for: args.for ?? 'reading' } };
   }
@@ -130,6 +135,9 @@ export async function handleSetVoice(args: ToolArgs['set_voice']): Promise<ToolD
         'needs-openai-key': 'it needs the user\'s own OpenAI key, which is not set',
         'needs-elevenlabs-key': 'it needs the user\'s ElevenLabs key, which is not set',
         'elevenlabs-failed': 'ElevenLabs refused it this session (key, credits or the voice itself)',
+        'shared-failed': 'it is a voice somebody shared, and their key will not pay for it this session',
+        'shared-budget': 'it is a voice somebody shared, and the allowance they set is used up for now',
+        'shared-cannot-reply': 'it is a voice somebody shared for reading only, not for replies',
       }[availability],
     },
   };

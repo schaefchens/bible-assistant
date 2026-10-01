@@ -98,13 +98,13 @@ beforeEach(async () => {
     spaces: [shelf('s1', 'Werkstatt'), shelf('today', 'Today', { kind: 'today' })],
     posts: [], shared: {}, subscriptions: [], memberships: [],
     feed: {}, seen: {}, blocked: {}, reported: {},
-    items: [], sharedClaims: {}, itemSources: {},
-    feedItems: {}, mirroredLists: [], mirroredBoards: [],
+    items: [], sharedClaims: {}, itemSources: {}, voiceTerms: {},
+    feedItems: {}, mirroredLists: [], mirroredBoards: [], mirroredVoices: [],
     initialized: true,
   });
   useLibraryStore.setState({
     readingLists: [], cards: [], boards: [], readingProgress: {},
-    cardOrder: [], boardOrder: [], online: false, pendingOps: 0,
+    cardOrder: [], boardOrder: [], online: false, pendingOps: 0, voices: [],
   });
   // Off, so nothing here reaches a network the mocks would have to answer for.
   useSettingsStore.setState({ syncEnabled: false, locale: 'en' });
@@ -199,6 +199,41 @@ describe('taking something off a shelf is not destroying it', () => {
     expect((await call('remove_from_shelf', { plan: 'Jona' })).ok).toBe(true);
     expect(useCommunityStore.getState().items).toHaveLength(0);
     expect(useLibraryStore.getState().readingLists).toHaveLength(1);
+  });
+});
+
+/**
+ * A voice lent to a shelf spends the user's key, so the assistant may take one
+ * off — that only stops spending — but never put one on: what it may read and
+ * how much is a decision made in the app.
+ */
+describe('a voice on a shelf', () => {
+  const nova = {
+    v: 1 as const,
+    id: '0b2c6f1e-3a4d-4c5e-9f60-718293a4b5c6',
+    name: 'Nova',
+    config: { provider: 'openai' as const, voice: 'nova' as const, style: '' },
+    createdAt: 1,
+    updatedAt: 1,
+  };
+
+  it('comes off by name, and stays in the library', async () => {
+    useLibraryStore.setState({ voices: [nova] });
+    await useCommunityStore.getState().shareVoice(nova.id, 's1', { scope: 'scripture' });
+    expect(JSON.stringify((await call('list_shelves')).data)).toContain('Nova');
+
+    const r = await call('remove_from_shelf', { voice: 'nova' });
+    expect(r).toMatchObject({ ok: true, data: { removed: 'Nova' } });
+    expect(useCommunityStore.getState().items).toHaveLength(0);
+    expect(useLibraryStore.getState().voices).toHaveLength(1);
+  });
+
+  it('cannot be put on one by the assistant', async () => {
+    useLibraryStore.setState({ voices: [nova] });
+    // add_to_shelf has no `voice`: given one, it asks for a plan or a board.
+    const r = await call('add_to_shelf', { voice: 'Nova', shelf: 'Werkstatt' });
+    expect(r.ok).toBe(false);
+    expect(useCommunityStore.getState().items).toHaveLength(0);
   });
 });
 

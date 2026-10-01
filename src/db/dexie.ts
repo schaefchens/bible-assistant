@@ -136,8 +136,8 @@ type FeedPost = Post & {
 };
 
 /**
- * One of the user's **own** shared items — a plan or a board published into a
- * room. The full record, header and payload together, because the author is
+ * One of the user's **own** shared items — a plan, a board or a voice
+ * published into a room. The full record, header and payload together, because the author is
  * the one who has it.
  *
  * `shared` means the same thing it does on a post: the row exists locally, and

@@ -43,19 +43,27 @@ import { createServer as createNetServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { generateMnemonic } from '@scure/bip39';
+import { wordlist } from '@scure/bip39/wordlists/english.js';
 import { wordTokens } from '../../src/lib/wordTokens.ts';
+import { deriveSigningKey, signItemWith, signPostWith } from '../../src/lib/postSignature.ts';
+import { mintSpaceCode } from '../../src/lib/spaceCode.ts';
+import { BOOKS } from '../../src/services/bible/bookCatalog.ts';
+import { buildVoicePayload, payloadBytes, payloadHash } from '../../src/services/community/sharedPayload.ts';
 import {
   BUSY_ONCE_VOICE,
   NO_ALIGNMENT_VOICE,
   NORMALIZED_ONLY_VOICE,
   SAMPLE_RATE,
   SAMPLES_PER_FRAME,
+  SECOND_CHUNK_FAILS_VOICE,
   charEnd,
   charStart,
   fakeMp3,
   framesFor,
   startElevenLabsStub,
 } from './elevenLabsStub.mjs';
+import { startOpenAiStub } from './openAiStub.mjs';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -87,16 +95,21 @@ writeFileSync(join(root, 'bibles', 'lut.xml'), zefania(1, 1, GENESIS_1));
 
 const stub = await startElevenLabsStub();
 const STUB_BASE = `http://127.0.0.1:${stub.port}`;
+// OpenAI is a stub too, so that no check — whatever it does — can reach the
+// real service. The shared voices below ask it, on their owners' keys.
+const openAi = await startOpenAiStub();
+const OPENAI_BASE = `http://127.0.0.1:${openAi.port}`;
 
 const phpString = (s) => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 /** The docroot's secrets.php. Every request re-reads it (opcache is off
  * below), so rewriting it takes effect on the next request. The shared
- * OpenAI key is blank unless a check says otherwise: nothing here may make a
- * real OpenAI call. */
+ * OpenAI key is blank unless a check says otherwise, and OpenAI is the stub:
+ * nothing here may make a real OpenAI call. */
 function setSecrets({ openAiKey = '', base = STUB_BASE, lines = [] } = {}) {
   writeFileSync(
     join(root, 'secrets.php'),
-    `<?php\ndefine('OPENAI_API_KEY', ${phpString(openAiKey)});\ndefine('ELEVENLABS_API_BASE', ${phpString(base)});\n${lines.join('\n')}\n`,
+    `<?php\ndefine('OPENAI_API_KEY', ${phpString(openAiKey)});\ndefine('ELEVENLABS_API_BASE', ${phpString(base)});\n` +
+      `define('OPENAI_API_BASE', ${phpString(OPENAI_BASE)});\n${lines.join('\n')}\n`,
   );
 }
 setSecrets();
@@ -358,6 +371,156 @@ function germanParagraph() {
   }
   return text;
 }
+
+// ---------- shared voices: the community around them -------------------------
+
+/** Started `ms` from now — see check 13 for why concurrent requests are staggered. */
+const staggered = (ms, fn) => new Promise((r) => setTimeout(r, ms)).then(fn);
+
+/**
+ * A community identity: an account, a signing key, a published profile — and,
+ * when asked, an ElevenLabs and/or OpenAI key of its own (`plant` writes a key
+ * the API would refuse straight onto disk, the way storeKey would have).
+ */
+async function communityUser(name, { elevenLabs, openAi: openAiPrefix, plant = false } = {}) {
+  const user = makeUser();
+  user.displayName = name;
+  user.pair = deriveSigningKey(generateMnemonic(wordlist, 128));
+  user.authorKey = Buffer.from(user.pair.publicKey).toString('hex');
+  const p = await call(user, 'profile.set', { profile: { displayName: name, authorKey: user.authorKey, updatedAt: Date.now() } });
+  assert.equal(p.status, 200, p.text);
+  if (elevenLabs) {
+    user.elKey = `${elevenLabs}${hex(16)}`;
+    ALL_KEYS.push(user.elKey);
+    if (plant) {
+      writeFileSync(join(userDir(user), 'elevenlabs_key.txt'), user.elKey, { mode: 0o600 });
+    } else {
+      const r = await call(user, 'auth.elevenlabsKey.set', { key: user.elKey });
+      assert.equal(r.status, 200, r.text);
+    }
+  }
+  if (openAiPrefix) {
+    user.oaKey = `${openAiPrefix}${hex(16)}`;
+    ALL_KEYS.push(user.oaKey);
+    if (plant) {
+      writeFileSync(join(userDir(user), 'openai_key.txt'), user.oaKey, { mode: 0o600 });
+    } else {
+      const r = await call(user, 'auth.openaiKey.set', { key: user.oaKey });
+      assert.equal(r.status, 200, r.text);
+    }
+  }
+  return user;
+}
+
+/** A shelf of `owner`'s with a share code, on the approval given. */
+async function shelfOf(owner, name, approval = 'manual') {
+  const space = { id: randomUUID(), name, kind: 'custom', approval, createdAt: Date.now(), updatedAt: Date.now() };
+  const up = await call(owner, 'spaces.upsert', { space });
+  assert.equal(up.status, 200, up.text);
+  const code = mintSpaceCode(owner.authorKey);
+  const r = await call(owner, 'spaces.code.set', { spaceId: space.id, code });
+  assert.equal(r.status, 200, r.text);
+  return { id: space.id, space, code, owner };
+}
+
+/** `reader` asks to read `shelf`, and its owner decides (`null`: not yet). */
+async function joinShelf(reader, shelf, decision = 'accepted') {
+  const r = await call(reader, 'space.request', { code: shelf.code });
+  assert.equal(r.status, 200, r.text);
+  if (decision && r.body.status !== decision) {
+    const d = await call(shelf.owner, 'members.decide', { userId: reader.userId, spaceId: shelf.id, status: decision });
+    assert.equal(d.status, 200, d.text);
+  }
+}
+
+/** Sign and publish a shared item of `kind` the way the app does. */
+async function publishItem(shelf, kind, title, payload) {
+  const now = Date.now();
+  const base = {
+    id: randomUUID(),
+    spaceId: shelf.id,
+    kind,
+    title,
+    language: 'en',
+    payloadHash: payloadHash(payload),
+    payloadBytes: payloadBytes(payload),
+    publishedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  };
+  const item = { ...base, ...signItemWith(base, shelf.owner.pair) };
+  const r = await call(shelf.owner, 'items.upsert', { item, payload });
+  assert.equal(r.status, 200, r.text);
+  return item;
+}
+
+/** Share a voice on a shelf, its payload built by the app's own builder. */
+async function shareVoice(shelf, config, sharing, name = 'Opa Georg') {
+  const now = Date.now();
+  const voice = { v: 1, id: randomUUID(), name, config, createdAt: now, updatedAt: now };
+  const item = await publishItem(shelf, 'voice', name, buildVoicePayload(voice, sharing));
+  return { item, config, ref: { code: shelf.code, itemId: item.id }, owner: shelf.owner };
+}
+
+/** A shared plan — a room's other kind, which is not a voice. */
+const sharePlan = (shelf) =>
+  publishItem(shelf, 'plan', 'Ein Plan', JSON.stringify({ v: 1, list: { id: randomUUID(), name: 'Ein Plan', days: [] } }));
+
+/** Publish a piece on a shelf, signed. */
+async function publishPiece(shelf, { title, body, language }) {
+  const now = Date.now();
+  const base = { id: randomUUID(), spaceId: shelf.id, title, body, language, publishedAt: now, createdAt: now, updatedAt: now };
+  const post = { ...base, ...signPostWith(base, shelf.owner.pair) };
+  const r = await call(shelf.owner, 'posts.upsert', { post });
+  assert.equal(r.status, 200, r.text);
+  return post;
+}
+
+/** A v4 voice no other check uses, so its every narration is a miss. */
+let freshCount = 0;
+const freshV4 = () => {
+  const n = freshCount++;
+  return {
+    provider: 'elevenlabs',
+    voiceId: GEORGE,
+    model: 'eleven_v4',
+    stability: (n % 20) / 20,
+    similarity: (3 + Math.floor(n / 20)) / 20,
+  };
+};
+
+/** A sponsored request: the plain body plus whose voice it is. */
+const sharedVerse = (voice, over = {}) => ({ ...verseBody(voice.config, over), shared: over.shared ?? voice.ref });
+const sharedSpeak = (voice, text, language) => ({ ...speakBody(voice.config, text, language), shared: voice.ref });
+const oaVerse = (voice, over = {}) => ({
+  text: PSALM_117[0],
+  voice: voice.config.voice,
+  voiceStyle: voice.config.style || undefined,
+  translation: 'KJV',
+  bookId: 19,
+  chapter: 117,
+  verse: 1,
+  ...over,
+  shared: voice.ref,
+});
+const oaSpeak = (voice, text, language) => ({
+  text,
+  voice: voice.config.voice,
+  voiceStyle: voice.config.style || undefined,
+  language,
+  shared: voice.ref,
+});
+
+/** A shared voice's spending counters, as stored in its owner's directory. */
+const sponsored = (owner, voice) => join(userDir(owner), 'sponsored', voice.item.id);
+function counter(owner, voice, file) {
+  const path = join(sponsored(owner, voice), file);
+  return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
+}
+const monthUtc = () => new Date().toISOString().slice(0, 7);
+const dayUtc = () => new Date().toISOString().slice(0, 10);
+/** What a text costs a voice's allowance: its characters, never under 50. */
+const charge = (text) => Math.max(Array.from(text).length, 50);
 
 // ---------- the run -----------------------------------------------------------
 
@@ -1179,6 +1342,438 @@ try {
     assert.equal(existsSync(userDir(vic)), false, 'voices and the selection go with the account');
   });
 
+  console.log('shared voices');
+
+  // The cast. Olivia owns the shelves and the voices; Rita reads them and
+  // holds keys of her own, which no sponsored narration may ever spend; Ron
+  // is a second accepted reader; Paul is pending, Bea blocked, Sam never
+  // asked, and Nina has no community profile at all.
+  const olivia = await communityUser('Olivia', { elevenLabs: 'sk_ok_', openAi: 'sk-oa-ok-' });
+  const rita = await communityUser('Rita', { elevenLabs: 'sk_ok_', openAi: 'sk-oa-ok-' });
+  const ron = await communityUser('Ron');
+  const paul = await communityUser('Paul');
+  const bea = await communityUser('Bea');
+  const sam = await communityUser('Sam');
+  const nina = makeUser();
+  const home = await shelfOf(olivia, 'Hausandacht');
+  await joinShelf(rita, home);
+  await joinShelf(ron, home);
+  await joinShelf(paul, home, null);
+  await joinShelf(bea, home, 'blocked');
+  const spentBy = (user, mark) => stub.since(mark).filter((r) => r.key === user.elKey);
+
+  let scripture; // an ElevenLabs voice for scripture, no limits (an approval shelf may)
+
+  await check('19. an accepted reader narrates in the owner’s voice on the owner’s key — and a hit is free, to anyone', async () => {
+    scripture = await shareVoice(home, freshV4(), { scope: 'scripture' });
+    const mark = stub.requests.length;
+    const r = await call(rita, 'tts.shared', sharedVerse(scripture));
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.body.cached, false);
+    assert.equal(r.body.audioUrl, `${expectedBase(scripture.config, 'en', PSALM_117[0])}.mp3`, 'the owner’s and every reader’s cache, alike');
+    const calls = stub.since(mark);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].key, olivia.elKey, 'the owner’s key paid');
+    assert.equal(spentBy(rita, mark).length, 0, 'never the reader’s own');
+
+    const again = stub.requests.length;
+    for (const who of [rita, paul, nina]) {
+      const hit = await call(who, 'tts.shared', sharedVerse(scripture));
+      assert.equal(hit.status, 200, hit.text);
+      assert.equal(hit.body.cached, true);
+    }
+    assert.equal(stub.requests.length, again, 'a hit needs no key, no membership, nothing');
+    assert.equal(existsSync(userDir(nina)), false, 'and creates no account');
+  });
+
+  await check('20. pending, blocked, a stranger, no profile, a wrong code or room: one refusal, no upstream call', async () => {
+    const mark = stub.requests.length;
+    const refusal = { error: 'shared_voice_unavailable', payer: 'owner', itemId: scripture.item.id };
+    const second = sharedVerse(scripture, { text: PSALM_117[1], verse: 2 });
+    for (const who of [paul, bea, sam, nina]) {
+      const r = await call(who, 'tts.shared', second);
+      assert.equal(r.status, 403, `${who.displayName ?? 'nina'}: ${r.text}`);
+      assert.deepEqual(r.body, refusal);
+    }
+    assert.equal(existsSync(userDir(nina)), false, 'still no account');
+
+    // Another shelf's code, an unknown code, a malformed one, none at all.
+    const other = await shelfOf(olivia, 'Andere');
+    await joinShelf(rita, other);
+    const unknown = mintSpaceCode(olivia.authorKey);
+    for (const code of [other.code, unknown, 'not-a-code', '']) {
+      const r = await call(rita, 'tts.shared', { ...second, shared: { code, itemId: scripture.item.id } });
+      assert.deepEqual(r.body, refusal, code);
+    }
+    const bare = await call(rita, 'tts.shared', { ...second, shared: undefined });
+    assert.deepEqual(bare.body, { ...refusal, itemId: null });
+    const junk = await call(rita, 'tts.shared', { ...second, shared: { code: home.code, itemId: '../../x' } });
+    assert.deepEqual(junk.body, { ...refusal, itemId: null }, 'an id is echoed only once it is a uuid');
+
+    // A voice on a shelf Rita may not read, asked for with the code of one she may.
+    const vault = await shelfOf(olivia, 'Tresor');
+    const hidden = await shareVoice(vault, freshV4(), { scope: 'anything' });
+    const cross = await call(rita, 'tts.shared', sharedVerse(hidden, { shared: { code: home.code, itemId: hidden.item.id } }));
+    assert.deepEqual(cross.body, { ...refusal, itemId: hidden.item.id });
+
+    // A shared plan is not a voice.
+    const plan = await sharePlan(home);
+    const notVoice = await call(rita, 'tts.shared', { ...second, shared: { code: home.code, itemId: plan.id } });
+    assert.deepEqual(notVoice.body, { ...refusal, itemId: plan.id });
+
+    assert.equal(stub.since(mark).length, 0, 'nothing reached ElevenLabs');
+    assert.equal(existsSync(fileOf(`${expectedBase(scripture.config, 'en', PSALM_117[1])}.mp3`)), false);
+  });
+
+  await check('21. the voice asked for must be the voice shared — the reader’s copy may be stale', async () => {
+    const mark = stub.requests.length;
+    const stale = { ...scripture.config, stability: scripture.config.stability + 0.05 };
+    const r = await call(rita, 'tts.shared', sharedVerse({ ...scripture, config: stale }, { text: PSALM_117[1], verse: 2 }));
+    assert.equal(r.status, 409, r.text);
+    assert.deepEqual(r.body, { error: 'shared_voice_mismatch', payer: 'owner', itemId: scripture.item.id });
+    // Float noise is the same voice: quantized on both sides, like a cache key.
+    const noisy = { ...scripture.config, stability: scripture.config.stability + 0.01 };
+    const ok = await call(rita, 'tts.shared', sharedVerse({ ...scripture, config: noisy }, { text: PSALM_117[1], verse: 2 }));
+    assert.equal(ok.status, 200, ok.text);
+    assert.equal(stub.since(mark).length, 1);
+  });
+
+  await check('22. scripture: the verse exactly as this server reads it, and the app’s own announcements — nothing else', async () => {
+    const voice = await shareVoice(home, freshV4(), { scope: 'scripture' });
+    const out = (r) => assert.deepEqual(r.body, { error: 'shared_voice_out_of_scope', payer: 'owner', itemId: voice.item.id }, r.text);
+    const mark = stub.requests.length;
+    out(await call(rita, 'tts.shared', sharedVerse(voice, { text: 'O praise the LORD, all ye nations.' })));
+    out(await call(rita, 'tts.shared', sharedVerse(voice, { text: PSALM_117[1] })), 'the text of another verse');
+    out(await call(rita, 'tts.shared', sharedVerse(voice, { translation: 'ESV' })), 'a translation not on this server');
+    out(await call(rita, 'tts.shared', sharedVerse(voice, { bookId: 999 })));
+    for (const [text, language] of [
+      ['Buy cheap watches now.', 'en'],
+      ['Psalms, chapter 117, and then whatever I like', 'en'],
+      ['Kill them all, chapter 1', 'en'],
+      ['Psalms, chapter 117', 'de'],
+    ]) {
+      out(await call(rita, 'tts.speak.shared', sharedSpeak(voice, text, language)));
+    }
+    assert.equal(stub.since(mark).length, 0, 'refused before any call');
+
+    const psalms = BOOKS.find((b) => b.id === 19);
+    for (const [text, language] of [
+      [`${psalms.nameEn}, chapter 117`, 'en'],
+      [`${psalms.nameEn}, chapter 117, verses 1 to 2`, 'en'],
+      [`${psalms.nameDe}, Kapitel 117, Vers 2`, 'de'],
+      ['Verse 2', 'en'],
+      ['2', 'en'],
+    ]) {
+      const r = await call(rita, 'tts.speak.shared', sharedSpeak(voice, text, language));
+      assert.equal(r.status, 200, `${text}: ${r.text}`);
+    }
+    const verse = await call(rita, 'tts.shared', sharedVerse(voice));
+    assert.equal(verse.status, 200, verse.text);
+  });
+
+  let piece; // Olivia's piece on the home shelf
+
+  await check('23. pieces: the owner’s writing on that shelf — a heading, a whole paragraph, whole sentences of a long one', async () => {
+    const long = `${germanParagraph()} Amen.`;
+    assert.ok(Buffer.byteLength(long) > 3500);
+    piece = await publishPiece(home, {
+      title: 'Ein Morgen am Fluss',
+      body: `Der Fluss war  still. Die Vögel sangen.\n\n\nIch dachte an Psalm 23.\n\n${long}`,
+      language: 'de',
+    });
+    const elsewhere = await shelfOf(olivia, 'Woanders');
+    await joinShelf(rita, elsewhere);
+    await publishPiece(elsewhere, { title: 'Woanders', body: 'Nur hier zu lesen.', language: 'de' });
+
+    const voice = await shareVoice(home, freshV4(), { scope: 'pieces' });
+    const asks = (text) => call(rita, 'tts.speak.shared', sharedSpeak(voice, text, 'de'));
+    const sentences = long.split(/(?<=[.!?][)\]"'”’»]?)\s+/);
+    for (const text of [
+      'Ein Morgen am Fluss. Von Olivia.', // the heading, as playbackPlan says it
+      'Der Fluss war still. Die Vögel sangen.', // whitespace as postParagraphs folds it
+      'Ich dachte an Psalm 23.',
+      long, // a long paragraph whole
+      sentences.slice(0, 3).join(' '), // or a run of its sentences
+      sentences.slice(4, 6).join(' '),
+      `${BOOKS.find((b) => b.id === 19).nameDe}, Kapitel 23`, // scripture's announcements stay allowed
+    ]) {
+      const r = await asks(text);
+      assert.equal(r.status, 200, `${text.slice(0, 40)}: ${r.text}`);
+    }
+    const out = { error: 'shared_voice_out_of_scope', payer: 'owner', itemId: voice.item.id };
+    const mark = stub.requests.length;
+    for (const text of [
+      'Die Vögel sangen.', // part of a short paragraph
+      'Fluss war still.',
+      sentences[0].split(' ').slice(1).join(' '), // a long paragraph, cut mid-sentence
+      'Nur hier zu lesen.', // her writing, on another shelf
+      'Ein Morgen am Fluss. Von Jemand Anderem.',
+      'Ganz eigener Text.',
+    ]) {
+      assert.deepEqual((await asks(text)).body, out, text.slice(0, 40));
+    }
+    assert.equal(stub.since(mark).length, 0);
+
+    // `scripture` refuses the same paragraph; `anything` takes any words at all.
+    const strict = await call(rita, 'tts.speak.shared', sharedSpeak(scripture, 'Ich dachte an Psalm 23.', 'de'));
+    assert.equal(strict.body.error, 'shared_voice_out_of_scope');
+    const open = await shareVoice(home, freshV4(), { scope: 'anything' });
+    const free = await call(rita, 'tts.speak.shared', sharedSpeak(open, 'Ganz eigener Text, von niemandem geschrieben.', 'de'));
+    assert.equal(free.status, 200, free.text);
+  });
+
+  await check('24. allowances: the monthly pool and each reader’s day are charged before the call, never past the limit', async () => {
+    const pooled = await shareVoice(home, freshV4(), { scope: 'anything', monthly: 120 });
+    const asks = (who, text) => call(who, 'tts.speak.shared', sharedSpeak(pooled, text, 'en'));
+    const budget = { error: 'shared_voice_budget', payer: 'owner', itemId: pooled.item.id };
+    const sixty = 'Sixty characters exactly, give or take, for the pool test...';
+    assert.equal(Array.from(sixty).length, 60);
+    assert.equal((await asks(rita, sixty)).status, 200);
+    assert.deepEqual(counter(olivia, pooled, 'pool.json'), { period: monthUtc(), used: 60 });
+    const mark = stub.requests.length;
+    assert.deepEqual((await asks(ron, 'x'.repeat(61) + ' — one character too many for what is left')).body, budget);
+    assert.equal(stub.since(mark).length, 0, 'refused before any call');
+    // A short text is charged the 50-character floor.
+    assert.equal((await asks(ron, 'Amen.')).status, 200);
+    assert.deepEqual(counter(olivia, pooled, 'pool.json'), { period: monthUtc(), used: 110 });
+    assert.deepEqual((await asks(rita, 'Selah.')).body, budget, '110 + 50 is past 120');
+
+    // A day's allowance is each reader's own.
+    const daily = await shareVoice(home, freshV4(), { scope: 'anything', dailyPerReader: 100 });
+    const day = (who, text) => call(who, 'tts.speak.shared', sharedSpeak(daily, text, 'en'));
+    assert.equal((await day(rita, 'r'.repeat(100))).status, 200);
+    assert.deepEqual((await day(rita, 'One more.')).body, { ...budget, itemId: daily.item.id });
+    assert.equal((await day(ron, 'One more.')).status, 200, 'Ron’s day is his own');
+    assert.deepEqual(counter(olivia, daily, `daily-${rita.userId}.json`), { period: dayUtc(), used: 100 });
+    assert.deepEqual(counter(olivia, daily, `daily-${ron.userId}.json`), { period: dayUtc(), used: 50 });
+    assert.equal(existsSync(join(sponsored(olivia, daily), 'pool.json')), false, 'a limit not set is not counted');
+
+    // A hit is never charged, even with the allowance spent.
+    assert.equal((await day(rita, 'r'.repeat(100))).body.cached, true);
+  });
+
+  await check('25. a shelf anyone can join needs a monthly pool before its readers may spend', async () => {
+    const open = await shelfOf(olivia, 'Offen', 'auto');
+    await joinShelf(ron, open, null); // auto-accepted
+    const unlimited = await shareVoice(open, freshV4(), { scope: 'anything', dailyPerReader: 10000 });
+    const mark = stub.requests.length;
+    const r = await call(ron, 'tts.speak.shared', sharedSpeak(unlimited, 'Open shelf, no pool.', 'en'));
+    assert.equal(r.status, 403, r.text);
+    assert.deepEqual(r.body, { error: 'shared_voice_budget', payer: 'owner', itemId: unlimited.item.id });
+    assert.equal(stub.since(mark).length, 0);
+    const pooled = await shareVoice(open, freshV4(), { scope: 'anything', monthly: 5000 });
+    assert.equal((await call(ron, 'tts.speak.shared', sharedSpeak(pooled, 'Open shelf, with a pool.', 'en'))).status, 200);
+
+    // Switching an approval shelf to automatic later opens no hole: the
+    // unlimited voice shared on it while it was manual stops spending.
+    const manual = await shelfOf(olivia, 'Erst manuell');
+    await joinShelf(rita, manual);
+    const before = await shareVoice(manual, freshV4(), { scope: 'anything' });
+    assert.equal((await call(rita, 'tts.speak.shared', sharedSpeak(before, 'Manual for now.', 'en'))).status, 200);
+    await call(olivia, 'spaces.upsert', { space: { ...manual.space, approval: 'auto', updatedAt: Date.now() } });
+    const after = await call(rita, 'tts.speak.shared', sharedSpeak(before, 'Automatic now.', 'en'));
+    assert.equal(after.body.error, 'shared_voice_budget');
+  });
+
+  let oscar; // an owner whose key is slow: 0.7 s a narration
+
+  await check('26. two readers missing the same entry cost one generation and one charge; the waiter pays nothing', async () => {
+    oscar = await communityUser('Oscar', { elevenLabs: 'sk_slow_' });
+    const slowShelf = await shelfOf(oscar, 'Langsam');
+    await joinShelf(rita, slowShelf);
+    await joinShelf(ron, slowShelf);
+    const voice = await shareVoice(slowShelf, freshV4(), { scope: 'anything', monthly: 10000 });
+    oscar.voice = voice;
+    const text = 'Two of us asked for the same words at once, and only one of us paid for them.';
+    const mark = stub.requests.length;
+    const rs = await Promise.all([
+      staggered(0, () => call(rita, 'tts.speak.shared', sharedSpeak(voice, text, 'en'))),
+      staggered(100, () => call(ron, 'tts.speak.shared', sharedSpeak(voice, text, 'en'))),
+      staggered(200, () => call(rita, 'tts.speak.shared', sharedSpeak(voice, text, 'en'))),
+    ]);
+    for (const r of rs) assert.equal(r.status, 200, r.text);
+    assert.deepEqual(rs.map((r) => r.body.cached), [false, true, true]);
+    assert.equal(stub.since(mark).length, 1, 'one generation');
+    assert.deepEqual(counter(oscar, voice, 'pool.json'), { period: monthUtc(), used: charge(text) }, 'one charge');
+    assert.deepEqual(workFiles(), []);
+  });
+
+  await check('27. at most two of an owner’s generations at once; one kept waiting is busy, and is not charged', async () => {
+    const voice = oscar.voice;
+    const asks = (delay, n) => staggered(delay, () => call(rita, 'tts.speak.shared', sharedSpeak(voice, `Slot test number ${n}, said once.`, 'en')));
+    const rs = await Promise.all([asks(0, 1), asks(100, 2), asks(200, 3), asks(300, 4)]);
+    for (const r of rs) assert.equal(r.status, 200, r.text);
+    assert.equal(stub.peak(oscar.elKey), 2, 'never more than two at the owner’s key');
+
+    const before = counter(oscar, voice, 'pool.json').used;
+    setSecrets({ lines: ["define('SPONSOR_SLOT_WAIT_SECONDS', 0.2);"] });
+    try {
+      const burst = await Promise.all([asks(0, 5), asks(100, 6), asks(200, 7)]);
+      const busy = burst.filter((r) => r.status === 503);
+      assert.ok(busy.length >= 1, burst.map((r) => r.status).join(' / '));
+      for (const r of busy) {
+        assert.deepEqual(r.body, { error: 'shared_voice_busy', payer: 'owner', itemId: voice.item.id });
+        assert.equal(r.headers.get('retry-after'), '2');
+      }
+      // Each is under the 50-character floor, so each that ran was charged 50
+      // — and none that was turned away.
+      const done = burst.filter((r) => r.status === 200).length;
+      assert.equal(counter(oscar, voice, 'pool.json').used, before + done * 50);
+    } finally {
+      setSecrets();
+    }
+    assert.deepEqual(workFiles(), []);
+  });
+
+  await check('28. the owner’s failures say only whether they will last — no detail, no provider, no refund once paid', async () => {
+    const owners = {
+      // A key ElevenLabs refuses cannot be stored through the API: it is planted.
+      refused: await communityUser('Boris', { elevenLabs: 'sk_bad_', plant: true }),
+      broke: await communityUser('Bruno', { elevenLabs: 'sk_broke_' }),
+      busy: await communityUser('Bianca', { elevenLabs: 'sk_busy_' }),
+      keyless: await communityUser('Nora'),
+    };
+    const verdicts = { refused: 'shared_voice_unavailable', broke: 'shared_voice_unavailable', busy: 'shared_voice_busy', keyless: 'shared_voice_unavailable' };
+    for (const [name, owner] of Object.entries(owners)) {
+      const shelf = await shelfOf(owner, `Regal ${name}`);
+      await joinShelf(rita, shelf);
+      const voice = await shareVoice(shelf, freshV4(), { scope: 'anything', monthly: 1000 });
+      const r = await call(rita, 'tts.speak.shared', sharedSpeak(voice, `Owner ${name}, please read this.`, 'en'));
+      assert.deepEqual(r.body, { error: verdicts[name], payer: 'owner', itemId: voice.item.id }, `${name}: ${r.text}`);
+      assert.equal(r.status, name === 'busy' ? 503 : 403);
+      // Nothing came back, so nothing stays charged.
+      assert.equal(counter(owner, voice, 'pool.json')?.used ?? 0, 0, `${name}: refunded`);
+    }
+    // A voice gone from the owner's library is theirs to fix, not a provider code.
+    const gone = await shareVoice(home, { ...freshV4(), voiceId: 'FaultVoiceNotFound01' }, { scope: 'anything' });
+    const g = await call(rita, 'tts.speak.shared', sharedSpeak(gone, 'A voice that is not there.', 'en'));
+    assert.deepEqual(g.body, { error: 'shared_voice_unavailable', payer: 'owner', itemId: gone.item.id });
+
+    // A long text whose first chunk came back before the second failed was
+    // paid for: the charge stands.
+    const half = await shareVoice(home, { ...freshV4(), voiceId: SECOND_CHUNK_FAILS_VOICE }, { scope: 'anything', monthly: 100000 });
+    const long = germanParagraph();
+    const h = await call(rita, 'tts.speak.shared', sharedSpeak(half, long, 'de'));
+    assert.deepEqual(h.body, { error: 'shared_voice_busy', payer: 'owner', itemId: half.item.id }, h.text);
+    assert.equal(counter(olivia, half, 'pool.json').used, Array.from(long).length);
+    assert.deepEqual(workFiles(), []);
+  });
+
+  await check('29. removing, blocking, a new code, deleting the shelf or the profile — each revokes at once', async () => {
+    const olga = await communityUser('Olga', { elevenLabs: 'sk_ok_' });
+    const shelf = await shelfOf(olga, 'Widerruf');
+    await joinShelf(rita, shelf);
+    let voice = await shareVoice(shelf, freshV4(), { scope: 'anything', monthly: 100000 });
+    let n = 0;
+    const asks = (ref = voice.ref) => call(rita, 'tts.speak.shared', sharedSpeak({ ...voice, ref }, `Revocation test ${++n}.`, 'en'));
+    const refused = async (why) => {
+      const r = await asks();
+      assert.equal(r.body?.error, 'shared_voice_unavailable', `${why}: ${r.text}`);
+    };
+    assert.equal((await asks()).status, 200);
+
+    await call(olga, 'members.decide', { userId: rita.userId, spaceId: shelf.id, status: 'blocked' });
+    await refused('blocked');
+    await call(olga, 'members.decide', { userId: rita.userId, spaceId: shelf.id, status: 'accepted' });
+    assert.equal((await asks()).status, 200);
+
+    assert.ok(existsSync(sponsored(olga, voice)));
+    await call(olga, 'items.delete', { id: voice.item.id, spaceId: shelf.id });
+    await refused('removed');
+    assert.equal(existsSync(sponsored(olga, voice)), false, 'its counters went with it');
+
+    voice = await shareVoice(shelf, voice.config, { scope: 'anything', monthly: 100000 });
+    assert.equal((await asks()).status, 200, 'shared again: a new item, a fresh allowance');
+
+    const fresh = mintSpaceCode(olga.authorKey);
+    await call(olga, 'spaces.code.set', { spaceId: shelf.id, code: fresh });
+    await refused('the old code');
+    const viaNew = await asks({ code: fresh, itemId: voice.item.id });
+    assert.equal(viaNew.body.error, 'shared_voice_unavailable', 'a new code starts over on who may read');
+
+    const kept = await shelfOf(olga, 'Noch da');
+    await joinShelf(rita, kept);
+    const keptVoice = await shareVoice(kept, freshV4(), { scope: 'anything', monthly: 100000 });
+    await call(olga, 'spaces.delete', { id: shelf.id });
+    await refused('the shelf deleted');
+    const k = await call(rita, 'tts.speak.shared', sharedSpeak(keptVoice, 'Before leaving.', 'en'));
+    assert.equal(k.status, 200);
+    await call(olga, 'profile.delete', {});
+    const left = await call(rita, 'tts.speak.shared', sharedSpeak(keptVoice, 'After leaving.', 'en'));
+    assert.equal(left.body.error, 'shared_voice_unavailable', 'the owner left the community');
+    assert.equal(existsSync(join(userDir(olga), 'sponsored')), false);
+  });
+
+  await check('30. OpenAI: a shared voice spends the owner’s key — one generation under concurrency, failures scrubbed', async () => {
+    const nova = { provider: 'openai', voice: 'nova', style: 'Calm and warm, unhurried.' };
+    const voice = await shareVoice(home, nova, { scope: 'anything' });
+    const mark = openAi.requests.length;
+    const r = await call(rita, 'tts.speak.shared', oaSpeak(voice, 'The LORD is my shepherd.', 'en'));
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.body.cached, false);
+    const calls = openAi.since(mark);
+    assert.deepEqual(calls.map((c) => c.path), ['/v1/audio/speech', '/v1/audio/transcriptions']);
+    for (const c of calls) assert.equal(c.auth, `Bearer ${olivia.oaKey}`, 'the owner’s OpenAI key, for speech and alignment');
+    assert.equal(calls[0].body.voice, 'nova');
+    assert.match(calls[0].body.instructions, /Calm and warm/);
+    const mp3 = fileOf(r.body.audioUrl);
+    assert.equal((statSync(mp3).mode & 0o777).toString(8), '644', 'published world-readable');
+    assert.equal(JSON.parse(readFileSync(fileOf(r.body.alignmentUrl), 'utf8')).words[0].word, 'stub');
+
+    // A verse, by the same rules as ElevenLabs.
+    const holy = await shareVoice(home, { provider: 'openai', voice: 'cedar', style: '' }, { scope: 'scripture' });
+    const v = await call(rita, 'tts.shared', oaVerse(holy));
+    assert.equal(v.status, 200, v.text);
+    assert.equal((await call(rita, 'tts.shared', oaVerse(holy, { text: 'Not the verse.' }))).body.error, 'shared_voice_out_of_scope');
+
+    // The ElevenLabs treatment: three listeners, one generation.
+    const ophelia = await communityUser('Ophelia', { openAi: 'sk-oa-slow-' });
+    const shelf = await shelfOf(ophelia, 'Ophelias Regal');
+    await joinShelf(rita, shelf);
+    await joinShelf(ron, shelf);
+    const slow = await shareVoice(shelf, { provider: 'openai', voice: 'sage', style: '' }, { scope: 'anything' });
+    const text = 'Three listeners, one generation.';
+    const before = openAi.requests.length;
+    const rs = await Promise.all([0, 100, 200].map((d, i) => staggered(d, () => call(i === 1 ? ron : rita, 'tts.speak.shared', oaSpeak(slow, text, 'en')))));
+    for (const x of rs) assert.equal(x.status, 200, x.text);
+    assert.deepEqual(rs.map((x) => x.body.cached), [false, true, true]);
+    assert.equal(openAi.since(before).filter((c) => c.path === '/v1/audio/speech').length, 1);
+    assert.deepEqual(workFiles(), []);
+
+    // An owner's key OpenAI refuses: the reader learns it will last, and nothing
+    // of OpenAI's message — which quotes part of the key.
+    for (const [prefix, error, status] of [['sk-oa-bad-', 'shared_voice_unavailable', 403], ['sk-oa-broke-', 'shared_voice_unavailable', 403]]) {
+      const owner = await communityUser(`Owner ${prefix}`, { openAi: prefix, plant: true });
+      const s = await shelfOf(owner, `Regal ${prefix}`);
+      await joinShelf(rita, s);
+      const bad = await shareVoice(s, { provider: 'openai', voice: 'ash', style: '' }, { scope: 'anything' });
+      const b = await call(rita, 'tts.speak.shared', oaSpeak(bad, `Refused for ${prefix}.`, 'en'));
+      assert.equal(b.status, status, b.text);
+      assert.deepEqual(b.body, { error, payer: 'owner', itemId: bad.item.id });
+    }
+
+    // The plain path is unchanged: Rita's own key pays for her own voice.
+    const own = openAi.requests.length;
+    const mine = await call(rita, 'tts.speak', { text: 'My own voice, my own key.', voice: 'alloy', language: 'en' });
+    assert.equal(mine.status, 200, mine.text);
+    assert.ok(openAi.since(own).every((c) => c.auth === `Bearer ${rita.oaKey}`));
+  });
+
+  await check('31. no ElevenLabs request carried Authorization, no OpenAI one the shared key; no answer quoted a key', () => {
+    for (const r of stub.requests) {
+      assert.equal('authorization' in r.headers, false, `${r.path} carried Authorization`);
+      assert.match(r.key ?? '', /^sk_[a-z]+_[0-9a-f]+$/, `${r.path} without an ElevenLabs key`);
+    }
+    assert.ok(openAi.requests.length >= 8, `${openAi.requests.length} OpenAI requests seen`);
+    for (const r of openAi.requests) {
+      assert.match(r.auth ?? '', /^Bearer sk-oa-[a-z]+-[0-9a-f]+$/, `${r.path} without a user's own key`);
+    }
+    for (const text of answered) {
+      for (const key of [...ALL_KEYS, CANARY]) assert.equal(text.includes(key), false, 'a full key in an answer');
+      assert.equal(/Incorrect API key|sk-oa-bad-[0-9a-f]{4}/.test(text), false, 'OpenAI’s message reached a reader');
+    }
+  });
+
   console.log('the converter');
 
   await check('character timings become exactly wordTokens(text), for the texts that are hard', () => {
@@ -1277,7 +1872,7 @@ try {
   });
 
   await check('the new handler files say nothing when fetched directly', async () => {
-    for (const name of ['voices.php', 'elevenlabs.php']) {
+    for (const name of ['voices.php', 'elevenlabs.php', 'sponsorship.php', 'announcements.php']) {
       const res = await fetch(`${BASE}/api/${name}`);
       assert.equal(res.status, 404, name);
       assert.equal(await res.text(), '', name);
@@ -1293,5 +1888,6 @@ try {
 } finally {
   stopPhp();
   await stub.close();
+  await openAi.close();
   rmSync(root, { recursive: true, force: true });
 }

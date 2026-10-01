@@ -1,8 +1,15 @@
-import { onProviderFailure } from '@/services/api/client';
+import { onProviderFailure, onSharedVoiceRefusal } from '@/services/api/client';
+import { useCommunityStore } from '@/store/communityStore';
 import { useSettingsStore } from '@/store/settingsStore';
 
+/** How long after a stale shared voice prompted a feed refresh another one
+ * may — a refused chapter refuses every verse it builds at once. */
+const MISMATCH_REFRESH_MS = 30_000;
+let lastMismatchRefresh = 0;
+
 /**
- * Turn an ElevenLabs refusal into session state, once, for everybody.
+ * Turn an ElevenLabs refusal — or a shared voice's — into session state,
+ * once, for everybody.
  *
  * Every voice resolver reads `elevenLabsFailure`, so recording it here is what
  * makes the next verse — and the assistant's next reply, and the next tap on a
@@ -27,5 +34,19 @@ export function initProviderFailureWatch(): void {
     const current = settings.elevenLabsFailure;
     if (current && current.kind !== 'voice' && failure.kind === 'voice') return;
     settings.setElevenLabsFailure(failure);
+  });
+
+  // A voice somebody shared, refused on its owner's account. The lasting
+  // refusals are recorded for that one voice, so it falls back everywhere at
+  // once; the listener's own keys are not touched. A stale copy — the owner
+  // updated the voice — is fixed by fetching the shelf again, after which the
+  // next reading asks with the new one.
+  onSharedVoiceRefusal((refusal) => {
+    if (refusal.kind === 'unavailable' || refusal.kind === 'budget') {
+      useSettingsStore.getState().setSharedVoiceFailure(refusal.itemId, refusal.kind);
+    } else if (refusal.kind === 'mismatch' && Date.now() - lastMismatchRefresh > MISMATCH_REFRESH_MS) {
+      lastMismatchRefresh = Date.now();
+      void useCommunityStore.getState().refreshSubscriptions();
+    }
   });
 }

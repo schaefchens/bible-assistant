@@ -24,8 +24,7 @@ import {
   type NarrationSubject,
 } from '@/services/narration/narrationDownload';
 import { useNarrationStore } from '@/store/narrationStore';
-import { useNarrationVoice } from '@/hooks/useSpeechVoice';
-import { ECHO_VOICE, isDeviceVoice, type TtsVoice } from '@/services/voices/ttsVoice';
+import { useNarrationVoiceFor } from '@/hooks/useSpeechVoice';
 
 type Props = {
   /**
@@ -61,18 +60,17 @@ type Props = {
 export function NarrationGroupButton({ subjects, label, compact = false }: Props) {
   const { t } = useTranslation();
   // Subscribed, not read once: switching voice — or key status arriving after
-  // boot — changes which narration this button is even talking about.
-  const narrationVoice = useNarrationVoice();
-  const usesDeviceVoice = isDeviceVoice(narrationVoice);
-  // Echo is only a stand-in so the hooks below run unconditionally; on the
-  // device voice this renders nothing.
-  const voice: TtsVoice = isDeviceVoice(narrationVoice) ? ECHO_VOICE : narrationVoice;
+  // boot — changes which narration this button is even talking about. Per
+  // subject: a voice somebody shared may be lent for some of them only.
+  const voiceFor = useNarrationVoiceFor();
 
   // `subjects` is rebuilt on every render of the sheet, so the group's own key
   // is the real dependency — it changes exactly when the items or the voice do
   // (the voice is part of every target key), and it is the identity the run
-  // map is keyed by anyway.
-  const built = narrationTargetsFor(subjects, voice);
+  // map is keyed by anyway. A subject the device voice would read is left out:
+  // there is nothing of it to download.
+  const built = narrationTargetsFor(subjects, voiceFor);
+  const usesDeviceVoice = built.length === 0;
   const groupKey = narrationGroupKey(built);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const targets = useMemo(() => built, [groupKey]);

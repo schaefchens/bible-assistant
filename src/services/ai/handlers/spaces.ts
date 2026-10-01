@@ -72,6 +72,10 @@ export function handleListShelves(): ToolDispatchResult {
         boards: state.items.filter(
           (i) => i.spaceId === sp.id && i.kind === 'board' && state.sharedClaims[i.id],
         ).length,
+        // By name: remove_from_shelf takes one.
+        voices: titlesOf(
+          state.items.filter((i) => i.spaceId === sp.id && i.kind === 'voice' && state.sharedClaims[i.id]),
+        ),
       })),
       following: state.subscriptions.map((sub) => ({
         name: spaceDisplayName({ kind: sub.spaceKind ?? 'custom', name: sub.spaceName }),
@@ -80,6 +84,8 @@ export function handleListShelves(): ToolDispatchResult {
         pieces: (state.feed[sub.code] ?? []).length,
         plans: state.mirroredLists.filter((m) => m.code === sub.code).length,
         boards: state.mirroredBoards.filter((m) => m.code === sub.code).length,
+        // By name, for set_voice: a voice lent to this shelf can read for the user.
+        voices: state.mirroredVoices.filter((m) => m.code === sub.code).map((m) => m.name),
       })),
     },
   };
@@ -446,18 +452,22 @@ export async function handleAddToShelf(
 }
 
 /**
- * Take a plan, a board or a piece off a shelf.
+ * Take a plan, a board, a voice or a piece off a shelf.
  *
  * The two halves are genuinely different acts, and the app already draws the
- * line: a shared plan or board is a *snapshot* of something that lives in the
- * library, so removing it is `deleteItem` and the source is untouched; a piece
- * lives only on the device, so removing it is `unpublishPost` and the draft
- * survives. `delete_piece` is the destructive one, and it is its own tool.
+ * line: a shared plan, board or voice is a *snapshot* of something that lives
+ * in the library, so removing it is `deleteItem` and the source is untouched;
+ * a piece lives only on the device, so removing it is `unpublishPost` and the
+ * draft survives. `delete_piece` is the destructive one, and it is its own tool.
+ *
+ * A voice can be taken off by voice command but never put on one: removing it
+ * only stops spending, while lending it is a decision about the user's money
+ * made in the app (see add_to_shelf's description).
  */
 export async function handleRemoveFromShelf(
   args: ToolArgs['remove_from_shelf'],
 ): Promise<ToolDispatchResult> {
-  const which = exactlyOne({ plan: args.plan, board: args.board, piece: args.piece });
+  const which = exactlyOne({ plan: args.plan, board: args.board, voice: args.voice, piece: args.piece });
   if (!which.ok) return { ok: false, error: which.error };
   const [kind, named] = which.value;
 

@@ -170,4 +170,7 @@ because two engines sharing one queue talk over each other.
 share one download status, one dedupe slot and one abort controller. A chapter downloaded
 in a voice only plays offline in *that* voice. Deleting a voice gives its pinned audio
 back (`deleteNarrationForVoice`), unless another profile — or Echo — sounds exactly the
-same, in which case the files are theirs too.
+same, in which case the files are theirs too. A voice somebody lent does the same when it
+leaves the user's shelves (`lib/sharedVoiceDownloads.ts`), and a download's voice is
+chosen per subject (`useNarrationVoiceFor`): a piece on a voice lent for scripture
+downloads in the fallback, which is what would read it.

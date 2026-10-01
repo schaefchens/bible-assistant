@@ -20,6 +20,7 @@
     "community:verify": "node scripts/community/verifySigning.mjs",
     "community:verify:api": "node scripts/community/verifyBackend.mjs",
     "voices:verify:api": "node scripts/voices/verifyVoicesBackend.mjs",
+    "voices:announcements": "node scripts/voices/buildAnnouncements.mjs",
     "test": "npm run test:unit && npm run test:component && npm run test:int",
     "test:unit": "vitest run --project unit",
     "test:int": "vitest run --project int",

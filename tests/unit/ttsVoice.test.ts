@@ -5,12 +5,15 @@ import {
   OPENAI_VOICES,
   clampStyle,
   normalizeTtsVoice,
+  sharedRefOf,
   styleBytes,
   sameTtsVoice,
+  ttsAction,
   ttsConcurrency,
   ttsSpeakBody,
   ttsVerseBody,
   voiceKeyPart,
+  type SharedTtsVoice,
   type TtsVoice,
 } from '@/services/voices/ttsVoice';
 
@@ -202,5 +205,59 @@ describe('request bodies', () => {
     expect(
       ttsConcurrency({ provider: 'elevenlabs', voiceId: ELEVEN_ID, model: 'eleven_v4', stability: 0.5, similarity: 0.75 }),
     ).toBe(2);
+  });
+});
+
+/**
+ * A voice somebody shared on a shelf is the owner's sound plus whose it is.
+ * The ref must reach the server — it is what picks the owner's key — and must
+ * never reach a cache key, or the owner and every reader would each generate
+ * the same audio again, at the owner's expense.
+ */
+describe('a voice somebody shared', () => {
+  const george: TtsVoice = {
+    provider: 'elevenlabs',
+    voiceId: ELEVEN_ID,
+    model: 'eleven_v4',
+    stability: 0.5,
+    similarity: 0.75,
+  };
+  const ref = { code: 'ABCDEFGHJKMNPQRS', itemId: '7e1f0c2a-9b3d-4e5f-8a6b-c7d8e9f0a1b2', spaceId: 'S', scope: 'scripture' as const };
+  const lent: SharedTtsVoice = { ...george, shared: ref };
+  const psalm = { text: 'O praise the LORD, all ye nations: praise him, all ye people.', translation: 'KJV', bookId: 19, chapter: 117, verse: 1 };
+
+  it('has the plain voice’s identity — one cache for the owner and every reader', () => {
+    expect(voiceKeyPart(lent)).toBe(voiceKeyPart(george));
+    expect(sameTtsVoice(lent, george)).toBe(true);
+  });
+
+  it('a voice of one’s own can never carry a ref: normalizing drops it', () => {
+    expect(normalizeTtsVoice(lent)).toEqual(george);
+    expect(sharedRefOf(normalizeTtsVoice(lent)!)).toBeNull();
+    expect(sharedRefOf(lent)).toBe(ref);
+  });
+
+  it('goes to the shared actions, with the shelf and the item last — and nothing else of the ref', () => {
+    expect(ttsAction(lent, 'verse')).toBe('tts.shared');
+    expect(ttsAction(lent, 'speak')).toBe('tts.speak.shared');
+    expect(JSON.stringify(ttsVerseBody(lent, psalm))).toBe(
+      `{"text":"${psalm.text}","provider":"elevenlabs","voice":"${ELEVEN_ID}",` +
+        `"elevenlabs":{"voiceId":"${ELEVEN_ID}","model":"eleven_v4","stability":0.5,"similarity":0.75},` +
+        `"translation":"KJV","bookId":19,"chapter":117,"verse":1,"shared":{"code":"ABCDEFGHJKMNPQRS","itemId":"${ref.itemId}"}}`,
+    );
+    const openAi: SharedTtsVoice = { provider: 'openai', voice: 'nova', style: '', shared: ref };
+    expect(JSON.stringify(ttsSpeakBody(openAi, { text: 'Psalms, chapter 117', language: 'en' }))).toBe(
+      `{"text":"Psalms, chapter 117","voice":"nova","language":"en","shared":{"code":"ABCDEFGHJKMNPQRS","itemId":"${ref.itemId}"}}`,
+    );
+  });
+
+  it('leaves every voice of one’s own exactly as it was', () => {
+    expect(ttsAction(ECHO_VOICE, 'verse')).toBe('tts');
+    expect(ttsAction(george, 'speak')).toBe('tts.speak');
+    expect(JSON.stringify(ttsVerseBody(ECHO_VOICE, psalm))).not.toContain('shared');
+  });
+
+  it('asks two at a time: its owner runs two generations at once, for all readers together', () => {
+    expect(ttsConcurrency({ provider: 'openai', voice: 'nova', style: '', shared: ref } as SharedTtsVoice)).toBe(2);
   });
 });

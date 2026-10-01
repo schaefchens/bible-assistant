@@ -143,7 +143,7 @@ export function verifyPost(post: Post, pinnedKeyHex: string): boolean {
 }
 
 /* ------------------------------------------------------------------ *
- * Shared items — a reading plan or a board, published into a room
+ * Shared items — a reading plan, a board or a voice, published into a room
  * ------------------------------------------------------------------ */
 
 /** Canonicalization version for a {@link SharedItem}. Additive, like the post one. */
@@ -157,10 +157,11 @@ export const ITEM_SIG_VERSION = 'ba.item.v1';
  * sha256, everything left unhashed a constrained charset — with two
  * differences worth stating:
  *
- * - **`kind` is in the message**, unhashed because it is a two-value enum.
- *   Without it a plan's signature could be lifted onto a board: every other
- *   field can be equal between the two, so the message would not distinguish
- *   them and a reader would parse a plan's payload as a board's.
+ * - **`kind` is in the message**, unhashed because it is a small enum
+ *   (`plan`, `board`, `voice`). Without it a plan's signature could be lifted
+ *   onto a board or a voice: every other field can be equal between them, so
+ *   the message would not distinguish them and a reader would parse one
+ *   kind's payload as another's.
  * - **The payload is committed to by hash, not carried.** That is what makes a
  *   header verifiable on its own — the feed ships headers only, and the
  *   payload is checked against `payloadHash` when it is later fetched. The

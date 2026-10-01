@@ -55,8 +55,8 @@ export function signPost(post: Post): PostSignature | null {
 }
 
 /**
- * Sign one of the user's own shared items — a reading plan or a board
- * published into a room. Null when there is no key yet, like {@link signPost}.
+ * Sign one of the user's own shared items — a reading plan, a board or a
+ * voice published into a room. Null when there is no key yet, like {@link signPost}.
  *
  * `item` must already carry its final `publishedAt`, `updatedAt` **and
  * `payloadHash`**: all three are signed, so building the payload afterwards

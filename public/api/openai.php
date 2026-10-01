@@ -35,6 +35,23 @@ function openAiPayer(array $ctx): array {
 }
 
 /**
+ * An OpenAI endpoint's URL: OPENAI_API_BASE plus the path.
+ *
+ * The base is accepted as api/elevenlabs.php accepts its own — https, or the
+ * loopback stub of scripts/voices/verifyVoicesBackend.mjs — and anything else
+ * yields '', which curl refuses as a transport error: a misconfigured base
+ * fails closed instead of carrying a key somewhere unintended.
+ */
+function openAiUrl(string $path): string {
+    $base = rtrim((string)OPENAI_API_BASE, '/');
+    if (!preg_match('#^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$#', $base)
+        && !preg_match('#^http://127\.0\.0\.1:[0-9]{1,5}$#', $base)) {
+        return '';
+    }
+    return $base . $path;
+}
+
+/**
  * Run a prepared cURL handle. Returns a normalized result:
  *   ['error' => string|null, 'status' => int, 'body' => string, 'contentType' => string]
  * `error` is non-null only on transport failure (curl_exec === false), in which

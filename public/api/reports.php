@@ -55,12 +55,13 @@ function handleReportCreate(array $ctx): void {
     $space = findById(readJsonArrayFile(spacesPath($target['userDir'])), $target['spaceId']);
     if ($space === null) fail(404, 'unknown share code');
 
-    // A report names one thing in the room, and a room holds three kinds. They
+    // A report names one thing in the room, and a room holds four kinds. They
     // are snapshotted into the same fields on purpose: the human queue should
     // read uniformly, and "what was reported" is a title plus some of its text
     // whichever kind it was. `targetKind` says which, for anyone acting on it.
     $post = null;
     $targetKind = 'space';
+    $targetAvatar = null;
     if ($postId !== null && $postId !== '') {
         $posts = readJsonArrayFile(spacePostsPath($target['userDir'], $target['spaceId']));
         $post = findById($posts, $postId);
@@ -73,8 +74,10 @@ function handleReportCreate(array $ctx): void {
             $targetKind = (string)($item['kind'] ?? 'plan');
             // The payload is the reported text — deleting the item is the
             // obvious first move after being reported, so it is copied here.
-            $stored = readJsonObjectFile(itemPayloadPath($target['userDir'], $postId));
-            $payload = is_array($stored) ? (string)($stored['payload'] ?? '') : '';
+            // An item id is only ever a uuid here: it matched a stored header.
+            $payload = preg_match('/^[0-9a-fA-F-]{36}$/', $postId)
+                ? (storedItemPayload($target['userDir'], $postId) ?? '')
+                : '';
             $post = [
                 'id' => $item['id'] ?? '',
                 'title' => $item['title'] ?? '',
@@ -82,6 +85,13 @@ function handleReportCreate(array $ctx): void {
                 'publishedAt' => $item['publishedAt'] ?? 0,
                 'authorKey' => $item['authorKey'] ?? '',
             ];
+            // A voice's picture is evidence too, and the excerpt leaves it
+            // out (moderationTextOf skips inline images), so it is kept beside
+            // it — still only ever a small JPEG, PNG or WebP.
+            if ($targetKind === 'voice' && $payload !== '') {
+                $voice = sharedVoiceOf($payload);
+                if (is_array($voice) && $voice['avatar'] !== null) $targetAvatar = $voice['avatar'];
+            }
         }
     }
 
@@ -106,6 +116,7 @@ function handleReportCreate(array $ctx): void {
         'postExcerpt' => $post === null
             ? null
             : mb_substr((string)($post['body'] ?? ''), 0, MAX_REPORT_EXCERPT),
+        'targetAvatar' => $targetAvatar,
     ];
 
     // Triaged, not filtered: a plausible report goes to the human queue, one

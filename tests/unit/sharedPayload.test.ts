@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   buildBoardPayload,
   buildPlanPayload,
+  buildVoicePayload,
   payloadHash,
+  voiceModerationText,
 } from '@/services/community/sharedPayload';
-import { parseBoardPayload, parsePlanPayload } from '@/services/community/sharedItems';
+import { parseBoardPayload, parsePlanPayload, parseVoicePayload } from '@/services/community/sharedItems';
+import type { VoiceProfile } from '@/services/voices/voiceProfiles';
 import type { Board, Card, ReadingList } from '@/types/domain';
 
 /**
@@ -84,6 +87,62 @@ describe('the shared payload format', () => {
     );
   });
 
+  // A voice is the one payload the server also *reads* — its terms decide
+  // what the owner's key pays for — so its bytes are a contract with
+  // api/voices.php's sharedVoiceOf() as well as with the signature.
+  it.each([
+    [
+      'an ElevenLabs voice with a picture, on scripture with both limits',
+      {
+        v: 1,
+        id: '0b2c6f1e-3a4d-4c5e-9f60-718293a4b5c6',
+        name: 'Opa Georg',
+        sourceName: 'George',
+        avatar: 'data:image/png;base64,QUJD',
+        config: { provider: 'elevenlabs', voiceId: 'JBFqnCBsd6RMkjVDRZzb', model: 'eleven_v4', stability: 0.5, similarity: 0.75 },
+        createdAt: T,
+        updatedAt: T,
+      },
+      { scope: 'scripture', monthly: 50000, dailyPerReader: 7000 },
+      '{"v":1,"voice":{"id":"0b2c6f1e-3a4d-4c5e-9f60-718293a4b5c6","name":"Opa Georg","sourceName":"George",' +
+        '"config":{"provider":"elevenlabs","voiceId":"JBFqnCBsd6RMkjVDRZzb","model":"eleven_v4","stability":0.5,"similarity":0.75}},' +
+        '"sharing":{"scope":"scripture","monthly":50000,"dailyPerReader":7000},"avatar":"data:image/png;base64,QUJD"}',
+    ],
+    [
+      'an OpenAI voice with a style, on anything with no limits',
+      {
+        v: 1,
+        id: '0b2c6f1e-3a4d-4c5e-9f60-718293a4b5c6',
+        name: 'Nova',
+        config: { provider: 'openai', voice: 'nova', style: 'calm' },
+        createdAt: T,
+        updatedAt: T,
+      },
+      { scope: 'anything' },
+      '{"v":1,"voice":{"id":"0b2c6f1e-3a4d-4c5e-9f60-718293a4b5c6","name":"Nova",' +
+        '"config":{"provider":"openai","voice":"nova","style":"calm"}},"sharing":{"scope":"anything"}}',
+    ],
+  ] as const)('serialises a voice to exactly these bytes: %s', (_, voice, sharing, bytes) => {
+    expect(buildVoicePayload(voice as VoiceProfile, sharing)).toBe(bytes);
+  });
+
+  it('a voice publishes its sound alone — never a shared ref, never a stray field — and its picture last', () => {
+    const voice = {
+      v: 1,
+      id: '0b2c6f1e-3a4d-4c5e-9f60-718293a4b5c6',
+      name: 'Nova',
+      avatar: 'data:image/png;base64,QUJD',
+      config: { provider: 'openai', voice: 'nova', style: '', shared: { code: 'X', itemId: 'Y' }, evil: 1 },
+      createdAt: T,
+      updatedAt: T,
+    } as unknown as VoiceProfile;
+    const payload = buildVoicePayload(voice, { scope: 'pieces', monthly: 12.5, dailyPerReader: 0 });
+    expect(payload).not.toMatch(/shared|evil|12\.5|"dailyPerReader"/);
+    expect(payload.endsWith(',"avatar":"data:image/png;base64,QUJD"}')).toBe(true);
+    // The moderation pre-check reads it without the picture.
+    expect(voiceModerationText(voice, { scope: 'pieces' })).not.toContain('base64');
+  });
+
   it('hashes to exactly this, which is what the signature commits to', () => {
     expect(payloadHash(buildPlanPayload(plan))).toBe(
       '6860a95f8061e1b0a437c8875dbcec58cad0f9053f5e03b80e628dfeea08138a',
@@ -110,5 +169,42 @@ describe('parsing what was built', () => {
     expect(parsePlanPayload('not json')).toBeNull();
     expect(parsePlanPayload('{"v":1}')).toBeNull();
     expect(parseBoardPayload('{"v":1,"board":{}}')).toBeNull();
+  });
+
+  it('returns a voice, its sound and its terms', () => {
+    const voice: VoiceProfile = {
+      v: 1,
+      id: '0b2c6f1e-3a4d-4c5e-9f60-718293a4b5c6',
+      name: 'Opa Georg',
+      sourceName: 'George',
+      avatar: 'data:image/png;base64,QUJD',
+      config: { provider: 'elevenlabs', voiceId: 'JBFqnCBsd6RMkjVDRZzb', model: 'eleven_v4', stability: 0.5, similarity: 0.75 },
+      createdAt: T,
+      updatedAt: T,
+    };
+    expect(parseVoicePayload(buildVoicePayload(voice, { scope: 'pieces', monthly: 9000 }))).toEqual({
+      voice: { id: voice.id, name: 'Opa Georg', sourceName: 'George', avatar: voice.avatar },
+      config: voice.config,
+      sharing: { scope: 'pieces', monthly: 9000 },
+    });
+  });
+
+  it('refuses a voice this build could not narrate with, rather than offering one every request would fail', () => {
+    const good = JSON.parse(
+      buildVoicePayload(
+        { v: 1, id: '0b2c6f1e-3a4d-4c5e-9f60-718293a4b5c6', name: 'Nova', config: { provider: 'openai', voice: 'nova', style: '' }, createdAt: T, updatedAt: T },
+        { scope: 'scripture' },
+      ),
+    );
+    expect(parseVoicePayload(JSON.stringify(good))).not.toBeNull();
+    for (const bad of [
+      { ...good, v: 2 },
+      { ...good, sharing: { scope: 'everything' } },
+      { ...good, voice: { ...good.voice, config: { provider: 'azure' } } },
+      { ...good, voice: { ...good.voice, name: '  ' } },
+    ]) {
+      expect(parseVoicePayload(JSON.stringify(bad))).toBeNull();
+    }
+    expect(parseVoicePayload('not json')).toBeNull();
   });
 });

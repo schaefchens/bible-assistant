@@ -51,7 +51,7 @@ export type SpaceToolArgs = {
   publish_piece: { piece: string };
   delete_piece: { piece: string };
   add_to_shelf: { shelf?: string; plan?: string; board?: string };
-  remove_from_shelf: { shelf?: string; plan?: string; board?: string; piece?: string };
+  remove_from_shelf: { shelf?: string; plan?: string; board?: string; voice?: string; piece?: string };
   read_shelf: { shelf: string };
   read_new: { scope?: 'unseen' | 'today' };
   unfollow_shelf: { shelf: string };
@@ -225,7 +225,10 @@ export const SPACE_TOOLS: ChatToolDefinition[] = [
         "Put one of the user's reading plans or boards on one of their own shelves, so the " +
         'people who read it can follow it and take their own copy. Pass exactly one of `plan` ' +
         'or `board`. ' +
-        SNAPSHOT,
+        SNAPSHOT +
+        ' A narration voice cannot be put on a shelf this way: lending one spends the ' +
+        "user's own key, so they choose what it may read and how much in the app — under " +
+        'Settings › Narration voices.',
       parameters: {
         type: 'object',
         properties: {
@@ -242,13 +245,15 @@ export const SPACE_TOOLS: ChatToolDefinition[] = [
       name: 'remove_from_shelf',
       description:
         'Take something off one of the user\'s own shelves, so their readers no longer see it. ' +
-        'Pass exactly one of `plan`, `board` or `piece`. Nothing of theirs is destroyed: a plan ' +
-        'and a board stay in their library, and a piece goes back to being a draft.',
+        'Pass exactly one of `plan`, `board`, `voice` or `piece`. Nothing of theirs is ' +
+        'destroyed: a plan, a board and a voice stay in their library, and a piece goes back to ' +
+        'being a draft. Taking a voice off a shelf stops its readers spending the user\'s key on it, at once.',
       parameters: {
         type: 'object',
         properties: {
           plan: { type: 'string' },
           board: { type: 'string' },
+          voice: { type: 'string', description: 'A narration voice the user lent to the shelf, by name.' },
           piece: { type: 'string' },
           shelf: { type: 'string', description: OWN_SHELF },
         },

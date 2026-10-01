@@ -1,8 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { postTtsSpeak } from '@/services/api/tts';
+import { postTts, postTtsSpeak } from '@/services/api/tts';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { browserTts } from '@/lib/browserTts';
-import type { SpeechVoice } from '@/services/voices/ttsVoice';
+import { loadChapterSummaries } from '@/services/bible/verseSummaries';
+import { sharedRefOf, type SpeechVoice, type TtsVoice } from '@/services/voices/ttsVoice';
+import { useSettingsStore } from '@/store/settingsStore';
+
+/**
+ * What a voice somebody shared says when auditioned: Psalm 23:1, in the
+ * listener's translation, as a *verse*. Any sample sentence of the app's own
+ * would be refused — a voice lent for scripture may read scripture and the
+ * announcements around it, and nothing else — and a verse every voice may
+ * read is also one its owner's other readers have likely already paid for.
+ */
+async function sharedSample(voice: TtsVoice, locale: 'en' | 'de', signal: AbortSignal) {
+  const translation = useSettingsStore.getState().translation;
+  const [verse] = await loadChapterSummaries(translation, 19, 23, locale);
+  if (!verse) throw new Error('no sample verse');
+  return postTts(
+    { text: verse.text, voice, translation, bookId: 19, chapter: 23, verse: verse.verse },
+    { signal },
+  );
+}
 
 /**
  * One-shot voice previews: a sample sentence in a voice (through api.php, so
@@ -76,10 +95,9 @@ export function usePreviewVoice() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const tts = await postTtsSpeak(
-        { text, voice, language: locale },
-        { signal: controller.signal },
-      );
+      const tts = sharedRefOf(voice)
+        ? await sharedSample(voice, locale, controller.signal)
+        : await postTtsSpeak({ text, voice, language: locale }, { signal: controller.signal });
       const resp = await fetch(tts.audioUrl, { signal: controller.signal });
       const buf = await ctx.decodeAudioData(await resp.arrayBuffer());
       if (generation.current !== gen) return;

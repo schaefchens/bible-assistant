@@ -98,6 +98,15 @@ fragments, passage references and bare book names, in any order and with no
 connecting prose. That shape is NORMAL and is never on its own grounds for
 refusal — in particular a list of book or chapter names is a reading plan, not
 spam and not off-theme. Judge only the human-written words that are there.
+
+A shelf may also hold a narration voice that its owner lends to the shelf's
+readers: a name for it ("Grandpa George"), perhaps the name of the voice it is
+based on, and sometimes a short instruction for how it speaks ("calm, warm,
+unhurried"), mixed with technical words (a provider, a model, a voice id).
+These are labels, not writing: a plain name or a description of a manner of
+speaking is NORMAL and is never off-theme, even with no religious content.
+Refuse a voice only for a clear breach of the list above in its name or its
+instruction — a slur, sexual or political content, advertising.
 TXT;
 
 /**
@@ -125,7 +134,7 @@ function moderationJudge(string $system, string $user): array {
     }
     if (OPENAI_API_KEY === '') return ['ok' => true, 'reason' => '', 'checked' => false];
 
-    $resp = curlJson('https://api.openai.com/v1/chat/completions', [
+    $resp = curlJson(openAiUrl('/v1/chat/completions'), [
         'model' => MODERATION_MODEL,
         // Zero, not the chat's 0.2: the same text must get the same verdict
         // twice, or an author who edits a typo and republishes can be refused

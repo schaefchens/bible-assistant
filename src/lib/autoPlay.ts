@@ -18,6 +18,7 @@ import { noteEntryFinished, noteEntryStarted } from './readingProgressTracker';
 import { readingHosts } from './readingHosts';
 import { rangeHistoryNote } from './chatReadingHost';
 import { usePlaybackStore } from '@/store/playbackStore';
+import { useCommunityStore } from '@/store/communityStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { VerseSummary } from '@/types/domain';
@@ -350,10 +351,11 @@ export function initAutoPlay(): void {
     }
   });
 
-  // A new narration voice — picked here, synced in from another device, or
-  // forced by a key that just failed — makes the prefetched chunk the wrong
-  // audio. Dropping it also clears the anchor, so the per-frame subscriber
-  // above prefetches again in the new voice on its next tick.
+  // A new narration voice — picked here, synced in from another device,
+  // forced by a key that just failed, or a shared voice its owner updated or
+  // took off the shelf — makes the prefetched chunk the wrong audio. Dropping
+  // it also clears the anchor, so the per-frame subscriber above prefetches
+  // again in the new voice on its next tick.
   let lastVoice = currentNarrationVoice();
   const dropPrefetchOnVoiceChange = () => {
     const voice = currentNarrationVoice();
@@ -362,6 +364,7 @@ export function initAutoPlay(): void {
     cancelAutoPlayPrefetch();
   };
   useLibraryStore.subscribe(dropPrefetchOnVoiceChange);
+  useCommunityStore.subscribe(dropPrefetchOnVoiceChange);
 
   // React when the user toggles auto-play ON mid-playback.
   useSettingsStore.subscribe((state, prev) => {

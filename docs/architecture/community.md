@@ -261,10 +261,14 @@ another user**: every record crossing accounts goes through a `sanitize*` whitel
 posts is additionally enforced *by the signature* — the client signs exactly the fields kept,
 so dropping or mangling one is detected rather than accepted.
 
-`space.request` is the only cross-user **write** (it appends a membership row, carrying the
+`space.request` was the first cross-user **write** (it appends a membership row, carrying the
 caller's authenticated id and a name snapshot, into the owner's file; a requester can never set
-its own status, and re-asking cannot clear a block). `space.feed` is the only cross-user
-**read** and answers only an accepted member, with projections rather than stored records.
+its own status, and re-asking cannot clear a block). The second is a **sponsored narration**:
+a reader narrating with a voice the owner lent to the shelf charges the owner's allowance, in
+`users/{owner}/sponsored/{itemId}/` — counters only, written under the owner's terms and
+removed with the item, the space, the profile and the account (see [`voices.md`](voices.md)).
+`space.feed` is the cross-user **read** and answers only an accepted member, with projections
+rather than stored records; `space.item` fetches one item's payload for the same members.
 Signature verification server-side is defence in depth only, guarded on the sodium extension —
 PHP has no private key, so it stores signatures and never mints them.
 

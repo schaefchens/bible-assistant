@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
@@ -30,9 +30,11 @@ import {
   type VoiceProfile,
   type VoiceRole,
 } from '@/services/voices/voiceProfiles';
+import { useCommunityStore } from '@/store/communityStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { draftConfig, draftFrom, type VoiceDraftState } from './voiceDraft';
+import { ShareVoiceSheet } from './ShareVoiceSheet';
 import { VoiceAvatar } from './VoiceAvatar';
 import { OpenAiVoiceFields } from './OpenAiVoiceFields';
 import { ElevenLabsVoiceFields } from './ElevenLabsVoiceFields';
@@ -71,11 +73,13 @@ export function VoiceEditor({
   const hasOpenAiKey = useSettingsStore((s) => s.hasUserOpenAiKey && !s.sessionPreferSharedKey);
   const hasElevenLabsKey = useSettingsStore((s) => s.hasUserElevenLabsKey);
   const elevenLabsFailure = useSettingsStore((s) => s.elevenLabsFailure);
+  const sharedVoiceFailures = useSettingsStore((s) => s.sharedVoiceFailures);
   const access = voiceAccessOf({
     hasUserOpenAiKey: hasOpenAiKey,
     sessionPreferSharedKey: false,
     hasUserElevenLabsKey: hasElevenLabsKey,
     elevenLabsFailure,
+    sharedVoiceFailures,
   });
 
   const [draft, setDraft] = useState<VoiceDraftState>(() =>
@@ -84,6 +88,22 @@ export function VoiceEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [lending, setLending] = useState(false);
+  const community = useCommunityStore((s) => s.profile);
+  const deleteItem = useCommunityStore((s) => s.deleteItem);
+  const items = useCommunityStore((s) => s.items);
+  const sharedClaims = useCommunityStore((s) => s.sharedClaims);
+  const itemSources = useCommunityStore((s) => s.itemSources);
+  /** The shelves this voice is lent to — what deleting it also revokes. */
+  const lentItems = useMemo(
+    () =>
+      profile
+        ? items.filter(
+            (i) => i.kind === 'voice' && sharedClaims[i.id] === true && itemSources[i.id]?.sourceId === profile.id,
+          )
+        : [],
+    [items, sharedClaims, itemSources, profile],
+  );
   const fileRef = useRef<HTMLInputElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
   useBottomBarHeight(barRef);
@@ -192,6 +212,9 @@ export function VoiceEditor({
     const shared =
       sameTtsVoice(profile.config, ECHO_VOICE) ||
       voices.some((v) => v.id !== profile.id && sameTtsVoice(v.config, profile.config));
+    // A voice gone from the gallery is gone from the shelves it was lent to:
+    // its readers stop spending the user's key on it at once.
+    for (const item of lentItems) await deleteItem(item.id);
     await deleteVoice(profile.id);
     if (!shared) void deleteNarrationForVoice(profile.config);
     onDone();
@@ -336,6 +359,24 @@ export function VoiceEditor({
 
         {error && <p className="text-sm text-red-400">{error}</p>}
 
+        {profile && community && (
+          <button
+            type="button"
+            onClick={() => setLending(true)}
+            className="w-full flex items-center justify-between gap-2 rounded-xl border border-brand/30 px-3 py-2.5 text-left"
+          >
+            <span className="min-w-0">
+              <span className="block text-sm text-ink">{t('voiceSharing.lendAction')}</span>
+              <span className="block text-[11px] text-ink-muted">
+                {lentItems.length > 0
+                  ? t('voiceSharing.lentTo', { count: lentItems.length })
+                  : t('voiceSharing.lendHint')}
+              </span>
+            </span>
+            <ChevronIcon size={14} />
+          </button>
+        )}
+
         {profile && (
           <button
             type="button"
@@ -349,9 +390,15 @@ export function VoiceEditor({
           >
             <TrashIcon size={16} />
             {confirmingDelete
-              ? t('narrationVoices.editor.confirmDelete')
+              ? lentItems.length > 0
+                ? t('narrationVoices.editor.confirmDeleteLent', { count: lentItems.length })
+                : t('narrationVoices.editor.confirmDelete')
               : t('narrationVoices.editor.delete')}
           </button>
+        )}
+
+        {profile && lending && (
+          <ShareVoiceSheet voiceId={profile.id} open onClose={() => setLending(false)} />
         )}
       </div>
 

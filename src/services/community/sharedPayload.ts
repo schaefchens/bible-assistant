@@ -8,9 +8,12 @@ import type {
   ReadingList,
   VerseRange,
 } from '@/types/domain';
+import type { TtsVoice } from '@/services/voices/ttsVoice';
+import type { VoiceProfile } from '@/services/voices/voiceProfiles';
+import type { VoiceSharing } from '@/services/voices/voiceSharing';
 
 /**
- * The bytes a shared plan or board is published as.
+ * The bytes a shared plan, board or voice is published as.
  *
  * **This is a format, not an implementation detail.** `canonicalItemMessage`
  * signs `sha256(payload)`, so changing how anything here serialises invalidates
@@ -33,8 +36,8 @@ import type {
  *    hashes.
  *
  * It is also **the one producer**: the publish path and the "has this changed
- * since I shared it?" check both call `buildPlanPayload`/`buildBoardPayload`,
- * or they would disagree about what is actually published. Nothing ever
+ * since I shared it?" check both call `buildPlanPayload`/`buildBoardPayload`/
+ * `buildVoicePayload`, or they would disagree about what is actually published. Nothing ever
  * re-serialises a *parsed* payload — the parsers live in `sharedItems.ts` and
  * the string received from the server is stored verbatim, because that string
  * is what the hash covers.
@@ -177,6 +180,74 @@ export function buildBoardPayload(board: Board, cards: Card[]): string {
       };
     }),
   });
+}
+
+/**
+ * A voice lent to a shelf: the voice as its owner keeps it, and the terms its
+ * readers may use it on.
+ *
+ * `sharing` is not decoration. api.php reads it back out of these exact bytes
+ * on every narration a reader asks the owner's key to pay for (see
+ * public/api/sponsorship.php), which is why it sits inside the signed payload
+ * — where the owner's word on it can be checked — and why api.php refuses a
+ * field it does not know rather than ignoring it: a limit a newer app adds
+ * must never be published to a server that would not apply it.
+ *
+ * The config is written field by field per provider, in a fixed order, from
+ * the audible fields alone; the avatar goes **last**, so that everything
+ * before it reads without it (see `voiceModerationText`).
+ */
+export function buildVoicePayload(voice: VoiceProfile, sharing: VoiceSharing): string {
+  return JSON.stringify({
+    v: SHARED_PAYLOAD_VERSION,
+    voice: {
+      id: voice.id,
+      name: voice.name,
+      sourceName: text(voice.sourceName),
+      config: audibleConfig(voice.config),
+    },
+    sharing: {
+      scope: sharing.scope,
+      monthly: allowance(sharing.monthly),
+      dailyPerReader: allowance(sharing.dailyPerReader),
+    },
+    avatar: text(voice.avatar),
+  });
+}
+
+/**
+ * What the moderation pre-check is shown of a shared voice: its payload
+ * without the picture. `moderation.check` takes 8,000 bytes and an avatar is
+ * up to 96 KB of base64, so with it the check is refused — silently, since a
+ * failed pre-check falls through to publishing. The server's own check in
+ * `items.upsert` skips inline pictures the same way (`moderationTextOf`).
+ */
+export function voiceModerationText(voice: VoiceProfile, sharing: VoiceSharing): string {
+  return buildVoicePayload({ ...voice, avatar: undefined }, sharing);
+}
+
+/** A voice's audible config, rebuilt from its named fields — so nothing but
+ * the sound (no `shared` ref, no stray field) is ever published. */
+function audibleConfig(c: TtsVoice): TtsVoice {
+  if (c.provider === 'openai') return { provider: 'openai', voice: c.voice, style: c.style };
+  if (c.model === 'eleven_v4') {
+    return { provider: 'elevenlabs', voiceId: c.voiceId, model: c.model, stability: c.stability, similarity: c.similarity };
+  }
+  return {
+    provider: 'elevenlabs',
+    voiceId: c.voiceId,
+    model: c.model,
+    stability: c.stability,
+    similarity: c.similarity,
+    style: c.style,
+    speed: c.speed,
+  };
+}
+
+/** An allowance as api.php takes one — whole characters, 1 to its
+ * MAX_VOICE_ALLOWANCE — or absent, which means no such limit. */
+function allowance(n: number | undefined): number | undefined {
+  return typeof n === 'number' && Number.isInteger(n) && n >= 1 ? Math.min(n, 100_000_000) : undefined;
 }
 
 /** Hex sha256 of the payload's UTF-8 bytes. What the signature commits to. */

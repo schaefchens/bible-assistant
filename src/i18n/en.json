@@ -364,7 +364,8 @@
     "sections": {
       "system": "Built in",
       "yours": "Your voices",
-      "providers": "Providers & keys"
+      "providers": "Providers & keys",
+      "shared": "Shared with you"
     },
     "usage": {
       "both": "Reads · Replies",
@@ -390,7 +391,10 @@
     "locked": {
       "openai": "This voice needs your own OpenAI key.",
       "elevenlabs": "This voice needs your ElevenLabs key.",
-      "failed": "ElevenLabs refused it this session."
+      "failed": "ElevenLabs refused it this session.",
+      "sharedFailed": "Its owner’s key can’t pay for it right now.",
+      "sharedBudget": "What its owner allows is used up for now.",
+      "sharedCannotReply": "Its owner lent it for reading only."
     },
     "keys": {
       "connected": "Connected",
@@ -413,7 +417,11 @@
       "voice": "That voice can't be used on your ElevenLabs account any more.",
       "fellBack": "Narration switched to the built-in voice for now. Your choice is kept.",
       "retry": "Try again",
-      "open": "Open voices"
+      "open": "Open voices",
+      "sharedUnavailable": "“{{name}}” can’t read right now: {{author}}’s account isn’t paying for it.",
+      "sharedBudget": "“{{name}}” has used up what {{author}} allows for now.",
+      "sharedFellBack": "Echo reads instead. It may work again later.",
+      "sharedOpen": "Choose a voice"
     },
     "openai": {
       "voice": "Voice",
@@ -517,9 +525,13 @@
       "pickVoice": "Choose an ElevenLabs voice first.",
       "imageFailed": "That picture couldn't be used.",
       "saveFailed": "Couldn't save the voice.",
-      "missing": "This voice doesn't exist any more."
+      "missing": "This voice doesn't exist any more.",
+      "confirmDeleteLent_one": "Tap again — deletes it everywhere and takes it off {{count}} shelf",
+      "confirmDeleteLent_other": "Tap again — deletes it everywhere and takes it off {{count}} shelves"
     },
-    "sample": "The LORD is my shepherd; I shall not want. He maketh me to lie down in green pastures: he leadeth me beside the still waters. He restoreth my soul: he leadeth me in the paths of righteousness for his name's sake."
+    "sample": "The LORD is my shepherd; I shall not want. He maketh me to lie down in green pastures: he leadeth me beside the still waters. He restoreth my soul: he leadeth me in the paths of righteousness for his name's sake.",
+    "lentBy": "Lent by {{author}}",
+    "sharedHint": "Lent to shelves you read, and paid for by whoever lent them."
   },
   "chatReader": {
     "ambient": "Toggle background music"
@@ -997,7 +1009,14 @@
     "allShared": "Everything you have is already on this shelf.",
     "noPlansHere": "No reading plans on this shelf yet.",
     "noBoardsHere": "No boards on this shelf yet.",
-    "removeFromShelf": "Remove from shelf"
+    "removeFromShelf": "Remove from shelf",
+    "tabVoices": "Voices",
+    "sharedVoices": "Voices",
+    "voiceReads": "Reads for you",
+    "voiceUseForReading": "Read with it",
+    "voiceReplies": "Replies to you",
+    "voiceUseForReplies": "Reply with it",
+    "sharedVoicesHint": "Its owner pays for it. If what they allow runs out, Echo reads instead."
   },
   "feedback": {
     "open": "Report a bug or send feedback",
@@ -1038,5 +1057,64 @@
       "safari": "In Safari, choose File ▸ \"Add to Dock\". On older versions, open this page in Chrome or Edge instead.",
       "other": "Open your browser’s menu and look for \"Install app\" or \"Add to Home screen\"."
     }
+  },
+  "voiceSharing": {
+    "scope": {
+      "scripture": "Reads scripture",
+      "pieces": "Reads scripture and your pieces here",
+      "piecesOf": "Reads scripture and {{author}}’s pieces",
+      "anything": "Reads anything, replies too"
+    },
+    "allowance": {
+      "monthly": "{{chars}} characters a month",
+      "daily": "{{chars}} a day per reader",
+      "none": "No limit"
+    },
+    "aboutChapters_one": "about {{count}} chapter",
+    "aboutChapters_other": "about {{count}} chapters",
+    "form": {
+      "reads": "What it may read for your readers",
+      "scripture": "Scripture",
+      "scriptureHint": "Bible verses, and the headings read before them. The safest choice.",
+      "pieces": "Scripture and my pieces",
+      "piecesHint": "Also what you publish on the same shelf — in your own words, in your voice.",
+      "anything": "Anything",
+      "anythingHint": "Any text, including the assistant’s replies. Readers could make it say whatever they like.",
+      "monthly": "Each month, for all readers together",
+      "monthlyHint": "Characters of new narration your key pays for. What is already generated plays for free.",
+      "daily": "Each day, for each reader",
+      "dailyHint": "So one listener cannot use up the month for everyone.",
+      "noLimit": "No limit",
+      "poolRequired": "This shelf lets anyone with the code in, so it needs a monthly limit."
+    },
+    "sheetTitle": "Lend “{{name}}”",
+    "needsCommunity": "Lending a voice goes through your shelves. Set up your profile on the Shelves screen first.",
+    "openShelves": "Open shelves",
+    "intro": "People you let read a shelf can listen in this voice. Your key pays for what they generate, within the limits you set — never shown to them. Take it off the shelf to stop it at once.",
+    "needsOpenAiKey": "Your own OpenAI key pays for this voice. Until you add it, readers will hear Echo.",
+    "needsElevenLabsKey": "Your ElevenLabs key pays for this voice. Until you add it, readers will hear Echo.",
+    "shelves": "Your shelves",
+    "noShelves": "You have no shelves to lend it to yet.",
+    "lentHere": "Lent here",
+    "notLentHere": "Not lent here",
+    "update": "Update",
+    "lendHere": "Lend it here",
+    "stale": "You have changed the voice since — Update gives readers the new one.",
+    "footnote": "Narration already generated stays playable for anyone. Removing the voice stops new spending on your key.",
+    "termsTitle": "Terms for this voice",
+    "lendTitle": "Lend a voice",
+    "noVoices": "You have not made a voice yet — create one under Settings › Narration voices.",
+    "allLent": "All your voices are already lent to this shelf.",
+    "sourceMissing": "This voice is not on this device, so its terms can only be changed where it was lent. You can still take it off the shelf.",
+    "saveTerms": "Save terms",
+    "lendAction": "Lend to a shelf",
+    "lendHint": "Let your readers listen in it, on your key.",
+    "lentTo_one": "Lent to {{count}} shelf",
+    "lentTo_other": "Lent to {{count}} shelves",
+    "noneHere": "No voices lent to this shelf yet.",
+    "termsElsewhere": "Lent from another device",
+    "terms": "Terms",
+    "needsPool": "Readers cannot use it yet: this shelf lets anyone in, so set a monthly limit.",
+    "addVoice": "+ Lend a voice"
   }
 }

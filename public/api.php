@@ -31,8 +31,9 @@ declare(strict_types=1);
  * set that resolve an OpenAI key up front. (`tts` and `tts.speak` are not in
  * it: they resolve whoever pays — OpenAI or ElevenLabs — inside the handler,
  * on a cache miss only, so a hit needs no key at all. See withTtsPayer() in
- * api/audio.php.) Adding an action to either list has consequences the
- * handler cannot see.
+ * api/audio.php. Nor are their `.shared` twins, whose payer is somebody
+ * else's key altogether — see api/sponsorship.php.) Adding an action to
+ * either list has consequences the handler cannot see.
  */
 
 ini_set('display_errors', '0');
@@ -70,6 +71,8 @@ const APP_ROOT = __DIR__;
 // community  what a space is on disk: paths, sanitizers, codes, signatures
 // spaces     the owner's own community endpoints
 // sharing    the endpoints that cross accounts
+// announcements  the words the app says around scripture (generated)
+// sponsorship    a shared voice: whose key pays, on whose terms, how much
 // moderation the content standards, and the judge
 // reports    report.create
 // feedback   feedback.create
@@ -87,6 +90,8 @@ require_once __DIR__ . '/api/elevenlabs.php';
 require_once __DIR__ . '/api/community.php';
 require_once __DIR__ . '/api/spaces.php';
 require_once __DIR__ . '/api/sharing.php';
+require_once __DIR__ . '/api/announcements.php';
+require_once __DIR__ . '/api/sponsorship.php';
 require_once __DIR__ . '/api/moderation.php';
 require_once __DIR__ . '/api/reports.php';
 require_once __DIR__ . '/api/feedback.php';
@@ -176,6 +181,16 @@ switch ($action) {
         break;
     case 'tts.speak':
         handleTtsSpeak($ctx);
+        break;
+    // The same two, for a voice somebody shared on a shelf: on a miss its
+    // owner's key pays, on the owner's terms (api/sponsorship.php). Separate
+    // actions rather than a field, so that an api.php predating them answers
+    // 404 — refused — instead of reading the request as the caller's own.
+    case 'tts.shared':
+        handleTts($ctx, true);
+        break;
+    case 'tts.speak.shared':
+        handleTtsSpeak($ctx, true);
         break;
     case 'bible.chapter':
         handleBibleChapter();

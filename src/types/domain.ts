@@ -1,4 +1,6 @@
 import type { Translation } from '@/services/bible/bibleApi';
+import type { SharedTtsVoice } from '@/services/voices/ttsVoice';
+import type { VoiceSharing } from '@/services/voices/voiceSharing';
 
 export type Locale = 'en' | 'de';
 
@@ -394,7 +396,9 @@ export type Post = {
 };
 
 /**
- * What a room holds besides pieces: a reading plan, or a board with its cards.
+ * What a room holds besides pieces: a reading plan, a board with its cards, or
+ * a narration voice its owner lends the room's readers (paid for by the
+ * owner's key, on the owner's terms — see services/voices/voiceSharing.ts).
  *
  * A **snapshot**, signed and published like a `Post` — not a live link to the
  * source. Deleting the list a plan was made from leaves the shared plan intact,
@@ -412,7 +416,7 @@ export type Post = {
  * here, which is what lets a header verify on its own: nothing is ever rendered
  * unverified, and the payload is checked against this hash when it arrives.
  */
-export type SharedItemKind = 'plan' | 'board';
+export type SharedItemKind = 'plan' | 'board' | 'voice';
 
 export type SharedItem = {
   id: string;
@@ -458,6 +462,39 @@ export type MirroredList = {
   author: string;
   /** The author's pinned signing key — the identity grouping and blocking use. */
   authorKey: string;
+  updatedAt: number;
+};
+
+/**
+ * Somebody else's narration voice, lent to a shelf the user reads.
+ *
+ * `config` is what narrates: the voice's sound plus whose it is (its `shared`
+ * ref), so every request made with it is paid for by the owner, on the terms
+ * in `sharing`. The resolver hands out this very object, and it keeps its
+ * identity across feed refreshes for as long as the payload is the same (see
+ * `mirrorsFrom`) — auto-play compares voices by reference.
+ *
+ * A reader selects it by `itemId`, never by the owner's own voice id: that
+ * one can equal one of the reader's own (a migrated voice's id is derived
+ * from its sound), and the same voice on two shelves must not leave "who
+ * pays" ambiguous.
+ */
+export type MirroredVoice = {
+  itemId: string;
+  /** The shelf it was shared on, by share code — and the owner's space id. */
+  code: string;
+  spaceId: string;
+  /** The owner, as the shelf names them. */
+  author: string;
+  authorKey: string;
+  name: string;
+  /** The provider's name for the voice it wraps ("George"). */
+  sourceName?: string;
+  avatar?: string;
+  sharing: VoiceSharing;
+  config: SharedTtsVoice;
+  /** The signed payload's hash: the same hash, the same voice. */
+  payloadHash: string;
   updatedAt: number;
 };
 

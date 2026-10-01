@@ -159,6 +159,10 @@ export const FAULTS = {
 };
 /** Voice ids that succeed, but differently. */
 export const BUSY_ONCE_VOICE = 'FaultBusyOnce0000001';
+/** Speaks a v4 text's first chunk, then fails every later one (the requests
+ * that carry `previous_text`) with a 500 — audio was paid for, and then the
+ * narration failed anyway. */
+export const SECOND_CHUNK_FAILS_VOICE = 'FaultSecondChunk0001';
 export const NO_ALIGNMENT_VOICE = 'FaultNoAlignment0001';
 export const NORMALIZED_ONLY_VOICE = 'FaultNormalizedOnly1';
 
@@ -223,6 +227,9 @@ export async function startElevenLabsStub() {
   const requests = [];
   /** How often each voice id has been asked for, for the "busy once" voice. */
   const seen = new Map();
+  /** Speech requests in flight per key, and the most there ever were. */
+  const active = new Map();
+  const peaks = new Map();
 
   const send = (res, status, body, headers = {}) => {
     const raw = typeof body === 'string' ? body : JSON.stringify(body);
@@ -246,9 +253,20 @@ export async function startElevenLabsStub() {
     return false;
   };
 
-  const speech = async (res, key, kind, voiceId, text) => {
+  const speech = async (res, key, kind, voiceId, text, { later = false } = {}) => {
     if (refuseByKey(res, kind, { speech: true })) return;
+    active.set(key, (active.get(key) ?? 0) + 1);
+    peaks.set(key, Math.max(peaks.get(key) ?? 0, active.get(key)));
+    try {
+      return await speak(res, key, kind, voiceId, text, later);
+    } finally {
+      active.set(key, active.get(key) - 1);
+    }
+  };
+
+  const speak = async (res, key, kind, voiceId, text, later) => {
     if (kind === 'slow') await sleep(SLOW_MS);
+    if (voiceId === SECOND_CHUNK_FAILS_VOICE && later) return send(res, 500, { detail: 'Internal Server Error' });
     const count = (seen.get(voiceId) ?? 0) + 1;
     seen.set(voiceId, count);
     const fault = FAULTS[voiceId];
@@ -331,7 +349,7 @@ export async function startElevenLabsStub() {
 
     if (req.method === 'POST' && path === '/v1/text-to-dialogue/with-timestamps') {
       const input = Array.isArray(body?.inputs) ? body.inputs[0] : null;
-      return speech(res, key, kind, input?.voice_id, input?.text);
+      return speech(res, key, kind, input?.voice_id, input?.text, { later: typeof body?.previous_text === 'string' });
     }
 
     const tts = /^\/v1\/text-to-speech\/([^/]+)\/with-timestamps$/.exec(path);
@@ -408,6 +426,8 @@ export async function startElevenLabsStub() {
     requests,
     /** Requests made since `mark` (an index from `requests.length`). */
     since: (mark) => requests.slice(mark),
+    /** The most speech requests ever in flight at once on this key. */
+    peak: (key) => peaks.get(key) ?? 0,
     close: () => new Promise((resolve) => {
       server.closeAllConnections?.();
       server.close(() => resolve());

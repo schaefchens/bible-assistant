@@ -4,7 +4,6 @@ import clsx from 'clsx';
 import { BottomSheet, BottomSheetBody } from '@/components/common/BottomSheet';
 import { spaceDisplayName } from '@/services/community/spaceName';
 import { useCommunityStore } from '@/store/communityStore';
-import type { SharedItemKind } from '@/types/domain';
 
 /**
  * Publish a plan or a board into one of the user's own rooms — the single copy
@@ -31,7 +30,8 @@ export function ShareToRoomSheet({
   open,
   onClose,
 }: {
-  kind: SharedItemKind;
+  /** A plan or a board: a voice is lent with terms, through `ShareVoiceSheet`. */
+  kind: 'plan' | 'board';
   /** The list's or board's id — never the shared item's, which is minted here. */
   sourceId: string;
   /** The live source's `updatedAt`, for the out-of-date comparison. */

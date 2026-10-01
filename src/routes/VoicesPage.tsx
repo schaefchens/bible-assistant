@@ -9,10 +9,13 @@ import { VoiceAvatar } from '@/components/voiceProfiles/VoiceAvatar';
 import { VoiceEditor } from '@/components/voiceProfiles/VoiceEditor';
 import { VoiceTile } from '@/components/voiceProfiles/VoiceTile';
 import { unavailableReason, voiceSubtitle } from '@/components/voiceProfiles/voiceLabels';
+import { scopeLabel } from '@/components/voiceProfiles/voiceSharingLabels';
+import { useCommunityRefresh } from '@/hooks/useCommunityRefresh';
 import { useGoBack } from '@/hooks/useGoBack';
 import { useLocale } from '@/hooks/useLocale';
 import { usePreviewVoice } from '@/hooks/usePreviewVoice';
 import { useVoiceSelection } from '@/hooks/useSpeechVoice';
+import { useVoiceFace } from '@/hooks/useVoiceFace';
 import { ROUTES } from '@/lib/appRoutes';
 import { DEVICE_VOICE, ECHO_VOICE, type SpeechVoice } from '@/services/voices/ttsVoice';
 import {
@@ -23,6 +26,7 @@ import {
   type VoiceAccess,
   type VoiceRole,
 } from '@/services/voices/voiceProfiles';
+import { useCommunityStore } from '@/store/communityStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { useSettingsStore } from '@/store/settingsStore';
 
@@ -77,8 +81,14 @@ function VoiceGallery({ role }: { role: VoiceRole }) {
   const openAiKey = useSettingsStore((s) => s.hasUserOpenAiKey && !s.sessionPreferSharedKey);
   const elevenLabsKey = useSettingsStore((s) => s.hasUserElevenLabsKey);
   const elevenLabsFailure = useSettingsStore((s) => s.elevenLabsFailure);
-  const access: VoiceAccess = { openAiKey, elevenLabsKey, elevenLabsFailure };
+  const sharedFailures = useSettingsStore((s) => s.sharedVoiceFailures);
+  const access: VoiceAccess = { openAiKey, elevenLabsKey, elevenLabsFailure, sharedFailures };
+  const lent = useCommunityStore((s) => s.mirroredVoices);
   const current = useVoiceSelection(role);
+  const face = useVoiceFace(current.id);
+  // The voices lent to the user's shelves arrive with the feed; keep it fresh
+  // while they are choosing from it, as the room screens do.
+  useCommunityRefresh();
   const { previewing, loading, preview, stop } = usePreviewVoice();
   const providersRef = useRef<HTMLElement | null>(null);
   const goBack = useGoBack(ROUTES.settings);
@@ -120,9 +130,7 @@ function VoiceGallery({ role }: { role: VoiceRole }) {
 
   const echoName = t('narrationVoices.system.echo');
   const deviceName = t('narrationVoices.system.device');
-  const chosenProfile = findVoice(current.id, voices);
-  const heroName =
-    current.id === SYSTEM_ECHO_ID ? echoName : current.id === SYSTEM_DEVICE_ID ? deviceName : chosenProfile?.name ?? echoName;
+  const heroName = face.name;
   const reason = unavailableReason(current.availability, t);
   const speakingName =
     current.speaking.provider === 'device' ? deviceName : current.speaking === ECHO_VOICE ? echoName : heroName;
@@ -161,19 +169,16 @@ function VoiceGallery({ role }: { role: VoiceRole }) {
           aria-label={t('narrationVoices.hero.label') as string}
           className="rounded-3xl border border-brand/25 bg-gradient-to-br from-brand/20 via-surface-raised/40 to-surface p-4 flex items-center gap-4"
         >
-          <VoiceAvatar
-            name={heroName}
-            avatar={chosenProfile?.avatar}
-            system={current.id === SYSTEM_ECHO_ID ? 'echo' : current.id === SYSTEM_DEVICE_ID ? 'device' : undefined}
-            size={72}
-          />
+          <VoiceAvatar name={heroName} avatar={face.avatar} system={face.system} size={72} />
           <div className="min-w-0 flex-1">
             <p className="text-[11px] uppercase tracking-wider text-brand">
               {role === 'narration' ? t('narrationVoices.hero.reads') : t('narrationVoices.hero.replies')}
             </p>
             <p className="font-serif text-xl text-ink truncate">{heroName}</p>
             <p className="text-xs text-ink-muted truncate">
-              {voiceSubtitle(current.chosen, chosenProfile?.sourceName, t)}
+              {face.lentBy
+                ? t('narrationVoices.lentBy', { author: face.lentBy })
+                : voiceSubtitle(current.chosen, face.sourceName, t)}
             </p>
             {reason && (
               <p className="text-xs text-amber-400 mt-1">
@@ -272,6 +277,33 @@ function VoiceGallery({ role }: { role: VoiceRole }) {
             </span>
           </button>
         </section>
+
+        {/* Voices other people lent to the shelves the user reads. Their
+            owners pay, on the terms they set — so each says what it may read,
+            and none needs a key of the user's own. */}
+        {lent.length > 0 && (
+          <section>
+            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted mb-2">
+              {t('narrationVoices.sections.shared')}
+            </h2>
+            <ul role="radiogroup" aria-label={t('narrationVoices.sections.shared') as string} className="space-y-2">
+              {lent.map((m) => (
+                <VoiceTile
+                  key={m.itemId}
+                  name={m.name}
+                  subtitle={`${t('narrationVoices.lentBy', { author: m.author })} · ${scopeLabel(m.sharing.scope, t, m.author)}`}
+                  avatar={m.avatar}
+                  selected={current.id === m.itemId}
+                  locked={voiceAvailability(role, m.config, access) !== 'ok'}
+                  usage={usage(m.itemId)}
+                  onSelect={() => void selectVoice(role, m.itemId)}
+                  preview={hear(m.itemId, m.config, m.name)}
+                />
+              ))}
+            </ul>
+            <p className="mt-2 text-[11px] text-ink-muted leading-relaxed">{t('narrationVoices.sharedHint')}</p>
+          </section>
+        )}
 
         <section ref={providersRef} className="space-y-3 scroll-mt-4">
           <h2 className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">

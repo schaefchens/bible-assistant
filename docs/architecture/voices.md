@@ -29,8 +29,8 @@ text is unbounded and the shared key should not pay for it.
 - and *not* a field at all: **which voice is in use**. That is the separate
   `VoiceSelection` record, `{ narration, assistant, updatedAt }`.
 
-The split is what lets a voice later be published on a shelf (see the last section):
-a record that travels as-is, whose listeners share the owner's audio files, and whose
+The split is what lets a voice be lent to a shelf (see the last section): its name,
+picture and config travel, its listeners share the owner's audio files, and the
 selection stays each listener's own.
 
 ## Identity — the one rule that costs money when wrong
@@ -211,12 +211,193 @@ and `scripts/voices/`.
 - The assistant chooses by name (`set_voice { name, for? }`), through `byName`: a voice
   that can't speak yet is still chosen, and the reply says what will be heard.
 
-## Later: sharing a voice on a shelf
+## Lending a voice to a shelf
 
-Not built. The seams are in place: the profile is a plain versioned record with a
-whitelisting coercer on both sides (`normalizeVoiceProfile`, `sanitizeVoiceProfile`);
-its cache identity carries no owner, so owner and listeners share files; the server
-decides the payer in one function per provider, which is where "the owner pays,
-because this listener is on their shelf" would go; and a dangling selection already
-falls back, which is what revocation would look like. The inline avatar would be
-uploaded to an https URL at publish time, as a board's background is.
+An owner can **lend** one of their voices to one of their shelves. The shelf's
+readers — the ones the owner accepted — can then read (and, if allowed, hear
+replies) in it, and **the owner's server-stored key pays** for what they generate.
+The key is never shown to anyone, and taking the voice off the shelf revokes it at
+once. In effect the owner shares the *use* of their key, on terms they set:
+
+- **what it may read** — `scripture` (verses and the app's own announcements around
+  them; the default), `pieces` (that, and the owner's own pieces on the same
+  shelf), or `anything` (any text, the assistant's replies included);
+- **how much** — a monthly allowance for all readers together and/or a daily one
+  per reader, in characters (the unit both providers bill in), or no limit. **On a
+  shelf with automatic approval the monthly pool is required**: anyone holding the
+  code gets in, and every throwaway identity would bring a fresh day. That is
+  checked when the server spends, not when the voice was lent, so switching a
+  shelf to automatic later opens no hole.
+
+Everything that protects the owner's money is enforced on the server
+(`public/api/sponsorship.php`, below). The app only reflects it, so it can pick
+the right voice up front rather than be refused verse by verse.
+
+### What travels — a shared item of kind `voice`
+
+The same machinery as a plan or a board ([`community-shared-items.md`](community-shared-items.md)):
+a signed snapshot (`ba.item.v1`, kind inside the signed message), a header in
+`space.feed`, the payload fetched once through `space.item`, **Update** when the
+voice changed, **Remove** to take it off. The payload (`buildVoicePayload`, the only
+producer; fixed field order):
+
+```
+{"v":1,"voice":{"id","name","sourceName"?,"config":{…the audible config…}},
+ "sharing":{"scope","monthly"?,"dailyPerReader"?},
+ "avatar":"data:image/…"?}
+```
+
+- **The terms are inside the signed payload**, so the server enforces exactly what
+  the owner published and readers can see it. api.php reads them back out of these
+  bytes on every sponsored miss (`sharedVoiceOf()` in `voices.php`), and **refuses a
+  field it does not know** rather than ignoring it — a limit a newer app adds must
+  never be published to a server that would not apply it. Changing the terms is an
+  Update; the item keeps its id, so readers keep their choice and this month's
+  count still counts.
+- **The picture stays inline and goes last.** Only accepted members can fetch a
+  payload, where the public avatar store would make it everybody's. Last, because
+  the moderation pre-check (`moderation.check`, 8,000 bytes) is sent the payload
+  without it (`voiceModerationText`) — with it, the check would be refused for size
+  and silently skipped. The server's own check skips inline pictures the same way
+  (`moderationTextOf`), and `report.create` keeps the picture beside the excerpt, so
+  a reported voice's evidence survives its removal.
+- No Today shelf: its items expire after a day, and a voice vanishing from its
+  readers overnight would look like a fault.
+
+### The reader's side — a mirror, chosen by its item
+
+`communityStore.mirroredVoices` (`MirroredVoice`) is built in `mirrorsFrom` with
+the other mirrors, **only from accepted subscriptions** (which closed the same gap
+for plans and boards), and every writer of the derived shapes spreads one
+`FeedMirrors` result — `init`, the feed refresh, `unsubscribe`, `disableCommunity` —
+so none can update one kind and forget another.
+
+- **The reader selects a shared voice by its item id**, never the owner's voice id:
+  a migrated voice's id is derived from its sound and can equal one of the
+  reader's own, and the same voice on two shelves must not leave "who pays"
+  ambiguous. Remove-and-reshare mints a new item, so the selection dangles and
+  falls back like any other.
+- **Who pays is part of the voice.** The mirror's `config` is a `SharedTtsVoice` —
+  the audible config plus `shared: {code, itemId, spaceId, scope}` — so every path
+  that narrates (playback, prefetch, downloads, a preview) carries it without being
+  told. `voiceKeyPart` builds from the audible fields alone, so the cache identity
+  and the files are the owner's and every reader's alike; `normalizeTtsVoice`
+  drops the ref, so a voice of one's own can never carry one.
+- **It keeps its object identity** across feed refreshes while the payload hash is
+  the same — the resolver's stable-reference guarantee, which auto-play compares by.
+- A shared voice's requests go to **their own actions, `tts.shared` /
+  `tts.speak.shared`** (`ttsAction`), with `shared: {code, itemId}` last in the body.
+  An api.php that predates them answers 404 `unknown action` — refused, never read
+  as the reader's own and billed to them; `parseResponse` restates that 404 as
+  `shared_voice_unavailable` for that item.
+- **What it may read, decided up front** — `voiceSharing.voiceCovers(ref, plan)`:
+  scripture and announcements always, a piece only on `pieces` from that same
+  shelf or on `anything`. `readingTtsVoice`, the mid-reading rebuild
+  (`narrationVoiceFor`) and the download buttons (`useNarrationVoiceFor`, per
+  subject) all ask it, so a piece on a scripture-only voice reads in the fallback
+  from its first word. A shared voice replies only on `anything` (`voiceCanReply`).
+- Its sample is **Psalm 23:1, as a verse** (`usePreviewVoice`), which every scope may
+  read — the app's own sample sentence would be refused.
+
+### When the owner's account says no
+
+Every refusal is `{error: 'shared_voice_*', payer: 'owner', itemId}` — never a
+provider code, so nothing the owner's account does ever touches the reader's own
+key status (`providerFailureOf` ignores `payer: 'owner'`). `sharedVoiceRefusalOf`
+recognises them, `parseResponse` announces them before the throw, and
+`providerFailureWatch` acts:
+
+| refusal | means | the app |
+| --- | --- | --- |
+| `shared_voice_unavailable` | the owner's key will not pay (none, refused, out of credits, the voice gone), or the reader may no longer use it | recorded for that item for the session (`sharedVoiceFailures`); the resolver falls back |
+| `shared_voice_budget` | an allowance is spent | the same, until a reload asks again |
+| `shared_voice_out_of_scope` | this reading is not one it was lent for | this reading reroutes; the voice stays chosen |
+| `shared_voice_mismatch` | the owner updated the voice; this copy is stale | this reading reroutes, and the shelves are fetched again (throttled) |
+| `shared_voice_busy` | the owner's generations are all in use, or upstream is busy | a blip: that item is skipped like any other |
+
+`streamReading` reroutes once on any but `busy` — through `fallbackAfter`, which for
+a shared voice asks the resolver *without* that voice, because out-of-scope and
+mismatch are not recorded anywhere it would see. The banner names the shelf's
+owner, not "your credits".
+
+**Revoking stops spending, not listening.** Audio already generated plays by URL for
+anyone. When a mirror vanishes — removed, blocked, a new code, the shelf or the
+owner gone, or the reader unsubscribed — `lib/sharedVoiceDownloads.ts` gives its
+pinned downloads back, unless Echo, one of the reader's own voices or another
+mirror sounds the same.
+
+### The server — sponsored narration
+
+`tts.shared` / `tts.speak.shared` are `handleTts` / `handleTtsSpeak` (and the
+ElevenLabs handler) with one difference: on a **miss**, `withSponsorPayer()` replaces
+the requester's payer. A hit is free to anyone, exactly as through plain `tts`. The
+checks, read-only and in order; the first four refuse identically so nothing is
+learned about a shelf the caller may not read:
+
+1. the caller has a community profile — the proof `authenticate()` checked a secret
+   at all (it checks none for an identity with no directory), so nobody can claim
+   the id of an accepted member who has since left;
+2. the code names a space that exists and whose owner is published (the owner
+   asking pays as always);
+3. the membership is `accepted`;
+4. the item is listed in **that** space and is a voice;
+5. the config asked for equals the shared one, canonically → else `mismatch`;
+6. the scope allows the text → else `out_of_scope`:
+   - a verse must equal `bibleChapterVerses()`' `textTts` for the reference (the
+     translation checked against `BIBLE_XML_MAP` first);
+   - an announcement must match the app's own templates and book names —
+     `api/announcements.php`, **generated** by `npm run voices:announcements` from
+     `src/i18n/*.json`, the book catalog and `Intl.ListFormat`, and pinned by
+     `tests/unit/announcements.test.ts`, which feeds every announcement the real
+     `buildPlaybackPlan` makes through the real matcher;
+   - on `pieces`, a piece's spoken heading, one of its paragraphs (split as
+     `postParagraphs` splits, JavaScript whitespace), or — only inside a paragraph
+     over one reading unit — a run of whole sentences;
+7. an automatic-approval shelf has a monthly pool → else `budget`;
+8. the owner's own stored key for the provider — never the operator's, never
+   `openAiPayer()` (it honours the *reader's* session fallback), never an empty key
+   (the OpenAI curl wrappers would fall back to the shared key on one).
+
+Then, **after the per-entry lock and the cache's second look** — so a request that
+finds the audio waiting pays nothing, and two readers asking at once are charged
+once — `sponsorAdmit()` reserves `max(characters, 50)` against every allowance the
+voice has (`users/{owner}/sponsored/{itemId}/pool.json` and `daily-{reader}.json`,
+UTC periods, one flock'd read-check-write, pool first), and takes one of the
+owner's **two generation slots**, so readers cannot trip the owner's provider
+concurrency limit. A reservation is given back only if no audio came back
+(`NarrationJob`); a v4 text whose first chunk came back before a later one failed
+stays charged.
+
+Owner-side upstream failures say only whether they will last
+(`shared_voice_unavailable`) or not (`shared_voice_busy`) — never the upstream
+detail, which can quote part of the key or a billing state. OpenAI narration now
+generates the way ElevenLabs always did — per-entry lock, re-check, temp file and
+rename — for every payer, because fifty readers missing one chapter on somebody
+else's key must cost one generation.
+
+The counters are the second write into another person's directory, after
+`space.request`; they go with the item, the space, the community profile and the
+account. `npm run voices:verify:api` proves all of it (checks 19–31) against the
+ElevenLabs stub and an OpenAI stub (`OPENAI_API_BASE`), with canary keys for owner
+and reader.
+
+### The screens
+
+- **The owner**: "Lend to a shelf" in the voice editor (`ShareVoiceSheet` — the
+  terms, then every shelf with Lend / Update / Remove), and a **Voices** tab on
+  their shelf (`SpaceDetail`, with `ShelfVoiceSheet` to lend one or change its
+  terms; a row warns when an automatic shelf has no monthly pool). Deleting a voice
+  takes it off every shelf it was lent to.
+- **The reader**: a **Voices** section in the room (`RoomPage` — terms, a sample,
+  "Read with it", and "Reply with it" on `anything`), and **Shared with you** in the
+  voices gallery, which polls the shelves while open.
+- The assistant may take a voice off a shelf (`remove_from_shelf { voice }` — it
+  only reduces spending) but never put one on: lending spends the user's key, so it
+  is decided in the app, like blocking and reporting. `set_voice` finds shared
+  voices by name.
+
+Known limits: the owner's *other* devices hold a lent voice's header without its
+payload (only the lending device has it), so its terms show as "lent from another
+device" there and are changed where it was lent; and a piece's spoken heading is
+matched against the owner's current name, so a reader whose copy of the shelf still
+has an old one hears that reading in Echo until the next refresh.

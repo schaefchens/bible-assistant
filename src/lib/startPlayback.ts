@@ -12,11 +12,18 @@ import type { VerseSummary } from '@/types/domain';
 import {
   isDeviceVoice,
   sameTtsVoice,
+  sharedRefOf,
   ttsConcurrency,
+  type SpeechVoice,
   type TtsVoice,
 } from '@/services/voices/ttsVoice';
-import { providerFailureOf } from '@/services/api/client';
-import { currentNarrationVoice, selectedNarrationVoice } from './narrationVoice';
+import { voiceCovers } from '@/services/voices/voiceSharing';
+import { providerFailureOf, sharedVoiceRefusalOf } from '@/services/api/client';
+import {
+  currentNarrationVoice,
+  narrationVoiceWithout,
+  selectedNarrationVoice,
+} from './narrationVoice';
 import {
   buildPlaybackPlan,
   sliceFromVerseIndex,
@@ -114,6 +121,12 @@ async function planFullyCached(plan: PlanItem[], voice: TtsVoice): Promise<boole
  * All-or-nothing on purpose (see `planFullyCached`): a partial hit would read
  * the downloaded verses in one voice and skip the rest.
  *
+ * A voice somebody shared reads only what its owner lent it for
+ * (`voiceCovers`) — a piece on a scripture-only voice is read by the fallback
+ * from its first word, rather than refused by the server item by item. What
+ * is already downloaded plays whatever its scope: playing costs the owner
+ * nothing.
+ *
  * Not a pure predicate: choosing the device voice *because* of the network
  * announces the fallback once per session, so the UI can explain why the voice
  * changed. This is called at the points where the engine is committed to, which
@@ -128,7 +141,7 @@ async function planFullyCached(plan: PlanItem[], voice: TtsVoice): Promise<boole
  */
 export async function readingTtsVoice(plan: PlanItem[]): Promise<TtsVoice | null> {
   const chosen = selectedNarrationVoice();
-  const resolved = currentNarrationVoice();
+  const resolved = coveringVoice(currentNarrationVoice(), plan);
   if (!isDeviceVoice(chosen) && chosen !== resolved && (await planFullyCached(plan, chosen))) {
     return chosen;
   }
@@ -137,6 +150,36 @@ export async function readingTtsVoice(plan: PlanItem[]): Promise<TtsVoice | null
   if (await planFullyCached(plan, resolved)) return resolved;
   announceNarrationFallback();
   return null;
+}
+
+/** `voice`, unless it is a shared one this plan asks more of than it was lent
+ * for — then what would read without it. */
+function coveringVoice(voice: SpeechVoice, plan: PlanItem[]): SpeechVoice {
+  const ref = sharedRefOf(voice);
+  return ref && !voiceCovers(ref, plan) ? narrationVoiceWithout(ref.itemId) : voice;
+}
+
+/**
+ * The narration voice for this plan, as the session resolves it — the current
+ * voice, unless it is a shared one the plan is out of scope for. For the
+ * callers that must keep to the engine already reading and so cannot ask
+ * `readingTtsVoice` (the mid-reading rebuild): without it, a reading begun in
+ * the fallback would be rebuilt in a voice that refuses it.
+ */
+export function narrationVoiceFor(plan: PlanItem[]): SpeechVoice {
+  return coveringVoice(currentNarrationVoice(), plan);
+}
+
+/**
+ * What reads instead, once `voice` has been refused mid-reading. For one's
+ * own voice the failure watcher has already recorded why, so the resolver's
+ * answer is the fallback; a shared voice may have been refused for this
+ * reading only (out of its scope, or a copy its owner has updated), which
+ * the resolver does not know — so it is asked without that voice.
+ */
+function fallbackAfter(voice: TtsVoice): SpeechVoice {
+  const ref = sharedRefOf(voice);
+  return ref ? narrationVoiceWithout(ref.itemId) : currentNarrationVoice();
 }
 
 /**
@@ -277,14 +320,22 @@ export function planToBrowserItems(plan: PlanItem[], groupId: string): BrowserTt
  * Why a track didn't build. The distinction matters: an abort is the user
  * stopping, while a failure means TTS is unreachable — and in a fresh reading
  * that is the difference between "stop" and "play the whole passage with the
- * device voice instead of nothing at all". A *provider* failure (the ElevenLabs
- * key refused, the credits gone, the voice missing) is a third case: the voice
- * cannot speak this session, but its fallback can, so the reading continues in
+ * device voice instead of nothing at all". A *refusal of the voice* is a third
+ * case — the ElevenLabs key refused, the credits gone, the voice missing, or a
+ * shared voice's owner refusing it (anything but "busy, try again") — the
+ * voice cannot read this, but its fallback can, so the reading continues in
  * that instead of skipping every remaining verse.
  */
 type BuildOutcome =
   | { ok: true; track: PlaybackTrack }
-  | { ok: false; aborted: boolean; providerFailure: boolean };
+  | { ok: false; aborted: boolean; voiceRefused: boolean };
+
+/** Is this a refusal of the voice itself, which a fallback voice gets past? */
+function refusesVoice(e: unknown): boolean {
+  if (providerFailureOf(e) !== null) return true;
+  const shared = sharedVoiceRefusalOf(e);
+  return shared !== null && shared.kind !== 'busy';
+}
 
 async function buildTrack(
   it: PlanItem,
@@ -320,7 +371,7 @@ async function buildTrack(
   } catch (e) {
     const aborted = e instanceof DOMException && e.name === 'AbortError';
     if (!aborted) console.warn('tts failed', it.kind, e);
-    return { ok: false, aborted, providerFailure: providerFailureOf(e) !== null };
+    return { ok: false, aborted, voiceRefused: refusesVoice(e) };
   }
 }
 
@@ -392,8 +443,9 @@ export async function streamReading(
   // (ElevenLabs credits run out halfway through a chapter, say), the failure
   // watcher has already recorded why by the time the error reaches here, so
   // re-resolving yields the fallback — and the rest of the chapter is read in
-  // that rather than skipped verse by verse. Once, because a second refusal
-  // means the fallback is not the answer either.
+  // that rather than skipped verse by verse. A shared voice refused by its
+  // owner is rerouted the same way (`fallbackAfter`). Once, because a second
+  // refusal means the fallback is not the answer either.
   let speaking = voice;
   let rerouted = false;
   try {
@@ -401,9 +453,9 @@ export async function streamReading(
       if (signal?.aborted) break;
       if (started && !audioPlayback.isFeed(gen)) break; // superseded / stopped
       let out = await buildTrack(it, groupId, speaking, signal);
-      if (!out.ok && out.providerFailure && !rerouted) {
+      if (!out.ok && out.voiceRefused && !rerouted) {
         rerouted = true;
-        const fallback = currentNarrationVoice();
+        const fallback = fallbackAfter(speaking);
         if (!isDeviceVoice(fallback) && !sameTtsVoice(fallback, speaking)) {
           speaking = fallback;
           out = await buildTrack(it, groupId, speaking, signal);

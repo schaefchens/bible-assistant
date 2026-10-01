@@ -222,7 +222,7 @@ function handleOpenAiKeySet(array $ctx): void {
 
     // Validate by hitting /v1/models with the submitted key. Cheap, no
     // request body, and surfaces a clear error if the key is rejected.
-    $ch = curl_init('https://api.openai.com/v1/models');
+    $ch = curl_init(openAiUrl('/v1/models'));
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 30,

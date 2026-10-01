@@ -49,7 +49,7 @@ function subscriptionsPath(string $userDir): string { return $userDir . '/subscr
 function spacePostsPath(string $userDir, string $spaceId): string {
     return $userDir . '/posts/' . $spaceId . '.json';
 }
-/** A room's shared items — plans and boards. Headers only; see itemPayloadPath. */
+/** A room's shared items — plans, boards and voices. Headers only; see itemPayloadPath. */
 function spaceItemsPath(string $userDir, string $spaceId): string {
     return $userDir . '/items/' . $spaceId . '.json';
 }
@@ -140,7 +140,10 @@ function sanitizePost(array $po): array {
  * TypeScript by hand.
  */
 function sanitizeSharedItem(array $it): array {
-    $kind = ($it['kind'] ?? '') === 'board' ? 'board' : 'plan';
+    // A kind this server does not know reads as a plan — and then fails the
+    // signature check below, because the kind is part of the signed message.
+    // So an unknown kind can never be stored as one this server does know.
+    $kind = in_array($it['kind'] ?? null, SHARED_ITEM_KINDS, true) ? (string)$it['kind'] : 'plan';
     $lang = ($it['language'] ?? '') === 'de' ? 'de' : 'en';
     $sig = optString($it['signature'] ?? null, 256);
     $key = optString($it['authorKey'] ?? null, 128);
@@ -164,6 +167,14 @@ function sanitizeSharedItem(array $it): array {
         'sigVersion' => optString($it['sigVersion'] ?? null, 32),
     ];
 }
+
+/**
+ * What a room can hold besides pieces. A voice is the one the server also
+ * *reads*: its payload decides whose key pays for somebody else's narration
+ * (api/sponsorship.php), so it is validated on the way in — see
+ * sharedVoiceOf() in api/voices.php — where a plan or a board is opaque.
+ */
+const SHARED_ITEM_KINDS = ['plan', 'board', 'voice'];
 
 /** The shared-item twin of verifyPostSignature; everything said there applies. */
 function verifyItemSignature(array $item): bool {
@@ -203,22 +214,32 @@ function verifyItemSignature(array $item): bool {
  *
  * So: walk the decoded JSON and collect every string. Domain-ignorant by
  * design, so a payload shape this build has never seen is still judged.
- * Single characters and uuids are dropped as noise; nothing else is
- * interpreted. The result is capped, because MODERATION_POLICY plus a whole
- * year-plan would be a large prompt for no extra signal.
+ * Single characters, uuids and inline pictures are dropped as noise; nothing
+ * else is interpreted. A voice's picture rides in its payload as a data URL —
+ * base64, not writing, and at up to 96 KB it would push every word past the
+ * cap below. (A report keeps it separately; see report.create.) The result is
+ * capped, because MODERATION_POLICY plus a whole year-plan would be a large
+ * prompt for no extra signal.
  */
 function moderationTextOf(string $payload): string {
     $decoded = json_decode($payload, true);
     $out = [];
     $walk = function (mixed $node) use (&$walk, &$out): void {
         if (is_string($node)) {
-            if (mb_strlen($node) > 1 && !preg_match('/^[0-9a-fA-F-]{36}$/', $node)) $out[] = $node;
+            if (mb_strlen($node) > 1 && !preg_match('/^[0-9a-fA-F-]{36}$/', $node) && !isInlineImage($node)) {
+                $out[] = $node;
+            }
             return;
         }
         if (is_array($node)) foreach ($node as $child) $walk($child);
     };
     $walk($decoded);
     return mb_substr(implode("\n", $out), 0, 12000);
+}
+
+/** A data URL of a JPEG, PNG or WebP, and nothing else — base64 to the end. */
+function isInlineImage(string $s): bool {
+    return preg_match('#^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/]++={0,2}$#', $s) === 1;
 }
 
 function sanitizeSubscription(array $su): array {
@@ -257,17 +278,66 @@ function sharePath(string $code): string { return SHARES_DIR . '/' . $code . '.j
 
 /** Resolve a share code to its owner and space, or fail 404. */
 function resolveShareCode(string $code): array {
+    $target = lookupShareCode($code);
+    if ($target === null) fail(404, 'unknown share code');
+    return $target;
+}
+
+/**
+ * resolveShareCode, answering null instead of failing — for a check that must
+ * refuse without saying which part failed. A sponsored narration answers every
+ * "no" alike (see sponsorPayer), so it cannot be used to learn whether a code
+ * exists.
+ */
+function lookupShareCode(string $code): ?array {
+    if (!preg_match('/^[0-9A-HJKMNP-TV-Z]{16}$/', $code)) return null;
     $rec = readJsonObjectFile(sharePath($code));
     $userId = is_array($rec) ? (string)($rec['userId'] ?? '') : '';
     $spaceId = is_array($rec) ? (string)($rec['spaceId'] ?? '') : '';
     // Re-validate on the way out: these were written by an earlier request and
     // are about to become a filesystem path.
     if (!preg_match('/^[0-9a-f-]{36}$/i', $userId) || !preg_match('/^[0-9a-fA-F-]{36}$/', $spaceId)) {
-        fail(404, 'unknown share code');
+        return null;
     }
     $userDir = USERS_DIR . '/' . $userId;
-    if (!is_dir($userDir)) fail(404, 'unknown share code');
+    if (!is_dir($userDir)) return null;
     return ['userId' => $userId, 'spaceId' => $spaceId, 'userDir' => $userDir];
+}
+
+/**
+ * Where a caller stands with a space: 'pending', 'accepted', 'blocked' — or
+ * null when they never asked. The one reading of members.json behind a
+ * decision about access: space.peek, space.feed, space.item and a sponsored
+ * narration all ask it.
+ */
+function membershipStatusOf(string $ownerDir, string $spaceId, string $userId): ?string {
+    foreach (readJsonArrayFile(membersPath($ownerDir)) as $m) {
+        if (!is_array($m)) continue;
+        if (($m['userId'] ?? null) === $userId && ($m['spaceId'] ?? null) === $spaceId) {
+            return (string)($m['status'] ?? 'pending');
+        }
+    }
+    return null;
+}
+
+/**
+ * The items a space shows right now: its header file, minus what an ephemeral
+ * space's window has dropped. Read-only — the readers that own the file
+ * (space.feed, items.list) also write the pruned list back.
+ */
+function liveSpaceItems(string $ownerDir, array $space): array {
+    return pruneExpired(
+        readJsonArrayFile(spaceItemsPath($ownerDir, (string)$space['id'])),
+        $space['ephemeralHours'] ?? null,
+    );
+}
+
+/** One item's stored payload, or null. `$itemId` must be a uuid — it becomes
+ * a filename (see itemPayloadPath). */
+function storedItemPayload(string $ownerDir, string $itemId): ?string {
+    $stored = readJsonObjectFile(itemPayloadPath($ownerDir, $itemId));
+    $payload = is_array($stored) ? ($stored['payload'] ?? null) : null;
+    return is_string($payload) ? $payload : null;
 }
 
 function findById(array $items, string $id): ?array {
@@ -342,11 +412,14 @@ function verifyPostSignature(array $post): bool {
  * its profile, e.g. after being pointed at a different server.
  */
 function requireOwnerPublished(string $userDir): void {
+    if (!ownerIsPublished($userDir)) fail(409, 'space_not_ready');
+}
+
+/** requireOwnerPublished, answering. */
+function ownerIsPublished(string $userDir): bool {
     $profile = readJsonObjectFile(profilePath($userDir));
     $key = is_array($profile) ? (string)($profile['authorKey'] ?? '') : '';
-    if (!preg_match('/^[0-9a-f]{64}$/i', $key)) {
-        fail(409, 'space_not_ready');
-    }
+    return preg_match('/^[0-9a-f]{64}$/i', $key) === 1;
 }
 
 /** The subset of a profile another user may see. */

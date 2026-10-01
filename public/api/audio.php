@@ -14,11 +14,19 @@ if (!defined('APP_ROOT')) { http_response_code(404); exit; }
  * person to hear a paragraph pays for it and everyone after gets a cache hit.
  *
  * Two providers answer both actions. A body without `provider` (or with
- * 'openai') is OpenAI, handled here exactly as before voices existed; a body
- * with `provider: 'elevenlabs'` goes to handleElevenLabsNarration() in
- * api/elevenlabs.php. Either way the payer is resolved **on a cache miss
- * only**, inside the handler (ttsPayer / withTtsPayer below) — a hit costs
- * nobody anything, so it needs no key at all.
+ * 'openai') is OpenAI, handled here; a body with `provider: 'elevenlabs'` goes
+ * to handleElevenLabsNarration() in api/elevenlabs.php. Either way the payer
+ * is resolved **on a cache miss only**, inside the handler (ttsPayer /
+ * withTtsPayer below) — a hit costs nobody anything, so it needs no key at
+ * all.
+ *
+ * `tts.shared` and `tts.speak.shared` are the same two handlers for a voice
+ * somebody shared on a shelf: the same cache, the same free hit, and on a miss
+ * the voice's *owner* pays, on the terms they set — see api/sponsorship.php.
+ *
+ * Both providers generate a miss the same way (NarrationJob, below): one
+ * generation per entry under a lock, into temp files renamed into place, and
+ * nothing left behind by a failure.
  *
  * In: `transcribe` proxies Whisper for voice input.
  */
@@ -148,7 +156,7 @@ function cachedAlignmentMatches(string $alignmentFile, string $expectedHash): bo
  */
 function forcedAlignment(string $audioFile, string $fileName, ?string $apiKey): array {
     return curlMultipart(
-        'https://api.openai.com/v1/audio/transcriptions',
+        openAiUrl('/v1/audio/transcriptions'),
         [
             'model' => ALIGNMENT_MODEL,
             'response_format' => 'verbose_json',
@@ -164,60 +172,137 @@ function forcedAlignment(string $audioFile, string $fileName, ?string $apiKey): 
 /** Write an alignment JSON file from a successful alignment response, merging
  * any extra fields (e.g. sourceTextHash for the cache-staleness check). */
 function writeAlignment(string $path, array $align, array $extra = []): void {
-    file_put_contents($path, json_encode(array_merge([
+    file_put_contents($path, alignmentJson($align, $extra));
+}
+
+/** The alignment file's contents: a successful alignment response's words,
+ * duration and text, plus `$extra`. */
+function alignmentJson(array $align, array $extra = []): string {
+    return (string)json_encode(array_merge([
         'words' => $align['words'] ?? [],
         'duration' => $align['duration'] ?? null,
         'text' => $align['text'] ?? null,
-    ], $extra), JSON_UNESCAPED_UNICODE));
+    ], $extra), JSON_UNESCAPED_UNICODE);
 }
 
 /**
- * Generate audio via OpenAI TTS, persist the mp3, then run forced alignment
- * and persist the alignment JSON. On TTS failure the request fails (via
- * failOpenAi); on alignment failure it degrades gracefully by writing an
- * empty-words alignment so the client still plays the audio. `$alignmentExtra`
- * is merged into the alignment JSON in both the success and empty-fallback
- * cases (handleTts uses it to stamp sourceTextHash). Shared by handleTts and
- * handleTtsSpeak.
+ * One OpenAI narration miss, from "who pays" to the published files. Answers
+ * true when it generated the entry, false when another request had just done
+ * so while this one waited.
+ *
+ * The order handleElevenLabsNarration() keeps, for the same reasons — and a
+ * shared voice, which lets a shelf full of readers miss the same chapter at
+ * once on somebody else's key, makes them anything but theoretical:
+ *
+ *   1. who pays: the caller's own key or the shared one — or, for a shared
+ *      voice (`$shared` is its `{ref, request}`), its owner, via
+ *      withSponsorPayer(). The shared key's limits apply whoever it would be;
+ *   2. finish what is started, even for a listener who has gone;
+ *   3. one generation per entry: the per-entry lock, then the cache again, so
+ *      two listeners asking at once cost one generation — and are charged
+ *      once, because a sponsored miss reserves the owner's allowance (and one
+ *      of their slots) only now, after the second look;
+ *   4. speech and alignment into temp files, renamed into place with the
+ *      alignment last — its presence is what a hit tests — so nobody ever sees
+ *      half an entry, and a failure leaves nothing behind.
+ *
+ * `$entry`: text, voice, style, instructions, dir, audioFile, alignmentFile,
+ * alignmentExtra, and isHit — the cache check, asked again under the lock.
  */
-function synthesizeAndCacheAudio(
-    array $ctx,
-    string $text,
-    string $voice,
-    string $instructions,
-    string $audioFile,
-    string $alignmentFile,
-    array $alignmentExtra = [],
-): void {
+function narrateOpenAiMiss(array $ctx, array $entry, ?array $shared): bool {
+    // 1. Who pays — decided here, on the miss, and only here.
+    if ($shared !== null) {
+        $ctx = withSponsorPayer($ctx, $shared['ref'], $shared['request']);
+    } else {
+        $ctx = withTtsPayer($ctx, 'openai');
+        $ctx['sponsor'] = null;
+    }
+    requireOperatorAllows($ctx, $entry['voice'], $entry['style']);
+
+    // 2.
+    ignore_user_abort(true);
+    if (function_exists('set_time_limit')) @set_time_limit(300);
+
+    // 3.
+    $job = new NarrationJob(WORK_DIR . '/oa-' . substr(hash('sha256', $entry['audioFile']), 0, 40) . '.lock');
+    $lock = narrationLock($job->lockPath, (float)EL_LOCK_WAIT_SECONDS);
+    if ($lock === null) fail(500, 'could not lock the narration cache');
+    if ($lock === false) failNarrationBusy($ctx);
+    $job->lock = $lock;
+    if (($entry['isHit'])()) {
+        $job->end();
+        return false;
+    }
+    if ($ctx['sponsor'] !== null) sponsorAdmit($job, $ctx['sponsor'], $entry['text']);
+
+    // 4.
     $payload = [
         'model' => TTS_MODEL,
-        'voice' => $voice,
-        'input' => $text,
+        'voice' => $entry['voice'],
+        'input' => $entry['text'],
         'response_format' => 'mp3',
     ];
-    if ($instructions !== '') {
-        $payload['instructions'] = $instructions;
-    }
-    $tts = curlBinary('https://api.openai.com/v1/audio/speech', $payload, $ctx['payer']['key']);
-    if ((int)($tts['_status'] ?? 0) !== 200 || empty($tts['audio'])) {
-        failOpenAi($ctx, 'tts failed', $tts);
-    }
-    if (file_put_contents($audioFile, $tts['audio']) === false) {
-        fail(500, 'could not write audio file');
-    }
-    $align = forcedAlignment($audioFile, basename($audioFile), $ctx['payer']['key']);
-    if ((int)($align['_status'] ?? 0) !== 200) {
-        // Keep the audio; write an empty alignment so the client falls back gracefully.
-        file_put_contents($alignmentFile, json_encode(array_merge(['words' => []], $alignmentExtra)));
-    } else {
-        writeAlignment($alignmentFile, $align, $alignmentExtra);
-    }
+    if ($entry['instructions'] !== '') $payload['instructions'] = $entry['instructions'];
+    $tts = curlBinary(openAiUrl('/v1/audio/speech'), $payload, $ctx['payer']['key']);
+    if ((int)($tts['_status'] ?? 0) !== 200 || empty($tts['audio'])) failOpenAiNarration($ctx, $tts);
+    $job->spent = true;
+
+    $tmpAudio = narrationTempFile($tts['audio'], $job->temps);
+    if ($tmpAudio === null) fail(500, 'could not write audio file');
+    $align = forcedAlignment($tmpAudio, basename($entry['audioFile']), $ctx['payer']['key']);
+    // An alignment failure keeps the audio: an empty alignment, and the client
+    // simply highlights nothing.
+    $alignment = (int)($align['_status'] ?? 0) === 200
+        ? alignmentJson($align, $entry['alignmentExtra'])
+        : (string)json_encode(array_merge(['words' => []], $entry['alignmentExtra']));
+    $tmpAlignment = narrationTempFile($alignment, $job->temps);
+    if ($tmpAlignment === null) fail(500, 'could not write audio file');
+
+    publishNarration($entry['dir'], $tmpAudio, $entry['audioFile'], $tmpAlignment, $entry['alignmentFile']);
+    $job->commit();
+    return true;
 }
 
-function handleTts(array $ctx): void {
+/**
+ * A narration request that could not be generated *now* — another request has
+ * held the entry for longer than EL_LOCK_WAIT_SECONDS. Retry-After either way;
+ * whose voice it was decides the code (a shared voice never answers with a
+ * provider code, see failSponsored()).
+ */
+function failNarrationBusy(array $ctx, array $extra = []): void {
+    if (($ctx['sponsor'] ?? null) !== null) failSponsored('shared_voice_busy', 503, $ctx['sponsor']['itemId']);
+    if (($ctx['payer']['provider'] ?? 'openai') === 'elevenlabs') {
+        failElevenLabs('tts_busy', 503, $ctx['payer']['who'], $extra);
+    }
+    header('Retry-After: 2');
+    fail(503, 'tts_busy');
+}
+
+/**
+ * OpenAI refused to speak. On the caller's own key or the shared one this is
+ * what it always was (failOpenAi, `user_key_failed` included). On an owner's
+ * key it says only whether it will keep happening — a refused or exhausted key
+ * is `shared_voice_unavailable`, anything else `shared_voice_busy` — and never
+ * OpenAI's own message, which can quote part of the key or its billing state.
+ */
+function failOpenAiNarration(array $ctx, array $resp): void {
+    if (($ctx['payer']['who'] ?? '') !== 'owner') failOpenAi($ctx, 'tts failed', $resp);
+    $status = (int)($resp['_status'] ?? 0);
+    $error = json_decode((string)($resp['_error'] ?? ''), true);
+    $code = is_array($error) ? ($error['error']['code'] ?? ($error['error']['type'] ?? null)) : null;
+    $theKeys = in_array($status, [401, 403, 404], true) || ($status === 429 && $code === 'insufficient_quota');
+    failSponsored($theKeys ? 'shared_voice_unavailable' : 'shared_voice_busy', $theKeys ? 403 : 503, $ctx['sponsor']['itemId']);
+}
+
+/**
+ * Narrate one verse, keyed by its reference. `$shared` is true for
+ * `tts.shared`: the same request, for a voice somebody shared on a shelf, plus
+ * `shared: {code, itemId}` naming it.
+ */
+function handleTts(array $ctx, bool $shared = false): void {
     $body = readJsonBody();
     if (ttsProviderOf($body) === 'elevenlabs') {
-        handleElevenLabsNarration($ctx, $body, 'verse');
+        handleElevenLabsNarration($ctx, $body, 'verse', $shared);
         return;
     }
 
@@ -247,27 +332,34 @@ function handleTts(array $ctx): void {
     // footnote refs like "16" / "17" into the mp3 because textTts hadn't been
     // stripped yet — without this check those keep playing forever.
     $expectedHash = sha256ForCache($text, $voiceStyle);
-    $cached = file_exists($audioFile)
+    $isHit = static fn(): bool => file_exists($audioFile)
         && file_exists($alignmentFile)
         && cachedAlignmentMatches($alignmentFile, $expectedHash);
+    $cached = $isHit();
     if (!$cached) {
-        // Who pays is decided here, on the miss, and only here — a hit above
-        // needed no key. The directory comes after, so a refused miss leaves
-        // nothing behind.
-        $ctx = withTtsPayer($ctx, 'openai');
-        requireOperatorAllows($ctx, $voice, $voiceStyle);
-        @mkdir($dir, 0775, true);
-        // Forced alignment stamps sourceTextHash so a future text change
-        // (e.g. footnote cleanup) marks the cached mp3 stale — see above.
-        synthesizeAndCacheAudio(
-            $ctx,
-            $text,
-            $voice,
-            composeTtsInstructions($translation, $voiceStyle),
-            $audioFile,
-            $alignmentFile,
-            ['sourceTextHash' => $expectedHash],
-        );
+        $cached = !narrateOpenAiMiss($ctx, [
+            'text' => $text,
+            'voice' => $voice,
+            'style' => $voiceStyle,
+            'instructions' => composeTtsInstructions($translation, $voiceStyle),
+            'dir' => $dir,
+            'audioFile' => $audioFile,
+            'alignmentFile' => $alignmentFile,
+            // Stamped so a future text change (e.g. footnote cleanup) marks the
+            // cached mp3 stale — see above.
+            'alignmentExtra' => ['sourceTextHash' => $expectedHash],
+            'isHit' => $isHit,
+        ], $shared ? [
+            'ref' => $body['shared'] ?? null,
+            'request' => [
+                'provider' => 'openai',
+                'config' => ['provider' => 'openai', 'voice' => $voice, 'style' => $voiceStyle],
+                'kind' => 'verse',
+                'text' => $text,
+                'verse' => ['translation' => $translation, 'bookId' => $bookId, 'chapter' => $chapter, 'verse' => $verse],
+                'language' => TRANSLATION_LANGUAGE[strtoupper($translation)] ?? '_',
+            ],
+        ] : null);
     }
 
     respond(200, [
@@ -280,11 +372,12 @@ function handleTts(array $ctx): void {
 /**
  * Free-form TTS for assistant chat replies (no bible coords). Cached by a
  * sha-256 hash of voice+style+text so identical lines reuse audio.
+ * `$shared`: as for handleTts — `tts.speak.shared`.
  */
-function handleTtsSpeak(array $ctx): void {
+function handleTtsSpeak(array $ctx, bool $shared = false): void {
     $body = readJsonBody();
     if (ttsProviderOf($body) === 'elevenlabs') {
-        handleElevenLabsNarration($ctx, $body, 'speak');
+        handleElevenLabsNarration($ctx, $body, 'speak', $shared);
         return;
     }
 
@@ -303,20 +396,30 @@ function handleTtsSpeak(array $ctx): void {
     $audioFile = "{$dir}/{$key}.mp3";
     $alignmentFile = "{$dir}/{$key}.json";
 
-    $cached = file_exists($audioFile) && file_exists($alignmentFile);
+    $isHit = static fn(): bool => file_exists($audioFile) && file_exists($alignmentFile);
+    $cached = $isHit();
     if (!$cached) {
-        // As in handleTts: the payer on the miss only, the directory after it.
-        $ctx = withTtsPayer($ctx, 'openai');
-        requireOperatorAllows($ctx, $voice, $voiceStyle);
-        @mkdir($dir, 0775, true);
-        synthesizeAndCacheAudio(
-            $ctx,
-            $text,
-            $voice,
-            composeSpeakInstructions($language, $voiceStyle),
-            $audioFile,
-            $alignmentFile,
-        );
+        $cached = !narrateOpenAiMiss($ctx, [
+            'text' => $text,
+            'voice' => $voice,
+            'style' => $voiceStyle,
+            'instructions' => composeSpeakInstructions($language, $voiceStyle),
+            'dir' => $dir,
+            'audioFile' => $audioFile,
+            'alignmentFile' => $alignmentFile,
+            'alignmentExtra' => [],
+            'isHit' => $isHit,
+        ], $shared ? [
+            'ref' => $body['shared'] ?? null,
+            'request' => [
+                'provider' => 'openai',
+                'config' => ['provider' => 'openai', 'voice' => $voice, 'style' => $voiceStyle],
+                'kind' => 'speak',
+                'text' => $text,
+                'verse' => null,
+                'language' => $language,
+            ],
+        ] : null);
     }
 
     respond(200, [
@@ -326,6 +429,128 @@ function handleTtsSpeak(array $ctx): void {
     ]);
 }
 
+// ---------- generating one entry --------------------------------------------
+//
+// What a cache miss holds while it generates, for either provider: the entry's
+// lock, the temp files, and — for a shared voice — one of the owner's slots
+// and the characters reserved against their allowance. fail() exits, so
+// clean-up that waited for a return would be skipped on exactly the paths that
+// need it; NarrationJob does it from a shutdown hook instead, on every way out.
+
+final class NarrationJob {
+    /** @var resource|null the per-entry generation lock */
+    public $lock = null;
+    /** @var array{0: resource, 1: string}|null an owner's slot (api/sponsorship.php) */
+    public ?array $slot = null;
+    /** @var string[] temp files not yet renamed into place */
+    public array $temps = [];
+    /** Characters reserved against a shared voice's allowance. */
+    public ?array $reservation = null;
+    /** True once an upstream call has returned audio: the reservation was
+     * spent then, whatever happens after, and is not given back. */
+    public bool $spent = false;
+
+    public function __construct(public string $lockPath) {
+        register_shutdown_function([$this, 'end']);
+    }
+
+    /** Let go of everything, giving back a reservation nothing was spent on.
+     * Idempotent: the shutdown hook calls it again after every request. */
+    public function end(): void {
+        foreach ($this->temps as $f) {
+            if (is_file($f)) @unlink($f);
+        }
+        $this->temps = [];
+        if ($this->reservation !== null && !$this->spent) refundSponsoredChars($this->reservation);
+        $this->reservation = null;
+        if ($this->slot !== null) narrationUnlock($this->slot[0], $this->slot[1]);
+        $this->slot = null;
+        if ($this->lock !== null) narrationUnlock($this->lock, $this->lockPath);
+        $this->lock = null;
+    }
+
+    /** The entry is published: its temp files are gone into place, and what was
+     * reserved for it was spent. */
+    public function commit(): void {
+        $this->temps = [];
+        $this->reservation = null;
+        $this->end();
+    }
+}
+
+/**
+ * Take a generation lock: a handle on success, false when another request held
+ * it for longer than `$waitSeconds`, null when no lock file can be opened at
+ * all.
+ *
+ * The holder deletes the file as it lets go (see narrationUnlock), so a waiter
+ * can win a lock on a file that is no longer there; it notices — the inode at
+ * the path is not the one it holds — and starts over on the fresh file. That
+ * keeps WORK_DIR empty between generations without ever letting two requests
+ * generate one entry.
+ */
+function narrationLock(string $path, float $waitSeconds) {
+    $deadline = microtime(true) + $waitSeconds;
+    while (true) {
+        $fp = narrationTryLock($path);
+        if ($fp !== false) return $fp;
+        if (microtime(true) >= $deadline) return false;
+        usleep(100000);
+    }
+}
+
+/** One attempt at narrationLock: a handle, false when it is held, null when no
+ * lock file can be opened. Never waits. */
+function narrationTryLock(string $path) {
+    while (true) {
+        $fp = @fopen($path, 'c');
+        if ($fp === false) return null;
+        if (!flock($fp, LOCK_EX | LOCK_NB)) {
+            fclose($fp);
+            return false;
+        }
+        clearstatcache(true, $path);
+        $onDisk = @stat($path);
+        $held = fstat($fp);
+        if ($onDisk !== false && $held !== false && $onDisk['ino'] === $held['ino'] && $onDisk['dev'] === $held['dev']) {
+            return $fp;
+        }
+        // Won a file its holder had just deleted: try the one now there.
+        flock($fp, LOCK_UN);
+        fclose($fp);
+    }
+}
+
+/** Delete the lock file *before* unlocking it — see narrationLock. */
+function narrationUnlock($fp, string $path): void {
+    @unlink($path);
+    flock($fp, LOCK_UN);
+    fclose($fp);
+}
+
+/** Bytes into a fresh 0600 temp file in WORK_DIR, registered for cleanup. */
+function narrationTempFile(string $bytes, array &$temps): ?string {
+    $tmp = @tempnam(WORK_DIR, 'tts-');
+    if ($tmp === false) return null;
+    $temps[] = $tmp;
+    if (realpath(dirname($tmp)) !== realpath(WORK_DIR)) return null;
+    return @file_put_contents($tmp, $bytes) === strlen($bytes) ? $tmp : null;
+}
+
+/**
+ * Rename a generated entry into place: the audio first, the alignment last —
+ * its presence is what a hit tests, so nobody is ever served half an entry —
+ * each made world-readable, because AUDIO_DIR is served statically. A rename
+ * replaces a stale entry atomically.
+ */
+function publishNarration(string $dir, string $tmpAudio, string $audioFile, string $tmpAlignment, string $alignmentFile): void {
+    if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) fail(500, 'could not write audio file');
+    if (!@rename($tmpAudio, $audioFile)) fail(500, 'could not write audio file');
+    @chmod($audioFile, 0644);
+    if (!@rename($tmpAlignment, $alignmentFile)) fail(500, 'could not write audio file');
+    @chmod($alignmentFile, 0644);
+}
+
 function handleTranscribe(array $ctx): void {
     if (empty($_FILES['audio'])) fail(400, 'no audio uploaded');
     $tmp = $_FILES['audio']['tmp_name'];
@@ -333,7 +558,7 @@ function handleTranscribe(array $ctx): void {
     $language = is_string($_POST['language'] ?? null) ? $_POST['language'] : 'en';
 
     $resp = curlMultipart(
-        'https://api.openai.com/v1/audio/transcriptions',
+        openAiUrl('/v1/audio/transcriptions'),
         [
             'model' => STT_MODEL,
             'response_format' => 'json',
@@ -501,6 +726,12 @@ const JS_WHITESPACE = [
     0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009, 0x200A,
     0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF,
 ];
+
+/** JS_WHITESPACE as the inside of a PCRE character class (for a /u pattern):
+ * what `\s` means to the client, wherever the server has to agree with it. */
+function jsWhitespaceClass(): string {
+    return implode('', array_map(fn(int $c): string => sprintf('\\x{%04X}', $c), JS_WHITESPACE));
+}
 
 /** Is this one code point JavaScript whitespace? */
 function isJsSpace(string $cp): bool {

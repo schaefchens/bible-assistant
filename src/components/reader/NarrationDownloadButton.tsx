@@ -6,7 +6,7 @@ import {
   type NarrationSubject,
 } from '@/services/narration/narrationDownload';
 import { useNarrationStore } from '@/store/narrationStore';
-import { useNarrationVoice } from '@/hooks/useSpeechVoice';
+import { useNarrationVoiceFor } from '@/hooks/useSpeechVoice';
 import { ECHO_VOICE, isDeviceVoice, type TtsVoice } from '@/services/voices/ttsVoice';
 import {
   CheckIcon,
@@ -33,7 +33,8 @@ export function NarrationDownloadButton({ subject }: Props) {
   const { t } = useTranslation();
   // Subscribed, not just read once: switching voice — or key status arriving
   // after boot — changes which narration this button is even talking about.
-  const narrationVoice = useNarrationVoice();
+  // For this subject: a voice somebody shared may not be lent for a piece.
+  const narrationVoice = useNarrationVoiceFor()(subject);
 
   const check = useNarrationStore((s) => s.check);
   const download = useNarrationStore((s) => s.download);

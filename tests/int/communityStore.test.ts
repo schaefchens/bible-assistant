@@ -32,6 +32,12 @@ vi.mock('@/services/api/community', () => ({
   uploadAvatar: vi.fn(async () => ({ url: '' })),
 }));
 
+// The policy under test is *which* vanished voices give their downloads back;
+// what giving back does to the files is voicePlayback.test's.
+vi.mock('@/services/narration/narrationDownload', () => ({
+  deleteNarrationForVoice: vi.fn(async () => {}),
+}));
+
 vi.mock('@/lib/postSigning', () => ({
   authorKey: vi.fn(() => AUTHOR_KEY),
   signPost: vi.fn(() => ({ signature: 'sig', sigVersion: 1 })),
@@ -50,6 +56,12 @@ const { mintSpaceCode } = await import('@/lib/spaceCode');
 const requested = vi.mocked(api.requestSpace);
 
 const COMMUNITY_TERMS_VERSION = (await import('@/lib/communityTerms')).COMMUNITY_TERMS_VERSION;
+const { buildVoicePayload, buildPlanPayload, payloadHash, payloadBytes } = await import(
+  '@/services/community/sharedPayload'
+);
+const { parseVoicePayload } = await import('@/services/community/sharedItems');
+const { deleteNarrationForVoice } = await import('@/services/narration/narrationDownload');
+const { initSharedVoiceDownloads } = await import('@/lib/sharedVoiceDownloads');
 
 const profile = () => ({ displayName: 'Me', authorKey: AUTHOR_KEY, updatedAt: 1 });
 
@@ -107,14 +119,15 @@ beforeEach(async () => {
   useCommunityStore.setState({
     profile: null, spaces: [], posts: [], shared: {}, subscriptions: [],
     memberships: [], feed: {}, seen: {}, blocked: {}, reported: {},
-    items: [], sharedClaims: {}, itemSources: {},
-    feedItems: {}, mirroredLists: [], mirroredBoards: [],
+    items: [], sharedClaims: {}, itemSources: {}, voiceTerms: {},
+    feedItems: {}, mirroredLists: [], mirroredBoards: [], mirroredVoices: [],
     initialized: false,
   });
   useLibraryStore.setState({
     readingLists: [], cards: [], boards: [], readingProgress: {},
-    cardOrder: [], boardOrder: [], online: false, pendingOps: 0,
+    cardOrder: [], boardOrder: [], online: false, pendingOps: 0, voices: [],
   });
+  vi.mocked(api.checkModeration).mockClear();
   useSettingsStore.setState({
     syncEnabled: true,
     communityTermsVersion: COMMUNITY_TERMS_VERSION,
@@ -542,5 +555,192 @@ describe('taking a copy of somebody else\'s plan or board', () => {
     expect(copy!.freeform![copy!.cardIds[0]]).toEqual(layout);
     // The cards are real rows now, under their new ids.
     expect(lib.cards.map((c) => c.id)).toEqual(copy!.cardIds);
+  });
+});
+
+/**
+ * Lending a voice spends the owner's key on other people's listening, on the
+ * terms they set — so the terms travel inside the signed payload, and an
+ * update must keep the item (readers who chose it keep it; this month's count
+ * still counts) while a removal is the revocation.
+ */
+describe('lending a voice to a shelf', () => {
+  const nova = {
+    v: 1 as const,
+    id: '0b2c6f1e-3a4d-4c5e-9f60-718293a4b5c6',
+    name: 'Nova',
+    avatar: 'data:image/png;base64,QUJD',
+    config: { provider: 'openai' as const, voice: 'nova' as const, style: 'calm' },
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  const ops = async () => (await db.syncQueue.orderBy('createdAt').toArray()).map((o) => o.op);
+
+  beforeEach(() => {
+    useCommunityStore.setState({ profile: profile(), spaces: [space('s1')] });
+    useLibraryStore.setState({ voices: [nova] });
+  });
+
+  it('queues one upsert, with the terms inside the signed payload', async () => {
+    await useCommunityStore.getState().shareVoice(nova.id, 's1', { scope: 'scripture', monthly: 50000 });
+
+    expect(await ops()).toEqual(['item.upsert']);
+    const [row] = await db.sharedItems.toArray();
+    expect(row).toMatchObject({ kind: 'voice', spaceId: 's1', title: 'Nova', shared: 1 });
+    expect(parseVoicePayload(row.payload)?.sharing).toEqual({ scope: 'scripture', monthly: 50000 });
+    expect(useCommunityStore.getState().voiceTerms[row.id]).toEqual({ scope: 'scripture', monthly: 50000 });
+    // The pre-check is shown the words, not the picture: with it, the check
+    // would be refused for size and silently skipped.
+    expect(vi.mocked(api.checkModeration).mock.calls[0][0].body).not.toContain('base64');
+  });
+
+  it('lending it again on new terms updates the one already there', async () => {
+    await useCommunityStore.getState().shareVoice(nova.id, 's1', { scope: 'scripture', monthly: 50000 });
+    const first = (await db.sharedItems.toArray())[0];
+    await useCommunityStore.getState().shareVoice(nova.id, 's1', { scope: 'anything', monthly: 9000 });
+
+    const rows = await db.sharedItems.toArray();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(first.id);
+    expect(rows[0].publishedAt).toBe(first.publishedAt);
+    expect(useCommunityStore.getState().voiceTerms[first.id]).toEqual({ scope: 'anything', monthly: 9000 });
+  });
+
+  it('Update re-snapshots the edited voice on the terms it was lent on', async () => {
+    await useCommunityStore.getState().shareVoice(nova.id, 's1', { scope: 'pieces', dailyPerReader: 7000 });
+    const id = (await db.sharedItems.toArray())[0].id;
+    useLibraryStore.setState({ voices: [{ ...nova, name: 'Nova, gentler', config: { ...nova.config, style: 'gentle' }, updatedAt: 2 }] });
+
+    await useCommunityStore.getState().republishItem(id);
+
+    const row = (await db.sharedItems.get(id))!;
+    expect(row.title).toBe('Nova, gentler');
+    const parsed = parseVoicePayload(row.payload)!;
+    expect(parsed.config).toEqual({ provider: 'openai', voice: 'nova', style: 'gentle' });
+    expect(parsed.sharing).toEqual({ scope: 'pieces', dailyPerReader: 7000 });
+    expect(row.sourceUpdatedAt).toBe(2);
+  });
+
+  it('taking it off the shelf tombstones it — the revocation reaches the server', async () => {
+    await useCommunityStore.getState().shareVoice(nova.id, 's1', { scope: 'scripture', monthly: 50000 });
+    const id = (await db.sharedItems.toArray())[0].id;
+    await useCommunityStore.getState().deleteItem(id);
+    expect((await db.sharedItems.get(id))?.deleted).toBe(1);
+    expect(await ops()).toEqual(['item.upsert', 'item.delete']);
+  });
+});
+
+/**
+ * The voices other people lend arrive as mirrors, and the voice resolver hands
+ * a mirror's `config` straight out — so which mirrors exist decides which
+ * voices the user may choose (and be refused by), and whether the config keeps
+ * its identity decides whether every feed poll reads as "the voice changed".
+ */
+describe('mirrors of voices lent to shelves the user reads', () => {
+  const georgeVoice = (name = 'Opa Georg', stability = 0.5) => ({
+    v: 1 as const,
+    id: '1c2d3e4f-5a6b-4c7d-8e9f-a0b1c2d3e4f5',
+    name,
+    config: { provider: 'elevenlabs' as const, voiceId: 'JBFqnCBsd6RMkjVDRZzb', model: 'eleven_v4' as const, stability, similarity: 0.75 },
+    createdAt: 1,
+    updatedAt: 1,
+  });
+  const feedItem = (code: string, id: string, kind: 'voice' | 'plan', payload: string) => ({
+    id,
+    spaceId: `space-${code}`,
+    kind,
+    title: kind,
+    language: 'en' as const,
+    payloadHash: payloadHash(payload),
+    payloadBytes: payloadBytes(payload),
+    publishedAt: 1,
+    createdAt: 1,
+    updatedAt: 1,
+    code,
+    verified: true,
+    fetchedAt: 1,
+    payload,
+  });
+  const sub = (code: string, status: 'accepted' | 'pending') => ({
+    code,
+    spaceName: code,
+    ownerName: 'Olivia',
+    status,
+    pinnedKey: OTHER_KEY,
+    keyPinnedAt: 1,
+    addedAt: 1,
+    updatedAt: 1,
+  });
+  const voicePayload = (stability = 0.5) => buildVoicePayload(georgeVoice('Opa Georg', stability), { scope: 'scripture', monthly: 50000 });
+  const planPayload = buildPlanPayload({
+    id: 'L1',
+    name: 'Ein Plan',
+    days: [{ id: 'd1', entries: [{ id: 'e1', bookId: 32, chapter: 1 }] }],
+    createdAt: 1,
+    updatedAt: 1,
+  });
+
+  beforeEach(async () => {
+    vi.mocked(deleteNarrationForVoice).mockClear();
+    useCommunityStore.setState({ profile: profile() });
+    useSettingsStore.setState({ syncEnabled: false }); // init: no refresh
+    await db.subscriptions.bulkPut([sub('ROOM', 'accepted'), sub('WAIT', 'pending')]);
+    await db.feedItems.bulkPut([
+      feedItem('ROOM', 'I1', 'voice', voicePayload()),
+      feedItem('WAIT', 'I2', 'voice', voicePayload()),
+      feedItem('WAIT', 'I3', 'plan', planPayload),
+    ]);
+  });
+
+  it('are offered only from rooms the owner let the user into — plans and boards too', async () => {
+    await useCommunityStore.getState().init();
+    const s = useCommunityStore.getState();
+    expect(s.mirroredVoices.map((m) => m.itemId)).toEqual(['I1']);
+    expect(s.mirroredLists).toEqual([]);
+    expect(Object.keys(s.feedItems)).toEqual(['ROOM']);
+  });
+
+  it('carry whose voice they are on the config, with the shelf and the owner’s scope', async () => {
+    await useCommunityStore.getState().init();
+    const [m] = useCommunityStore.getState().mirroredVoices;
+    expect(m.config.shared).toEqual({ code: 'ROOM', itemId: 'I1', spaceId: 'space-ROOM', scope: 'scripture' });
+    expect(m).toMatchObject({ name: 'Opa Georg', author: 'Olivia', authorKey: OTHER_KEY, sharing: { scope: 'scripture', monthly: 50000 } });
+  });
+
+  it('keep their config object while the payload is the same, and change it when it is not', async () => {
+    await useCommunityStore.getState().init();
+    const before = useCommunityStore.getState().mirroredVoices[0].config;
+    await useCommunityStore.getState().init();
+    expect(useCommunityStore.getState().mirroredVoices[0].config).toBe(before);
+
+    await db.feedItems.put(feedItem('ROOM', 'I1', 'voice', voicePayload(0.3)));
+    await useCommunityStore.getState().init();
+    const after = useCommunityStore.getState().mirroredVoices[0].config;
+    expect(after).not.toBe(before);
+    expect(after).toMatchObject({ provider: 'elevenlabs', stability: 0.3 });
+  });
+
+  it('are rebuilt on unsubscribe, the way every other writer rebuilds them', async () => {
+    await useCommunityStore.getState().init();
+    await useCommunityStore.getState().unsubscribe('ROOM');
+    const s = useCommunityStore.getState();
+    expect(s.mirroredVoices).toEqual([]);
+    expect(s.feedItems).toEqual({});
+  });
+
+  it('give their downloads back when they vanish — unless something still sounds the same', async () => {
+    initSharedVoiceDownloads();
+    await useCommunityStore.getState().init();
+    const lent = useCommunityStore.getState().mirroredVoices[0];
+
+    // The user's own voice of exactly this sound keeps the files.
+    useLibraryStore.setState({ voices: [{ ...georgeVoice('Mine'), id: '9e8d7c6b-5a49-4382-9716-a5b4c3d2e1f0' }] });
+    useCommunityStore.setState({ mirroredVoices: [] });
+    expect(deleteNarrationForVoice).not.toHaveBeenCalled();
+
+    useLibraryStore.setState({ voices: [] });
+    useCommunityStore.setState({ mirroredVoices: [lent] });
+    useCommunityStore.setState({ mirroredVoices: [] });
+    expect(deleteNarrationForVoice).toHaveBeenCalledWith(lent.config);
   });
 });

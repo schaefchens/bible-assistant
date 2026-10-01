@@ -24,7 +24,7 @@ function handleChat(array $ctx): void {
     if (!isset($obj->temperature)) $obj->temperature = 0.2;
 
     $payload = json_encode($obj, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    $resp = curlRawJson('https://api.openai.com/v1/chat/completions', $payload, $ctx['payer']['key']);
+    $resp = curlRawJson(openAiUrl('/v1/chat/completions'), $payload, $ctx['payer']['key']);
     checkOpenAiResponse($ctx, $resp, 'openai chat failed');
     $choice = $resp['choices'][0] ?? null;
     if (!$choice) fail(502, 'no choice returned');

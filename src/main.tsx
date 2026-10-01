@@ -13,6 +13,7 @@ import { initReadingHosts } from '@/lib/readingHosts';
 import { initPlaybackController } from '@/lib/playbackController';
 import { initAutoPlay } from '@/lib/autoPlay';
 import { initProviderFailureWatch } from '@/lib/providerFailureWatch';
+import { initSharedVoiceDownloads } from '@/lib/sharedVoiceDownloads';
 import { applyTheme } from '@/lib/theme';
 import { useSettingsStore } from '@/store/settingsStore';
 
@@ -29,6 +30,7 @@ initReadingHosts();
 initPlaybackController();
 initAutoPlay();
 initProviderFailureWatch();
+initSharedVoiceDownloads();
 // Reclaim the disk held by the retired Workbox `verse-audio-v2` cache; nothing
 // reads or expires it now that mediaCache has taken over.
 void reclaimLegacyAudioCache();

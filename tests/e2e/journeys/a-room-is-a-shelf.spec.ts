@@ -1,5 +1,6 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Request } from '@playwright/test';
 import { appReady } from '../support/app';
+import { voicePersisted } from '../support/persisted';
 import {
   acceptReader,
   askToJoin,
@@ -10,6 +11,7 @@ import {
   makeRoom,
   publishPiece,
   roomEventually,
+  roomEventuallyWithout,
   shareBoardIntoRoom,
   shareIntoRoom,
   type Install,
@@ -17,8 +19,8 @@ import {
 } from '../support/community';
 
 /**
- * Journey: one person fills a room with all three kinds of thing, and somebody
- * else picks every one of them up.
+ * Journey: one person fills a room with every kind of thing, and somebody else
+ * picks every one of them up — a piece, a plan, a board, and a voice.
  *
  * The sibling of `share-with-a-reader`, which covers the *piece* path end to
  * end — the signature, the pinned key, the reader. This one is about the room
@@ -232,6 +234,118 @@ test('the room lists all three, and the author’s own screen agrees', async () 
   await alice.page.getByRole('button', { name: /^Cards & boards/ }).click();
   await expect(alice.page.locator('main')).toContainText(BOARD);
 });
+
+/**
+ * A voice is the one thing a room holds that *spends* — its owner's key, on
+ * the reader's listening. What this proves end to end, nothing faked: the
+ * owner lends one in the app, the reader finds it in the room and reads with
+ * it, every request goes to `tts.shared` on the owner's account — and, because
+ * this owner has no key, each is refused before anything is generated, and the
+ * reading carries on in Echo, from the warm cache, for free. Taking it off the
+ * shelf takes it away from the reader.
+ *
+ * Refused rather than generated on purpose: a run that made this voice speak
+ * would bill a real account. `voices:verify:api` proves the paying half
+ * against stubs.
+ */
+test('a voice lent to the room reads for the reader on its owner’s account — refused without a key, Echo reads, for free', async () => {
+  // Two waits on the other install (the voice arriving, then leaving) plus a
+  // real moderation call: more than one step's usual budget.
+  test.setTimeout(180_000);
+  const VOICE = `Opa Georg ${Date.now()}`;
+  await alice.page.goto('/settings/voices');
+  await appReady(alice.page);
+  await alice.page.getByRole('button', { name: /Create a voice/ }).click();
+  await alice.page.getByLabel('Name', { exact: true }).fill(VOICE);
+  await alice.page.getByRole('radio', { name: /Cedar/ }).click();
+  await alice.page.getByRole('button', { name: 'Save', exact: true }).click();
+  await voicePersisted(alice.page, VOICE);
+
+  // Lent from the voice's own editor, on the default terms — scripture only,
+  // with a monthly and a daily allowance. Real `gpt-4o` moderation judges it.
+  await alice.page.getByRole('button', { name: `Edit ${VOICE}` }).click();
+  await alice.page.getByRole('button', { name: /Lend to a shelf/ }).click();
+  const row = alice.page.getByRole('listitem').filter({ hasText: ROOM });
+  const lent = alice.page.waitForResponse((r) => r.url().includes('action=items.upsert') && r.ok(), { timeout: 60_000 });
+  await row.getByRole('button', { name: 'Lend it here' }).click();
+  await lent;
+  await expect(row).toContainText('Lent here');
+  await alice.page.keyboard.press('Escape');
+
+  // The reader finds it in the room, with its terms, and reads with it.
+  await roomEventually(bob.page, room, VOICE);
+  await expect(bob.page.locator('main')).toContainText('Reads scripture');
+  await bob.page.getByRole('button', { name: 'Read with it' }).click();
+  await expect(bob.page.getByRole('button', { name: 'Reads for you' })).toBeVisible();
+
+  const calls = recordNarration(bob.page);
+  await bob.page.getByRole('link', { name: 'Read' }).click();
+  await bob.page.getByRole('button', { name: 'Choose book and chapter' }).click();
+  // The reader is still walking the shared plan from the step above, which is
+  // what locks the picker into it: back to the Bible first.
+  await bob.page.getByRole('button', { name: 'Leave this reading list' }).click();
+  await bob.page.getByRole('button', { name: 'Psalms', exact: true }).click();
+  await bob.page.getByRole('button', { name: '117', exact: true }).click();
+  await bob.page.getByRole('button', { name: 'Read this chapter aloud' }).click();
+
+  // Both verses end up read — in Echo, from the cache.
+  await expect
+    .poll(() => calls.filter((c) => c.action === 'tts' && c.status === 200).length, { timeout: 30_000 })
+    .toBe(2);
+  // It asked the owner's account first, and was refused — never generated.
+  const shared = calls.filter((c) => c.action.endsWith('.shared'));
+  expect(shared.length, 'the lent voice was never asked for').toBeGreaterThan(0);
+  for (const c of shared) {
+    expect(c.status, `${c.action} was not refused`).toBe(403);
+    expect(c.json).toMatchObject({ error: 'shared_voice_unavailable', payer: 'owner' });
+  }
+  const verses = calls.filter((c) => c.action === 'tts' && c.status === 200);
+  expect(verses.map((c) => c.body.voice)).toEqual(['echo', 'echo']);
+  expect(verses[0].json?.audioUrl).toBe('/storage/audio/echo/KJV/19/117/1.mp3');
+  const uncached = calls
+    .filter((c) => (c.action === 'tts' || c.action === 'tts.speak') && c.json?.cached !== true)
+    .map((c) => `${c.action} ${JSON.stringify(c.body)}`);
+  expect(uncached, 'these narration requests were not cache hits — this run called OpenAI').toEqual([]);
+
+  // Still the reader's choice, listed under what is shared with them.
+  await bob.page.goto('/settings/voices');
+  await appReady(bob.page);
+  await expect(bob.page.getByRole('heading', { name: 'Shared with you' })).toBeVisible();
+  await expect(bob.page.getByRole('radio', { name: new RegExp(VOICE) })).toHaveAttribute('aria-checked', 'true');
+
+  // Taking it off the shelf takes it from the reader.
+  await ownRoom(alice.page);
+  await alice.page.getByRole('button', { name: /^Voices/ }).click();
+  const removed = alice.page.waitForResponse((r) => r.url().includes('action=items.delete') && r.ok());
+  await alice.page.getByRole('button', { name: `Remove from shelf — ${VOICE}` }).click();
+  await removed;
+  await roomEventuallyWithout(bob.page, room, VOICE);
+});
+
+type NarrationCall = {
+  action: string;
+  status: number;
+  body: Record<string, unknown>;
+  json: { cached?: boolean; audioUrl?: string; error?: string; payer?: string } | null;
+};
+
+/** Every narration request — plain and shared — with what came back. */
+function recordNarration(page: Page): NarrationCall[] {
+  const calls: NarrationCall[] = [];
+  page.on('requestfinished', async (req: Request) => {
+    const m = /action=(tts(?:\.speak)?(?:\.shared)?)(?:&|$)/.exec(req.url());
+    if (!m) return;
+    const res = await req.response();
+    let json: NarrationCall['json'] = null;
+    try {
+      json = (await res?.json()) ?? null;
+    } catch {
+      /* not JSON */
+    }
+    calls.push({ action: m[1], status: res?.status() ?? 0, body: (req.postDataJSON() ?? {}) as Record<string, unknown>, json });
+  });
+  return calls;
+}
 
 async function ownRoom(page: Page) {
   await page.goto('/spaces');

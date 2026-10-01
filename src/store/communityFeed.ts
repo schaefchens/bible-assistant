@@ -181,7 +181,7 @@ export function createCommunityFeed(set: SetState, get: GetState) {
           );
           for (const p of stale) await db.feedPosts.delete(p.id);
 
-          // Shared plans and boards, on the same three rules: verify, refuse a
+          // Shared plans, boards and voices, on the same three rules: verify, refuse a
           // rollback, drop what the room no longer serves. `items` is optional
           // on the wire — an api.php older than this client answers without it,
           // and losing the shelf is a better failure than losing the feed.
@@ -237,12 +237,10 @@ export function createCommunityFeed(set: SetState, get: GetState) {
           const subs = get().subscriptions.map((x) =>
             x.code === sub.code ? { ...x, ...restated } : x,
           );
-          const mirrors = mirrorsFrom(await db.feedItems.toArray(), subs);
+          const mirrors = mirrorsFrom(await db.feedItems.toArray(), subs, get().mirroredVoices);
           set((s) => ({
             feed: { ...s.feed, [sub.code]: accepted },
-            feedItems: mirrors.feedItems,
-            mirroredLists: mirrors.mirroredLists,
-            mirroredBoards: mirrors.mirroredBoards,
+            ...mirrors,
             feedState: {
               ...s.feedState,
               [sub.code]: { status: res.status, refused, keyChanged: false, fetchedAt },

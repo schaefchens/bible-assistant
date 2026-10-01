@@ -51,7 +51,7 @@ type SpaceFeedResponse = SpaceRequestResponse & {
   /** Empty unless `status === 'accepted'`. Signatures arrive intact. */
   posts: Post[];
   /**
-   * Shared plans and boards, **headers only** — a payload is fetched once per
+   * Shared plans, boards and voices, **headers only** — a payload is fetched once per
    * version through {@link getSpaceItem}, because this response is polled on
    * every foreground.
    *
@@ -125,7 +125,7 @@ export function listItems(spaceId: string): Promise<{ items: SharedItem[] }> {
 }
 
 /**
- * Publish a plan or a board into one of the caller's own rooms.
+ * Publish a plan, a board or a voice into one of the caller's own rooms.
  *
  * Header and payload go together because this is the author's own upload, not
  * a poll — the split exists to keep *reads* small. The server checks that
