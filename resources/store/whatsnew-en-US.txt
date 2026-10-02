@@ -1,6 +1,4 @@
-Narration voices — the Bible, read in a voice you make yourself.
+Bible translations and their rights.
 
-• Your own voices: a name, a picture and how it speaks — on OpenAI or ElevenLabs, with your own key.
-• One voice reads, another replies, and your choice follows you to all your devices.
-• Lend a voice to a shelf: your readers listen in it, and you decide what it reads and how much.
-• Just say it: the assistant switches voices by name.
+• New under Settings › Data & app: "Bible texts" — the copyright and source of each translation.
+• ESV, NKJV and Hoffnung für Alle are no longer offered. If you had one selected, you now read on in the King James Version or Luther 1912.

@@ -1,6 +1,4 @@
-Erzählstimmen — die Bibel in einer Stimme, die du selbst anlegst.
+Bibelübersetzungen und ihre Rechte.
 
-• Eigene Stimmen: Name, Bild und wie sie spricht — mit OpenAI oder ElevenLabs, auf deinem eigenen Schlüssel.
-• Eine Stimme liest vor, eine andere antwortet. Deine Wahl gilt auf all deinen Geräten.
-• Verleih eine Stimme an ein Regal: Deine Leser hören darin, und du legst fest, was sie vorliest und wie viel.
-• Sag es einfach: Der Assistent wechselt die Stimme beim Namen.
+• Neu unter Einstellungen › Daten & App: „Bibeltexte" — Urheberrecht und Quelle jeder Übersetzung.
+• ESV, NKJV und Hoffnung für Alle stehen nicht mehr zur Auswahl. Wer eine davon gewählt hatte, liest jetzt mit Luther 1912 oder der King James Version weiter.
