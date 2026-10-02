@@ -1,4 +1,4 @@
 Bible translations and their rights.
 
 • New under Settings › Data & app: "Bible texts" — the copyright and source of each translation.
-• ESV, NKJV and Hoffnung für Alle are no longer offered. If you had one selected, you now read on in the King James Version or Luther 1912.
+• ESV, NKJV, Hoffnung für Alle and Schlachter 1951 are no longer offered. If you had one selected, you now read on in the King James Version or Luther 1912.
