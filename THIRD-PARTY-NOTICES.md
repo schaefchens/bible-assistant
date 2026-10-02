@@ -52,6 +52,12 @@ onboarding step or assistant tool offers them, and an install that had one
 selected falls back to KJV or Luther 1912. Content that already names one, such
 as a card, still reads in it.
 
+**Schlachter 1951 is hidden the same way**, although it is committed above:
+whether the 1951 revision is still the Genfer Bibelgesellschaft's is
+unresolved — sources disagree, and the revisers' dates that would settle it
+are not on record — so it stays out of every choice until the Genfer
+Bibelgesellschaft says.
+
 For Schlachter 2000 the app prints the notice the Genfer Bibelgesellschaft
 supplied, word for word.
 

@@ -77,7 +77,9 @@ because clearing a filter is not a request to be sent somewhere else.
 `translationCatalog.ts` answers both, per translation, and nothing else may.
 
 - **`offered`** is whether anyone may *choose* it. ESV, NKJV and Hoffnung für Alle are
-  `offered: false` — the app holds no licence for them — so they are absent from every choice:
+  `offered: false` because the app holds no licence for them, and Schlachter 1951 because
+  nobody can yet say whether it needs one (the Genfer Bibelgesellschaft has been asked). All
+  four are absent from every choice:
   `TranslationList` (the reader's picker, the chat picker, Settings, onboarding), the tool
   schemas and the glossary both system prompts are built from (`OFFERED_CODES`,
   `translationGlossary()`), and the handlers, which run tool arguments through `asOffered`

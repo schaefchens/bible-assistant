@@ -25,18 +25,19 @@ const SCHLACHTER_2000_NOTICE = [
   ['Die offizielle Hörbibel ist beim CLV Verlag erhältlich', 'https://clv.de/hoerbibel'],
 ];
 
-const NOT_LICENSED = ['ESV', 'NKJV', 'HFA'] as const;
+/** No licence (the first three), or not yet known whether one is needed (Schlachter 1951). */
+const HIDDEN = ['ESV', 'NKJV', 'HFA', 'S51'] as const;
 
 describe('which translations are offered', () => {
-  it('offers none of the three the app holds no licence for', () => {
-    for (const code of NOT_LICENSED) {
+  it('offers none of the translations it is not cleared to offer', () => {
+    for (const code of HIDDEN) {
       expect(OFFERED_CODES, code).not.toContain(code);
       expect(asOffered(code), code).toBeUndefined();
     }
   });
 
   it('never names one in the key the model is given', () => {
-    for (const code of NOT_LICENSED) {
+    for (const code of HIDDEN) {
       expect(translationGlossary(), code).not.toMatch(new RegExp(`\\b${code}\\b`));
     }
   });

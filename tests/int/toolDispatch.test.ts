@@ -78,13 +78,13 @@ describe('the tool contract the model is handed', () => {
   });
 
   /**
-   * ESV, NKJV and Hoffnung für Alle are hidden for want of a licence
-   * (translationCatalog `offered`). The model learns which translations exist
+   * ESV, NKJV, Hoffnung für Alle and Schlachter 1951 are hidden until they are
+   * cleared (translationCatalog `offered`). The model learns which translations exist
    * from the schemas and the prompts, so neither may name one.
    */
   it('names no translation the app does not offer', () => {
     const handed = [JSON.stringify(TOOL_DEFINITIONS), systemPrompt('en', 'KJV'), systemPrompt('de', 'LUT')];
-    for (const code of ['ESV', 'NKJV', 'HFA']) {
+    for (const code of ['ESV', 'NKJV', 'HFA', 'S51']) {
       for (const text of handed) expect(text).not.toMatch(new RegExp(`\\b${code}\\b`));
     }
   });

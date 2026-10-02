@@ -139,7 +139,10 @@ export const TRANSLATIONS: TranslationInfo[] = [
       en: 'With Strong’s numbers for word study',
       de: 'Mit Strong-Nummern für das Wortstudium',
     },
-    offered: true,
+    // Not offered until the Genfer Bibelgesellschaft says whether the 1951
+    // revision is still theirs — sources disagree, and its revisers' dates,
+    // which would settle it, are not on record.
+    offered: false,
     notice: [['Schlachter-Bibel 1951, mit Strong-Nummern', 'Copyright © 1951 Genfer Bibelgesellschaft']],
   },
   {
