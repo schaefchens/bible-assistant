@@ -46,6 +46,21 @@ verses — and none permits redistributing the complete text.
 translation for which permission cannot be obtained will be removed from the
 project entirely.**
 
+Until then, **ESV, NKJV and Hoffnung für Alle are hidden in the app**
+(`offered: false` in `src/services/bible/translationCatalog.ts`): no picker,
+onboarding step or assistant tool offers them, and an install that had one
+selected falls back to KJV or Luther 1912. Content that already names one, such
+as a card, still reads in it.
+
+For Schlachter 2000 the app prints the notice the Genfer Bibelgesellschaft
+supplied, word for word.
+
+### Notices in the app
+
+Every translation carries a copyright notice in the catalog (`notice`). The
+app lists those of the offered translations under Settings › Data & app › Bible
+texts, rather than under each reading.
+
 `bible:build` and `bible:verify` skip a translation whose XML is absent
 (`buildPacks.mjs` warns and continues), so the app builds, verifies and runs
 from a clone — it offers four translations rather than eight.

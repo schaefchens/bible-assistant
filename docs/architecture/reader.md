@@ -72,6 +72,27 @@ because clearing a filter is not a request to be sent somewhere else.
   the page doesn't follow). Same as `/cards` today; routing it into the reader needs a target-host
   field on `SendOpts`/`DispatchContext`.
 
+## Which translations, and their notices
+
+`translationCatalog.ts` answers both, per translation, and nothing else may.
+
+- **`offered`** is whether anyone may *choose* it. ESV, NKJV and Hoffnung für Alle are
+  `offered: false` — the app holds no licence for them — so they are absent from every choice:
+  `TranslationList` (the reader's picker, the chat picker, Settings, onboarding), the tool
+  schemas and the glossary both system prompts are built from (`OFFERED_CODES`,
+  `translationGlossary()`), and the handlers, which run tool arguments through `asOffered`
+  because an enum does not bind the model. A persisted selection of one is replaced on hydration
+  by the locale's default — `settingsStore`'s `merge`, not a migration, so it holds for whichever
+  translation is withdrawn next.
+- Hidden is not deleted. A card, or a list entry that pinned one, still reads in it; the server
+  still serves it. Withdrawing a translation *server-side* is a different switch — the pack
+  manifest's `available: false`, which leaves the row visible but disabled.
+- **`notice`** is the copyright notice, in the translation's own language rather than the UI's.
+  `TranslationNotice` lists the offered ones in Settings › Data & app › Bible texts — and only
+  there: a notice under every reading was tried and rejected. A rights holder's wording is reproduced verbatim — S00's is the Genfer
+  Bibelgesellschaft's, pinned by `tests/unit/translationNotices.test.ts`. A line that is a URL is
+  linked and shown as written.
+
 ## The reader store owns state, not loading
 
 `readerStore` was 658 lines holding three unrelated things. Two of them were

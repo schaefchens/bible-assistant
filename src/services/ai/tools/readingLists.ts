@@ -61,7 +61,7 @@ export const READING_LIST_TOOLS: ChatToolDefinition[] = [
             description:
               'Each entry is "Passage[; Translation][; Note]". A passage is a whole book ("John"), ' +
               'a chapter ("John 3"), a span of chapters ("Genesis 1-3") or verses ("Psalm 23:1-6"). ' +
-              'Optionally pin a translation code (ESV, S00, LUT…) and/or add a short note shown with the ' +
+              'Optionally pin a translation code (KJV, S00, LUT…) and/or add a short note shown with the ' +
               'passage, e.g. "Genesis 1-3; LUT; Morning". An entry that cannot be parsed is rejected and reported.',
           },
           days: {
@@ -122,7 +122,7 @@ export const READING_LIST_TOOLS: ChatToolDefinition[] = [
             items: { type: 'string' },
             description: 'Append passages to the last day. ' + 'Each entry is "Passage[; Translation][; Note]". A passage is a whole book ("John"), ' +
               'a chapter ("John 3"), a span of chapters ("Genesis 1-3") or verses ("Psalm 23:1-6"). ' +
-              'Optionally pin a translation code (ESV, S00, LUT…) and/or add a short note shown with the ' +
+              'Optionally pin a translation code (KJV, S00, LUT…) and/or add a short note shown with the ' +
               'passage, e.g. "Genesis 1-3; LUT; Morning". An entry that cannot be parsed is rejected and reported.',
           },
           addDay: {

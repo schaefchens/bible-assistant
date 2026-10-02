@@ -16,6 +16,7 @@ import type { ToolName } from '@/services/ai/tools';
 const { dispatchTool } = await import('@/services/ai/dispatch');
 const { TOOL_DEFINITIONS, READ_TOOL_NAMES, isReadTool } = await import('@/services/ai/tools');
 const { useSettingsStore } = await import('@/store/settingsStore');
+const { systemPrompt } = await import('@/services/ai/prompts');
 const { useLibraryStore } = await import('@/store/libraryStore');
 const { db } = await import('@/db/dexie');
 
@@ -75,6 +76,18 @@ describe('the tool contract the model is handed', () => {
     }
     expect(isReadTool('create_card')).toBe(false);
   });
+
+  /**
+   * ESV, NKJV and Hoffnung für Alle are hidden for want of a licence
+   * (translationCatalog `offered`). The model learns which translations exist
+   * from the schemas and the prompts, so neither may name one.
+   */
+  it('names no translation the app does not offer', () => {
+    const handed = [JSON.stringify(TOOL_DEFINITIONS), systemPrompt('en', 'KJV'), systemPrompt('de', 'LUT')];
+    for (const code of ['ESV', 'NKJV', 'HFA']) {
+      for (const text of handed) expect(text).not.toMatch(new RegExp(`\\b${code}\\b`));
+    }
+  });
 });
 
 /**
@@ -129,6 +142,14 @@ describe('dispatchTool — settings tools reach the store', () => {
     await dispatchTool('set_translation', '{"translation":"LUT"}', ctx);
     expect(useSettingsStore.getState().translation).toBe('LUT');
     expect(useSettingsStore.getState().translationOverridden).toBe(true);
+  });
+
+  it('refuses a translation the app does not offer, and keeps the current one', async () => {
+    // An enum does not bind the model: "switch to ESV" can still arrive.
+    const r = await dispatchTool('set_translation', '{"translation":"ESV"}', ctx);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/not available/);
+    expect(useSettingsStore.getState().translation).toBe('KJV');
   });
 
   it('moves the mic to any of its five positions', async () => {

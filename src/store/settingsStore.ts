@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Locale } from '@/types/domain';
 import type { Translation } from '@/services/bible/bibleApi';
+import { isOffered } from '@/services/bible/translationCatalog';
 import { clamp, clamp01 } from '@/lib/math';
 import type { ThemeChoice } from '@/lib/theme';
 import {
@@ -213,8 +214,8 @@ const DEFAULT_AMBIENT: AmbientSettings = {
  * install can read scripture with no network and no download. Both are public
  * domain, which is also why they're the ones we're allowed to bundle.
  *
- * Existing users keep whatever they persisted — this only affects first run.
- * S00 / ESV remain one tap away in the translation picker.
+ * Existing users keep whatever they persisted — this only affects first run —
+ * unless what they persisted is no longer offered (see `merge` below).
  */
 function defaultTranslationFor(locale: Locale): Translation {
   return locale === 'de' ? 'LUT' : 'KJV';
@@ -359,6 +360,26 @@ export const useSettingsStore = create<SettingsState>()(
        * other than what a *fresh* install gets. Otherwise add the field to the
        * initializer and stop.
        */
+      /**
+       * The default shallow merge, plus one rule: the persisted translation
+       * must still be one the app offers (translationCatalog `offered`). An
+       * install that chose a translation since withdrawn from the picker lands
+       * on its locale's default, as a fresh install would.
+       *
+       * Here rather than in a migration because it is not a one-off: it has to
+       * hold for whichever translation is withdrawn next, with no version bump
+       * to remember.
+       */
+      merge: (persisted, current) => {
+        const merged = { ...current, ...(persisted as Partial<SettingsState>) };
+        return isOffered(merged.translation)
+          ? merged
+          : {
+              ...merged,
+              translation: defaultTranslationFor(merged.locale),
+              translationOverridden: false,
+            };
+      },
       migrate: (persisted, version) => {
         let prev = (persisted as Partial<SettingsState>) ?? {};
         if (version < 2) {

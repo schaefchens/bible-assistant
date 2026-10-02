@@ -6,6 +6,7 @@ import { useGlobalVoiceStore } from '@/store/globalVoiceStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { hasActivePersonalKey, useSettingsStore } from '@/store/settingsStore';
 import { isOpenAiVoiceId } from '@/services/voices/ttsVoice';
+import { asOffered, OFFERED_CODES } from '@/services/bible/translationCatalog';
 import {
   SYSTEM_DEVICE_ID,
   SYSTEM_ECHO_ID,
@@ -72,7 +73,14 @@ export function handleSetLanguage(args: ToolArgs['set_language']): ToolDispatchR
 }
 
 export function handleSetTranslation(args: ToolArgs['set_translation']): ToolDispatchResult {
-  useSettingsStore.getState().setTranslation(args.translation, true);
+  const translation = asOffered(args.translation);
+  if (!translation) {
+    return {
+      ok: false,
+      error: `translation "${String(args.translation)}" is not available — choose one of ${OFFERED_CODES.join(', ')}`,
+    };
+  }
+  useSettingsStore.getState().setTranslation(translation, true);
   return { ok: true };
 }
 

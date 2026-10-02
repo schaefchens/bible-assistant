@@ -34,7 +34,7 @@ export async function speakAssistantReply(text: string, messageId: string): Prom
           groupId: messageId,
           verseIndex: 0,
           text: trimmed,
-          translation: locale === 'de' ? 'S00' : 'ESV',
+          translation: locale === 'de' ? 'S00' : 'KJV',
         },
       ]);
     }

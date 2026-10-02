@@ -16,6 +16,7 @@ import {
   getBookById,
 } from '@/services/bible/bookCatalog';
 import { isChapterMissing } from '@/services/bible/chapterSources';
+import { asOffered } from '@/services/bible/translationCatalog';
 import {
   advanceOneVerse,
   resolveLastReadVerse,
@@ -54,7 +55,9 @@ export async function handleReadVerses(
   // auto-play; lookup_verses passes autoplay=false).
   const immediate = autoplay && args.immediate === true;
   const { locale, translation: defaultTrans } = useSettingsStore.getState();
-  const translation = args.translation ?? defaultTrans;
+  // A code the app does not offer reads in the user's own translation, exactly
+  // as if the model had left it out — see translationCatalog `offered`.
+  const translation = asOffered(args.translation) ?? defaultTrans;
   const verses = await getVerses(translation, parsed);
   if (verses.length === 0) return { ok: false, error: 'no verses found' };
 
@@ -201,7 +204,7 @@ async function drawOnePassage(
   ctx: DispatchContext,
 ): Promise<ToolDispatchResult> {
   const { translation: defaultTrans } = useSettingsStore.getState();
-  const translation = args.translation ?? defaultTrans;
+  const translation = asOffered(args.translation) ?? defaultTrans;
   const unit = args.unit ?? 'verse';
 
   // Book scope, when the user asked for one ("a random psalm").
@@ -302,7 +305,7 @@ export async function handleSaveRibbon(
       };
     }
     pos = {
-      translation: args.position.translation ?? defaultTrans,
+      translation: asOffered(args.position.translation) ?? defaultTrans,
       bookId: parsed.bookId,
       chapter: parsed.chapter,
       verse: parsed.verseStart ?? 1,

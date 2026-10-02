@@ -290,6 +290,10 @@
       "clearConfirm": "Tap again to clear",
       "clearing": "Clearing…"
     },
+    "bibleTexts": {
+      "title": "Bible texts",
+      "hint": "Copyright and source of each translation the app offers."
+    },
     "updates": {
       "title": "Updates",
       "version": "Version {{commit}} · built {{date}}",

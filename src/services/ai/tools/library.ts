@@ -57,8 +57,8 @@ export const LIBRARY_TOOLS: ChatToolDefinition[] = [
             description:
               'Array of references. Each entry is "Reference[; Translation][; Custom text]". ' +
               'The reference is canonical like "Galatians 5:22". You may pin a translation code ' +
-              '(e.g. ESV, S00, LUT) and/or add a short highlighted note. ' +
-              'Examples: "Galatians 5:22", "Galatians 5:22; ESV", "Galatians 5:22; LUT; The fruit of the Spirit". ' +
+              '(e.g. KJV, S00, LUT) and/or add a short highlighted note. ' +
+              'Examples: "Galatians 5:22", "Galatians 5:22; KJV", "Galatians 5:22; LUT; The fruit of the Spirit". ' +
               'To compare translations, add two entries for the same verse with different codes.',
           },
           notes: { type: 'string' },
@@ -98,7 +98,7 @@ export const LIBRARY_TOOLS: ChatToolDefinition[] = [
             items: { type: 'string' },
             description:
               'Replaces all references. Each entry is "Reference[; Translation][; Custom text]", ' +
-              'e.g. "Galatians 5:22; ESV; The fruit of the Spirit".',
+              'e.g. "Galatians 5:22; KJV; The fruit of the Spirit".',
           },
           notes: { type: 'string' },
           textScale: {

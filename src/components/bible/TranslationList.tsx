@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import {
-  TRANSLATIONS,
+  OFFERED_TRANSLATIONS,
   type TranslationInfo,
 } from '@/services/bible/translationCatalog';
 import type { Translation } from '@/services/bible/bibleApi';
@@ -36,10 +36,12 @@ export function TranslationList({ value, onChange, className }: Props) {
     void initPacks();
   }, [initPacks]);
 
+  // Only what the app may offer. A translation withdrawn server-side (below)
+  // is a different case: that one stays visible but disabled.
   const { enTrans, deTrans } = useMemo(
     () => ({
-      enTrans: TRANSLATIONS.filter((tr) => tr.language === 'en'),
-      deTrans: TRANSLATIONS.filter((tr) => tr.language === 'de'),
+      enTrans: OFFERED_TRANSLATIONS.filter((tr) => tr.language === 'en'),
+      deTrans: OFFERED_TRANSLATIONS.filter((tr) => tr.language === 'de'),
     }),
     [],
   );

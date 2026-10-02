@@ -1,5 +1,6 @@
 import type { ChatToolDefinition } from '@/services/api/chat';
 import type { Translation } from '@/services/bible/bibleApi';
+import { OFFERED_CODES } from '@/services/bible/translationCatalog';
 import type { RandomUnit } from '@/services/bible/randomPassage';
 
 /**
@@ -44,7 +45,7 @@ export const READING_TOOLS: ChatToolDefinition[] = [
           },
           translation: {
             type: 'string',
-            enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA', 'S51', 'ELB'],
+            enum: OFFERED_CODES,
             description: 'Optional override. Defaults to user-selected translation.',
           },
           immediate: {
@@ -66,7 +67,7 @@ export const READING_TOOLS: ChatToolDefinition[] = [
         type: 'object',
         properties: {
           reference: { type: 'string' },
-          translation: { type: 'string', enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA', 'S51', 'ELB'] },
+          translation: { type: 'string', enum: OFFERED_CODES },
         },
         required: ['reference'],
       },
@@ -104,7 +105,7 @@ export const READING_TOOLS: ChatToolDefinition[] = [
           },
           translation: {
             type: 'string',
-            enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA', 'S51', 'ELB'],
+            enum: OFFERED_CODES,
             description: 'Optional override. Defaults to user-selected translation.',
           },
         },

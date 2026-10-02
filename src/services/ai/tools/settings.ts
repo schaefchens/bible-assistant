@@ -1,5 +1,6 @@
 import type { ChatToolDefinition } from '@/services/api/chat';
 import type { Translation } from '@/services/bible/bibleApi';
+import { OFFERED_CODES, translationGlossary } from '@/services/bible/translationCatalog';
 import type { MicPosition } from '@/store/settingsStore';
 
 /**
@@ -62,10 +63,10 @@ export const SETTINGS_TOOLS: ChatToolDefinition[] = [
     type: 'function',
     function: {
       name: 'set_translation',
-      description: 'Switch Bible translation. S00 = Schlachter 2000 (German), LUT = Luther (German), HFA = Hoffnung für Alle (German), ESV = English Standard Version, KJV = King James Version, NKJV = New King James Version.',
+      description: `Switch Bible translation. ${translationGlossary()}.`,
       parameters: {
         type: 'object',
-        properties: { translation: { type: 'string', enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA', 'S51', 'ELB'] } },
+        properties: { translation: { type: 'string', enum: OFFERED_CODES } },
         required: ['translation'],
       },
     },
@@ -216,7 +217,7 @@ export const SETTINGS_TOOLS: ChatToolDefinition[] = [
                 type: 'string',
                 description: 'Canonical reference like "John 3:16".',
               },
-              translation: { type: 'string', enum: ['S00', 'ESV', 'KJV', 'NKJV', 'LUT', 'HFA', 'S51', 'ELB'] },
+              translation: { type: 'string', enum: OFFERED_CODES },
             },
           },
         },

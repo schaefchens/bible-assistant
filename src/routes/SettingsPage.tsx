@@ -22,7 +22,8 @@ import { CommunitySection } from '@/components/settings/CommunitySection';
 import { SyncSection } from '@/components/settings/SyncSection';
 import { DangerZone } from '@/components/settings/DangerZone';
 import { ImprintFooter } from '@/components/settings/ImprintFooter';
-import { getTranslationInfo } from '@/services/bible/translationCatalog';
+import { getTranslationInfo, OFFERED_TRANSLATIONS } from '@/services/bible/translationCatalog';
+import { TranslationNotice } from '@/components/bible/TranslationNotice';
 import { copyText } from '@/lib/nativeBridge';
 
 type GroupId = 'general' | 'reading' | 'speech' | 'mic' | 'community' | 'account' | 'app';
@@ -222,6 +223,21 @@ export function SettingsPage() {
         </SettingsField>
         <SettingsField label={t('settings.updates.title')}>
           <UpdatesSection />
+        </SettingsField>
+        <SettingsField label={t('settings.bibleTexts.title')} hint={t('settings.bibleTexts.hint')}>
+          <ul className="space-y-4">
+            {OFFERED_TRANSLATIONS.map((tr) => (
+              <li key={tr.code}>
+                <p className="text-sm text-ink">
+                  <span className="mr-2 px-1.5 py-0.5 rounded-md text-[11px] font-mono border border-surface-raised/60 text-ink-muted">
+                    {tr.code}
+                  </span>
+                  {tr.name}
+                </p>
+                <TranslationNotice code={tr.code} className="mt-1.5 text-xs text-ink-muted" />
+              </li>
+            ))}
+          </ul>
         </SettingsField>
         {/* Beside the build stamp on purpose: both answer "what are you
             running, and how do you tell me about it". */}

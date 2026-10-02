@@ -290,6 +290,10 @@
       "clearConfirm": "Zum Löschen erneut tippen",
       "clearing": "Wird gelöscht…"
     },
+    "bibleTexts": {
+      "title": "Bibeltexte",
+      "hint": "Urheberrecht und Quelle jeder Übersetzung, die die App anbietet."
+    },
     "updates": {
       "title": "Updates",
       "version": "Version {{commit}} · gebaut {{date}}",

@@ -251,6 +251,7 @@ no failing test — which is why they are here rather than only there.
 - Versification gaps are normal: a step walks past them, an explicit jump errors. Test with `isChapterMissing()`, never `instanceof` alone. A segment with `translationPinned` is exempt from a translation switch.
 - Only `position` and `source` persist. `MAX_VISIBLE = 6` is the render-cost mitigation — don't raise it without profiling. Endless scroll re-pins by pinning a chapter element, not by scrollHeight arithmetic.
 - `segmentLoader` reads no store, and `readerProgress` is handed the segments rather than importing `readerStore` (a value cycle).
+- Which translations may be *chosen* is `translationCatalog`'s `offered`, and only that — the picker, the tool enums and prompts, the handlers (`asOffered`) and settings hydration all read it. A translation's `notice` is listed in Settings › Data & app › Bible texts, not under each reading; a rights holder's wording is verbatim (S00's is pinned by a test).
 
 **Mic dock** — [`mic-dock.md`](docs/architecture/mic-dock.md)
 - `CAPSULE_H`, `MIC_SIZE` and `OVERLAP` are coupled geometry — change one and re-check the tuck. `MicSnapTargets` derives from `BAR_DROP_BAND`.
