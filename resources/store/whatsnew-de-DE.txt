@@ -1,4 +1,7 @@
-Bibelübersetzungen und ihre Rechte.
+Bible Assistant ist jetzt für alle da.
 
-• Neu unter Einstellungen › Daten & App: „Bibeltexte" — Urheberrecht und Quelle jeder Übersetzung.
-• ESV, NKJV, Hoffnung für Alle und Schlachter 1951 stehen nicht mehr zur Auswahl. Wer eine davon gewählt hatte, liest jetzt mit Luther 1912 oder der King James Version weiter.
+• Sag oder tippe eine Bibelstelle — sie wird vorgelesen, Wort für Wort mitmarkiert.
+• Freihändig-Modus: fünf große Flächen, ganz ohne Hinsehen.
+• Karten, Tafeln und Lesepläne zum Behalten, Regale zum Teilen.
+• Luther 1912, Schlachter 2000, Elberfelder 1905 und King James Version — lesen auch ohne Netz.
+• Kein Konto nötig.

@@ -1,4 +1,7 @@
-Bible translations and their rights.
+Bible Assistant is now available to everyone.
 
-• New under Settings › Data & app: "Bible texts" — the copyright and source of each translation.
-• ESV, NKJV, Hoffnung für Alle and Schlachter 1951 are no longer offered. If you had one selected, you now read on in the King James Version or Luther 1912.
+• Say or type a passage — it is read aloud, every word highlighted as it goes.
+• Hands-free mode: five large zones, no need to look.
+• Cards, boards and reading plans to keep, shelves to share.
+• King James Version, Luther 1912, Schlachter 2000 and Elberfelder 1905 — reading works without a connection.
+• No account needed.
