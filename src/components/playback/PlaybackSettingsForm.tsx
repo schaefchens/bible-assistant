@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useAutoPlay, useEndlessScroll } from '@/hooks/useLicensedPreference';
+import type { TranslationInfo } from '@/services/bible/translationCatalog';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { RATE_CYCLE } from '@/hooks/usePlaybackTransport';
 import { getAmbientTracks, type AmbientTrack } from '@/services/api/ambient';
@@ -159,9 +161,9 @@ function ReadingSettings() {
   const { t } = useTranslation();
   const autoScroll = useSettingsStore((s) => s.autoScrollReader);
   const setAutoScroll = useSettingsStore((s) => s.setAutoScrollReader);
-  const autoPlay = useSettingsStore((s) => s.autoPlayReading);
+  const autoPlay = useAutoPlay();
   const setAutoPlay = useSettingsStore((s) => s.setAutoPlayReading);
-  const endless = useSettingsStore((s) => s.readerEndlessScroll);
+  const endless = useEndlessScroll();
   const setEndless = useSettingsStore((s) => s.setReaderEndlessScroll);
 
   // Local mirrors of engine state — initialized on mount and kept in sync via
@@ -171,50 +173,28 @@ function ReadingSettings() {
 
   return (
     <div className="space-y-3">
-      <label className="flex items-start gap-2">
-        <input
-          type="checkbox"
-          className="mt-0.5"
-          checked={autoPlay}
-          onChange={(e) => setAutoPlay(e.target.checked)}
-        />
-        <span className="text-sm">
-          {t('settings.autoPlay')}
-          <span className="block text-xs text-ink-muted mt-0.5">
-            {t('settings.autoPlayHint')}
-          </span>
-        </span>
-      </label>
+      <HintedCheckbox
+        label={t('settings.autoPlay')}
+        hint={t('settings.autoPlayHint')}
+        checked={autoPlay.on}
+        forbiddenBy={autoPlay.forbiddenBy}
+        onChange={setAutoPlay}
+      />
 
-      <label className="flex items-start gap-2">
-        <input
-          type="checkbox"
-          className="mt-0.5"
-          checked={autoScroll}
-          onChange={(e) => setAutoScroll(e.target.checked)}
-        />
-        <span className="text-sm">
-          {t('settings.autoScroll')}
-          <span className="block text-xs text-ink-muted mt-0.5">
-            {t('settings.autoScrollHint')}
-          </span>
-        </span>
-      </label>
+      <HintedCheckbox
+        label={t('settings.autoScroll')}
+        hint={t('settings.autoScrollHint')}
+        checked={autoScroll}
+        onChange={setAutoScroll}
+      />
 
-      <label className="flex items-start gap-2">
-        <input
-          type="checkbox"
-          className="mt-0.5"
-          checked={endless}
-          onChange={(e) => setEndless(e.target.checked)}
-        />
-        <span className="text-sm">
-          {t('settings.reader.endlessScroll')}
-          <span className="block text-xs text-ink-muted mt-0.5">
-            {t('settings.reader.endlessScrollHint')}
-          </span>
-        </span>
-      </label>
+      <HintedCheckbox
+        label={t('settings.reader.endlessScroll')}
+        hint={t('settings.reader.endlessScrollHint')}
+        checked={endless.on}
+        forbiddenBy={endless.forbiddenBy}
+        onChange={setEndless}
+      />
 
       <label className="flex items-center gap-2">
         <input
@@ -331,6 +311,45 @@ function AnnouncementsSettings() {
         onChange={(v) => setPauseBetweenChaptersMs(v)}
       />
     </div>
+  );
+}
+
+/**
+ * A checkbox with its explanation underneath. A translation whose licence rules
+ * the preference out makes it inactive, and the line underneath then says that
+ * instead — the toggles in the transport and the reader header can only say so
+ * in a tooltip, which a phone never shows.
+ */
+function HintedCheckbox({
+  label,
+  hint,
+  checked,
+  onChange,
+  forbiddenBy = null,
+}: {
+  label: string;
+  hint: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  forbiddenBy?: TranslationInfo | null;
+}) {
+  const { t } = useTranslation();
+  return (
+    <label className={'flex items-start gap-2' + (forbiddenBy ? ' opacity-60' : '')}>
+      <input
+        type="checkbox"
+        className="mt-0.5"
+        checked={checked}
+        disabled={forbiddenBy !== null}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span className="text-sm">
+        {label}
+        <span className="block text-xs text-ink-muted mt-0.5">
+          {forbiddenBy ? t('bible.notLicensed', { name: forbiddenBy.name }) : hint}
+        </span>
+      </span>
+    </label>
   );
 }
 

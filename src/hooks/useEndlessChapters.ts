@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 import { useReaderStore } from '@/store/readerStore';
-import { useSettingsStore } from '@/store/settingsStore';
 
 /** How far past the bottom edge to start loading the next chapter. */
 const FORWARD_MARGIN = '400px';
@@ -36,9 +35,11 @@ type Result = {
  */
 export function useEndlessChapters(
   scrollRef: RefObject<HTMLDivElement | null>,
+  /** Whether endless scroll is in effect — `useEndlessScroll().on`, never the
+   * setting alone. */
+  endless: boolean,
 ): Result {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const endless = useSettingsStore((s) => s.readerEndlessScroll);
   const visible = useReaderStore((s) => s.visible);
   const error = useReaderStore((s) => s.error);
 

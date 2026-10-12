@@ -12,6 +12,7 @@ import { NarrationDownloadButton } from './NarrationDownloadButton';
 import { spaceLabel } from '@/services/community/spaceName';
 import { resolveListFrom } from '@/services/community/sharedReading';
 import { useLocale } from '@/hooks/useLocale';
+import { useEndlessScroll } from '@/hooks/useLicensedPreference';
 
 type Props = {
   /**
@@ -35,7 +36,7 @@ export function ReaderHeader({ onOpenTranslations, onOpenAppearance }: Props) {
   const lang = useLocale();
 
   const translation = useSettingsStore((s) => s.translation);
-  const endless = useSettingsStore((s) => s.readerEndlessScroll);
+  const endless = useEndlessScroll();
   const setEndless = useSettingsStore((s) => s.setReaderEndlessScroll);
 
   const position = useReaderStore((s) => s.position);
@@ -184,15 +185,23 @@ export function ReaderHeader({ onOpenTranslations, onOpenAppearance }: Props) {
       </div>
 
       <div className="flex items-center gap-1 shrink-0">
+        {/* Inactive, not hidden, when a translation's licence rules it out:
+            the paged reader is then the only one, and the title says why. */}
         <button
           type="button"
-          onClick={() => setEndless(!endless)}
-          aria-pressed={endless}
+          onClick={() => setEndless(!endless.chosen)}
+          disabled={endless.forbiddenBy !== null}
+          aria-pressed={endless.on}
           aria-label={t('settings.reader.endlessScroll') as string}
-          title={t('settings.reader.endlessScroll') as string}
+          title={
+            (endless.forbiddenBy
+              ? t('bible.notLicensed', { name: endless.forbiddenBy.name })
+              : t('settings.reader.endlessScroll')) as string
+          }
           className={clsx(
             'h-8 w-8 rounded-lg flex items-center justify-center transition-all active:scale-95',
-            endless ? 'bg-brand/20 text-brand' : 'text-ink-muted hover:text-ink',
+            'disabled:opacity-35',
+            endless.on ? 'bg-brand/20 text-brand' : 'text-ink-muted enabled:hover:text-ink',
           )}
         >
           <ScrollIcon />

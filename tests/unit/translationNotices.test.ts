@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   asOffered,
+  forbiddenBy,
   getTranslationInfo,
   OFFERED_CODES,
   TRANSLATIONS,
@@ -8,10 +9,11 @@ import {
 } from '@/services/bible/translationCatalog';
 
 /**
- * Which translations the app may offer, and what it must print under them.
- * Both are licence terms rather than design choices, which is what earns them
- * a test: a translation offered without a licence, or a rights holder's
- * notice "tidied" into different words, fails nothing else.
+ * Which translations the app may offer, what it must print under them, and
+ * what each licence lets the app do with the text. All three are licence terms
+ * rather than design choices, which is what earns them a test: a translation
+ * offered without a licence, a rights holder's notice "tidied" into different
+ * words, or a restriction dropped from the catalog, fails nothing else.
  */
 
 /** Exactly as the Genfer Bibelgesellschaft supplied it. */
@@ -58,5 +60,21 @@ describe('copyright notices', () => {
 
   it('prints the Schlachter 2000 notice word for word as its rights holder wrote it', () => {
     expect(getTranslationInfo('S00').notice).toEqual(SCHLACHTER_2000_NOTICE);
+  });
+});
+
+describe('what each licence permits', () => {
+  /** Ours for Schlachter 2000 rules out both; nothing else is restricted. */
+  it('rules out endless scroll and continuous play for Schlachter 2000, and only there', () => {
+    for (const t of TRANSLATIONS) {
+      const allowed = t.code !== 'S00';
+      expect(t.features, t.code).toEqual({ endlessScroll: allowed, continuousPlay: allowed });
+    }
+  });
+
+  it('names the first text in play that rules a feature out', () => {
+    expect(forbiddenBy(['KJV', 'LUT'], 'endlessScroll')).toBeUndefined();
+    expect(forbiddenBy(['KJV', 'S00'], 'continuousPlay')?.name).toBe('Schlachter 2000');
+    expect(forbiddenBy([], 'continuousPlay')).toBeUndefined();
   });
 });

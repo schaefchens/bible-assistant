@@ -220,6 +220,15 @@ export function listEntries(list: ReadingList): ReadingEntry[] {
   return list.days.flatMap((d) => d.entries);
 }
 
+/** The translations a list's entries pin, each once — what a licence check
+ * adds to the selected translation while the list is being read
+ * (`readerTextsFrom`, `playOnForbiddenBy`). */
+export function pinnedTranslations(list: ReadingList): Translation[] {
+  const pinned = new Set<Translation>();
+  for (const entry of listEntries(list)) if (entry.translation) pinned.add(entry.translation);
+  return [...pinned];
+}
+
 export function listChapterCount(list: ReadingList): number {
   return listEntries(list).reduce((n, e) => n + entryChapterCount(e), 0);
 }

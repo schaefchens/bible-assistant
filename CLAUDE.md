@@ -252,6 +252,7 @@ no failing test — which is why they are here rather than only there.
 - Only `position` and `source` persist. `MAX_VISIBLE = 6` is the render-cost mitigation — don't raise it without profiling. Endless scroll re-pins by pinning a chapter element, not by scrollHeight arithmetic.
 - `segmentLoader` reads no store, and `readerProgress` is handed the segments rather than importing `readerStore` (a value cycle).
 - Which translations may be *chosen* is `translationCatalog`'s `offered`, and only that — the picker, the tool enums and prompts, the handlers (`asOffered`) and settings hydration all read it. A translation's `notice` is listed in Settings › Data & app › Bible texts, not under each reading; a rights holder's wording is verbatim (S00's is pinned by a test).
+- A translation's `features` are licence terms (S00: no endless scroll, no continuous play). Ask `forbiddenBy` with every text in play — `useEndlessScroll` / `useAutoPlay`, `readerStore`'s `endlessOn`, `playOnForbiddenBy` — **never** read `readerEndlessScroll` or `autoPlayReading` alone: the setting is what the user chose, not what runs. The next button is never gated.
 
 **Mic dock** — [`mic-dock.md`](docs/architecture/mic-dock.md)
 - `CAPSULE_H`, `MIC_SIZE` and `OVERLAP` are coupled geometry — change one and re-check the tuck. `MicSnapTargets` derives from `BAR_DROP_BAND`.

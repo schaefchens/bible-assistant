@@ -160,6 +160,23 @@ describe('dispatchTool — settings tools reach the store', () => {
     }
   });
 
+  /**
+   * The control is inactive while the selected translation's licence rules
+   * continuous play out, so "Done, auto-play is on" would be a reply about a
+   * switch the user can see is off. Switching it off stays allowed.
+   */
+  it('refuses to switch auto-play on where the licence rules it out, with the reason', async () => {
+    useSettingsStore.setState({ translation: 'S00', autoPlayReading: false });
+    const r = await dispatchTool('set_reader_preferences', '{"autoPlay":true}', ctx);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/Schlachter 2000.*licence/);
+    expect(useSettingsStore.getState().autoPlayReading).toBe(false);
+
+    useSettingsStore.setState({ autoPlayReading: true });
+    expect(await dispatchTool('set_reader_preferences', '{"autoPlay":false}', ctx))
+      .toEqual({ ok: true, data: { autoPlay: false } });
+  });
+
   it('refuses a non-numeric playback rate rather than storing NaN', async () => {
     const r = await dispatchTool('set_playback_rate', '{"rate":"fast"}', ctx);
     expect(r).toEqual({ ok: false, error: 'rate must be a number' });

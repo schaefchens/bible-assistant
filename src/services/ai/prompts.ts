@@ -1,5 +1,5 @@
 import type { Translation } from '@/services/bible/bibleApi';
-import { translationGlossary } from '@/services/bible/translationCatalog';
+import { forbiddenBy, translationGlossary } from '@/services/bible/translationCatalog';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
@@ -75,6 +75,9 @@ export function playbackStatePrompt(currentTrackTitle: string | null): string {
   const rate = audioPlayback.getPlaybackRate();
   const loop = audioPlayback.isLoopCurrent();
   const ambientPlaying = audioPlayback.ambient.isPlaying();
+  // What runs, not what was chosen — and why, so "turn on auto-play" gets an
+  // explanation rather than a call that is refused.
+  const autoPlayForbidden = forbiddenBy([s.translation], 'continuousPlay');
 
   // Field names below intentionally match the tool argument names exactly so
   // the model can translate a snapshot value into a tool call without
@@ -91,7 +94,9 @@ export function playbackStatePrompt(currentTrackTitle: string | null): string {
     `  rate: ${rate.toFixed(2)}`,
     `set_reader_preferences:`,
     `  repeat: ${loop}`,
-    `  autoPlay: ${s.autoPlayReading}`,
+    autoPlayForbidden
+      ? `  autoPlay: false (unavailable — the licence of ${autoPlayForbidden.name} does not allow continuous play)`
+      : `  autoPlay: ${s.autoPlayReading}`,
     `  autoScroll: ${s.autoScrollReader}`,
     `set_announcements:`,
     `  readChapterHeadings: ${s.readChapterHeadings}`,

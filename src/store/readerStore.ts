@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Translation } from '@/services/bible/bibleApi';
+import { forbiddenBy } from '@/services/bible/translationCatalog';
 import { resolveSpace, selectionSegments } from '@/services/community/spaceReading';
 import {
   loadSegment,
@@ -9,7 +10,7 @@ import {
   type StepDirection,
 } from '@/services/reading/segmentLoader';
 import { trackListProgress, type PositionIntent } from '@/lib/readerProgress';
-import { readerSequence } from '@/services/reading/readerSequence';
+import { readerSequence, readerTexts } from '@/services/reading/readerSequence';
 import { resumeSegment } from '@/services/reading/listWindow';
 import {
   BIBLE_SOURCE,
@@ -128,6 +129,18 @@ function resolveAgainstList(ref: SegmentRef): SegmentRef {
       ref.chapter,
     ) ?? ref
   );
+}
+
+/**
+ * Endless scroll as the reader actually runs it: the user's choice, unless a
+ * text it can show rules it out (`readerTexts`, `translationCatalog`'s
+ * `features`) — the same question `useEndlessScroll` asks for the page. The
+ * setting alone would stack every continued Schlachter 2000 chapter under the
+ * one before it.
+ */
+function endlessOn(source: ReaderSource): boolean {
+  const { readerEndlessScroll, translation } = useSettingsStore.getState();
+  return readerEndlessScroll && !forbiddenBy(readerTexts(source, translation), 'endlessScroll');
 }
 
 /** The stored shape of `position` before segments existed. */
@@ -370,7 +383,7 @@ export const useReaderStore = create<ReaderState>()(
           // next piece of somebody's writing) underneath the current one while
           // the header and the pager still named the old one: three different
           // answers on screen to "where am I?".
-          const endless = useSettingsStore.getState().readerEndlessScroll;
+          const endless = endlessOn(get().source);
           const already = get().visible.includes(id);
           if (already && (endless || get().visible.length === 1)) return id;
 

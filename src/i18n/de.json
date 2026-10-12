@@ -657,6 +657,7 @@
     "announcementsTitle": "Ansagen"
   },
   "bible": {
+    "notLicensed": "Für {{name}} nicht verfügbar – die Lizenz erlaubt es nicht.",
     "packs": {
       "included": "Enthalten",
       "installed": "Offline",

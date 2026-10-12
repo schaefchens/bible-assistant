@@ -72,9 +72,9 @@ because clearing a filter is not a request to be sent somewhere else.
   the page doesn't follow). Same as `/cards` today; routing it into the reader needs a target-host
   field on `SendOpts`/`DispatchContext`.
 
-## Which translations, and their notices
+## Which translations, their notices, and what their licences permit
 
-`translationCatalog.ts` answers both, per translation, and nothing else may.
+`translationCatalog.ts` answers all three, per translation, and nothing else may.
 
 - **`offered`** is whether anyone may *choose* it. ESV, NKJV and Hoffnung für Alle are
   `offered: false` because the app holds no licence for them, and Schlachter 1951 because
@@ -94,6 +94,37 @@ because clearing a filter is not a request to be sent somewhere else.
   there: a notice under every reading was tried and rejected. A rights holder's wording is reproduced verbatim — S00's is the Genfer
   Bibelgesellschaft's, pinned by `tests/unit/translationNotices.test.ts`. A line that is a URL is
   linked and shown as written.
+- **`features`** is what a licence lets the app do beyond showing a passage and reading it
+  aloud. Ours for Schlachter 2000 rules out both features there are: **endless scroll**, and
+  **continuous play** — auto-play, and the readings `startReadingPlaylist` queues behind a
+  tapped one. Every other translation permits both. The user's setting is kept as they left it;
+  what changes is what *runs*, and the control shows inactive and names the translation
+  (`bible.notLicensed` — the ⚙ sheet says it on the hint line, because a phone never shows the
+  toolbar buttons' tooltips). Switching to another translation brings the setting back.
+- There is **one check**, `forbiddenBy(codes, feature)`, and it is always asked with *every text
+  in play* — never with the setting alone, and never with the selected translation alone:
+  - the reader asks `readerTextsFrom`: the selected translation, plus every translation the list
+    being read pins (a shelf: nothing — see below). A list is taken **whole**. Asked passage by passage, the controls would
+    flick on and off as the page scrolled, and endless scroll appends the next chapter well
+    before it is the one in view — so a plan pinning one entry to S00 would get it appended
+    while the reader was still on a KJV one. `useEndlessScroll` / `useAutoPlay` answer for the
+    page; `readerStore`'s `endlessOn` answers for `adopt`, where a continuation either appends
+    or turns the page, and the setting alone stacked S00 chapters.
+  - playback asks `playOnForbiddenBy(from, to)` (`lib/readingContinuation.ts`) before every
+    automatic continuation and prefetch, and between the readings queued behind a tap: the
+    selected translation, both passages, and the pins of the list either belongs to — the last
+    so playback never runs on where the reader's control shows it off. The next button, a tap
+    and a voice command are the user asking for the passage, and are never gated.
+  - A shelf is exempt. A post is not scripture (its `translation` is a stand-in for the voice),
+    so with S00 selected a shelf still scrolls on and plays on: `readerTextsFrom` names nothing
+    for a space or a selection, and one post running into the next asks `playOnForbiddenBy`
+    nothing — not even the selected translation, which is otherwise always asked.
+- Off the reader, auto-play's control answers to the selected translation alone, so a passage
+  read in S00 *on request* under another Bible stops at its end while the control still shows
+  on. Accepted: the opposite mismatch — a control showing off while playback runs on — is the
+  one that would contradict the screen, and the check is built so it cannot happen.
+- The assistant cannot switch on what the control shows as off: `set_reader_preferences`
+  refuses `autoPlay: true` with the reason, and the playback snapshot reports it unavailable.
 
 ## The reader store owns state, not loading
 

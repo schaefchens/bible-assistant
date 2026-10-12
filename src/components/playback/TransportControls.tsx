@@ -12,6 +12,7 @@ import {
   SEEK_WORD_STEP,
 } from '@/hooks/usePlaybackTransport';
 import { EyesFreeIcon } from '@/components/voice/EyesFreeIcon';
+import { useAutoPlay } from '@/hooks/useLicensedPreference';
 import { isReadingRoute } from '@/lib/appRoutes';
 import { PlaybackSettingsSheet } from './PlaybackSettingsSheet';
 import {
@@ -50,7 +51,7 @@ export const HANDLE_W = 20;
 function useTransport() {
   const location = useLocation();
   const status = usePlaybackStore((s) => s.status);
-  const autoPlay = useSettingsStore((s) => s.autoPlayReading);
+  const autoPlay = useAutoPlay();
   const setAutoPlay = useSettingsStore((s) => s.setAutoPlayReading);
   const autoScroll = useSettingsStore((s) => s.autoScrollReader);
   const setAutoScroll = useSettingsStore((s) => s.setAutoScrollReader);
@@ -295,12 +296,19 @@ function ReadingToggles({
   if (!onReadingRoute) return null;
   return (
     <>
+      {/* Inactive while a translation's licence rules continuous play out. */}
       <ToggleButton
-        active={autoPlay}
+        active={autoPlay.on}
+        disabled={autoPlay.forbiddenBy !== null}
+        title={
+          autoPlay.forbiddenBy
+            ? (t('bible.notLicensed', { name: autoPlay.forbiddenBy.name }) as string)
+            : undefined
+        }
         className={className}
         aria-label={t('chat.reader.autoPlay')}
-        aria-pressed={autoPlay}
-        onClick={() => setAutoPlay(!autoPlay)}
+        aria-pressed={autoPlay.on}
+        onClick={() => setAutoPlay(!autoPlay.chosen)}
       >
         <InfinityIcon />
       </ToggleButton>
@@ -413,10 +421,10 @@ function ToggleButton({
       onClick={onClick}
       className={clsx(
         'h-8 w-8 rounded-full flex items-center justify-center shrink-0',
-        'active:scale-95 transition-all',
+        'active:scale-95 transition-all disabled:opacity-35',
         active
           ? 'bg-brand/20 text-brand'
-          : 'text-ink-muted hover:bg-surface-raised/70 hover:text-ink',
+          : 'text-ink-muted enabled:hover:bg-surface-raised/70 enabled:hover:text-ink',
         className,
       )}
       {...rest}

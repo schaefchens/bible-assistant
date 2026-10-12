@@ -1,7 +1,9 @@
 import { getChapter, type Translation } from '@/services/bible/bibleApi';
 import { toVerseSummaries } from '@/services/bible/verseSummaries';
 import { nextChapterRef } from '@/services/bible/chapterNavigation';
+import { forbiddenBy, type TranslationInfo } from '@/services/bible/translationCatalog';
 import { expandList } from '@/services/reading/readingSequence';
+import { pinnedTranslations } from '@/services/reading/readingEntries';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { Locale, VerseRange, VerseSummary } from '@/types/domain';
 import { resolveList } from '@/services/community/sharedReading';
@@ -9,6 +11,7 @@ import {
   isListProvenance,
   readingHosts,
   type ListProvenance,
+  type ReadingGroup,
   type ReadingProvenance,
   type SpaceProvenance,
 } from './readingHosts';
@@ -36,6 +39,9 @@ import {
  * chat's chain of assistant messages and the reader's chain of chapters are the
  * same mechanism seen from two screens. Before this module, the canonical rule
  * lived inside autoPlay and there was nowhere for a second rule to go.
+ *
+ * Whether the answer may then start *by itself* is a separate question, and a
+ * licence term rather than a preference: `playOnForbiddenBy`.
  */
 
 /** How many verses a verse-mode continuation reads at a time. */
@@ -76,6 +82,50 @@ export function continuationKey(next: NextReading): string {
 
 export function isWholeChapterReading(next: NextReading): boolean {
   return next.ranges === undefined || next.ranges.length === 0;
+}
+
+/**
+ * Whether playback may run on from `from` into `to` **by itself** — auto-play,
+ * or the readings queued behind a tapped one — or else the translation whose
+ * licence rules that out (`translationCatalog`'s `continuousPlay`).
+ *
+ * Every text on either side is asked, not the setting alone: the passage that
+ * finished and the one that would follow, so a passage read in Schlachter 2000
+ * on request neither runs on nor is run into; every translation pinned by the
+ * list either belongs to — the reader's controls take a list whole
+ * (`readerTextsFrom`), and playback must not do what they show as off; and the
+ * selected translation, whose answer the auto-play control shows.
+ *
+ * A post is not scripture. One post running into the next asks nothing at all,
+ * not even the selected translation — exactly as the reader's controls ask
+ * nothing of a shelf.
+ *
+ * The next button, a tap and a voice command are the user asking for the
+ * passage; none of them come through here.
+ */
+export function playOnForbiddenBy(
+  from: ReadingGroup | null,
+  to: ReadingGroup | NextReading,
+): TranslationInfo | undefined {
+  const texts = [...textsOf(from), ...textsOf(to)];
+  if (texts.length === 0) return undefined;
+  return forbiddenBy([useSettingsStore.getState().translation, ...texts], 'continuousPlay');
+}
+
+/** The scripture a reading is in, plus whatever its list pins. */
+function textsOf(reading: ReadingGroup | NextReading | null): Translation[] {
+  if (!reading) return [];
+  const own =
+    'verses' in reading
+      ? reading.verses.filter((v) => !v.unit).map((v) => v.translation)
+      : reading.post
+        ? []
+        : [reading.translation];
+  const list =
+    reading.provenance && isListProvenance(reading.provenance)
+      ? resolveList(reading.provenance.listId)?.list
+      : undefined;
+  return list ? [...own, ...pinnedTranslations(list)] : own;
 }
 
 /** What plays after `groupId`, or null when there is nothing (the end of a

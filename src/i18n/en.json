@@ -657,6 +657,7 @@
     "announcementsTitle": "Announcements"
   },
   "bible": {
+    "notLicensed": "Not available for {{name}} — its license doesn't allow it.",
     "packs": {
       "included": "Included",
       "installed": "Offline",

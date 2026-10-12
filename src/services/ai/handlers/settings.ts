@@ -6,7 +6,7 @@ import { useGlobalVoiceStore } from '@/store/globalVoiceStore';
 import { useLibraryStore } from '@/store/libraryStore';
 import { hasActivePersonalKey, useSettingsStore } from '@/store/settingsStore';
 import { isOpenAiVoiceId } from '@/services/voices/ttsVoice';
-import { asOffered, OFFERED_CODES } from '@/services/bible/translationCatalog';
+import { asOffered, forbiddenBy, OFFERED_CODES } from '@/services/bible/translationCatalog';
 import {
   SYSTEM_DEVICE_ID,
   SYSTEM_ECHO_ID,
@@ -250,6 +250,16 @@ export function handleSetReaderPreferences(
   args: ToolArgs['set_reader_preferences'],
 ): ToolDispatchResult {
   const settings = useSettingsStore.getState();
+  // Refused before anything is applied: the control is inactive while the
+  // selected translation's licence rules continuous play out, and the
+  // assistant must not report as on what the screen shows as off.
+  const forbidden = args.autoPlay === true && forbiddenBy([settings.translation], 'continuousPlay');
+  if (forbidden) {
+    return {
+      ok: false,
+      error: `auto-play is not available with ${forbidden.name}: its licence does not allow continuous play`,
+    };
+  }
   return applyFields(
     args,
     {

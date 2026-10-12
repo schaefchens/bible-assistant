@@ -12,6 +12,7 @@ import {
   isWholeChapterReading,
   loadReadingVerses,
   nextReadingAfter,
+  playOnForbiddenBy,
   type NextReading,
 } from './readingContinuation';
 import { noteEntryFinished, noteEntryStarted } from './readingProgressTracker';
@@ -32,8 +33,10 @@ import { currentNarrationVoice } from './narrationVoice';
  *
  * **What** comes next is not decided here — `lib/readingContinuation.ts` owns
  * that, so a reading list continues as a list and everything else continues in
- * canonical order. This module is only the machinery: when to ask, what to
- * prefetch, and how to enqueue the answer.
+ * canonical order — and nor is whether a translation's licence lets it start by
+ * itself (`playOnForbiddenBy`, asked before every automatic continuation and
+ * prefetch). This module is only the machinery: when to ask, what to prefetch,
+ * and how to enqueue the answer.
  */
 
 type PrefetchCache = {
@@ -196,6 +199,9 @@ async function schedulePrefetchFor(groupId: string): Promise<void> {
   try {
     const next = await nextReadingAfter(groupId);
     if (!next || controller.signal.aborted) return;
+    // Nothing will start it by itself, so there is nothing to get ready — and a
+    // chapter of narration generated for nobody still costs.
+    if (playOnForbiddenBy(readingHosts.getGroup(groupId), next)) return;
     const settings = useSettingsStore.getState();
     const summaries = await loadReadingVerses(next, settings.locale);
     if (controller.signal.aborted || summaries.length === 0) return;
@@ -244,11 +250,11 @@ export function getLastPlayedGroupId(): string | null {
 /**
  * Same flow as the automatic soft-end continuation, exposed so the
  * floating playback bar's next button can fire it on demand even when
- * auto-play is off. The `firingContinuation` guard below protects against
- * double-tap spam.
+ * auto-play is off — or ruled out by a licence, since the user is asking. The
+ * `firingContinuation` guard below protects against double-tap spam.
  */
 export const triggerContinuation = (groupId: string): Promise<void> =>
-  onSoftEnd(groupId);
+  onSoftEnd(groupId, false);
 
 /**
  * Record that a reading ran to its end — the "narration finished a passage"
@@ -274,7 +280,9 @@ function notePassageFinished(groupId: string): void {
   );
 }
 
-async function onSoftEnd(groupId: string): Promise<void> {
+/** `byItself` is auto-play reaching the end of a reading; false is the next
+ * button, which is the user asking and so is never a licence's business. */
+async function onSoftEnd(groupId: string, byItself: boolean): Promise<void> {
   if (firingContinuation) return;
   firingContinuation = true;
   try {
@@ -284,11 +292,11 @@ async function onSoftEnd(groupId: string): Promise<void> {
     // subscription's own tick doesn't cover: no soft-end has fired there.
     notePassageFinished(groupId);
     const next = await nextReadingAfter(groupId);
-    if (!next) {
+    if (!next || (byItself && playOnForbiddenBy(readingHosts.getGroup(groupId), next))) {
       // Nothing to continue with (the end of a reading list, the end of the
-      // Bible). If the manual next-button path poked us into a 'loading' state
-      // for instant feedback, restore idle so the thinking drone and PlayButton
-      // pulse don't get stuck.
+      // Bible), or nothing that may start unasked. If the manual next-button
+      // path poked us into a 'loading' state for instant feedback, restore
+      // idle so the thinking drone and PlayButton pulse don't get stuck.
       restoreIdleIfStuck();
       return;
     }
@@ -336,7 +344,7 @@ export function initAutoPlay(): void {
       lastPlayedGroupId
     ) {
       notePassageFinished(lastPlayedGroupId);
-      if (autoPlayOn()) void onSoftEnd(lastPlayedGroupId);
+      if (autoPlayOn()) void onSoftEnd(lastPlayedGroupId, true);
     }
 
     // Prefetch trigger: only when the playing group CHANGES. The

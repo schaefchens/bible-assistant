@@ -9,6 +9,7 @@ import { ReadingAppearanceSheet } from '@/components/reader/ReadingAppearanceShe
 import { ReadingSurface } from '@/components/reader/ReadingSurface';
 import { useAutoScrollActiveVerse } from '@/hooks/useAutoScrollActiveVerse';
 import { useEndlessChapters } from '@/hooks/useEndlessChapters';
+import { useEndlessScroll } from '@/hooks/useLicensedPreference';
 import { audioPlayback } from '@/lib/audioPlaybackManager';
 import { useCommunityStore } from '@/store/communityStore';
 import { useLibraryStore } from '@/store/libraryStore';
@@ -47,13 +48,14 @@ export function ReadPage() {
   const source = useReaderStore((s) => s.source);
   const translation = useSettingsStore((s) => s.translation);
   const setTranslation = useSettingsStore((s) => s.setTranslation);
-  const endless = useSettingsStore((s) => s.readerEndlessScroll);
+  // As it runs, not as chosen: a translation's licence can rule it out.
+  const endless = useEndlessScroll().on;
 
   const [translationOpen, setTranslationOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
 
   useAutoScrollActiveVerse(scrollRef);
-  const { sentinelRef, loadPrevious } = useEndlessChapters(scrollRef);
+  const { sentinelRef, loadPrevious } = useEndlessChapters(scrollRef, endless);
 
   // Open the persisted position (seeded from the audio resume point the very
   // first time) whenever the tab is entered with nothing loaded.

@@ -44,6 +44,13 @@ list play as a list from either screen. **Don't reintroduce a second copy of "wh
 next"** — that rule previously existed three times (autoPlay, readerStore, useContinueReading)
 and the copies disagreed about book rollover.
 
+**Whether** the answer may then start *by itself* is a separate question, and a licence term
+rather than a preference: `playOnForbiddenBy(from, to)` sits beside `nextReadingAfter` and is
+asked before every automatic continuation and every prefetch (a prefetch nothing will play is
+narration paid for nobody). `autoPlay`'s soft-end subscription asks it; the next button
+(`triggerContinuation`) never does, because the user is asking. What it checks is in
+[`reader.md`](reader.md#which-translations-their-notices-and-what-their-licences-permit).
+
 Reader group ids are **deterministic**, so scrolling away and back (or replaying) re-binds
 the highlighter to already-queued tracks. `appendReading` must stay idempotent for the same
 reason — and for a list continuation it adopts **the list's own segment**

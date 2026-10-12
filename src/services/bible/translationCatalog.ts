@@ -1,5 +1,28 @@
 import type { Translation } from './bibleApi';
 
+/**
+ * What a translation's licence lets the app do beyond showing a passage and
+ * reading it aloud. Every flag is a permission, and `false` is a term of the
+ * licence rather than a preference: the user's own setting is kept as they
+ * left it, but it is not acted on while that text is in play, and its control
+ * shows inactive (`forbiddenBy`).
+ */
+export type TranslationFeatures = {
+  /** The reader loads chapter after chapter as you scroll (`readerEndlessScroll`). */
+  endlessScroll: boolean;
+  /**
+   * Playback runs on into the next passage by itself — auto-play
+   * (`autoPlayReading`), or the readings queued behind a tapped one. The next
+   * button, a tap and a voice command are the user asking, and stay allowed.
+   */
+  continuousPlay: boolean;
+};
+
+export type TranslationFeature = keyof TranslationFeatures;
+
+/** A licence that puts no limit on either. */
+const UNRESTRICTED: TranslationFeatures = { endlessScroll: true, continuousPlay: true };
+
 export type TranslationInfo = {
   code: Translation;
   name: string;
@@ -24,6 +47,9 @@ export type TranslationInfo = {
    * is the Genfer Bibelgesellschaft's, and `translationNotices.test.ts` pins it.
    */
   notice: readonly (readonly string[])[];
+  /** What its licence permits — see {@link TranslationFeatures}. Stated for
+   * every entry, so a translation added later has to say. */
+  features: TranslationFeatures;
 };
 
 export const TRANSLATIONS: TranslationInfo[] = [
@@ -43,6 +69,7 @@ export const TRANSLATIONS: TranslationInfo[] = [
         'ESV® Text Edition: 2016. Copyright © 2001 by Crossway, a publishing ministry of Good News Publishers. All rights reserved.',
       ],
     ],
+    features: UNRESTRICTED,
   },
   {
     code: 'KJV',
@@ -60,6 +87,7 @@ export const TRANSLATIONS: TranslationInfo[] = [
         'Public domain. Rights in the United Kingdom are vested in the Crown.',
       ],
     ],
+    features: UNRESTRICTED,
   },
   {
     code: 'NKJV',
@@ -74,6 +102,7 @@ export const TRANSLATIONS: TranslationInfo[] = [
     notice: [
       ['New King James Version®', 'Copyright © 1982 by Thomas Nelson. All rights reserved.'],
     ],
+    features: UNRESTRICTED,
   },
   {
     code: 'S00',
@@ -94,6 +123,10 @@ export const TRANSLATIONS: TranslationInfo[] = [
       ],
       ['Die offizielle Hörbibel ist beim CLV Verlag erhältlich', 'https://clv.de/hoerbibel'],
     ],
+    // Our licence for it rules out both: the text is not to be scrolled through
+    // endlessly, and not to be played on by itself from one passage into the
+    // next. Pinned by `translationNotices.test.ts`, like the notice above.
+    features: { endlessScroll: false, continuousPlay: false },
   },
   {
     code: 'LUT',
@@ -112,6 +145,7 @@ export const TRANSLATIONS: TranslationInfo[] = [
         'Textausgabe: https://www.toledot.info',
       ],
     ],
+    features: UNRESTRICTED,
   },
   {
     code: 'HFA',
@@ -129,6 +163,7 @@ export const TRANSLATIONS: TranslationInfo[] = [
         'Copyright © 1983, 1996, 2002, 2015 by Biblica, Inc.® Alle Rechte vorbehalten.',
       ],
     ],
+    features: UNRESTRICTED,
   },
   {
     code: 'S51',
@@ -144,6 +179,7 @@ export const TRANSLATIONS: TranslationInfo[] = [
     // which would settle it, are not on record.
     offered: false,
     notice: [['Schlachter-Bibel 1951, mit Strong-Nummern', 'Copyright © 1951 Genfer Bibelgesellschaft']],
+    features: UNRESTRICTED,
   },
   {
     code: 'ELB',
@@ -162,6 +198,7 @@ export const TRANSLATIONS: TranslationInfo[] = [
         'Textausgabe: https://www.bibelkommentare.de',
       ],
     ],
+    features: UNRESTRICTED,
   },
 ];
 
@@ -198,4 +235,23 @@ export function asOffered(code: unknown): Translation | undefined {
  * key the system prompts and `set_translation` give the model. */
 export function translationGlossary(): string {
   return OFFERED_TRANSLATIONS.map((t) => `${t.code} = ${t.name} (${t.language})`).join(', ');
+}
+
+/**
+ * The first of `codes` whose licence rules `feature` out, or undefined when
+ * every one permits it. **The one licence check** — asked with every text in
+ * play, never the setting alone: the selected translation, any a reading list
+ * pins (`readerTextsFrom`), the passages either side of a continuation
+ * (`playOnForbiddenBy`). What it returns is what a disabled control names as
+ * its reason.
+ */
+export function forbiddenBy(
+  codes: Iterable<Translation>,
+  feature: TranslationFeature,
+): TranslationInfo | undefined {
+  for (const code of codes) {
+    const info = byCode.get(code);
+    if (info && !info.features[feature]) return info;
+  }
+  return undefined;
 }

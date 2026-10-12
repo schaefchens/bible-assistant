@@ -13,6 +13,7 @@ import {
   type ReaderSource,
   type ReadingSequence,
 } from '@/services/reading/readingSequence';
+import { pinnedTranslations } from '@/services/reading/readingEntries';
 import { useCommunityStore } from '@/store/communityStore';
 import { useLibraryStore } from '@/store/libraryStore';
 
@@ -87,5 +88,37 @@ export function readerSequence(
     posts,
     subscriptions,
     feed,
+  });
+}
+
+/**
+ * The translations whose licence terms bind what the reader does — endless
+ * scroll, continuous play (`translationCatalog`'s `features`): the selected
+ * one, which is the user's Bible, and every one an entry of the list being
+ * read pins.
+ *
+ * A list is taken whole rather than passage by passage. Asked per passage, the
+ * controls would switch themselves on and off as the page scrolls from one
+ * entry into the next — and endless scroll would already have appended a
+ * pinned Schlachter 2000 chapter by the time it became the passage in view.
+ *
+ * A space or a selection names none. A post is not scripture, so no licence
+ * limits how a shelf is read, whichever Bible is selected.
+ */
+export function readerTextsFrom(
+  source: ReaderSource,
+  translation: Translation,
+  deps: ListSnapshot,
+): Translation[] {
+  if (source.kind === 'space' || source.kind === 'selection') return [];
+  const list = source.kind === 'list' ? resolveListFrom(source, deps)?.list : undefined;
+  return list ? [translation, ...pinnedTranslations(list)] : [translation];
+}
+
+/** The live form of {@link readerTextsFrom}, for the store. */
+export function readerTexts(source: ReaderSource, translation: Translation): Translation[] {
+  return readerTextsFrom(source, translation, {
+    lists: useLibraryStore.getState().readingLists,
+    mirroredLists: useCommunityStore.getState().mirroredLists,
   });
 }

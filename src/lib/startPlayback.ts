@@ -6,6 +6,7 @@ import {
 } from '@/services/narration/narrationRequest';
 import { getAmbientTrackUrl } from '@/services/api/ambient';
 import { readingHosts } from './readingHosts';
+import { playOnForbiddenBy } from './readingContinuation';
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import type { VerseSummary } from '@/types/domain';
@@ -260,7 +261,9 @@ export async function startPlaybackForVerses(
  * back to an earlier reading and the rest of the chat's readings still play in
  * order, and in the reader the following mounted chapters play on.
  *
- * `startIndex` / `startWordIndex` apply only to the primary group.
+ * `startIndex` / `startWordIndex` apply only to the primary group. Playing on
+ * past it is continuous play, so it stops wherever a translation's licence
+ * rules that out (`playOnForbiddenBy`) — the tap asked for this reading.
  */
 export async function startReadingPlaylist(
   primaryGroupId: string,
@@ -276,8 +279,11 @@ export async function startReadingPlaylist(
     startWordIndex,
   );
 
+  let from = readingHosts.getGroup(primaryGroupId);
   for (const group of readingHosts.groupsAfter(primaryGroupId)) {
+    if (playOnForbiddenBy(from, group)) return;
     await enqueueReadingForGroup(group.id, group.verses);
+    from = group;
   }
 }
 

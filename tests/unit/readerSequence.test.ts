@@ -12,7 +12,7 @@ import {
   type SegmentRef,
 } from '@/services/reading/readingSequence';
 import { resolveListById } from '@/services/community/sharedReading';
-import { readerSequenceFrom } from '@/services/reading/readerSequence';
+import { readerSequenceFrom, readerTextsFrom } from '@/services/reading/readerSequence';
 import { isFlatList } from '@/services/reading/readingEntries';
 import type { MirroredList, ReadingList } from '@/types/domain';
 
@@ -367,6 +367,60 @@ describe('readerSequenceFrom', () => {
   });
 });
 
+
+/**
+ * What a translation's licence is checked against in the reader (endless
+ * scroll, auto-play). Missing a pinned entry would scroll a plan endlessly
+ * through Schlachter 2000 text while the user's own Bible is another; adding
+ * the wrong one would rule a feature out for nothing.
+ */
+describe('readerTextsFrom — the texts a licence is checked against', () => {
+  const plan = list({
+    days: [
+      { id: 'd1', entries: [{ id: 'e1', bookId: JONAH, chapter: 1 }] },
+      { id: 'd2', entries: [
+        { id: 'e2', bookId: JONAH, chapter: 2, translation: 'S00' },
+        { id: 'e3', bookId: JONAH, chapter: 3, translation: 'S00' },
+      ] },
+    ],
+  });
+
+  it('is the selected translation for the Bible', () => {
+    expect(readerTextsFrom(BIBLE_SOURCE, 'S00', { lists: [plan], mirroredLists: [] })).toEqual(['S00']);
+  });
+
+  /** A post is not scripture: with Schlachter 2000 selected, a shelf still
+   * scrolls on and plays on. */
+  it('names nothing for a space or a selection, whichever Bible is selected', () => {
+    const none = { lists: [plan], mirroredLists: [] };
+    expect(readerTextsFrom({ kind: 'space', spaceId: 'S1' }, 'S00', none)).toEqual([]);
+    expect(readerTextsFrom({ kind: 'selection', label: 'New', postIds: [] }, 'S00', none)).toEqual([]);
+  });
+
+  it('adds what a list pins, from any day, each once — own or mirrored', () => {
+    const source = { kind: 'list', listId: 'L1' } as const;
+    expect(readerTextsFrom(source, 'KJV', { lists: [plan], mirroredLists: [] })).toEqual(['KJV', 'S00']);
+    expect(
+      readerTextsFrom(source, 'KJV', { lists: [], mirroredLists: [mirror(plan, 'ROOM')] }),
+    ).toEqual(['KJV', 'S00']);
+  });
+
+  it('keeps the selected translation even when every entry pins another', () => {
+    // It is the user's Bible, and the controls answer for it.
+    const pinned = list({ days: [{ id: 'd1', entries: [
+      { id: 'e1', bookId: JONAH, chapter: 1, translation: 'LUT' },
+    ] }] });
+    expect(
+      readerTextsFrom({ kind: 'list', listId: 'L1' }, 'S00', { lists: [pinned], mirroredLists: [] }),
+    ).toEqual(['S00', 'LUT']);
+  });
+
+  it('is the selected translation alone for a list that is gone', () => {
+    expect(
+      readerTextsFrom({ kind: 'list', listId: 'gone' }, 'KJV', { lists: [plan], mirroredLists: [] }),
+    ).toEqual(['KJV']);
+  });
+});
 
 /**
  * The lookup that replaced eight copies of `readingLists.find(...)`.
