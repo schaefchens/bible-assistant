@@ -171,81 +171,110 @@ async function featureGraphic({ src, title, tagline, out }) {
   console.log('  ✓', out.replace(OUT + '/', ''));
 }
 
+// The October 2026 set: every frame recaptured from the current build on the
+// emulator, numbered in the order the Play Console shows them. The older
+// captures stay in raw/ for the history; nothing below reads them.
+const SET = '2026-10';
+
 const DE = [
   {
-    src: '07-chat-reading.png',
+    src: `${SET}/de-01-chat.png`,
     headline: ['Sprich. Und höre.'],
     subline: ['Stelle ansagen — sie wird vorgelesen,', 'Wort für Wort mitmarkiert.'],
     out: join(OUT, 'de-DE/phone-1-hoeren.png'),
   },
   {
-    src: '14-ef-2.png',
-    headline: ['Ohne hinzusehen'],
-    subline: ['Fünf riesige Flächen für Start, Vor,', 'Zurück und Mikrofon.'],
-    out: join(OUT, 'de-DE/phone-2-freihaendig.png'),
-  },
-  {
-    src: '08-reader.png',
+    src: `${SET}/de-02-reader.png`,
     headline: ['Lesen wie im Buch'],
     subline: ['Fließender Text mit Absätzen —', 'keine Zeile pro Vers.'],
-    out: join(OUT, 'de-DE/phone-3-lesen.png'),
+    out: join(OUT, 'de-DE/phone-2-lesen.png'),
   },
   {
-    src: '10-cards.png',
+    src: `${SET}/de-03-cards.png`,
     headline: ['Verse behalten'],
-    subline: ['Karten zum Umdrehen,', 'per Sprache angelegt.'],
-    out: join(OUT, 'de-DE/phone-4-karten.png'),
+    subline: ['Karten zum Umdrehen,', 'auf Tafeln geordnet.'],
+    out: join(OUT, 'de-DE/phone-3-karten.png'),
   },
   {
-    src: '11-boards.png',
-    headline: ['Auf Tafeln ordnen'],
-    subline: ['Karten nach Thema sammeln', 'und frei anordnen.'],
-    out: join(OUT, 'de-DE/phone-5-tafeln.png'),
-  },
-  {
-    src: '04-step2.png',
-    headline: ['8 Übersetzungen'],
+    src: `${SET}/de-04-translations.png`,
+    headline: ['4 Übersetzungen'],
     subline: ['Deutsch und Englisch.', 'Zum Mitnehmen offline.'],
-    out: join(OUT, 'de-DE/phone-6-uebersetzungen.png'),
+    out: join(OUT, 'de-DE/phone-4-uebersetzungen.png'),
   },
   {
-    src: '19-settings-voices.png',
-    headline: ['Deine Stimme,', 'deine Fassung'],
-    subline: ['Lesestimme, Übersetzung und Tempo', 'frei wählbar.'],
-    out: join(OUT, 'de-DE/phone-7-einstellungen.png'),
+    src: `${SET}/de-05-eyesfree.png`,
+    headline: ['Ohne hinzusehen'],
+    subline: ['Fünf riesige Flächen für Start, Vor,', 'Zurück und Mikrofon.'],
+    out: join(OUT, 'de-DE/phone-5-freihaendig.png'),
+  },
+  {
+    src: `${SET}/de-06-plan.png`,
+    headline: ['Lesepläne'],
+    subline: ['Tag für Tag durch die Bibel —', 'abgehakt, was gelesen ist.'],
+    out: join(OUT, 'de-DE/phone-6-leseplaene.png'),
+  },
+  {
+    src: `${SET}/de-07-shelf.png`,
+    headline: ['Regale zum Teilen'],
+    subline: ['Eigene Texte, vorgelesen —', 'für alle, die du einlädst.'],
+    out: join(OUT, 'de-DE/phone-7-regale.png'),
+  },
+  {
+    src: `${SET}/de-08-voices.png`,
+    headline: ['Deine Stimme'],
+    subline: ['Gib ihr einen Namen, ein Gesicht', 'und eine Sprechweise.'],
+    out: join(OUT, 'de-DE/phone-8-stimmen.png'),
   },
 ];
 
 const EN = [
   {
-    src: 'en-01-chat.png',
+    src: `${SET}/en-01-chat.png`,
     headline: ['Say it. Hear it.'],
     subline: ['Name a passage — it reads aloud,', 'highlighting every word.'],
     out: join(OUT, 'en-US/phone-1-listen.png'),
   },
   {
-    src: 'en-07b-eyesfree.png',
-    headline: ['Eyes off. Ears on.'],
-    subline: ['Five huge zones for play, next,', 'back and the microphone.'],
-    out: join(OUT, 'en-US/phone-2-handsfree.png'),
-  },
-  {
-    src: 'en-02-reader.png',
+    src: `${SET}/en-02-reader.png`,
     headline: ['Read like a book'],
     subline: ['Flowing prose with paragraphs —', 'not one line per verse.'],
-    out: join(OUT, 'en-US/phone-3-read.png'),
+    out: join(OUT, 'en-US/phone-2-read.png'),
   },
   {
-    src: 'en-05-translations.png',
-    headline: ['8 translations'],
+    src: `${SET}/en-03-cards.png`,
+    headline: ['Keep the verses'],
+    subline: ['Cards to flip and learn,', 'sorted onto boards.'],
+    out: join(OUT, 'en-US/phone-3-cards.png'),
+  },
+  {
+    src: `${SET}/en-04-translations.png`,
+    headline: ['4 translations'],
     subline: ['English and German.', 'Downloaded for offline use.'],
     out: join(OUT, 'en-US/phone-4-translations.png'),
   },
   {
-    src: 'en-06-settings.png',
-    headline: ['Your voice,', 'your version'],
-    subline: ['Choose the reading voice,', 'the translation and the pace.'],
-    out: join(OUT, 'en-US/phone-5-settings.png'),
+    src: `${SET}/en-05-eyesfree.png`,
+    headline: ['Eyes off. Ears on.'],
+    subline: ['Five huge zones for play, next,', 'back and the microphone.'],
+    out: join(OUT, 'en-US/phone-5-handsfree.png'),
+  },
+  {
+    src: `${SET}/en-06-plan.png`,
+    headline: ['Reading plans'],
+    subline: ['Day by day through the Bible —', 'ticked off as you go.'],
+    out: join(OUT, 'en-US/phone-6-plans.png'),
+  },
+  {
+    src: `${SET}/en-07-shelf.png`,
+    headline: ['Shelves to share'],
+    subline: ['Your own writing, read aloud —', 'for the people you invite.'],
+    out: join(OUT, 'en-US/phone-7-shelves.png'),
+  },
+  {
+    src: `${SET}/en-08-voices.png`,
+    headline: ['Your voice'],
+    subline: ['Give it a name, a face', 'and a way of speaking.'],
+    out: join(OUT, 'en-US/phone-8-voices.png'),
   },
 ];
 
@@ -255,15 +284,15 @@ console.log('English phone screenshots:');
 for (const f of EN) await frame(f);
 console.log('Feature graphics:');
 await featureGraphic({
-  src: '07-chat-reading.png',
+  src: `${SET}/de-01-chat.png`,
   title: 'Bibel-Assistent',
   tagline: ['Die Bibel hören, lesen und behalten —', 'gesteuert mit der Stimme.'],
   out: join(OUT, 'de-DE/feature-graphic.png'),
 });
 await featureGraphic({
-  src: 'en-01-chat.png',
+  src: `${SET}/en-01-chat.png`,
   title: 'Bible Assistant',
-  tagline: ['Hear, read and keep the Bible —', 'driven entirely by voice.'],
+  tagline: ['Hear, read and keep the Bible —', 'driven by your voice.'],
   out: join(OUT, 'en-US/feature-graphic.png'),
 });
 console.log('done');
