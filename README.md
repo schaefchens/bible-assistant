@@ -123,15 +123,19 @@ npm run community:verify:api  # the cross-account HTTP surface, on a throwaway p
 
 ```
 npm run build
-./scripts/deploy.sh [--dry-run]
+./scripts/deploy.sh [--prune] [--dry-run]
 ```
 
 SFTP with an explicit allow-list, and it **must never upload `storage/` (live user
 data) or `secrets.php`**. It names `api.php` *and* the whole of `api/`, and
 uploads `api/` first — until `api.php` is replaced the old one is still serving,
 whereas the other order 500s every request for the rest of the transfer.
-`--dry-run` prints the plan; afterwards it verifies the deploy over HTTPS,
-including that `api/` answers 403.
+`--prune` then deletes what the deploy replaced: superseded bundles and icons,
+handlers gone from `api/`, a translation's previous packs. It spares whatever
+the build being replaced still precaches, and never touches `bibles/`,
+`storage/` or another root file. `--dry-run` prints the plan, deletions
+included; afterwards it verifies the deploy over HTTPS, including that `api/`
+answers 403.
 
 Large, rarely-changing content is opt-in:
 

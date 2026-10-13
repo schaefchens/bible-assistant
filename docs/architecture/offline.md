@@ -74,9 +74,9 @@ corrections, and Joel 4, which the earlier text lacked. The steps, in order:
    ```
    then `npm run build` (which copies `public/storage` into `dist/`) and
    `npm run bible:verify`.
-5. Deploy with `--with-bibles --with-packs`. The server's chapter cache retires itself;
-   the old pack version's directory stays on the server until removed by hand, since
-   `deploy.sh` never deletes.
+5. Deploy with `--with-bibles --with-packs --prune`. The server's chapter cache retires
+   itself; `--prune` deletes the old pack version's directory, which would otherwise stay
+   on the server, publicly downloadable, since an upload never deletes.
 
 Narration needs nothing: the server regenerates a verse whose text changed
 (`sourceTextHash`). A device that already holds that verse's audio keeps playing it,

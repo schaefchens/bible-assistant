@@ -27,7 +27,7 @@ changes — that is where new rationale goes, not here.
 - `npm run voices:announcements` — regenerate `public/api/announcements.php` (the announcement templates and book names a voice lent for scripture may read) from `src/i18n/*.json` and the book catalog. **Run after changing an `announce.*` string or a book's name** — `tests/unit/announcements.test.ts` fails until you do.
 - `npm run build:native` / `npm run sync` — the Capacitor build; `sync` also runs `cap sync`.
 - `npm run icons` — regenerate every app icon from `resources/source/icon.png` (`scripts/icons/buildIcons.mjs`); splash screens stay `capacitor-assets`' job. Sizing is per role (full-bleed vs genuinely masked) — don't "simplify" it back to one shared bitmap.
-- `./scripts/deploy.sh [--dry-run]` — deploy the PWA + PHP over SFTP from an explicit allow-list. It must never upload `storage/` (live user data) or `secrets.php`, and it names **`api.php` and the whole of `api/`** — one without the other 500s on every request.
+- `./scripts/deploy.sh [--prune] [--dry-run]` — deploy the PWA + PHP over SFTP from an explicit allow-list. It must never upload `storage/` (live user data) or `secrets.php`, and it names **`api.php` and the whole of `api/`** — one without the other 500s on every request. `--prune` deletes what the deploy replaced, within limits the script sets out (never `bibles/`, `storage/` or a root file but `workbox-*.js`); `--dry-run --prune` lists the deletions.
 - TypeScript runs with `erasableSyntaxOnly`, so **constructor parameter properties (`constructor(private x: T)`) do not compile** — declare the field and assign it.
 
 ## Entry points
