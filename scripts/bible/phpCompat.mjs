@@ -12,14 +12,15 @@
  * PHP's `preg_replace('/\s+/u', ...)`.
  *
  * Whitespace is the one place these two languages could plausibly disagree,
- * so it was checked against the live PHP output rather than assumed:
- * s00.xml contains 450 U+202F (narrow no-break space) characters inside verse
- * text, and the PHP-generated fixtures show every one of them collapsed to a
- * plain U+0020. So PCRE2 under `/u` treats `\s` as Unicode-aware here, and
- * JavaScript's `\s` — which also matches U+202F — is the faithful port.
+ * so it was checked against the live PHP output rather than assumed: the
+ * s00.xml of the time (before the licensed text replaced it) held 450 U+202F
+ * (narrow no-break space) characters inside verse text, and the PHP-generated
+ * fixtures showed every one of them collapsed to a plain U+0020. So PCRE2
+ * under `/u` treats `\s` as Unicode-aware here, and JavaScript's `\s` — which
+ * also matches U+202F — is the faithful port.
  *
  * (An ASCII-only class looks like the "safe" choice and is actively wrong:
- * it leaves U+202F intact and diverges from the server on 290 S00 verses.)
+ * it left U+202F intact and diverged from the server on 290 S00 verses.)
  *
  * The only residual difference is U+FEFF, which JS `\s` matches and PCRE does
  * not. It appears exactly twice per file — the BOM — never inside verse text,

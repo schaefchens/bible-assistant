@@ -37,6 +37,19 @@ const DOWNLOAD_OUT = path.join(ROOT, 'build/bible-packs');
 const PACK_VERSION = process.env.PACK_VERSION ?? '2026-08-16.1';
 const PACK_FORMAT = 'pack-v1';
 
+/**
+ * A translation whose text changed after PACK_VERSION, and the version its
+ * packs carry since. A device holding a pack at another version re-downloads
+ * it (`missingBooks` in packDownloader.ts), so this is how a replaced text
+ * reaches the devices that keep it offline — without every other pack
+ * downloading again. A global PACK_VERSION from the environment still wins.
+ *
+ * S00 2026-10-13: the Genfer Bibelgesellschaft's licensed Schlachter 2000
+ * (scripts/bible/usxToZefania.mjs) replaced the earlier text.
+ */
+const PACK_VERSIONS = { S00: '2026-10-13.1' };
+const versionOf = (code) => process.env.PACK_VERSION ?? PACK_VERSIONS[code] ?? PACK_VERSION;
+
 const onlyArg = process.argv.indexOf('--only');
 const only =
   onlyArg > -1 ? process.argv[onlyArg + 1].split(',').map((s) => s.trim().toUpperCase()) : null;
@@ -85,7 +98,8 @@ for (const code of codes) {
 
   const bundled = BUNDLED_TRANSLATIONS.includes(code);
   const outRoot = bundled ? BUNDLED_OUT : DOWNLOAD_OUT;
-  const dir = path.join(outRoot, code, PACK_VERSION);
+  const version = versionOf(code);
+  const dir = path.join(outRoot, code, version);
 
   process.stdout.write(`${code.padEnd(5)} parsing… `);
   const books = parseZefania(xmlPath);
@@ -102,7 +116,7 @@ for (const code of codes) {
       chapters[String(chapterNo)] = verses;
       verseCount += verses.length;
     }
-    const pack = { f: PACK_FORMAT, t: code, b: bookId, v: PACK_VERSION, c: chapters };
+    const pack = { f: PACK_FORMAT, t: code, b: bookId, v: version, c: chapters };
 
     const file = path.join(dir, `${bookId}.json`);
     const bytes = writeJson(file, pack);
@@ -112,7 +126,7 @@ for (const code of codes) {
 
     bookEntries.push({
       b: bookId,
-      path: `${code}/${PACK_VERSION}/${bookId}.json`,
+      path: `${code}/${version}/${bookId}.json`,
       bytes,
       // Of the *uncompressed* JSON — that's what the client hashes, since
       // fetch() transparently decompresses the .gz the server sends.
@@ -126,8 +140,8 @@ for (const code of codes) {
       for (const [chapterNo, byVerse] of [...book.strongs].sort((a, b) => a[0] - b[0])) {
         strongs[String(chapterNo)] = byVerse;
       }
-      const sFile = path.join(DOWNLOAD_OUT, code, PACK_VERSION, 'strongs', `${bookId}.json`);
-      writeJson(sFile, { f: PACK_FORMAT, t: code, b: bookId, v: PACK_VERSION, c: strongs });
+      const sFile = path.join(DOWNLOAD_OUT, code, version, 'strongs', `${bookId}.json`);
+      writeJson(sFile, { f: PACK_FORMAT, t: code, b: bookId, v: version, c: strongs });
       writeGz(sFile);
       strongsBooks++;
     }
@@ -146,7 +160,7 @@ for (const code of codes) {
     // Flipping this to false hides the download everywhere within one manifest
     // fetch — no app update needed. See the licensing note in the plan.
     available: true,
-    version: PACK_VERSION,
+    version,
     bytes: totalBytes,
     wireBytes: totalWire,
     books: bookEntries,

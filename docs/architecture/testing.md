@@ -74,12 +74,15 @@ are checked offline in seconds — against `lib/wordTokens.ts`, the very tokeniz
 (`OPENAI_API_BASE`) and canary keys for an owner and a reader, so "only the owner's key
 was ever sent" is an assertion over every upstream request rather than a hope.
 
-**One unit test spawns `php`, on purpose.** `tests/unit/announcements.test.ts` feeds
+**Two unit tests spawn `php`, on purpose.** `tests/unit/announcements.test.ts` feeds
 every announcement the real `buildPlaybackPlan` makes — every book, both languages,
 every heading shape — through the real server matcher (`isAnnouncement()`), because
 the two live in different languages and a port of either into the other would be the
 two-copies failure. It is pure on both sides; php is on every machine that runs
 `npm run verify` already, and the test fails loudly, not silently, without it.
+`tests/unit/bibleChapterCache.test.ts` is the other: the server's chapter cache must
+follow the XML it was parsed from, a rule that is PHP's and lives in the filesystem, so
+it runs one php process per request over a throwaway `APP_ROOT`.
 
 **A shared voice is proven refused, never generated, at E2E.** The room journey lends a
 voice whose owner has no key: the reader's requests go to `tts.shared`, each is refused

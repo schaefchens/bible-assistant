@@ -30,6 +30,9 @@ because clearing a filter is not a request to be sent somewhere else.
   bibles carries paragraph markup — `public/bibles/*.xml` has only `<verse>`/`<chapter>`/`<book>`
   — so the rule is "break after a verse that ends a sentence, once ≥4 verses have accumulated".
   Deterministic and never mid-sentence, but not editorial. `MIN_VERSES_PER_PARAGRAPH` is the knob.
+  S00's licensed source *does* mark paragraphs, poetry lines and section headings (USX — see
+  [`offline.md`](offline.md)); `usxToZefania.mjs` keeps only verse text, so that is where real
+  paragraphs would start.
 - **Auto-continuation moves the reader the way the reader moves** (`readerStore.adopt`).
   Endless scroll grows downward, so a continuation appends and the page carries on under the
   voice; **paged mode turns the page** — the window is replaced and `position` follows, because

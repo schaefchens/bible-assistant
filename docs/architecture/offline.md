@@ -44,6 +44,45 @@ offline.
 `TranslationList`), and the active translation is wanted even if its row was never
 tapped. Packs are ~1.5 MB gzipped, so this needs no confirmation.
 
+**Replacing a translation's text** has happened once: on 2026-10-13 the Genfer
+Bibelgesellschaft's licensed Schlachter 2000 replaced the earlier S00 text. They supply
+it as USX (Digital Bible Library, one `.usx` per book, kept locally under the gitignored
+`files/`), and `scripts/bible/usxToZefania.mjs` turns that into the Zefania both parsers
+already read, so neither parser learns USX. The converter decides what is scripture
+(verse text, psalm titles, "(Sela.)"; not notes, headings or speaker labels), refuses
+markup it was not taught, and repairs what the bundle lost on its way from Word (its
+header has both repairs). Its output was diffed against the text it replaced, all 31,150
+verses: 30,947 identical; the rest are stray spaces gone, psalms' "(Sela.)", eight wording
+corrections, and Joel 4, which the earlier text lacked. The steps, in order:
+
+1. `node scripts/bible/usxToZefania.mjs <usx-dir> public/bibles/s00.xml`
+2. Give the translation a new entry in `PACK_VERSIONS` (`buildPacks.mjs`). Without one,
+   every device that keeps the text offline keeps the *old* one, silently:
+   `missingBooks` re-downloads a pack only when its version changes. Per translation, so
+   nobody downloads the other seven again.
+3. `npm run bible:build`. Only that translation's manifest entry should change; the
+   other packs come out byte-identical.
+4. Refresh its golden fixtures. They are PHP's own chapter cache, so they still hold the
+   old text and `bible:verify` fails on them, rightly. One read of every chapter through
+   PHP rewrites them (the stamp in [`backend.md`](backend.md)):
+   ```sh
+   php -r 'define("APP_ROOT", realpath("public")); require "public/api/bootstrap.php"; require "public/api/bible.php";
+     $r = new XMLReader(); $r->open("public/bibles/s00.xml"); $b = 0;
+     while ($r->read()) { if ($r->nodeType !== XMLReader::ELEMENT) continue;
+       if ($r->localName === "book") $b = (int) $r->getAttribute("number");
+       if ($r->localName === "chapter") bibleChapterVerses("S00", $b, (int) $r->getAttribute("number")); }'
+   ```
+   then `npm run build` (which copies `public/storage` into `dist/`) and
+   `npm run bible:verify`.
+5. Deploy with `--with-bibles --with-packs`. The server's chapter cache retires itself;
+   the old pack version's directory stays on the server until removed by hand, since
+   `deploy.sh` never deletes.
+
+Narration needs nothing: the server regenerates a verse whose text changed
+(`sourceTextHash`). A device that already holds that verse's audio keeps playing it,
+though — the narration index is keyed by reference, not by text — which was accepted
+for a replacement that changed 164 spoken verses, most by a "(Sela.)".
+
 **Narration resolves through a source chain**, `services/narration/narrationSources.ts`
 — the audio counterpart of `chapterSources`, same "`null` means try the next source"
 contract. `cachedNarrationSource` answers from a local index with **no** call to

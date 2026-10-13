@@ -55,21 +55,25 @@ function bibleChapterVerses(string $translation, int $bookId, int $chapter): arr
     $dir = STORAGE_DIR . "/bible/{$translation}/{$bookId}";
     @mkdir($dir, 0775, true);
     $file = "{$dir}/{$chapter}.json";
+    $xmlPath = APP_ROOT . '/bibles/' . $xmlSlug;
+    $source = bibleXmlFingerprint($xmlPath);
 
     if (file_exists($file)) {
         $raw = file_get_contents($file);
         if ($raw !== false && $raw !== '') {
             $cached = json_decode($raw, true);
-            // Cache uses { format, verses } so future schema bumps via
-            // BIBLE_CACHE_FORMAT invalidate stale entries automatically.
-            if (is_array($cached) && ($cached['format'] ?? null) === BIBLE_CACHE_FORMAT) {
+            // Cache uses { format, source, verses }: a BIBLE_CACHE_FORMAT bump
+            // retires every entry, a replaced XML retires its own translation's.
+            if (
+                is_array($cached) && ($cached['format'] ?? null) === BIBLE_CACHE_FORMAT
+                && ($source === null || ($cached['source'] ?? null) === $source)
+            ) {
                 return ['verses' => $cached['verses'] ?? [], 'cached' => true];
             }
         }
     }
 
-    $xmlPath = APP_ROOT . '/bibles/' . $xmlSlug;
-    if (!is_readable($xmlPath)) {
+    if ($source === null || !is_readable($xmlPath)) {
         return ['error' => [500, 'bible xml missing on server', ['translation' => $translation]]];
     }
     $verses = parseZefaniaChapter($xmlPath, $bookId, $chapter);
@@ -78,9 +82,30 @@ function bibleChapterVerses(string $translation, int $bookId, int $chapter): arr
     }
     file_put_contents($file, json_encode([
         'format' => BIBLE_CACHE_FORMAT,
+        'source' => $source,
         'verses' => $verses,
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     return ['verses' => $verses, 'cached' => false];
+}
+
+/**
+ * Which copy of a translation's XML a chapter was parsed from — its size and
+ * modification time — or null when the file is not on this server.
+ *
+ * A cached chapter used to outlive its source: parsed once, it was served from
+ * storage/bible/ for good, so uploading a replacement s00.xml would have left
+ * the old wording live wherever a chapter had been read before. Stamping each
+ * entry with this and comparing on read retires exactly the replaced
+ * translation's entries, each on its next read, with no version constant to
+ * remember — and no deploy-order window in which new code could stamp the old
+ * text as current, since the stamp describes the file actually parsed.
+ *
+ * A missing XML keeps serving what is cached, as it always has.
+ */
+function bibleXmlFingerprint(string $xmlPath): ?string {
+    $size = @filesize($xmlPath);
+    $mtime = @filemtime($xmlPath);
+    return $size === false || $mtime === false ? null : "{$size}@{$mtime}";
 }
 
 /**

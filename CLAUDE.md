@@ -20,6 +20,7 @@ changes — that is where new rationale goes, not here.
 - `npm run verify` — the whole gate: `tsc -b`, lint, the four `*:verify` scripts, `npm test`. Run before a release. It **exits 0** — keep it that way, or nobody can tell a new failure from a standing one.
 - `npm run e2e` — end-to-end against the **built** app; needs a current `dist/` and refuses a stale one. Minutes, and makes real OpenAI chat calls — run it after a risky feature or refactor, not every change. `npm run e2e:live` is the only thing that makes OpenAI *generate* speech.
 - `npm run bible:build` / `bible:verify` — regenerate the offline Bible packs / diff them against golden fixtures from the PHP parser. **Run verify after touching either parser.**
+- `node scripts/bible/usxToZefania.mjs <usx-dir> public/bibles/s00.xml` — regenerate Schlachter 2000 from the Genfer Bibelgesellschaft's licensed USX. Replacing a text is five steps, not one: see [`offline.md`](docs/architecture/offline.md).
 - `npm run bible:counts` — regenerate `src/services/bible/verseCounts.ts` from the KJV pack. Only when the packs or the book catalog change.
 - `npm run community:verify` / `community:verify:api` — signing, share-code and chunking properties; then the community endpoints, `feedback.create`, and "no file in `public/api/` is servable on its own", against a throwaway `php -S`. **Run both after touching signatures, share codes, `postUnits`, `api.php`'s community actions or `feedback.create`, or after adding a handler file.**
 - `npm run voices:verify:api` — keys, the voices collection, ElevenLabs narration (chunking, MP3 joins, the character-to-word alignment, every error code) and **shared voices** (who pays, the scope, the allowances, the owner's slots) against a throwaway `php -S` and in-process ElevenLabs and OpenAI stubs — never the real APIs. **Run after touching `audio.php`, `elevenlabs.php`, `voices.php`, `sponsorship.php`, the payer resolvers or `lib/wordTokens.ts`.**
@@ -291,6 +292,7 @@ no failing test — which is why they are here rather than only there.
 - "Can I read this without the network?" is `isPreinstalled()`, not `isBundled()`. Narration URLs are recorded from api.php's response, never recomputed; a local hit needs an index entry **and** the bytes.
 - The mnemonic is minted silently on first run and shown only when sync is turned on — never put "create an account" in front of a first-run user.
 - Group-download selectors return primitives. A failed or cancelled download sets `'unknown'` before re-deriving.
+- A replaced Bible text needs its own entry in `PACK_VERSIONS` (`buildPacks.mjs`), or every device that keeps it offline silently keeps the old one.
 
 **Backend** — [`backend.md`](docs/architecture/backend.md)
 - Accounts are lazy: only `$ACCOUNT_ACTIONS` create `storage/users/{id}`. No eager `mkdir` in `authenticate()`.

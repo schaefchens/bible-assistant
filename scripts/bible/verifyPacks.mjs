@@ -54,22 +54,30 @@ function materialize(v) {
   return { pk: v.pk, verse: v.verse, text: v.text, textTts: v.textTts ?? v.text };
 }
 
-const PACK_ROOTS = [path.join(ROOT, 'public/bible-packs'), path.join(ROOT, 'build/bible-packs')];
+/**
+ * "<code>:<bookId>" -> the built pack the manifest publishes for it. Through
+ * the manifest rather than whatever version directory is on disk: a translation
+ * can carry its own version (PACK_VERSIONS in buildPacks.mjs), and an older
+ * directory left beside the current one is not what any device downloads.
+ */
+function publishedPacks() {
+  const files = new Map();
+  const manifestFile = path.join(ROOT, 'public/bible-packs/manifest.json');
+  if (!fs.existsSync(manifestFile)) return files;
+  for (const t of JSON.parse(fs.readFileSync(manifestFile, 'utf8')).translations ?? []) {
+    const root = path.join(ROOT, t.bundled ? 'public/bible-packs' : 'build/bible-packs');
+    for (const b of t.books ?? []) files.set(`${t.code}:${b.b}`, path.join(root, b.path));
+  }
+  return files;
+}
+const PACK_FILES = publishedPacks();
 
 /** Read a chapter back out of a built pack, if one exists on disk. */
 function readPackChapter(translation, bookId, chapter) {
-  for (const root of PACK_ROOTS) {
-    const tDir = path.join(root, translation);
-    if (!fs.existsSync(tDir)) continue;
-    for (const version of fs.readdirSync(tDir)) {
-      const file = path.join(tDir, version, `${bookId}.json`);
-      if (!fs.existsSync(file)) continue;
-      const pack = JSON.parse(fs.readFileSync(file, 'utf8'));
-      const rows = pack.c?.[String(chapter)];
-      if (rows) return rows;
-    }
-  }
-  return null;
+  const file = PACK_FILES.get(`${translation}:${bookId}`);
+  if (!file || !fs.existsSync(file)) return null;
+  const pack = JSON.parse(fs.readFileSync(file, 'utf8'));
+  return pack.c?.[String(chapter)] ?? null;
 }
 
 function diffVerse(expected, actual, where) {

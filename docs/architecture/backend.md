@@ -102,6 +102,17 @@ not their cards.
 
 Bible text is parsed from Zefania XML in `public/bibles/*.xml` (S00, S51, LUT, HFA, ELB = German; ESV, KJV, NKJV = English). Client base URL + error handling: `src/services/api/client.ts` (`apiPostJson` / `apiGetJson` / `apiPostForm`, `ApiError`, `onUserKeyFailure`).
 
+**A cached chapter follows the XML it was parsed from.** `bible.chapter` keeps every
+parse in `storage/bible/{translation}/{book}/{chapter}.json`, stamped with the size and
+mtime of its XML (`bibleXmlFingerprint` in `api/bible.php`), and parses again when the
+stamp no longer matches. Before the stamp an entry outlived its source, so replacing
+`s00.xml` with the licensed Schlachter 2000 would have left the earlier wording live on
+every chapter anybody had read. A stamp rather than a version constant because
+`deploy.sh` uploads `api/` before `bibles/`: in between, a bumped constant would let the
+new code stamp the *old* text as current, for good. An XML missing from the server still
+serves what is cached, as before. `tests/unit/bibleChapterCache.test.ts` pins all of it
+(mutation-tested, three breaks, three kills).
+
 ## Who pays — narration and the provider keys
 
 Narration is the one place the payer depends on the request body — OpenAI or

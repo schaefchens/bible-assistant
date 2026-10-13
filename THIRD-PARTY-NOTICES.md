@@ -37,14 +37,14 @@ and nothing else.
 | `esv.xml` | English Standard Version, ESV® Text Edition 2016 | Crossway Bibles. The file's own root element records "Copyright © 2001 by Crossway Bibles". |
 | `nkjv.xml` | New King James Version (1982) | Thomas Nelson, an imprint of HarperCollins Christian Publishing. |
 | `hfa.xml` | Hoffnung für Alle | Fontis / Brunnen Verlag Basel, with Biblica. |
-| `s00.xml` | Schlachter 2000 | Genfer Bibelgesellschaft. |
+| `s00.xml` | Schlachter 2000 | Genfer Bibelgesellschaft — used under licence. Generated from the text they supplied (USX, Digital Bible Library, revision 3) by `scripts/bible/usxToZefania.mjs`. |
 
 Every one of these publishers permits short quotation — typically a few hundred
 verses — and none permits redistributing the complete text.
 
-**Permission is being sought from each of these four rights holders. Any
-translation for which permission cannot be obtained will be removed from the
-project entirely.**
+**Schlachter 2000 is licensed from the Genfer Bibelgesellschaft. Permission is
+being sought from the other three rights holders. Any translation for which
+permission cannot be obtained will be removed from the project entirely.**
 
 Until then, **ESV, NKJV and Hoffnung für Alle are hidden in the app**
 (`offered: false` in `src/services/bible/translationCatalog.ts`): no picker,

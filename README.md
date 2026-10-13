@@ -50,8 +50,9 @@ A clone contains the four public-domain texts: **KJV**, **Luther 1912**,
 **Elberfelder 1905**, **Schlachter 1951**.
 
 ESV, NKJV, Hoffnung für Alle and Schlachter 2000 are still in copyright and are
-**not** in this repository — not in the tree and not in its history. Permission is
-being sought from each rights holder; anything unlicensed will be removed.
+**not** in this repository — not in the tree and not in its history. Schlachter 2000
+is licensed from the Genfer Bibelgesellschaft; permission is being sought from the
+other three rights holders, and anything unlicensed will be removed.
 `bible:build` skips a translation whose XML is absent, so the app builds, verifies
 and runs from a clone — the picker simply offers four. See
 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
@@ -209,8 +210,9 @@ music belong to other people, on their own terms — see
 1905 and Schlachter 1951 are public domain and committed. ESV, NKJV, Hoffnung
 für Alle and Schlachter 2000 are still in copyright, are **not** in this
 repository — not in the tree and not in its history — and ship only via
-`deploy.sh --with-bibles`. Permission is being
-sought from each rights holder; anything unlicensed will be removed.
+`deploy.sh --with-bibles`. Schlachter 2000 is licensed from the Genfer
+Bibelgesellschaft; permission is being sought from the other three rights
+holders, and anything unlicensed will be removed.
 
 `bible:build` skips a translation whose XML is absent, so the app builds and
 runs from a clone with four texts — `npm run dev` works, the picker simply
